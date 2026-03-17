@@ -37,6 +37,10 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
+# Copy start script
+COPY start.sh ./
+RUN chmod +x start.sh
+
 # Set correct permissions
 RUN chown -R nextjs:nodejs /app
 
@@ -48,4 +52,4 @@ ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
 # Start the application
-CMD ["node", "server.js"]
+CMD ["./start.sh"]
