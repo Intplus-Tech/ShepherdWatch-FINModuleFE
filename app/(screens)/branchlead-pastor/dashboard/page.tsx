@@ -15,6 +15,7 @@ import {
   LayoutDashboard,
   PiggyBank,
   Search,
+  Settings,
   ShieldCheck,
   Wallet,
 } from "lucide-react"
