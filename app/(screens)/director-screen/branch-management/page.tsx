@@ -60,7 +60,7 @@ const statCards = [
 const branches = [
   {
     name: "North Umbria Branch",
-    id: "ID: 001 • United Kingdom",
+    id: "ID: 001 Â• United Kingdom",
     status: "Active",
     statusTone: "bg-emerald-50 text-emerald-600",
     netPosition: "+$14,200",
@@ -74,7 +74,7 @@ const branches = [
   },
   {
     name: "Kyoto Branch",
-    id: "ID: JP-023 • Japan",
+    id: "ID: JP-023 Â• Japan",
     status: "Review",
     statusTone: "bg-amber-50 text-amber-600",
     netPosition: "-$2,850",
@@ -88,7 +88,7 @@ const branches = [
   },
   {
     name: "Sao Paulo Branch",
-    id: "ID: BR-104 • Brazil",
+    id: "ID: BR-104 Â• Brazil",
     status: "Suspended",
     statusTone: "bg-rose-50 text-rose-600",
     netPosition: "-$18,400",
@@ -102,7 +102,7 @@ const branches = [
   },
   {
     name: "Maryland Branch",
-    id: "ID: 009 • Nigeria",
+    id: "ID: 009 Â• Nigeria",
     status: "Active",
     statusTone: "bg-emerald-50 text-emerald-600",
     netPosition: "+$82,100",
@@ -116,7 +116,7 @@ const branches = [
   },
   {
     name: "Toronto Branch",
-    id: "ID: CA-152 • Canada",
+    id: "ID: CA-152 Â• Canada",
     status: "Active",
     statusTone: "bg-emerald-50 text-emerald-600",
     netPosition: "+$8,320",
@@ -130,7 +130,7 @@ const branches = [
   },
   {
     name: "Dubai Branch",
-    id: "ID: AE-101 • UAE",
+    id: "ID: AE-101 Â• UAE",
     status: "Onboarding",
     statusTone: "bg-[#EEF2FF] text-[#4F46E5]",
     netPosition: "--",

@@ -32,7 +32,7 @@ export default function Page() {
                     <h2 className="text-[14px] font-semibold text-[#111827]">Requisition Approval: #REQ-2301</h2>
                     <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[8px] text-rose-600">OVER-BUDGET</span>
                   </div>
-                  <p className="text-[9px] text-[#9CA3AF]">Audio System Upgrade • Victoria Island Branch</p>
+                  <p className="text-[9px] text-[#9CA3AF]">Audio System Upgrade Â• Victoria Island Branch</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -65,7 +65,7 @@ export default function Page() {
                 <div className="mt-4 text-[9px] text-[#6B7280]">
                   <div className="font-semibold text-[#111827]">Accountant&apos;s Justification</div>
                   <p className="mt-1">
-                    “Current outdoor-led sound system no longer meets the required standards for services and special events.”
+                    Â“Current outdoor-led sound system no longer meets the required standards for services and special events.Â”
                   </p>
                 </div>
               </div>

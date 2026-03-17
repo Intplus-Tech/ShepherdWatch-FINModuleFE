@@ -58,7 +58,7 @@ const approvals = [
   {
     id: "REQ-2301",
     title: "Audio Upgrade",
-    meta: "Submitted by Dcn. Samuel • 2 hours ago",
+    meta: "Submitted by Dcn. Samuel Â• 2 hours ago",
     amount: "?150,000",
     tag: "OVER-BUDGET",
     tagTone: "bg-rose-50 text-rose-600",
@@ -66,7 +66,7 @@ const approvals = [
   {
     id: "REQ-2302",
     title: "Youth Camp Logistics",
-    meta: "Submitted by Admin Dept • 5 hours ago",
+    meta: "Submitted by Admin Dept Â• 5 hours ago",
     amount: "?75,000",
     tag: "PENDING",
     tagTone: "bg-amber-50 text-amber-600",
@@ -74,7 +74,7 @@ const approvals = [
   {
     id: "REQ-2303",
     title: "Staff Emergency Loan",
-    meta: "Submitted by Admin Dept • 1 day ago",
+    meta: "Submitted by Admin Dept Â• 1 day ago",
     amount: "?95,000",
     tag: "STANDARD",
     tagTone: "bg-emerald-50 text-emerald-600",

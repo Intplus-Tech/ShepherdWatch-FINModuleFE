@@ -8,7 +8,7 @@ import {
   ChevronDown,
   MoreHorizontal,
   ShieldCheck,
-  Tool,
+  Wrench,
   X,
 } from "lucide-react"
 
@@ -171,7 +171,7 @@ export default function Page() {
 
                 <div className="mt-4 rounded-[10px] border border-[#EEF1F6] bg-[#EFF6FF] p-3 text-[9px] text-[#1E3A8A]">
                   <div className="flex items-center gap-2">
-                    <Tool className="h-3.5 w-3.5" />
+                    <Wrench className="h-3.5 w-3.5" />
                     Asset is due for review in 5 days.
                   </div>
                 </div>

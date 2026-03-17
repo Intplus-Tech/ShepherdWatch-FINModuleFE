@@ -90,7 +90,7 @@ export default function Page() {
                   </div>
                   <div>
                     <div className="text-[11px] font-semibold text-[#111827]">Alex Mercer</div>
-                    <div className="text-[8px] text-[#9CA3AF]">Lead Pastor • Branch: Lagos, NG</div>
+                    <div className="text-[8px] text-[#9CA3AF]">Lead Pastor Â• Branch: Lagos, NG</div>
                     <div className="text-[8px] text-[#9CA3AF]">ID: 3341223</div>
                   </div>
                 </div>

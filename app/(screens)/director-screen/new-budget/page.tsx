@@ -205,7 +205,7 @@ export default function Page() {
               <div className="flex flex-wrap items-center justify-between gap-3 text-[9px] text-[#6B7280]">
                 <div>
                   <div className="text-[8px] text-[#9CA3AF]">TOTAL ALLOCATION</div>
-                  <div className="text-[11px] font-semibold text-[#111827]">45%  •  N 1,200,000</div>
+                  <div className="text-[11px] font-semibold text-[#111827]">45%  Â•  N 1,200,000</div>
                 </div>
                 <div className="flex items-center gap-2">
                   <Button

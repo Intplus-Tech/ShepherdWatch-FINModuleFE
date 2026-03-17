@@ -31,7 +31,7 @@ export default function Page() {
                     <div className="h-10 w-10 rounded-full bg-[#EEF2FF]" />
                     <div>
                       <div className="text-[11px] font-semibold text-[#111827]">Alex Mercer</div>
-                      <div className="text-[8px] text-[#9CA3AF]">Branch Accountant • Victoria Island</div>
+                      <div className="text-[8px] text-[#9CA3AF]">Branch Accountant Â• Victoria Island</div>
                     </div>
                   </div>
                   <button className="text-[9px] text-[#3B5BDB]">Change Password</button>
