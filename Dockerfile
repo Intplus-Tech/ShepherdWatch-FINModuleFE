@@ -1,5 +1,5 @@
-# Use Node.js LTS version
-FROM node:20-alpine AS base
+# Use Node.js LTS version from AWS Public ECR (no rate limits)
+FROM public.ecr.aws/docker/library/node:20-alpine AS base
 
 # Install dependencies only when needed
 FROM base AS deps
