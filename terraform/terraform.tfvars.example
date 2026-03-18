@@ -1,0 +1,20 @@
+# Copy this file to terraform.tfvars and customize for your environment
+
+# AWS Configuration
+aws_region   = "us-east-1"
+project_name = "shepherdwatch-finmodule-fe"
+
+# GitHub Repository
+github_repo_url = "https://github.com/Intplus-Tech/ShepherdWatch-FINModuleFE.git"
+
+# Set to true AFTER pushing initial images to ECR
+# Set to false for initial deployment
+create_apprunner_services = false
+
+# Dev Environment Resources
+dev_cpu    = "1024"  # 1 vCPU
+dev_memory = "2 GB"
+
+# Production Environment Resources
+prod_cpu    = "4096"  # 4 vCPU
+prod_memory = "8 GB"
