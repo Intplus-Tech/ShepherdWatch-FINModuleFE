@@ -8,7 +8,7 @@ on:
 env:
   AWS_REGION: us-east-1
   ECR_REPOSITORY: shepherdwatch-finmodule-fe-prod
-  APP_RUNNER_SERVICE_ARN: arn:aws:apprunner:us-east-1:540871810415:service/shepherdwatch-finmodule-fe-prod/d4b30450d02d4b62a7c0c0f8e2a724de
+  APP_RUNNER_SERVICE_ARN: arn:aws:apprunner:us-east-1:540871810415:service/shepherdwatch-finmodule-fe-prod/d737648fba3645ce8df5d46f61c42ebc
 
 jobs:
   deploy:
@@ -52,7 +52,7 @@ jobs:
           echo "🚀 Production Deployment Triggered!"
           echo "================================"
           echo "📦 Image: ${{ steps.build-image.outputs.image }}"
-          echo "🔗 App URL: https://u7ggp37amb.us-east-1.awsapprunner.com"
+          echo "🔗 App URL: https://gvwtvy72hz.us-east-1.awsapprunner.com"
           echo "💪 Specs: 4 vCPU, 8 GB RAM"
           echo "🌳 Branch: main"
           echo "🔄 Auto-deploy: Enabled (App Runner will deploy automatically)"
