@@ -40,16 +40,16 @@ export default function SidebarNav({
   activeHref = "/director-screen/dashboard",
   user = { name: "Rev. Thomas M.", role: "Director", avatarSrc: "/images/Beared%20Guy02-min%201.jpg" },
   className,
-}: {
+}: Readonly<{
   items?: SidebarItem[]
   activeHref?: string
   user?: SidebarUser
   className?: string
-}) {
+}>) {
   return (
     <aside
       className={cn(
-        "w-[260px] min-h-screen bg-[#FAFBFF] border-r border-[#EEF1F6] px-6 pt-6 pb-5 flex flex-col",
+        "w-65 min-h-screen bg-[#FAFBFF] border-r border-[#EEF1F6] px-6 pt-6 pb-5 flex flex-col",
         className
       )}
     >
@@ -77,7 +77,7 @@ export default function SidebarNav({
                     : "text-[#6B7280] hover:bg-white hover:text-[#111827]"
                 )}
               >
-                <Icon className="h-[18px] w-[18px]" />
+                <Icon className="h-4.5 w-4.5" />
                 {item.label}
               </Link>
             )}

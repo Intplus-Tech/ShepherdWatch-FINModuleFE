@@ -1,244 +1,363 @@
 "use client"
+import { useState } from "react"
 
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import {
   BarChart3,
   Bell,
   ChevronDown,
-  Download,
   LayoutDashboard,
-  Search,
+  Printer,
   ShieldCheck,
-  TrendingDown,
+  Upload,
   Wallet,
+  ChevronLeft,
+  ChevronRight,
+  Search,
+  Eye,
+  Info,
+  Menu,
+  X
 } from "lucide-react"
 
-const statCards = [
-  { title: "Total Expenses", value: "?1.95M", meta: "+5%", tone: "text-rose-600" },
-  { title: "Daily Avg", value: "?148k", meta: "+2%", tone: "text-rose-600" },
-  { title: "Projected", value: "?2.40M", meta: "-3%", tone: "text-emerald-600" },
-  { title: "YTD Utilization", value: "81%", meta: "+1%", tone: "text-emerald-600" },
-]
-
-const rows = [
-  {
-    date: "Jan 05, 2024",
-    branch: "Ikeja Main",
-    category: "Operational",
-    amount: "?85,000",
-    status: "Approved",
-  },
-  {
-    date: "Jan 08, 2024",
-    branch: "Queens Annex",
-    category: "Programs",
-    amount: "?120,000",
-    status: "Pending",
-  },
-  {
-    date: "Jan 10, 2024",
-    branch: "Victoria Island",
-    category: "Operational",
-    amount: "?64,000",
-    status: "Approved",
-  },
-  {
-    date: "Jan 12, 2024",
-    branch: "Anthony Rivers",
-    category: "Capital",
-    amount: "?180,000",
-    status: "Approved",
-  },
-]
-
 export default function Page() {
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
   return (
-    <div className="min-h-screen bg-[#1f1f1f] p-6">
-      <div className="mx-auto w-full max-w-[1200px] rounded-[20px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.25)] overflow-hidden">
-        <div className="flex flex-col lg:flex-row">
-          <aside className="w-full lg:w-[220px] border-b lg:border-b-0 lg:border-r border-[#EEF1F6] bg-white px-4 py-5">
-            <div className="flex items-center gap-2 pb-5">
-              <Image src="/images/icon-shepherdwatch.svg" alt="ShepherdWatch" width={22} height={22} />
+    <div className="h-screen w-full bg-white antialiased text-[#111827] flex overflow-hidden" style={{ fontFamily: "'Public Sans', sans-serif" }}>
+      {/* Mobile Sidebar Overlay */}
+      {isMobileMenuOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
+      {/* Sidebar */}
+      <aside className={`fixed inset-y-0 left-0 z-50 w-[260px] bg-white border-r border-[#EEF1F6] flex flex-col overflow-y-auto transition-transform duration-300 ease-in-out lg:static lg:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="px-5 py-6">
+          <div className="flex items-center justify-between gap-3 pb-8">
+            <div className="flex items-center gap-3">
+              <Image src="/images/icon-shepherdwatch.svg" alt="ShepherdWatch" width={28} height={28} />
               <div>
-                <div className="text-[12px] font-semibold text-[#1F2937] leading-none">ShepherdWatch</div>
-                <div className="text-[9px] text-[#9CA3AF]">Lead Pastor View</div>
+                <div className="text-[14px] font-bold text-[#111827] tracking-tight">ShepherdWatch</div>
+                <div className="text-[11px] font-semibold text-[#6B7280]">Lead Pastor View</div>
               </div>
             </div>
+            <button className="lg:hidden text-[#6B7280] hover:text-[#111827]" onClick={() => setIsMobileMenuOpen(false)}>
+              <X className="h-5 w-5" />
+            </button>
+          </div>
 
-            <nav className="space-y-1">
-              {[
-                { label: "Dashboard", icon: LayoutDashboard },
-                { label: "Expense Tracking", icon: TrendingDown, active: true },
-                { label: "Assets", icon: Wallet },
-                { label: "Budget", icon: ShieldCheck },
-                { label: "Reports", icon: BarChart3 },
-              ].map((item) => {
-                const Icon = item.icon
-                return (
-                  <div
-                    key={item.label}
-                    className={`flex items-center gap-2 rounded-[8px] px-2.5 py-2 text-[11px] ${
-                      item.active ? "bg-[#E9EEFF] text-[#3B5BDB] font-medium" : "text-[#6B7280]"
-                    }`}
-                  >
-                    <Icon className="h-4 w-4" />
-                    {item.label}
-                  </div>
-                )
-              })}
-            </nav>
-
-            <div className="mt-6 space-y-2 text-[10px] text-[#6B7280]">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="h-3.5 w-3.5" />
-                Settings
-              </div>
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="h-3.5 w-3.5" />
-                Help Center
-              </div>
+          <nav className="space-y-1.5">
+            {/* Dashboard */}
+            <div className="flex items-center gap-3 rounded-[10px] px-3.5 py-3 text-[13px] text-[#6B7280] font-semibold hover:bg-[#F9FAFB] hover:text-[#111827] cursor-pointer transition-colors">
+              <LayoutDashboard className="h-[18px] w-[18px]" strokeWidth={2} />
+              Dashboard
             </div>
 
-            <div className="mt-6 flex items-center gap-2 pt-4">
-              <div className="h-7 w-7 rounded-full overflow-hidden bg-[#E8EDFF]">
-                <Image src="/images/Beared%20Guy02-min%201.jpg" alt="Alex" width={28} height={28} className="h-full w-full object-cover" />
+            {/* Financial Management (Expanded Dropdown) */}
+            <div className="rounded-[12px] bg-[#EFF6FF] p-2">
+              <div className="flex items-center justify-between px-2 py-1.5 mb-2 cursor-pointer">
+                <div className="flex items-center gap-3 text-[13px] text-[#2563EB] font-bold">
+                  <Wallet className="h-[18px] w-[18px]" strokeWidth={2.5} />
+                  Financial Management
+                </div>
+                <ChevronDown className="h-4 w-4 text-[#2563EB]" strokeWidth={2.5} />
               </div>
-              <div className="text-[9px]">
-                <div className="font-semibold text-[#111827]">Alex Morgan</div>
-                <div className="text-[#9CA3AF]">Lead Pastor</div>
-              </div>
-            </div>
-          </aside>
-
-          <main className="flex-1 p-6 lg:p-7 bg-[#F7F8FC]">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <div className="text-[10px] text-[#9CA3AF]">Dashboard</div>
-                <h1 className="text-[14px] font-semibold text-[#111827]">EXPENSE TRACKING</h1>
-                <p className="text-[9px] text-[#9CA3AF]">Monitor expenses and track budget utilization across branches.</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" className="h-7 rounded-[8px] border-[#E5E7EB] bg-white text-[9px] text-[#6B7280]">
-                  All Branches
-                  <ChevronDown className="h-3 w-3" />
-                </Button>
-                <Button size="sm" className="h-7 rounded-[8px] bg-[#3B5BDB] text-[9px] text-white">
-                  <Download className="h-3.5 w-3.5" />
-                  Export
-                </Button>
-                <div className="h-7 w-7 rounded-full border border-[#E5E7EB] bg-white flex items-center justify-center text-[#6B7280]">
-                  <Bell className="h-3.5 w-3.5" />
+              <div className="flex flex-col space-y-1 border-l-2 border-[#DDE7EE] ml-[22px] pl-3 py-1">
+                <div className="text-[12px] font-semibold text-[#6B7280] hover:text-[#111827] py-1.5 cursor-pointer transition-colors">
+                  Income Tracking
+                </div>
+                <div className="text-[12px] font-bold text-[#2563EB] py-1.5 cursor-pointer">
+                  Expense Tracking
+                </div>
+                <div className="text-[12px] font-semibold text-[#6B7280] hover:text-[#111827] py-1.5 cursor-pointer transition-colors">
+                  Requisition
                 </div>
               </div>
             </div>
 
-            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-              {statCards.map((card) => (
-                <div key={card.title} className="rounded-[12px] border border-[#EEF1F6] bg-white p-3">
-                  <div className="flex items-center justify-between">
-                    <div className="text-[9px] text-[#9CA3AF]">{card.title}</div>
-                    <div className={`text-[8px] ${card.tone}`}>{card.meta}</div>
-                  </div>
-                  <div className="mt-2 text-[14px] font-semibold text-[#111827]">{card.value}</div>
-                </div>
-              ))}
+            {/* Other Menu Items */}
+            <div className="flex items-center gap-3 rounded-[10px] px-3.5 py-3 text-[13px] text-[#6B7280] font-semibold hover:bg-[#F9FAFB] hover:text-[#111827] cursor-pointer transition-colors mt-2">
+              <Wallet className="h-[18px] w-[18px]" strokeWidth={2} />
+              Assets
             </div>
-
-            <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-[2fr_1fr]">
-              <div className="rounded-[12px] border border-[#EEF1F6] bg-white p-4">
-                <div className="flex items-center justify-between">
-                  <div className="text-[10px] font-semibold text-[#111827]">Expense Categories</div>
-                  <div className="flex items-center gap-2 text-[8px] text-[#6B7280]">
-                    {[
-                      "All Expenses",
-                      "Operational",
-                      "Programs",
-                      "Capital",
-                      "Utilities",
-                      "Others",
-                    ].map((tab, index) => (
-                      <button
-                        key={tab}
-                        className={`rounded-full px-2 py-0.5 ${
-                          index === 0 ? "bg-[#E9EEFF] text-[#3B5BDB]" : "bg-[#F3F5F9] text-[#6B7280]"
-                        }`}
-                      >
-                        {tab}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="mt-3 overflow-x-auto rounded-[10px] border border-[#EEF1F6]">
-                  <table className="w-full text-[9px]">
-                    <thead className="bg-[#F9FAFB] text-[#9CA3AF]">
-                      <tr>
-                        <th className="py-2 px-3 text-left">DATE</th>
-                        <th className="py-2 px-3 text-left">BRANCH NAME</th>
-                        <th className="py-2 px-3 text-left">CATEGORY</th>
-                        <th className="py-2 px-3 text-left">AMOUNT</th>
-                        <th className="py-2 px-3 text-left">STATUS</th>
-                        <th className="py-2 px-3 text-right">ACTION</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.map((row) => (
-                        <tr key={row.date} className="border-t border-[#EEF1F6] text-[#111827]">
-                          <td className="py-2 px-3 text-[#6B7280]">{row.date}</td>
-                          <td className="py-2 px-3 font-medium">{row.branch}</td>
-                          <td className="py-2 px-3 text-[#6B7280]">{row.category}</td>
-                          <td className="py-2 px-3 text-[#111827]">{row.amount}</td>
-                          <td className="py-2 px-3">
-                            <span
-                              className={`rounded-full px-2 py-0.5 text-[8px] ${
-                                row.status === "Approved"
-                                  ? "bg-emerald-50 text-emerald-600"
-                                  : "bg-amber-50 text-amber-600"
-                              }`}
-                            >
-                              {row.status}
-                            </span>
-                          </td>
-                          <td className="py-2 px-3 text-right text-[#9CA3AF]">...</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <div className="rounded-[12px] border border-[#EEF1F6] bg-white p-4">
-                  <div className="text-[10px] font-semibold text-[#111827]">Expense Allocation</div>
-                  <div className="mt-4 flex items-center justify-center">
-                    <div className="h-[140px] w-[140px] rounded-full border-[10px] border-[#3B5BDB] relative">
-                      <div className="absolute inset-0 flex items-center justify-center text-[11px] font-semibold text-[#111827]">
-                        81%
-                      </div>
-                    </div>
-                  </div>
-                  <div className="mt-4 h-2 rounded-full bg-[#EEF1F6]">
-                    <div className="h-2 w-[81%] rounded-full bg-[#3B5BDB]" />
-                  </div>
-                </div>
-
-                <div className="rounded-[12px] border border-[#EEF1F6] bg-white p-4">
-                  <div className="flex items-center gap-2 text-[10px] font-semibold text-[#111827]">
-                    <ShieldCheck className="h-4 w-4 text-[#3B5BDB]" />
-                    Summary Insights
-                  </div>
-                  <p className="mt-2 text-[9px] text-[#6B7280]">
-                    Operational spending is trending above monthly average while
-                    capital expenses are within expected limits.
-                  </p>
-                </div>
-              </div>
+            <div className="flex items-center gap-3 rounded-[10px] px-3.5 py-3 text-[13px] text-[#6B7280] font-semibold hover:bg-[#F9FAFB] hover:text-[#111827] cursor-pointer transition-colors">
+              <ShieldCheck className="h-[18px] w-[18px]" strokeWidth={2} />
+              Budget
             </div>
-          </main>
+            <div className="flex items-center gap-3 rounded-[10px] px-3.5 py-3 text-[13px] text-[#6B7280] font-semibold hover:bg-[#F9FAFB] hover:text-[#111827] cursor-pointer transition-colors">
+              <BarChart3 className="h-[18px] w-[18px]" strokeWidth={2} />
+              Compliance & Remittance
+            </div>
+          </nav>
         </div>
-      </div>
+
+        <div className="mt-auto px-5 pb-6">
+          <div className="space-y-1.5 pt-6 border-t border-[#EEF1F6] text-[13px] font-semibold text-[#6B7280]">
+            <div className="flex items-center gap-3 px-3.5 py-3 rounded-[10px] hover:bg-[#F9FAFB] hover:text-[#111827] cursor-pointer transition-colors">
+              <ShieldCheck className="h-[18px] w-[18px]" />
+              Settings
+            </div>
+            <div className="flex items-center gap-3 px-3.5 py-3 rounded-[10px] hover:bg-[#F9FAFB] hover:text-[#111827] cursor-pointer transition-colors">
+              <Info className="h-[18px] w-[18px]" />
+              Help Center
+            </div>
+          </div>
+
+          <div className="mt-4 flex items-center gap-3 pt-6 border-t border-[#EEF1F6]">
+            <div className="h-10 w-10 rounded-full border border-[#E5E7EB] overflow-hidden bg-[#F9FAFB] shrink-0">
+              <Image src="/images/login%20page%20picture.jpg" alt="Alex" width={40} height={40} className="h-full w-full object-cover" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-[13px] font-bold text-[#111827] truncate">Alex Morgan</div>
+              <div className="text-[11px] font-medium text-[#6B7280] truncate">Lead Pastor</div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      {/* Main Workspace */}
+      <main className="flex-1 flex flex-col bg-[#F9FAFB] overflow-hidden min-w-0">
+        {/* Top Navigation Header */}
+        <header className="flex h-[72px] shrink-0 items-center justify-between border-b border-[#EEF1F6] bg-white px-4 md:px-8 lg:px-10">
+          <div className="flex items-center gap-4">
+            <button className="lg:hidden text-[#6B7280] hover:text-[#111827]" onClick={() => setIsMobileMenuOpen(true)}>
+              <Menu className="h-6 w-6" />
+            </button>
+            <div className="text-[17px] font-extrabold text-[#111827] tracking-tight">Dashboard</div>
+          </div>
+          <div className="flex items-center gap-6">
+            <div className="relative hidden md:block">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-[15px] w-[15px] text-[#9CA3AF]" strokeWidth={2.5} />
+              <input
+                type="text"
+                placeholder="Search requisitions..."
+                className="h-[38px] w-[260px] rounded-[10px] bg-[#F9FAFB] border border-[#EEF1F6] pl-[34px] pr-4 text-[13px] font-medium text-[#111827] placeholder:text-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#EFF6FF] focus:border-[#2563EB] transition-all"
+              />
+            </div>
+            <button className="relative text-[#6B7280] hover:text-[#111827] transition-colors">
+              <Bell className="h-5 w-5" strokeWidth={2.5} />
+              <span className="absolute -top-0.5 right-0 flex h-2 w-2 rounded-full bg-rose-500 border border-white"></span>
+            </button>
+          </div>
+        </header>
+
+        {/* Scrollable Workspace Area */}
+        <div className="flex-1 p-4 md:p-8 lg:p-10 overflow-y-auto w-full">
+          {/* Top Header */}
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between mb-8">
+            <div>
+              <h1 className="text-[24px] md:text-[32px] font-extrabold text-[#111827] uppercase tracking-tighter leading-none mb-2">EXPENSE TRACKING</h1>
+              <p className="text-[13px] md:text-[14px] font-medium text-[#6B7280]">Monitor and verify all financial outflows for the branch.</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <Button variant="outline" className="h-[44px] flex-1 lg:flex-none rounded-[10px] border-[#E5E7EB] bg-white px-5 text-[14px] font-bold text-[#111827] shadow-sm hover:bg-gray-50 flex items-center justify-center gap-2">
+                <Upload className="h-[18px] w-[18px] text-[#4B5563]" strokeWidth={2.5} /> Import
+              </Button>
+              <button className="h-[44px] w-[44px] shrink-0 rounded-[10px] border border-[#E5E7EB] bg-white flex items-center justify-center text-[#4B5563] shadow-sm hover:bg-gray-50 transition-colors">
+                <Printer className="h-[18px] w-[18px]" strokeWidth={2.5} />
+              </button>
+            </div>
+          </div>
+
+          {/* Top Grid Area (Metrics & Trend) */}
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_340px] mb-8">
+            
+            {/* 4 Main Metrics */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {/* Card 1: TOTAL APPROVED */}
+            <div className="rounded-[16px] border border-[#E5E7EB] bg-white p-5 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-[11px] font-bold tracking-widest text-[#6B7280]">TOTAL APPROVED</div>
+                <div className="rounded-full bg-[#ECFDF3] px-2 py-0.5 text-[11px] font-bold text-[#059669]">+12%</div>
+              </div>
+              <div className="text-[26.67px] font-black text-[#111827] leading-[32px] tracking-normal">₦1.95M</div>
+            </div>
+
+            {/* Card 2: PAID OUT */}
+            <div className="rounded-[16px] border border-[#E5E7EB] bg-white p-5 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-[11px] font-bold tracking-widest text-[#6B7280]">PAID OUT</div>
+                <div className="rounded-full bg-[#ECFDF3] px-2 py-0.5 text-[11px] font-bold text-[#059669]">+5%</div>
+              </div>
+              <div className="text-[26.67px] font-black text-[#111827] leading-[32px] tracking-normal">₦1.48M</div>
+            </div>
+
+            {/* Card 3: PENDING APPROVAL */}
+            <div className="rounded-[16px] border border-[#E5E7EB] bg-white p-5 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-[11px] font-bold tracking-widest text-[#6B7280]">PENDING APPROVAL</div>
+                <div className="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-600">-2%</div>
+              </div>
+              <div className="text-[26.67px] font-black text-[#111827] leading-[32px] tracking-normal">₦240K</div>
+            </div>
+
+            {/* Card 4: VS TARGET */}
+            <div className="rounded-[16px] border border-[#E5E7EB] bg-white p-5 shadow-sm flex flex-col justify-center">
+              <div className="flex items-center justify-between mb-1">
+                <div className="text-[11px] font-bold tracking-widest text-[#6B7280]">VS TARGET</div>
+                <div className="rounded-full bg-[#ECFDF3] px-2 py-0.5 text-[11px] font-bold text-[#059669]">+8%</div>
+              </div>
+              <div className="text-[26.67px] font-black text-[#111827] leading-[32px] tracking-normal mb-2">81%</div>
+              <div className="h-[6px] w-full rounded-full bg-[#F3F4F6] overflow-hidden">
+                <div className="h-full bg-[#2563EB]" style={{ width: '81%' }} />
+              </div>
+            </div>
+            </div>
+            
+            {/* Card 5: TREND (Expanded) */}
+            <div className="rounded-[16px] border border-[#E5E7EB] bg-white p-5 shadow-sm flex flex-col h-full min-h-[140px] w-full">
+              <div className="flex items-center justify-between mb-4">
+                <div className="text-[11px] font-bold tracking-widest text-[#6B7280]">TREND</div>
+                <div className="flex items-center gap-1.5 text-[#9CA3AF]">
+                  <ChevronLeft className="h-[14px] w-[14px] cursor-pointer hover:text-[#4B5563]" strokeWidth={3} />
+                  <ChevronRight className="h-[14px] w-[14px] cursor-pointer hover:text-[#4B5563]" strokeWidth={3} />
+                </div>
+              </div>
+              <div className="flex items-end justify-between flex-1 gap-2">
+                <div className="flex flex-col items-center flex-1 h-full justify-end w-full">
+                  <div className="w-full bg-[#DCE4F0] rounded-t-[2px]" style={{ height: '55px' }}></div>
+                  <div className="text-[10px] font-bold text-[#9CA3AF] mt-1.5">20 Jan</div>
+                </div>
+                <div className="flex flex-col items-center flex-1 h-full justify-end w-full">
+                  <div className="w-full bg-[#DCE4F0] rounded-t-[2px]" style={{ height: '40px' }}></div>
+                  <div className="text-[10px] font-bold text-[#9CA3AF] mt-1.5">21 Jan</div>
+                </div>
+                <div className="flex flex-col items-center flex-1 h-full justify-end w-full">
+                  <div className="w-full bg-[#2563EB] rounded-t-[2px]" style={{ height: '70px' }}></div>
+                  <div className="text-[10px] font-bold text-[#111827] mt-1.5">22 Jan</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Navigation Tabs */}
+          <div className="flex flex-wrap items-center gap-8 border-b border-[#E5E7EB] mb-6 px-1">
+            <button className="pb-3 border-b-[3px] border-[#2563EB] text-[14px] font-bold text-[#2563EB]">All Expense</button>
+            <button className="pb-3 border-b-[3px] border-transparent text-[14px] font-bold text-[#6B7280] hover:text-[#111827] transition-colors">Operational</button>
+            <button className="pb-3 border-b-[3px] border-transparent text-[14px] font-bold text-[#6B7280] hover:text-[#111827] transition-colors">Programs</button>
+            <button className="pb-3 border-b-[3px] border-transparent text-[14px] font-bold text-[#6B7280] hover:text-[#111827] transition-colors">Capital</button>
+            
+            <button className="pb-3 border-b-[3px] border-transparent text-[14px] font-bold text-[#6B7280] hover:text-[#111827] transition-colors flex items-center gap-2">
+              Unverified <span className="rounded-[6px] bg-orange-50 px-2 py-0.5 text-[10px] font-extrabold text-orange-600">₦25k</span>
+            </button>
+          </div>
+
+          {/* Main Grid View - Reduced Width */}
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_340px] w-full">
+            {/* Data Table (Aligns with VS TARGET by spanning the 1fr section) */}
+            <div className="rounded-[16px] border border-[#E5E7EB] bg-white overflow-hidden shadow-sm flex flex-col">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left whitespace-nowrap">
+                  <thead className="border-b border-[#E5E7EB]">
+                    <tr>
+                      <th className="px-6 py-5 text-[11px] font-extrabold tracking-widest text-[#6B7280] uppercase">DATE</th>
+                      <th className="px-5 py-5 text-[11px] font-extrabold tracking-widest text-[#6B7280] uppercase">PAYMENT</th>
+                      <th className="px-5 py-5 text-[11px] font-extrabold tracking-widest text-[#6B7280] uppercase">BUDGET HEAD</th>
+                      <th className="px-5 py-5 text-[11px] font-extrabold tracking-widest text-[#6B7280] uppercase">AMOUNT</th>
+                      <th className="px-5 py-5 text-[11px] font-extrabold tracking-widest text-[#6B7280] uppercase">STATUS</th>
+                      <th className="px-6 py-5 text-[11px] font-extrabold tracking-widest text-[#6B7280] uppercase text-right">ACTIONS</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#F3F4F6]">
+                    {/* Row 1 */}
+                    <tr className="hover:bg-[#F9FAFB] transition-colors">
+                      <td className="px-6 py-5 text-[14px] font-semibold text-[#111827]">Jan 22, 2024</td>
+                      <td className="px-5 py-5 text-[14px] font-extrabold text-[#111827]">Utility Bill</td>
+                      <td className="px-5 py-5">
+                        <span className="inline-flex items-center rounded-[6px] bg-[#F3F4F6] px-2.5 py-1 text-[12px] font-bold text-[#4B5563]">Operational</span>
+                      </td>
+                      <td className="px-5 py-5 text-[15px] font-extrabold text-[#111827] tracking-tight">₦150,000</td>
+                      <td className="px-5 py-5">
+                        <span className="inline-flex text-[11px] font-bold text-[#059669] uppercase tracking-widest">
+                          APPROVED
+                        </span>
+                      </td>
+                      <td className="px-6 py-5 text-right">
+                        <div className="flex items-center justify-end gap-3">
+                          <button className="text-[#3B5BDB] hover:text-[#2563EB] transition-colors"><Eye className="h-[18px] w-[18px]" strokeWidth={2} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                    {/* Row 2 */}
+                    <tr className="hover:bg-[#F9FAFB] transition-colors">
+                      <td className="px-6 py-5 text-[14px] font-semibold text-[#111827]">Jan 21, 2024</td>
+                      <td className="px-5 py-5 text-[14px] font-extrabold text-[#111827]">Salary Payment</td>
+                      <td className="px-5 py-5">
+                        <span className="inline-flex items-center rounded-[6px] bg-[#F3F4F6] px-2.5 py-1 text-[12px] font-bold text-[#4B5563]">Operational</span>
+                      </td>
+                      <td className="px-5 py-5 text-[15px] font-extrabold text-[#111827] tracking-tight">₦25,000</td>
+                      <td className="px-5 py-5">
+                        <span className="inline-flex text-[11px] font-bold text-[#F97316] uppercase tracking-widest">
+                          PENDING
+                        </span>
+                      </td>
+                      <td className="px-6 py-5 text-right">
+                        <div className="flex items-center justify-end gap-3">
+                          <button className="text-[#3B5BDB] hover:text-[#2563EB] transition-colors"><Eye className="h-[18px] w-[18px]" strokeWidth={2} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                    {/* Row 3 */}
+                    <tr className="hover:bg-[#F9FAFB] transition-colors">
+                      <td className="px-6 py-5 text-[14px] font-semibold text-[#111827]">Jan 21, 2024</td>
+                      <td className="px-5 py-5 text-[14px] font-extrabold text-[#111827]">Outreach Program</td>
+                      <td className="px-5 py-5">
+                        <span className="inline-flex items-center rounded-[6px] bg-[#EFF6FF] px-2.5 py-1 text-[12px] font-bold text-[#2563EB]">Programs</span>
+                      </td>
+                      <td className="px-5 py-5 text-[15px] font-extrabold text-[#111827] tracking-tight">₦500,000</td>
+                      <td className="px-5 py-5">
+                        <span className="inline-flex text-[11px] font-bold text-[#059669] uppercase tracking-widest">
+                          APPROVED
+                        </span>
+                      </td>
+                      <td className="px-6 py-5 text-right">
+                        <div className="flex items-center justify-end gap-3">
+                          <button className="text-[#3B5BDB] hover:text-[#2563EB] transition-colors"><Eye className="h-[18px] w-[18px]" strokeWidth={2} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                    {/* Row 4 */}
+                    <tr className="hover:bg-[#F9FAFB] transition-colors border-b border-[#E5E7EB]">
+                      <td className="px-6 py-5 text-[14px] font-semibold text-[#111827]">Jan 20, 2024</td>
+                      <td className="px-5 py-5 text-[14px] font-extrabold text-[#111827]">Office Supply</td>
+                      <td className="px-5 py-5">
+                        <span className="inline-flex items-center rounded-[6px] bg-[#F3F4F6] px-2.5 py-1 text-[12px] font-bold text-[#4B5563]">Operational</span>
+                      </td>
+                      <td className="px-5 py-5 text-[15px] font-extrabold text-[#111827] tracking-tight">₦50,000</td>
+                      <td className="px-5 py-5">
+                        <span className="inline-flex text-[11px] font-bold text-[#059669] uppercase tracking-widest">
+                          PAID
+                        </span>
+                      </td>
+                      <td className="px-6 py-5 text-right">
+                        <div className="flex items-center justify-end gap-3">
+                          <button className="text-[#3B5BDB] hover:text-[#2563EB] transition-colors"><Eye className="h-[18px] w-[18px]" strokeWidth={2} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              
+              <div className="flex items-center justify-between px-6 py-5 mt-auto">
+                <div className="text-[13px] font-bold text-[#6B7280]">Showing 4 of 124 records</div>
+                <div className="flex gap-2">
+                  <button className="h-[38px] w-[38px] rounded-[10px] border border-[#E5E7EB] bg-white flex items-center justify-center text-[#9CA3AF] hover:bg-gray-50 transition-colors">
+                    <ChevronLeft className="h-5 w-5" />
+                  </button>
+                  <button className="h-[38px] w-[38px] rounded-[10px] border border-[#E5E7EB] bg-white flex items-center justify-center text-[#111827] hover:bg-gray-50 shadow-sm transition-colors cursor-pointer">
+                    <ChevronRight className="h-5 w-5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
     </div>
   )
 }

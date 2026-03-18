@@ -3,11 +3,11 @@
 import SidebarNav from "@/components/navigation/SidebarNav"
 import ScreenHeader from "@/components/navigation/ScreenHeader"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import {
-  ArrowRight,
+import {  Input } from "@/components/ui/input"
+import { 
   ChevronDown,
   Download,
+  ArrowRight,
   Filter,
   History,
   Search,
@@ -18,7 +18,7 @@ import {
   MapPin,
 } from "lucide-react"
 
-export const userDirectoryUsers = [
+const users = [
   {
     name: "Sarah Jenkins",
     email: "sarah.j@shepherdwatch.com",
@@ -91,9 +91,7 @@ export default function Page() {
               <div>
                 <h2 className={`${bigText} text-[#111827]`}>User &amp; Role Management</h2>
                 <p className={`${smallText} text-[#6B7280] mt-1`}>
-                  Manage system access, roles, and permissions across all global branches. Invite new
-                  <br />
-                  directors or configure granular access controls.
+                  Manage system access, roles, and permissions across all global branches. Invite new directors or configure granular access controls.
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -163,7 +161,7 @@ export default function Page() {
                   </tr>
                 </thead>
                 <tbody>
-                  {userDirectoryUsers.map((user) => (
+                  {users.map((user) => (
                     <tr key={user.email} className="border-t border-[#EEF1F6]">
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-3">

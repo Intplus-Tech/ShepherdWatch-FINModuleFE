@@ -7,10 +7,8 @@ import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import {
   AlertTriangle,
-  Calendar,
   ChevronDown,
   Car,
-  Download,
   FileText,
   Info,
   Layers,
@@ -66,7 +64,7 @@ export default function Page() {
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
       <SidebarNav
         activeHref="/director-screen/settings"
-        className="fixed inset-y-0 left-0 z-20 w-[260px] rounded-none bg-[#FAFBFF] border-r border-[#EEF1F6]"
+        className="fixed inset-y-0 left-0 z-20 w-65 rounded-none bg-[#FAFBFF] border-r border-[#EEF1F6]"
       />
 
       <main className="flex-1 xl:ml-[260px] text-[#111827]">

@@ -48,7 +48,7 @@ export default function LoginForm() {
       <div className="relative w-full min-h-full grid grid-cols-1 md:grid-cols-2 gap-0">
         
         {/* Background Watermark exactly matching User's preferred restored placement */}
-        <div className="absolute top-[-30px] left-[-40px] w-[400px] h-[400px] md:w-[680px] md:h-[680px] overflow-hidden pointer-events-none opacity-[0.08] z-0">
+        <div className="absolute -top-7.5 -left-10 w-100 h-100 md:w-170 md:h-170 overflow-hidden pointer-events-none opacity-[0.08] z-0">
           <Image
             src="/images/icon-shepherdwatch.svg"
             alt="Background decoration"
@@ -58,13 +58,13 @@ export default function LoginForm() {
         </div>
 
         {/* Form Container (Left Pane) - Corrected to occur first in the grid */}
-        <div className="relative z-10 flex flex-col items-center justify-center w-full h-full p-6 md:p-8 min-h-[100dvh] md:min-h-0">
-          <div className="flex w-full max-w-[436px] flex-col gap-6 md:gap-8 items-center text-center">
+        <div className="relative z-10 flex flex-col items-center justify-center w-full h-full p-6 md:p-8 min-h-dvh md:min-h-0">
+          <div className="flex w-full max-w-109 flex-col gap-6 md:gap-8 items-center text-center">
             <div>
               <AuthHeader />
             </div>
 
-            <div className="h-[60px] w-[60px] md:h-[72px] md:w-[72px] rounded-full bg-white shadow-[0_6px_18px_rgba(59,91,219,0.18)] flex items-center justify-center overflow-hidden">
+            <div className="h-15 w-15 md:h-18 md:w-18 rounded-full bg-white shadow-[0_6px_18px_rgba(59,91,219,0.18)] flex items-center justify-center overflow-hidden">
               <Image
                 src="/images/Beared%20Guy02-min%201.jpg"
                 alt="User avatar"
@@ -88,7 +88,7 @@ export default function LoginForm() {
                 <Input
                   id="password"
                   type="password"
-                  className="h-[44px] rounded-[6px] border-[#4F63FF] focus-visible:ring-[#5871F5] px-3 w-full"
+                  className="h-11 rounded-[6px] border-[#4F63FF] focus-visible:ring-[#5871F5] px-3 w-full"
                   {...register("password")}
                 />
                 {errors.password ? (
@@ -102,7 +102,7 @@ export default function LoginForm() {
                 <Button
                   type="submit"
                   disabled={isSubmitting}
-                  className="h-[44px] px-16 bg-[#3B5BDB] hover:bg-[#2f4cc2] text-white rounded-[6px] text-[15px] shadow-[0_4px_12px_rgba(59,91,219,0.2)] font-medium"
+                  className="h-11 px-16 bg-[#3B5BDB] hover:bg-[#2f4cc2] text-white rounded-[6px] text-[15px] shadow-[0_4px_12px_rgba(59,91,219,0.2)] font-medium"
                 >
                   {isSubmitting ? "Logging in..." : "Login"}
                 </Button>
