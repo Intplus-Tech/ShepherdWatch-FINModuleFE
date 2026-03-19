@@ -323,7 +323,7 @@ export default function Page() {
                      <span className="text-[#A855F7] mt-0.5 font-bold">✧</span>
                      <div>
                        <p className="text-[12px] font-bold text-[#a442f5] mb-1">Suggestion: Tithes & Offerings</p>
-                       <p className="text-[10px] text-[#C084FC] font-medium leading-relaxed">Based on "TITHES" in description (85% confidence)</p>
+                       <p className="text-[10px] text-[#C084FC] font-medium leading-relaxed">Based on &quot;TITHES&quot; in description (85% confidence)</p>
                      </div>
                   </div>
 

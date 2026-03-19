@@ -4,11 +4,11 @@ import {
   ArrowLeftRight,
   Folder,
   GitBranch,
-  LayoutDashboard,
+  LayoutGrid,
   Scale,
   Settings,
   Users,
-  Wallet,
+  WalletCards,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -25,9 +25,9 @@ export type SidebarUser = {
 }
 
 const defaultItems: SidebarItem[] = [
-  { label: "Dashboard", href: "/director-screen/dashboard", icon: LayoutDashboard },
+  { label: "Dashboard", href: "/director-screen/dashboard", icon: LayoutGrid },
   { label: "Transactions", href: "/director-screen/transaction", icon: ArrowLeftRight },
-  { label: "Budgeting", href: "/director-screen/budgeting", icon: Wallet },
+  { label: "Budgeting", href: "/director-screen/budgeting", icon: WalletCards },
   { label: "Compliance", href: "/director-screen/compliance", icon: Scale },
   { label: "Asset", href: "/director-screen/assets", icon: Folder },
   { label: "Branch Management", href: "/director-screen/branch-management", icon: GitBranch },
@@ -49,47 +49,53 @@ export default function SidebarNav({
   return (
     <aside
       className={cn(
-        "w-[220px] min-h-screen bg-white border border-[#EEF1F6] rounded-[6px] px-4 py-5 flex flex-col",
+        "w-[260px] min-h-screen bg-[#FAFBFF] border-r border-[#EEF1F6] px-6 pt-6 pb-5 flex flex-col",
         className
       )}
     >
-      <div className="flex items-center gap-2 pb-5">
-        <Image src="/images/icon-shepherdwatch.svg" alt="ShepherdWatch" width={22} height={22} />
-        <div>
-          <div className="text-[12px] font-semibold text-[#1F2937] leading-none">ShepherdWatch</div>
-          <div className="text-[9px] text-[#9CA3AF]">Super Admin</div>
+      <div className="flex flex-col gap-1 pb-5">
+        <div className="flex items-center gap-2">
+          <Image src="/images/icon-shepherdwatch.svg" alt="ShepherdWatch" width={22} height={22} />
+          <div className="text-[13px] font-semibold text-[#1F2937] leading-none">ShepherdWatch</div>
         </div>
+        <span className="text-[10px] font-medium text-[#3B5BDB] ml-7">Super Admin</span>
       </div>
 
-      <nav className="flex-1 space-y-1">
-        {items.map((item) => {
-          const Icon = item.icon
-          const isActive = item.href === activeHref
-          return (
-            <Link
-              key={item.label}
-              href={item.href}
-              className={cn(
-                "flex items-center gap-2 rounded-[8px] px-2.5 py-2 text-[11px] text-[#6B7280] transition-colors",
-                isActive && "bg-[#E9EEFF] text-[#3B5BDB] font-medium"
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              {item.label}
-            </Link>
-          )
-        })}
+      <nav className="flex-1 overflow-y-auto">
+        <div className="flex flex-col gap-1.5">
+          {items.map((item) => {
+            const Icon = item.icon
+            const isActive = item.href === activeHref
+            return (
+              <Link
+                key={item.label}
+                href={item.href}
+                className={cn(
+                  "flex items-center gap-3 rounded-[8px] px-4 py-3 text-[13px] font-medium transition-colors",
+                  isActive
+                    ? "bg-[#3B5BDB] text-white shadow-sm"
+                    : "text-[#6B7280] hover:bg-white hover:text-[#111827]"
+                )}
+              >
+                <Icon className="h-[18px] w-[18px]" />
+                {item.label}
+              </Link>
+            )}
+          )}
+        </div>
       </nav>
 
-      <div className="mt-auto flex items-center gap-2 pt-4">
-        <div className="h-7 w-7 rounded-full overflow-hidden bg-[#E8EDFF]">
-          {user.avatarSrc ? (
-            <Image src={user.avatarSrc} alt={user.name} width={28} height={28} className="h-full w-full object-cover" />
-          ) : null}
-        </div>
-        <div className="text-[9px]">
-          <div className="font-semibold text-[#111827]">{user.name}</div>
-          <div className="text-[#9CA3AF]">{user.role}</div>
+      <div className="mt-auto border-t border-[#EEF1F6] pt-4">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 overflow-hidden rounded-full border-2 border-white shadow-sm shrink-0">
+            {user.avatarSrc ? (
+              <Image src={user.avatarSrc} alt={user.name} width={40} height={40} className="h-full w-full object-cover" />
+            ) : null}
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[13px] font-bold text-[#111827]">{user.name}</span>
+            <span className="text-[11px] font-medium text-[#6B7280]">{user.role}</span>
+          </div>
         </div>
       </div>
     </aside>

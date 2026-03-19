@@ -1,78 +1,38 @@
-"use client"
+﻿"use client"
 
 import SidebarNav from "@/components/navigation/SidebarNav"
 import ScreenHeader from "@/components/navigation/ScreenHeader"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { userDirectoryUsers } from "@/app/(screens)/director-screen/users/page"
 import {
-  ArrowRight,
   ChevronDown,
   Download,
   Filter,
   History,
+  MapPin,
+  MoreVertical,
   Search,
   ShieldCheck,
   UserPlus,
   Users,
-  Check,
-  MapPin,
+  Eye,
+  KeyRound,
+  UserX,
+  GitBranch,
 } from "lucide-react"
 
-export const userDirectoryUsers = [
-  {
-    name: "Sarah Jenkins",
-    email: "sarah.j@shepherdwatch.com",
-    role: "Director",
-    roleTone: "bg-[#EDE9FE] text-[#7C3AED]",
-    roleDot: "bg-[#7C3AED]",
-    branch: "London HQ",
-    lastActive: "2 mins ago",
-    status: "Active",
-    statusTone: "bg-emerald-50 text-emerald-600",
-    initials: "SJ",
-    avatar: "/images/Beared%20Guy02-min%201.jpg",
-  },
-  {
-    name: "Michael Johnson",
-    email: "m.johnson@shepherdwatch.com",
-    role: "Senior Pastor",
-    roleTone: "bg-[#E0F2FE] text-[#0EA5E9]",
-    roleDot: "bg-[#0EA5E9]",
-    branch: "New York Branch",
-    lastActive: "1 day ago",
-    status: "Active",
-    statusTone: "bg-emerald-50 text-emerald-600",
-    initials: "MJ",
-  },
-  {
-    name: "David Chen",
-    email: "d.chen@shepherdwatch.com",
-    role: "Accountant",
-    roleTone: "bg-[#ECFDF3] text-[#16A34A]",
-    roleDot: "bg-[#16A34A]",
-    branch: "Singapore Branch",
-    lastActive: "3 days ago",
-    status: "Invited",
-    statusTone: "bg-amber-50 text-amber-600",
-    initials: "DC",
-    avatar: "/images/Beared%20Guy02-min%201.jpg",
-  },
-  {
-    name: "Eliza Ross",
-    email: "e.ross@shepherdwatch.com",
-    role: "Admin Officer",
-    roleTone: "bg-[#F3F4F6] text-[#6B7280]",
-    roleDot: "bg-[#6B7280]",
-    branch: "Liberty HQ",
-    lastActive: "4 hours ago",
-    status: "Active",
-    statusTone: "bg-emerald-50 text-emerald-600",
-    initials: "ER",
-  },
-]
+const smallText = "text-[10.63px] leading-[14.17px] font-normal"
+const bigText = "text-[12.4px] leading-[17.71px] font-semibold"
+const sectionTitleText = "text-[17.71px] leading-[24.79px] font-bold"
 
-const smallText = "text-[12.4px] leading-[17.71px] font-normal"
-const bigText = "text-[22.23px] leading-[26.68px] font-bold tracking-[-0.56px]"
+const menuItems = [
+  { label: "View Profile", icon: Eye },
+  { label: "Edit Permissions", icon: ShieldCheck },
+  { label: "Change Branch", icon: GitBranch },
+  { label: "Reset Password", icon: KeyRound },
+  { label: "Deactivate Account", icon: UserX, tone: "text-rose-600" },
+]
 
 export default function Page() {
   return (
@@ -89,7 +49,9 @@ export default function Page() {
           <section className="rounded-xl border border-[#EEF1F6] bg-white p-6 shadow-sm">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
-                <h2 className={`${bigText} text-[#111827]`}>User &amp; Role Management</h2>
+                <h2 className="text-[22.23px] leading-[26.68px] font-bold tracking-[-0.56px] text-[#111827]">
+                  User &amp; Role Management
+                </h2>
                 <p className={`${smallText} text-[#6B7280] mt-1`}>
                   Manage system access, roles, and permissions across all global branches. Invite new
                   <br />
@@ -97,17 +59,20 @@ export default function Page() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <Button className="h-8 rounded-md border border-[#E5E7EB] bg-white text-[12px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50" variant="outline">
+                <Button
+                  className={`${bigText} h-8 rounded-md border border-[#E5E7EB] bg-white text-[#4B5563] shadow-sm hover:bg-gray-50`}
+                  variant="outline"
+                >
                   <Download className="h-4 w-4" /> Export Report
                 </Button>
-                <Button className="h-8 rounded-md bg-[#3B5BDB] text-[12px] font-medium text-white shadow hover:bg-blue-700">
+                <Button className={`${bigText} h-8 rounded-md bg-[#3B5BDB] text-white shadow hover:bg-blue-700`}>
                   <UserPlus className="h-4 w-4" /> Invite New User
                 </Button>
               </div>
             </div>
 
-            <div className="mt-5 flex items-center gap-6 border-b border-[#EEF1F6] text-[12px]">
-              <button className="flex items-center gap-2 border-b-2 border-[#3B5BDB] pb-2 text-[#3B5BDB] font-semibold">
+            <div className={`mt-5 flex items-center gap-6 border-b border-[#EEF1F6] ${bigText}`}>
+              <button className="flex items-center gap-2 border-b-2 border-[#3B5BDB] pb-2 text-[#3B5BDB]">
                 <Users className="h-4 w-4" /> User Directory
               </button>
               <button className="flex items-center gap-2 pb-2 text-[#6B7280]">
@@ -163,8 +128,8 @@ export default function Page() {
                   </tr>
                 </thead>
                 <tbody>
-                  {userDirectoryUsers.map((user) => (
-                    <tr key={user.email} className="border-t border-[#EEF1F6]">
+                  {userDirectoryUsers.map((user, index) => (
+                    <tr key={user.email} className="border-t border-[#EEF1F6] relative">
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-3">
                           <div className="h-3 w-3 rounded border border-[#D1D5DB]" />
@@ -176,7 +141,7 @@ export default function Page() {
                             </div>
                           )}
                           <div>
-                            <div className={`${smallText} font-semibold text-[#111827]`}>{user.name}</div>
+                            <div className={`${bigText} text-[#111827]`}>{user.name}</div>
                             <div className={`${smallText} text-[#9CA3AF]`}>{user.email}</div>
                           </div>
                         </div>
@@ -197,7 +162,22 @@ export default function Page() {
                       <td className="py-3 px-4">
                         <span className={`rounded-full px-2 py-1 text-[10px] ${user.statusTone}`}>{user.status}</span>
                       </td>
-                      <td className="py-3 px-4 text-right text-[#9CA3AF]">...</td>
+                      <td className="py-3 px-4 text-right text-[#9CA3AF] relative">
+                        <MoreVertical className="ml-auto h-4 w-4" />
+                        {index === 2 ? (
+                          <div className="absolute right-0 top-10 w-[160px] rounded-[10px] border border-[#E5E7EB] bg-white p-1 shadow-lg">
+                            {menuItems.map((item) => (
+                              <button
+                                key={item.label}
+                                className={`flex w-full items-center gap-2 rounded-[8px] px-3 py-2 text-left ${smallText} text-[#6B7280] hover:bg-[#F9FAFB] ${item.tone ?? ""}`}
+                              >
+                                <item.icon className={`h-4 w-4 ${item.tone ?? "text-[#6B7280]"}`} />
+                                {item.label}
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -215,7 +195,7 @@ export default function Page() {
             </div>
 
             <div className="mt-6">
-              <div className={`${smallText} font-semibold text-[#111827]`}>Role Permissions Overview</div>
+              <div className={`${sectionTitleText} text-[#111827]`}>Role Permissions Overview</div>
               <div className="mt-2 rounded-[12px] border border-[#EEF1F6] bg-white p-4">
                 <div className={`${smallText} grid grid-cols-5 gap-4 text-[#6B7280]`}>
                   <div />
@@ -227,13 +207,13 @@ export default function Page() {
 
                 <div className={`${smallText} mt-4 grid grid-cols-5 gap-4`}>
                   <div>
-                    <div className={`${smallText} font-semibold text-[#111827]`}>Financial Controls</div>
+                    <div className={`${bigText} text-[#111827]`}>Financial Controls</div>
                     <div className={`${smallText} text-[#9CA3AF]`}>Manage budgets and expenses</div>
                   </div>
-                  {['Director','Pastor','Accountant','Admin'].map((role) => (
+                  {["Director", "Pastor", "Accountant", "Admin"].map((role) => (
                     <div key={`budget-${role}`} className="flex items-center gap-2">
                       <div className="h-3.5 w-3.5 rounded border border-[#D1D5DB] bg-[#3B5BDB] flex items-center justify-center">
-                        <Check className="h-2.5 w-2.5 text-white" />
+                        <span className="h-2 w-2 rounded-sm bg-white" />
                       </div>
                       <span className="text-[#6B7280]">Approve Budget</span>
                     </div>
@@ -242,12 +222,12 @@ export default function Page() {
 
                 <div className={`${smallText} mt-4 grid grid-cols-5 gap-4`}>
                   <div>
-                    <div className={`${smallText} font-semibold text-[#111827]`}>User Management</div>
+                    <div className={`${bigText} text-[#111827]`}>User Management</div>
                     <div className={`${smallText} text-[#9CA3AF]`}>Add/remove staff members</div>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="h-3.5 w-3.5 rounded border border-[#D1D5DB] bg-[#3B5BDB] flex items-center justify-center">
-                      <Check className="h-2.5 w-2.5 text-white" />
+                      <span className="h-2 w-2 rounded-sm bg-white" />
                     </div>
                     <span className="text-[#6B7280]">Edit COA</span>
                   </div>
@@ -257,7 +237,7 @@ export default function Page() {
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="h-3.5 w-3.5 rounded border border-[#D1D5DB] bg-[#3B5BDB] flex items-center justify-center">
-                      <Check className="h-2.5 w-2.5 text-white" />
+                      <span className="h-2 w-2 rounded-sm bg-white" />
                     </div>
                     <span className="text-[#6B7280]">Edit COA</span>
                   </div>
@@ -271,13 +251,13 @@ export default function Page() {
                   <div />
                   <div className="flex items-center gap-2">
                     <div className="h-3.5 w-3.5 rounded border border-[#D1D5DB] bg-[#3B5BDB] flex items-center justify-center">
-                      <Check className="h-2.5 w-2.5 text-white" />
+                      <span className="h-2 w-2 rounded-sm bg-white" />
                     </div>
                     <span className="text-[#6B7280]">Invite Users</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="h-3.5 w-3.5 rounded border border-[#D1D5DB] bg-[#3B5BDB] flex items-center justify-center">
-                      <Check className="h-2.5 w-2.5 text-white" />
+                      <span className="h-2 w-2 rounded-sm bg-white" />
                     </div>
                     <span className="text-[#6B7280]">Invite Users</span>
                   </div>
@@ -292,7 +272,10 @@ export default function Page() {
                 </div>
 
                 <div className="mt-4 flex justify-end">
-                  <button className={`flex items-center gap-1 ${smallText} text-[#3B5BDB]`}><span>Edit Full Matrix</span><ArrowRight className="h-3 w-3" /> </button>
+                  <button className={`flex items-center gap-1 ${smallText} text-[#3B5BDB]`}>
+                    <span>Edit Full Matrix</span>
+                    <span className="text-[12px]">→</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -302,4 +285,3 @@ export default function Page() {
     </div>
   )
 }
-
