@@ -71,6 +71,8 @@ const users = [
   },
 ]
 
+export { users as userDirectoryUsers }
+
 const smallText = "text-[12.4px] leading-[17.71px] font-normal"
 const bigText = "text-[22.23px] leading-[26.68px] font-bold tracking-[-0.56px]"
 
