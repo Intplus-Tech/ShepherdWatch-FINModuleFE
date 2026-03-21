@@ -15,8 +15,8 @@ export default function Page() {
         <div className="absolute inset-0 bg-black/35" />
       </div>
 
-      <div className="relative z-10 min-h-screen flex items-center justify-center px-4 py-6 sm:px-6">
-        <div className="w-full max-w-[360px] sm:max-w-[448px] lg:max-w-[560px] rounded-[14px] bg-white shadow-[0_25px_60px_rgba(15,23,42,0.35)]">
+      <div className="relative z-10 min-h-screen">
+        <div className="absolute left-[226.9px] top-[53.14px] h-[694.319px] w-[827.204px] rounded-[14px] bg-white shadow-[0_25px_60px_rgba(15,23,42,0.35)]">
           <div className="flex items-center justify-between border-b border-[#EEF1F6] px-4 sm:px-6 py-4">
             <div>
               <div className="text-[17px] font-semibold leading-[20px] text-[#111827]">Change Password</div>

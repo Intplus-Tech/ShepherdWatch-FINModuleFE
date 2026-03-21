@@ -1,112 +1,328 @@
 "use client"
 
-import BranchAccountantSidebar from "@/components/navigation/BranchAccountantSidebar"
-import BranchAccountantHeader from "@/components/navigation/BranchAccountantHeader"
-import { Button } from "@/components/ui/button"
+import React, { useState } from "react"
+import Image from "next/image"
+import { Inter } from "next/font/google"
 import {
-  Bell,
-  ChevronDown,
-  MoreHorizontal,
+  LayoutDashboard,
+  ArrowRightLeft,
+  Wallet,
+  Database,
   ShieldCheck,
-  Wrench,
+  Settings,
+  HelpCircle,
+  Menu,
   X,
+  Search,
+  Bell,
+  ArrowLeft,
+  User,
+  Download,
+  FileText,
+  Image as ImageIcon
 } from "lucide-react"
+
+const inter = Inter({ subsets: ["latin"] })
 
 const assets = [
   {
-    id: "AST-0021",
+    id: "SW-PA-001",
     name: "PA System",
+    desc: "Digital Mixing Console + 8 Line Array Speakers",
     category: "Electronics",
     location: "Main Sanctuary",
     status: "Operational",
-    value: "?850,000",
+    statusColor: "bg-emerald-50 text-emerald-600",
+    value: "₦850,000",
+    active: true
   },
   {
-    id: "AST-0022",
-    name: "Toyota Coaster",
+    id: "SW-VEH-042",
+    name: "Toyota Hiace",
+    desc: "2018 Model, White Bus",
     category: "Vehicle",
     location: "Garage",
     status: "Maintenance",
-    value: "?1,200,000",
+    statusColor: "bg-amber-50 text-amber-600",
+    value: "₦8,500,000",
+    active: false
   },
   {
-    id: "AST-0023",
-    name: "Office Chairs",
+    id: "SW-FUR-110",
+    name: "Office Chair",
+    desc: "Ergonomic Leather Chair",
     category: "Furniture",
-    location: "Admin Office",
-    status: "Pending Review",
-    value: "?350,000",
+    location: "Pastor's Office",
+    status: "Pending Disposal",
+    statusColor: "bg-rose-50 text-rose-600",
+    value: "₦25,000",
+    active: false
   },
 ]
 
 export default function Page() {
-  return (
-    <div className="min-h-screen bg-[#1f1f1f] p-6">
-      <div className="mx-auto w-full max-w-[1200px] rounded-[20px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.25)] overflow-hidden">
-        <div className="flex flex-col lg:flex-row">
-          <BranchAccountantSidebar activeHref="/branchaccount-pastor/asset-register" />
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
-          <main className="flex-1 p-6 lg:p-7 bg-[#F7F8FC]">
-            <BranchAccountantHeader
-              title="Asset Register"
-              subtitle="Review asset registers and lifecycle data."
-              rightSlot={
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" className="h-7 rounded-[8px] border-[#E5E7EB] bg-white text-[9px] text-[#6B7280]">
-                    January 2024
-                    <ChevronDown className="h-3 w-3" />
-                  </Button>
-                  <Button size="sm" className="h-7 rounded-[8px] bg-rose-500 text-[9px] text-white">
-                    Asset Compliance
-                  </Button>
-                  <div className="h-7 w-7 rounded-full border border-[#E5E7EB] bg-white flex items-center justify-center text-[#6B7280]">
-                    <Bell className="h-3.5 w-3.5" />
+  return (
+    <div className={`flex flex-col xl:flex-row min-h-screen bg-[#F8FAFC] relative w-full ${inter.className} antialiased`}>
+      {/* Mobile Drawer Overlay */}
+      {isMobileMenuOpen && (
+        <div
+          className="xl:hidden fixed inset-0 z-40 bg-gray-900/40 backdrop-blur-sm transition-opacity"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
+      {/* Sidebar */}
+      <aside className={`w-[260px] border-r border-[#EEF1F6] bg-white flex flex-col shrink-0 h-[100dvh] fixed xl:sticky top-0 z-50 transition-transform duration-300 ease-in-out ${isMobileMenuOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full xl:translate-x-0"}`}>
+        <button
+          onClick={() => setIsMobileMenuOpen(false)}
+          className="xl:hidden absolute top-5 right-5 h-8 w-8 flex items-center justify-center rounded-full bg-gray-50 text-gray-500 hover:text-gray-900 transition-colors"
+        >
+          <X className="h-4.5 w-4.5" />
+        </button>
+        <div className="p-6 flex flex-col h-full overflow-y-auto">
+          <div className="flex items-center gap-3 pb-8">
+            <Image src="/images/icon-shepherdwatch.svg" alt="ShepherdWatch logo" width={32} height={32} className="shrink-0" />
+            <div>
+              <div className="text-[15px] font-bold text-[#3B5BDB] leading-none tracking-tight">ShepherdWatch</div>
+              <div className="text-[11px] text-[#6B7280] font-medium mt-1 tracking-wide">Accountant&apos;s View</div>
+            </div>
+          </div>
+
+          <nav className="space-y-1 flex-1 mt-2">
+            {[
+              { label: "Dashboard", href: "/branchaccount-pastor/dashboard", icon: LayoutDashboard },
+              { label: "Transaction", href: "/branchaccount-pastor/transaction", icon: ArrowRightLeft },
+              { label: "Budget", href: "/branchaccount-pastor/budget", icon: Wallet },
+              { label: "Assets", href: "/branchaccount-pastor/asset-register", icon: Database, active: true },
+              { label: "Compliance & Remittance", href: "/branchaccount-pastor/compliance-remittance", icon: ShieldCheck },
+            ].map((item) => {
+              const Icon = item.icon
+              return (
+                <div
+                  key={item.label}
+                  className={`flex items-center justify-between rounded-[8px] px-3.5 py-3 text-[13px] font-semibold cursor-pointer transition-colors ${item.active ? "bg-[#EEF2FF] text-[#3B5BDB]" : "text-[#4B5563] hover:bg-gray-50"
+                    }`}
+                >
+                  <div className="flex items-center gap-3.5">
+                    <Icon className={`h-4.5 w-4.5 stroke-[2] ${item.active ? "text-[#3B5BDB]" : "text-[#6B7280]"}`} />
+                    {item.label}
                   </div>
                 </div>
-              }
-            />
+              )
+            })}
+          </nav>
 
-            <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-[2.2fr_1fr]">
-              <div className="rounded-[12px] border border-[#EEF1F6] bg-white p-4">
-                <div className="flex items-center gap-2 text-[9px] text-[#6B7280]">
-                  <button className="rounded-full bg-[#E9EEFF] px-2 py-0.5 text-[#3B5BDB]">All Assets</button>
-                  <button className="rounded-full bg-[#F3F5F9] px-2 py-0.5">Electronics</button>
-                  <button className="rounded-full bg-[#F3F5F9] px-2 py-0.5">Vehicles</button>
-                  <button className="rounded-full bg-[#F3F5F9] px-2 py-0.5">Maintenance</button>
+          <div className="mt-auto">
+            <div className="space-y-1 border-t border-[#EEF1F6] pt-6 text-[13px] font-semibold text-[#4B5563]">
+              <div className="flex items-center gap-3.5 rounded-[8px] px-3.5 py-3 cursor-pointer hover:bg-gray-50 transition-colors">
+                <Settings className="h-4.5 w-4.5 stroke-[2] text-[#6B7280]" />
+                Settings
+              </div>
+              <div className="flex items-center gap-3.5 rounded-[8px] px-3.5 py-3 cursor-pointer hover:bg-gray-50 transition-colors">
+                <HelpCircle className="h-4.5 w-4.5 stroke-[2] text-[#6B7280]" />
+                Help Center
+              </div>
+            </div>
+
+            <div className="mt-8 flex items-center gap-3.5 px-3.5 pb-2 cursor-pointer hover:opacity-80 transition-opacity">
+              <div className="h-10 w-10 relative rounded-full overflow-hidden bg-gray-200 shrink-0 ring-2 ring-white shadow-sm flex items-center justify-center">
+                <Image src="/images/Beared%20Guy02-min%201.jpg" alt="Profile avatar" fill className="object-cover" />
+              </div>
+              <div>
+                <div className="text-[14px] font-bold text-[#111827]">Alex Morgan</div>
+                <div className="text-[11px] text-[#9CA3AF] font-medium">Accountant</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col w-full relative min-h-[100dvh] overflow-hidden">
+
+        {/* Top Header */}
+        <header className="flex h-[64px] sm:h-[72px] shrink-0 items-center justify-between border-b border-[#EEF1F6] bg-white px-4 sm:px-6 xl:px-8 w-full gap-3 sm:gap-6">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="xl:hidden -ml-1 h-9 w-9 flex items-center justify-center rounded-[8px] text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#111827] transition-colors"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+            <div className="hidden sm:block text-[14px] font-semibold text-[#111827]">
+              Dashboard
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 sm:gap-4 flex-1 justify-end max-w-[320px] sm:max-w-none">
+            <div className="relative flex-1 w-full sm:max-w-[280px]">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
+              <input
+                type="search"
+                placeholder="Search transactions..."
+                className="h-[36px] sm:h-[38px] w-full rounded-[10px] border border-transparent bg-[#F3F4F6] pl-9 pr-3 text-[13px] text-[#4B5563] font-medium placeholder:text-[#9CA3AF] focus-visible:bg-white focus-visible:border-[#3B5BDB] focus-visible:ring-1 focus-visible:ring-[#3B5BDB]/20 outline-none transition-all"
+              />
+            </div>
+            <button className="relative flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-full text-[#6B7280] hover:bg-gray-50 transition-colors border border-transparent hover:border-[#E5E7EB]">
+              <Bell className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
+              <span className="absolute right-2 sm:right-3 top-2 sm:top-2.5 h-1.5 w-1.5 rounded-full bg-rose-500 ring-2 ring-white"></span>
+            </button>
+          </div>
+        </header>
+
+        {/* Scrollable Main Layout */}
+        <main className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-4 sm:py-5 lg:py-5">
+          <div className="mx-auto w-full max-w-[1440px]">
+
+            {/* Back Button */}
+            <button className="flex items-center gap-1.5 text-[#6B7280] hover:text-[#111827] transition-colors mb-4 text-[13px] font-semibold">
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </button>
+
+            {/* Header Section */}
+            <header className="flex flex-col md:flex-row md:items-start justify-between gap-5 mb-6 sm:mb-8">
+              <div>
+                <h1
+                  className="text-[26.21px] font-black text-[#111827] tracking-[-0.66px] leading-[32.76px] mb-1.5"
+                  style={{ fontFamily: "Inter, sans-serif", verticalAlign: "middle" }}
+                >
+                  Asset Register
+                </h1>
+                <p className="text-[14px] text-[#6B7280] font-medium tracking-tight">Detailed directory of church properties and equipment.</p>
+              </div>
+
+              <div className="flex items-center pt-1 w-full md:w-auto overflow-x-auto no-scrollbar pb-1 md:pb-0">
+                <button className="flex-1 md:flex-none flex items-center justify-center h-[42px] px-6 sm:px-8 rounded-[8px] bg-[#EF4444] text-[14px] font-bold text-white shadow-[0_4px_14px_rgba(239,68,68,0.2)] hover:bg-[#DC2626] transition-colors whitespace-nowrap tracking-wide">
+                  Asset Depreciation
+                </button>
+              </div>
+            </header>
+
+            {/* Tabs */}
+            <div className="mb-6 flex overflow-x-auto no-scrollbar items-center gap-2.5 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 sm:pb-0 sm:flex-wrap">
+              <button className="shrink-0 whitespace-nowrap rounded-[20px] bg-[#2563EB] px-5 py-2 text-[13px] font-bold text-white shadow-[0_2px_8px_rgba(37,99,235,0.25)] transition-colors tracking-wide">All Assets</button>
+              <button className="shrink-0 whitespace-nowrap rounded-[20px] bg-[#F3F4F6] px-5 py-2 text-[13px] font-semibold text-[#6B7280] hover:bg-[#E5E7EB] transition-colors tracking-wide">Electronics</button>
+              <button className="shrink-0 whitespace-nowrap rounded-[20px] bg-[#F3F4F6] px-5 py-2 text-[13px] font-semibold text-[#6B7280] hover:bg-[#E5E7EB] transition-colors tracking-wide">Vehicles</button>
+              <button className="shrink-0 whitespace-nowrap rounded-[20px] bg-[#F3F4F6] px-5 py-2 text-[13px] font-semibold text-[#6B7280] hover:bg-[#E5E7EB] transition-colors tracking-wide">Furniture</button>
+              <button className="shrink-0 whitespace-nowrap rounded-[20px] bg-[#F3F4F6] px-5 py-2 text-[13px] font-semibold text-[#6B7280] hover:bg-[#E5E7EB] transition-colors tracking-wide">Musical Equipment</button>
+            </div>
+
+            {/* Split Content Area: Adjusted proportions here to reduce the table card width relative to right panel */}
+            <div className="grid grid-cols-1 lg:grid-cols-[1.3fr_1fr] xl:grid-cols-[1.4fr_1fr] gap-6 items-start">
+
+              {/* Left Column: Asset Table Container */}
+              <div className="rounded-[16px] bg-white border border-[#EEF1F6] shadow-sm flex flex-col min-h-0 lg:min-h-[500px] w-full max-w-full">
+
+                {/* Mobile Card List */}
+                <div className="lg:hidden divide-y divide-[#EEF1F6]/60">
+                  {assets.map((asset, idx) => (
+                    <div key={idx} className={`p-4 sm:p-5 transition-colors ${asset.active ? "bg-[#F8FAFC]" : "bg-white"}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <div className={`text-[12px] font-bold ${asset.active ? "text-[#2563EB]" : "text-[#6B7280]"}`}>
+                            {asset.id}
+                          </div>
+                          {asset.active && <span className="h-1.5 w-1.5 rounded-full bg-[#2563EB]" />}
+                        </div>
+                        <span className={`inline-flex items-center justify-center px-2.5 py-1 rounded-[6px] text-[10px] font-[800] uppercase tracking-wider ${asset.statusColor}`}>
+                          {asset.status}
+                        </span>
+                      </div>
+
+                      <div className="mt-2">
+                        <div
+                          className="text-[#111827]"
+                          style={{
+                            fontFamily: '"Public Sans", sans-serif',
+                            fontWeight: 700,
+                            fontSize: '18.31px',
+                            lineHeight: '25.63px',
+                            letterSpacing: '0%',
+                            verticalAlign: 'middle'
+                          }}
+                        >
+                          {asset.name}
+                        </div>
+                        <div className="text-[12px] font-medium text-[#6B7280] leading-snug mt-0.5">{asset.desc}</div>
+                      </div>
+
+                      <div className="mt-4 grid grid-cols-2 gap-3 text-[12px] text-[#6B7280]">
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[10px] font-[800] uppercase tracking-widest text-[#9CA3AF]">Category</span>
+                          <span className="inline-flex w-fit items-center px-2 py-1 rounded-[20px] bg-[#F3F4F6] text-[#4B5563] text-[10px] font-semibold tracking-wide border border-[#E5E7EB]/50">
+                            {asset.category}
+                          </span>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[10px] font-[800] uppercase tracking-widest text-[#9CA3AF]">Location</span>
+                          <span className="text-[12px] font-medium text-[#6B7280]">{asset.location}</span>
+                        </div>
+                        <div className="flex flex-col gap-1 col-span-2">
+                          <span className="text-[10px] font-[800] uppercase tracking-widest text-[#9CA3AF]">Current Value</span>
+                          <span className="text-[14px] font-[900] text-[#111827]">{asset.value}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
 
-                <div className="mt-3 overflow-x-auto rounded-[10px] border border-[#EEF1F6]">
-                  <table className="w-full text-[9px]">
-                    <thead className="bg-[#F9FAFB] text-[#9CA3AF]">
-                      <tr>
-                        <th className="py-2 px-3 text-left">ASSET ID</th>
-                        <th className="py-2 px-3 text-left">DESCRIPTION</th>
-                        <th className="py-2 px-3 text-left">CATEGORY</th>
-                        <th className="py-2 px-3 text-left">LOCATION</th>
-                        <th className="py-2 px-3 text-left">STATUS</th>
-                        <th className="py-2 px-3 text-left">CURRENT VALUE</th>
-                        <th className="py-2 px-3 text-right">ACTION</th>
+                {/* Desktop Table */}
+                <div className="hidden lg:block w-full rounded-[16px] overflow-x-auto no-scrollbar">
+                  <table className="w-full min-w-[600px] text-left">
+                    <thead>
+                      <tr className="border-b border-[#EEF1F6]">
+                        <th className="py-4 px-4 text-[10px] font-[800] text-[#6B7280] uppercase tracking-widest w-[16%]">ASSET TAG</th>
+                        <th className="py-4 px-4 text-[10px] font-[800] text-[#6B7280] uppercase tracking-widest w-[28%]">DESCRIPTION</th>
+                        <th className="py-4 px-4 text-[10px] font-[800] text-[#6B7280] uppercase tracking-widest">CATEGORY</th>
+                        <th className="py-4 px-4 text-[10px] font-[800] text-[#6B7280] uppercase tracking-widest">LOCATION</th>
+                        <th className="py-4 px-4 text-[10px] font-[800] text-[#6B7280] uppercase tracking-widest">STATUS</th>
+                        <th className="py-4 px-4 text-[10px] font-[800] text-[#6B7280] uppercase tracking-widest">CURRENT VALUE</th>
                       </tr>
                     </thead>
-                    <tbody>
-                      {assets.map((asset) => (
-                        <tr key={asset.id} className="border-t border-[#EEF1F6]">
-                          <td className="py-2 px-3 text-[#6B7280]">{asset.id}</td>
-                          <td className="py-2 px-3 font-medium text-[#111827]">{asset.name}</td>
-                          <td className="py-2 px-3 text-[#6B7280]">{asset.category}</td>
-                          <td className="py-2 px-3 text-[#6B7280]">{asset.location}</td>
-                          <td className="py-2 px-3">
-                            <span className={`rounded-full px-2 py-0.5 text-[8px] ${
-                              asset.status === "Operational"
-                                ? "bg-emerald-50 text-emerald-600"
-                                : asset.status === "Maintenance"
-                                ? "bg-amber-50 text-amber-600"
-                                : "bg-rose-50 text-rose-600"
-                            }`}>{asset.status}</span>
+                    <tbody className="divide-y divide-[#EEF1F6]/50">
+                      {assets.map((asset, idx) => (
+                        <tr key={idx} className={`relative hover:bg-[#F8FAFC] transition-colors cursor-pointer ${asset.active ? 'bg-[#F8FAFC]/50' : ''}`}>
+                          <td className="py-4 pl-5 pr-4 align-top relative">
+                            {/* Active Blue Indicator */}
+                            {asset.active && (
+                              <div className="absolute left-0 top-0 bottom-0 w-[4px] bg-[#2563EB] rounded-r-full" />
+                            )}
+                            <div className={`text-[12px] font-bold ${asset.active ? 'text-[#2563EB]' : 'text-[#6B7280]'} tracking-tight`}>{asset.id.split('-').map((part, i) => i === 2 ? <span key={i}><br />{part}</span> : part + (i < 1 ? '-' : ''))}</div>
                           </td>
-                          <td className="py-2 px-3 text-[#111827]">{asset.value}</td>
-                          <td className="py-2 px-3 text-right text-[#9CA3AF]">
-                            <MoreHorizontal className="h-3.5 w-3.5" />
+                          <td className="py-4 px-4 align-top flex items-start flex-col gap-0.5 mt-[-1px]">
+                            <div
+                              className="text-[#111827]"
+                              style={{
+                                fontFamily: '"Public Sans", sans-serif',
+                                fontWeight: 700,
+                                fontSize: '18.31px',
+                                lineHeight: '25.63px',
+                                letterSpacing: '0%',
+                                verticalAlign: 'middle'
+                              }}
+                            >
+                              {asset.name}
+                            </div>
+                            <div className="text-[11px] font-medium text-[#6B7280] leading-snug w-[130px] sm:w-[150px]">{asset.desc}</div>
+                          </td>
+                          <td className="py-4 px-4 align-top">
+                            <span className="inline-flex items-center px-2 py-1 rounded-[20px] bg-[#F3F4F6] text-[#4B5563] text-[10px] font-semibold tracking-wide border border-[#E5E7EB]/50">
+                              {asset.category}
+                            </span>
+                          </td>
+                          <td className="py-4 px-4 align-top">
+                            <div className="text-[11px] font-medium text-[#6B7280] pt-[1px]">{asset.location}</div>
+                          </td>
+                          <td className="py-4 px-4 align-top pt-[15px]">
+                            <span className={`inline-flex items-center justify-center px-2.5 py-1 rounded-[6px] text-[10px] font-[800] uppercase tracking-wider ${asset.statusColor}`}>
+                              {asset.status}
+                            </span>
+                          </td>
+                          <td className="py-4 px-4 align-top">
+                            <div className="text-[13px] font-[900] text-[#111827] pt-[1px]">{asset.value}</div>
                           </td>
                         </tr>
                       ))}
@@ -115,70 +331,113 @@ export default function Page() {
                 </div>
               </div>
 
-              <div className="rounded-[12px] border border-[#EEF1F6] bg-white p-4">
-                <div className="flex items-center justify-between">
+              {/* Right Column: Asset Details Pane */}
+              <div className="rounded-[16px] bg-white border border-[#EEF1F6] shadow-sm p-5 sm:p-7 flex flex-col lg:sticky top-[96px]">
+
+                {/* Pane Header */}
+                <div className="flex items-start justify-between mb-8">
                   <div>
-                    <div className="text-[9px] text-[#9CA3AF]">Asset in View</div>
-                    <div className="text-[12px] font-semibold text-[#111827]">PA System</div>
+                    <div className="inline-flex items-center justify-center px-2 py-1 rounded-[6px] bg-[#EEF2FF] text-[#3B5BDB] text-[10px] font-[900] uppercase tracking-widest mb-3">
+                      ASSET DETAILS
+                    </div>
+                    <div className="text-[24px] font-[800] text-[#111827] tracking-tight mb-0.5 leading-none">PA System</div>
+                    <div className="text-[13px] font-semibold text-[#9CA3AF] tracking-wide">SW-PA-001</div>
                   </div>
-                  <div className="h-7 w-7 rounded-full border border-[#E5E7EB] bg-white flex items-center justify-center text-[#6B7280]">
-                    <X className="h-3.5 w-3.5" />
+                  <button className="h-8 w-8 -mr-2 -mt-2 rounded-full flex items-center justify-center text-[#9CA3AF] hover:bg-gray-50 transition-colors">
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+
+                {/* Big Value Display */}
+                <div className="flex items-center gap-2 mb-8">
+                  <div
+                    className="text-[#2563EB] font-[900] tracking-normal align-middle"
+                    style={{
+                      fontFamily: '"Public Sans", sans-serif',
+                      fontSize: '21.97px',
+                      lineHeight: '29.29px'
+                    }}
+                  >
+                    ₦850,000
+                  </div>
+                  <div className="text-[12px] font-bold text-[#10B981] flex items-center mt-1">
+                    <span className="mr-0.5">↑</span>2.4%
                   </div>
                 </div>
 
-                <div className="mt-4 rounded-[10px] border border-[#EEF1F6] p-3">
-                  <div className="flex items-center justify-between text-[9px] text-[#6B7280]">
-                    <span>Current Value</span>
-                    <span className="font-semibold text-[#111827]">?850,000</span>
-                  </div>
-                  <div className="mt-2 h-2 rounded-full bg-[#EEF1F6]">
-                    <div className="h-2 w-[65%] rounded-full bg-[#3B5BDB]" />
-                  </div>
-                </div>
-
-                <div className="mt-4 space-y-3 text-[9px] text-[#6B7280]">
-                  <div className="flex items-center justify-between">
-                    <span>Asset Type</span>
-                    <span className="text-[#111827]">Equipment</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Acquisition Date</span>
-                    <span className="text-[#111827]">Dec 12, 2023</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Location</span>
-                    <span className="text-[#111827]">Main Sanctuary</span>
-                  </div>
-                </div>
-
-                <div className="mt-4 rounded-[10px] border border-[#EEF1F6] bg-[#F9FAFB] p-3">
-                  <div className="text-[9px] font-semibold text-[#111827]">Maintenance Log</div>
-                  <div className="mt-2 space-y-2 text-[9px] text-[#6B7280]">
+                {/* Financial Info */}
+                <div className="mb-8">
+                  <h4 className="text-[11px] font-[800] text-[#6B7280] uppercase tracking-widest mb-4">FINANCIAL INFO</h4>
+                  <div className="space-y-4 text-[13px]">
                     <div className="flex items-center justify-between">
-                      <span>Last Service</span>
-                      <span className="text-[#111827]">Nov 15, 2023</span>
+                      <span className="font-medium text-[#6B7280]">Depreciation Method</span>
+                      <span className="font-bold text-[#111827]">Straight Line (10%)</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span>Next Review</span>
-                      <span className="text-amber-600">Due Soon</span>
+                      <span className="font-medium text-[#6B7280]">Purchase Date</span>
+                      <span className="font-bold text-[#111827]">Mar 12, 2023</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span>Depreciation</span>
-                      <span className="text-[#111827]">Straight Line</span>
+                      <span className="font-medium text-[#6B7280]">Book Value</span>
+                      <span className="font-[800] text-[#111827]">₦765,000</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="mt-4 rounded-[10px] border border-[#EEF1F6] bg-[#EFF6FF] p-3 text-[9px] text-[#1E3A8A]">
-                  <div className="flex items-center gap-2">
-                    <Wrench className="h-3.5 w-3.5" />
-                    Asset is due for review in 5 days.
+                {/* Responsibility */}
+                <div className="mb-8">
+                  <h4 className="text-[11px] font-[800] text-[#6B7280] uppercase tracking-widest mb-3">RESPONSIBILITY</h4>
+                  <div className="flex items-center gap-3 p-3 rounded-[10px] bg-[#F9FAFB] border border-[#EEF1F6]">
+                    <div className="h-[36px] w-[36px] rounded-full bg-[#DBEAFE] text-[#2563EB] flex items-center justify-center shrink-0">
+                      <User className="h-4.5 w-4.5" />
+                    </div>
+                    <span className="text-[14px] font-bold text-[#111827]">Deacon Adebayo</span>
                   </div>
                 </div>
+
+                {/* Attachments */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-[11px] font-[800] text-[#6B7280] uppercase tracking-widest">ATTACHMENTS</h4>
+                    <button className="text-[12px] font-bold text-[#2563EB] hover:text-[#1D4ED8] transition-colors flex items-center gap-1">+ Add</button>
+                  </div>
+
+                  <div className="space-y-2">
+                    {/* File 1 */}
+                    <div className="flex items-center justify-between p-3 rounded-[10px] bg-white border border-[#EEF1F6] hover:border-[#E5E7EB] transition-colors group cursor-pointer">
+                      <div className="flex items-start gap-3">
+                        <div className="mt-0.5 text-[#EF4444]"><FileText className="h-[18px] w-[18px]" strokeWidth={2.5} /></div>
+                        <div>
+                          <div className="text-[13px] font-bold text-[#111827] list-none tracking-tight">Purchase_Receipt.pdf</div>
+                          <div className="text-[10px] font-medium text-[#9CA3AF]">Uploaded Mar 14, 2023</div>
+                        </div>
+                      </div>
+                      <button className="text-[#9CA3AF] group-hover:text-[#2563EB] transition-colors">
+                        <Download className="h-4 w-4" />
+                      </button>
+                    </div>
+
+                    {/* File 2 */}
+                    <div className="flex items-center justify-between p-3 rounded-[10px] bg-white border border-[#EEF1F6] hover:border-[#E5E7EB] transition-colors group cursor-pointer">
+                      <div className="flex items-start gap-3">
+                        <div className="mt-0.5 text-[#3B82F6]"><ImageIcon className="h-[18px] w-[18px]" strokeWidth={2.5} /></div>
+                        <div>
+                          <div className="text-[13px] font-bold text-[#111827] list-none tracking-tight">Installation_View.jpg</div>
+                          <div className="text-[10px] font-medium text-[#9CA3AF]">Uploaded Mar 14, 2023</div>
+                        </div>
+                      </div>
+                      <button className="text-[#9CA3AF] group-hover:text-[#2563EB] transition-colors">
+                        <Download className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
               </div>
+
             </div>
-          </main>
-        </div>
+          </div>
+        </main>
       </div>
     </div>
   )

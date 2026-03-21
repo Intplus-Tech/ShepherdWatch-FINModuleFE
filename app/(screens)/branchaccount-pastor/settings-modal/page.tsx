@@ -1,97 +1,103 @@
 "use client"
 
-import BranchAccountantSidebar from "@/components/navigation/BranchAccountantSidebar"
-import BranchAccountantHeader from "@/components/navigation/BranchAccountantHeader"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import SettingsPage from "../settings/page"
 import { X } from "lucide-react"
 
 export default function Page() {
   return (
-    <div className="min-h-screen bg-[#1f1f1f] p-6">
-      <div className="mx-auto w-full max-w-[1200px] rounded-[20px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.25)] overflow-hidden">
-        <div className="relative min-h-[720px]">
-          <div className="flex flex-col lg:flex-row">
-            <BranchAccountantSidebar activeHref="/branchaccount-pastor/settings" />
+    <div className="relative min-h-screen bg-[#F8FAFC]">
+      {/* Background Settings Page */}
+      <div className="pointer-events-none select-none">
+        <SettingsPage />
+      </div>
 
-            <main className="flex-1 p-6 lg:p-7 bg-[#F7F8FC]">
-              <BranchAccountantHeader
-                title="User Settings"
-                subtitle="Manage personal details, alerts, and operational templates."
-                rightSlot={
-                  <Button size="sm" className="h-7 rounded-[8px] bg-[#3B5BDB] text-[9px] text-white">
-                    Save All Changes
-                  </Button>
-                }
+      {/* Blur Overlay */}
+      <div className="fixed inset-0 z-[60] bg-gray-900/40 backdrop-blur-sm" />
+
+      {/* Modal */}
+      <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-0 sm:p-6" style={{ fontFamily: '"Inter", sans-serif' }}>
+        <div className="w-full max-w-[500px] rounded-t-[20px] sm:rounded-[16px] bg-white shadow-[0_-10px_40px_rgba(0,0,0,0.1)] sm:shadow-[0_20px_60px_rgba(0,0,0,0.15)] flex flex-col animate-in slide-in-from-bottom-4 sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200">
+
+          {/* Header */}
+          <div className="flex items-start justify-between border-b border-[#EEF1F6] px-5 sm:px-6 py-4 sm:py-5">
+            <div className="flex flex-col gap-1 pr-4">
+              <h2 
+                className="text-[#111827]"
+                style={{
+                  fontFamily: '"Inter", sans-serif',
+                  fontWeight: 700,
+                  fontSize: "13.33px",
+                  lineHeight: "18.67px",
+                  letterSpacing: "0%",
+                  verticalAlign: "middle"
+                }}
+              >
+                Change Password
+              </h2>
+              <p className="text-[12px] sm:text-[13px] font-medium text-[#6B7280]">Enter your password details.</p>
+            </div>
+            <button className="h-8 w-8 rounded-full border border-[#EEF1F6] bg-white flex items-center justify-center text-[#6B7280] hover:bg-gray-50 transition-colors shrink-0">
+              <X className="h-[14px] w-[14px]" strokeWidth={2.5} />
+            </button>
+          </div>
+
+          {/* Form Body */}
+          <div className="flex flex-col gap-4 sm:gap-5 px-5 sm:px-6 py-5 sm:py-6 pb-2 sm:pb-2">
+
+            <div className="flex flex-col gap-[4px] items-start w-full">
+              <label className="text-[12px] font-[800] text-[#4B5563] px-0.5 w-full sm:w-[405.33px]">Old Password</label>
+              <input
+                type="password"
+                className="w-full sm:w-[405.33px] bg-white border-[#E5E7EB] px-3 text-[13px] text-[#111827] focus-visible:border-[#3B5BDB] focus-visible:ring-1 focus-visible:ring-[#3B5BDB]/20 outline-none transition-all shadow-[0_1px_2px_rgba(0,0,0,0.02)]"
+                style={{
+                  height: "28px",
+                  borderRadius: "5.33px",
+                  borderWidth: "0.67px",
+                  borderStyle: "solid"
+                }}
               />
+            </div>
 
-              <div className="mt-4 rounded-[12px] border border-[#EEF1F6] bg-white p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-full bg-[#EEF2FF]" />
-                    <div>
-                      <div className="text-[11px] font-semibold text-[#111827]">Alex Mercer</div>
-                      <div className="text-[8px] text-[#9CA3AF]">Branch Accountant  Victoria Island</div>
-                    </div>
-                  </div>
-                  <button className="text-[9px] text-[#3B5BDB]">Change Password</button>
-                </div>
+            <div className="flex flex-col gap-[4px] items-start w-full">
+              <label className="text-[12px] font-[800] text-[#4B5563] px-0.5 w-full sm:w-[405.33px]">New Password</label>
+              <input
+                type="password"
+                className="w-full sm:w-[405.33px] bg-white border-[#E5E7EB] px-3 text-[13px] text-[#111827] focus-visible:border-[#3B5BDB] focus-visible:ring-1 focus-visible:ring-[#3B5BDB]/20 outline-none transition-all shadow-[0_1px_2px_rgba(0,0,0,0.02)]"
+                style={{
+                  height: "28px",
+                  borderRadius: "5.33px",
+                  borderWidth: "0.67px",
+                  borderStyle: "solid"
+                }}
+              />
+            </div>
 
-                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-                  <div className="space-y-1">
-                    <div className="text-[9px] text-[#6B7280]">Full Name</div>
-                    <Input className="h-7 rounded-[8px] border-[#E5E7EB] text-[9px]" value="Alex Mercer" readOnly />
-                  </div>
-                  <div className="space-y-1">
-                    <div className="text-[9px] text-[#6B7280]">Phone Number</div>
-                    <Input className="h-7 rounded-[8px] border-[#E5E7EB] text-[9px]" value="+234 701 987 3456" readOnly />
-                  </div>
-                  <div className="space-y-1">
-                    <div className="text-[9px] text-[#6B7280]">Work Email</div>
-                    <Input className="h-7 rounded-[8px] border-[#E5E7EB] text-[9px]" value="alex.mercer@shepherdwatch.co" readOnly />
-                  </div>
-                </div>
-              </div>
-            </main>
+            <div className="flex flex-col gap-[4px] items-start w-full">
+              <label className="text-[12px] font-[800] text-[#4B5563] px-0.5 w-full sm:w-[405.33px]">Re-Enter New Password</label>
+              <input
+                type="password"
+                className="w-full sm:w-[405.33px] bg-white border-[#E5E7EB] px-3 text-[13px] text-[#111827] focus-visible:border-[#3B5BDB] focus-visible:ring-1 focus-visible:ring-[#3B5BDB]/20 outline-none transition-all shadow-[0_1px_2px_rgba(0,0,0,0.02)]"
+                style={{
+                  height: "28px",
+                  borderRadius: "5.33px",
+                  borderWidth: "0.67px",
+                  borderStyle: "solid"
+                }}
+              />
+            </div>
+
           </div>
 
-          <div className="absolute inset-0 bg-black/20" />
-
-          <div className="absolute left-1/2 top-1/2 w-[360px] -translate-x-1/2 -translate-y-1/2 rounded-[12px] border border-[#EEF1F6] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.2)]">
-            <div className="flex items-center justify-between border-b border-[#EEF1F6] px-4 py-3">
-              <div>
-                <div className="text-[11px] font-semibold text-[#111827]">Change Password</div>
-                <div className="text-[8px] text-[#9CA3AF]">Enter your password details.</div>
-              </div>
-              <div className="h-6 w-6 rounded-full border border-[#E5E7EB] bg-white flex items-center justify-center text-[#6B7280]">
-                <X className="h-3.5 w-3.5" />
-              </div>
-            </div>
-
-            <div className="space-y-3 px-4 py-4 text-[9px] text-[#6B7280]">
-              <div className="space-y-1">
-                <div>Old Password</div>
-                <Input className="h-7 rounded-[8px] border-[#E5E7EB] text-[9px]" placeholder="Old Password" />
-              </div>
-              <div className="space-y-1">
-                <div>New Password</div>
-                <Input className="h-7 rounded-[8px] border-[#E5E7EB] text-[9px]" placeholder="New Password" />
-              </div>
-              <div className="space-y-1">
-                <div>Re-Enter New Password</div>
-                <Input className="h-7 rounded-[8px] border-[#E5E7EB] text-[9px]" placeholder="Confirm New Password" />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 border-t border-[#EEF1F6] px-4 py-3">
-              <Button variant="outline" size="sm" className="h-7 rounded-[8px] border-[#E5E7EB] bg-white text-[9px] text-[#6B7280]">
-                Cancel
-              </Button>
-              <Button size="sm" className="h-7 rounded-[8px] bg-[#3B5BDB] text-[9px] text-white">
-                Update Password
-              </Button>
-            </div>
+          {/* Footer */}
+          <div className="flex flex-col-reverse sm:flex-row items-center justify-end gap-3 px-5 sm:px-6 py-5 sm:py-6 mt-2 sm:mt-0">
+            <button className="w-full sm:w-auto h-[42px] px-5 rounded-[8px] bg-white border border-[#E5E7EB] text-[13px] font-bold text-[#4B5563] hover:bg-gray-50 transition-colors shadow-sm">
+              Cancel
+            </button>
+            <button className="w-full sm:w-auto h-[42px] px-6 rounded-[8px] bg-[#2563EB] hover:bg-[#1D4ED8] text-[13px] font-bold text-white transition-colors shadow-sm">
+              Update Password
+            </button>
           </div>
+
         </div>
       </div>
     </div>
