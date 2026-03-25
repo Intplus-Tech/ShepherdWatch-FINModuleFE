@@ -1,23 +1,28 @@
 import { NextRequest, NextResponse } from "next/server"
-import { verifyToken } from "@/lib/jwt"
-import { sessionStore } from "@/lib/session"
 
 export async function GET(req: NextRequest) {
-  const token = req.cookies.get("token")?.value
-  if (!token) return NextResponse.json({ message: "Unauthenticated" }, { status: 401 })
+  const accessToken = req.cookies.get("accessToken")?.value
 
-  const payload = verifyToken(token)
-  if (!payload) return NextResponse.json({ message: "Invalid token" }, { status: 401 })
+  if (!accessToken) {
+    return NextResponse.json({ message: "Unauthenticated" }, { status: 401 })
+  }
 
-  const session = sessionStore.getSession(payload.userId)
-  if (!session) return NextResponse.json({ message: "Session expired" }, { status: 401 })
+  // For now, just verify the token exists
+  // In a full implementation, you could decode it or validate with backend
+  try {
+    // Decode JWT to get user info (basic JWT decode without verification)
+    const [, payload] = accessToken.split(".")
+    const decoded = JSON.parse(Buffer.from(payload, "base64").toString())
 
-  return NextResponse.json({
-    user: {
-      id: payload.userId,
-      email: payload.userId,
-      role: session.role,
-      name: payload.userId.split("@")[0],
-    },
-  })
+    return NextResponse.json({
+      user: {
+        id: decoded.userId,
+        email: decoded.userId,
+        role: "user",
+        name: decoded.userId?.split("@")[0] || "User",
+      },
+    })
+  } catch (err) {
+    return NextResponse.json({ message: "Invalid token" }, { status: 401 })
+  }
 }
