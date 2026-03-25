@@ -46,25 +46,14 @@ jobs:
 
           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:latest" >> $GITHUB_OUTPUT
 
-      - name: Deploy to App Runner
+      - name: Deployment Note
         run: |
-          echo "Triggering App Runner deployment..."
-          aws apprunner start-deployment \
-            --service-arn ${{ env.APP_RUNNER_SERVICE_ARN }} \
-            --region ${{ env.AWS_REGION }}
-
-      - name: Wait for deployment
-        run: |
-          echo "Waiting for deployment to complete..."
-          sleep 30
-
-          STATUS=$(aws apprunner describe-service \
-            --service-arn ${{ env.APP_RUNNER_SERVICE_ARN }} \
-            --region ${{ env.AWS_REGION }} \
-            --query 'Service.Status' \
-            --output text)
-
-          echo "Current status: $STATUS"
+          echo "✅ Image pushed to ECR successfully!"
+          echo "🚀 App Runner auto-deployment is enabled and will deploy automatically."
+          echo "⏱️  This usually takes 3-5 minutes."
+          echo ""
+          echo "You can monitor deployment at:"
+          echo "https://console.aws.amazon.com/apprunner/home?region=us-east-1#/services/detail/${{ env.APP_RUNNER_SERVICE_ARN }}/logs"
 
       - name: Deployment Summary
         run: |
