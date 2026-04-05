@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useMemo, useState } from "react"
 import Image from "next/image"
 import { Inter } from "next/font/google"
 import {
@@ -31,6 +31,7 @@ import {
   Trash2,
   Eye
 } from "lucide-react"
+import { useAuth } from "@/components/auth/AuthProvider"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -123,6 +124,71 @@ const movementLogs = [
 export default function AssetsHubPage() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [openActionId, setOpenActionId] = useState<string | null>(null)
+  const { user } = useAuth()
+  const [creatingAsset, setCreatingAsset] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
+  const [createSuccess, setCreateSuccess] = useState<string | null>(null)
+
+  const tenantId = useMemo(
+    () => user?.tenantId ?? user?.tenant?.id ?? "",
+    [user]
+  )
+
+  const getCsrfToken = () => {
+    if (typeof document === "undefined") return ""
+    const match = document.cookie
+      .split("; ")
+      .find((cookie) => cookie.startsWith("csrf_token="))
+    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
+  }
+
+  const handleCreateAsset = async () => {
+    if (!tenantId) {
+      setCreateError("Tenant is required to create a fixed asset.")
+      return
+    }
+
+    setCreatingAsset(true)
+    setCreateError(null)
+    setCreateSuccess(null)
+
+    try {
+      const csrfToken = getCsrfToken()
+      const assetCode = `GEN-${String(Date.now()).slice(-4)}`
+      const response = await fetch("/api/core/financial/fixed-assets", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": csrfToken,
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          assetCode,
+          description: "Perkins 150KVA Diesel Generator",
+          category: "Machinery",
+          location: "Main Church Building",
+          status: "ACTIVE",
+          purchaseDate: new Date().toISOString(),
+          purchaseValue: 8500000,
+          currentValue: 8500000,
+          depreciationMethod: "STRAIGHT_LINE",
+          usefulLifeYears: 10,
+          residualValue: 850000,
+          tenantId,
+        }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Unable to create fixed asset.")
+      }
+
+      setCreateSuccess(`Fixed asset ${assetCode} created successfully.`)
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : "Unable to create fixed asset.")
+    } finally {
+      setCreatingAsset(false)
+    }
+  }
 
   // Status Badge Component
   const ConditionBadge = ({ condition }: { condition: string }) => {
@@ -305,12 +371,21 @@ export default function AssetsHubPage() {
                   <Download className="h-4 w-4 text-[#6B7280]" strokeWidth={2.5} />
                   Export Report
                 </button>
-                <button className="h-[36px] sm:h-[44px] px-3 sm:px-6 rounded-[8px] bg-[#2563EB] hover:bg-[#1D4ED8] flex items-center justify-center gap-2 text-[11px] sm:text-[14px] font-[800] text-white transition-colors shadow-sm shrink-0 w-full sm:w-auto">
+                <button
+                  onClick={handleCreateAsset}
+                  disabled={creatingAsset}
+                  className="h-[36px] sm:h-[44px] px-3 sm:px-6 rounded-[8px] bg-[#2563EB] hover:bg-[#1D4ED8] flex items-center justify-center gap-2 text-[11px] sm:text-[14px] font-[800] text-white transition-colors shadow-sm shrink-0 w-full sm:w-auto disabled:opacity-60 disabled:cursor-not-allowed"
+                >
                   <Plus className="h-4.5 w-4.5" strokeWidth={2.5} />
-                  Add New Asset
+                  {creatingAsset ? "Adding..." : "Add New Asset"}
                 </button>
               </div>
             </div>
+            {(createError || createSuccess) && (
+              <div className={`mt-3 rounded-[10px] border px-4 py-2 text-[12px] font-semibold ${createError ? "border-rose-200 bg-rose-50 text-rose-600" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>
+                {createError ?? createSuccess}
+              </div>
+            )}
 
             {/* Top Stat Cards */}
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6">

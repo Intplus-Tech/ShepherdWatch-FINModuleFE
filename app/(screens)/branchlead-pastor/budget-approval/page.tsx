@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -27,6 +27,7 @@ import {
   CheckSquare,
   Building2,
 } from "lucide-react"
+import { useBudgetEntries } from "@/components/hooks/useBudgetEntries"
 
 const SidebarContent = () => (
   <div className="p-6 flex flex-col h-full">
@@ -88,71 +89,138 @@ const SidebarContent = () => (
 
 export default function Page() {
   const [mobileOpen, setMobileOpen] = useState(false)
-  const [budgetHierarchy, setBudgetHierarchy] = useState([
-    {
-      category: "Operational",
-      isExpanded: true,
-      annual: "₦12,500,000",
-      ytd: "₦8,125,000",
-      remaining: "₦4,375,000",
-      usage: 65,
-      usageColor: "bg-[#3B5BDB]",
-      usageText: "text-[#3B5BDB]",
-      children: [
-        {
-          category: "Utilities",
-          annual: "₦2,000,000",
-          ytd: "₦1,800,000",
-          remaining: "₦200,000",
-          usage: 90,
-          usageColor: "bg-[#DC2626]",
-          usageText: "text-[#DC2626]",
-        },
-        {
-          category: "Transport",
-          annual: "₦1,500,000",
-          ytd: "₦900,000",
-          remaining: "₦600,000",
-          usage: 60,
-          usageColor: "bg-[#3B5BDB]",
-          usageText: "text-[#3B5BDB]",
-        },
-      ]
-    },
-    {
-      category: "Salaries & Benefits",
-      isExpanded: true,
-      annual: "₦24,000,000",
-      ytd: "₦12,000,000",
-      remaining: "₦12,000,000",
-      usage: 50,
-      usageColor: "bg-[#3B5BDB]",
-      usageText: "text-[#3B5BDB]",
-      children: null,
-    },
-    {
-      category: "Programs & Outreach",
-      isExpanded: true,
-      annual: "₦8,000,000",
-      ytd: "₦6,800,000",
-      remaining: "₦1,200,000",
-      usage: 85,
-      usageColor: "bg-[#F97316]",
-      usageText: "text-[#F97316]",
-      children: null,
-    },
-    {
-      category: "Capital Projects",
-      isExpanded: true,
-      annual: "₦15,000,000",
-      ytd: "₦2,500,000",
-      remaining: "₦12,500,000",
-      usage: 17,
-      usageColor: "bg-[#16A34A]",
-      usageText: "text-[#16A34A]",
-      children: null,
-    },
-  ])
+  const { entries, loading, error } = useBudgetEntries()
+  const [approvingAll, setApprovingAll] = useState(false)
+  const [approveError, setApproveError] = useState<string | null>(null)
+  const [budgetHierarchy, setBudgetHierarchy] = useState<
+    Array<{
+      category: string
+      isExpanded: boolean
+      annual: string
+      ytd: string
+      remaining: string
+      usage: number
+      usageColor: string
+      usageText: string
+      children: Array<{
+        category: string
+        annual: string
+        ytd: string
+        remaining: string
+        usage: number
+        usageColor: string
+        usageText: string
+      }> | null
+    }>
+  >([])
+
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat("en-NG", {
+      style: "currency",
+      currency: "NGN",
+      maximumFractionDigits: 0,
+    }).format(value)
+
+  const groupedEntries = useMemo(() => {
+    const map = new Map<
+      string,
+      { category: string; total: number; children: Array<{ label: string; amount: number }> }
+    >()
+
+    entries.forEach((entry) => {
+      const category = entry.category ?? entry.stream ?? "Budget Entries"
+      const amount = Number(entry.amount ?? 0)
+      const label = entry.coaName ?? entry.name ?? "Line Item"
+
+      if (!map.has(category)) {
+        map.set(category, { category, total: 0, children: [] })
+      }
+
+      const group = map.get(category)!
+      group.total += amount
+      group.children.push({ label, amount })
+    })
+
+    return Array.from(map.values())
+  }, [entries])
+
+  useEffect(() => {
+    setBudgetHierarchy(
+      groupedEntries.map((group) => ({
+        category: group.category,
+        isExpanded: true,
+        annual: formatCurrency(group.total),
+        ytd: "?",
+        remaining: "?",
+        usage: 0,
+        usageColor: "bg-[#E5E7EB]",
+        usageText: "text-[#6B7280]",
+        children: group.children.length
+          ? group.children.map((child) => ({
+              category: child.label,
+              annual: formatCurrency(child.amount),
+              ytd: "?",
+              remaining: "?",
+              usage: 0,
+              usageColor: "bg-[#E5E7EB]",
+              usageText: "text-[#6B7280]",
+            }))
+          : null,
+      }))
+    )
+  }, [groupedEntries])
+
+  const totalBudget = useMemo(
+    () => entries.reduce((sum, entry) => sum + Number(entry.amount ?? 0), 0),
+    [entries]
+  )
+  const committedAmount = 0
+  const expendedAmount = 0
+  const remainingAmount = Math.max(totalBudget - committedAmount - expendedAmount, 0)
+  const utilizedPercent = totalBudget
+    ? Math.round(((committedAmount + expendedAmount) / totalBudget) * 100)
+    : 0
+  const availablePercent = totalBudget ? Math.max(100 - utilizedPercent, 0) : 0
+  const committedPercent = totalBudget ? Math.round((committedAmount / totalBudget) * 100) : 0
+  const spentPercent = totalBudget ? Math.round((expendedAmount / totalBudget) * 100) : 0
+  const forecastOverrun = Math.max(expendedAmount + committedAmount - totalBudget, 0)
+  const forecastLabel = forecastOverrun > 0 ? "Critical" : "Stable"
+
+  const getCsrfToken = () => {
+    if (typeof document === "undefined") return ""
+    const match = document.cookie
+      .split("; ")
+      .find((cookie) => cookie.startsWith("csrf_token="))
+    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
+  }
+
+  const approveAllEntries = async () => {
+    const entryIds = entries.map((entry) => entry.id).filter(Boolean)
+    if (entryIds.length === 0) return
+    setApprovingAll(true)
+    setApproveError(null)
+
+    try {
+      const csrfToken = getCsrfToken()
+      await Promise.all(
+        entryIds.map(async (entryId) => {
+          const response = await fetch(`/api/core/financial/budget-entries/${entryId}/approve`, {
+            method: "POST",
+            headers: { "x-csrf-token": csrfToken },
+            credentials: "include",
+          })
+          const payload = await response.json().catch(() => null)
+          if (!response.ok) {
+            throw new Error(payload?.message ?? "Unable to approve budget entry.")
+          }
+        })
+      )
+    } catch (err) {
+      setApproveError(err instanceof Error ? err.message : "Unable to approve budget entry.")
+    } finally {
+      setApprovingAll(false)
+    }
+  }
 
   const toggleRow = (idx: number) => {
     setBudgetHierarchy(prev => prev.map((row, i) => (i === idx ? { ...row, isExpanded: !row.isExpanded } : row)))
@@ -236,9 +304,13 @@ export default function Page() {
                 FY 2024
                 <ChevronDown className="ml-2 h-4 w-4 text-[#9CA3AF]" />
               </Button>
-              <Button className="h-[38px] rounded-[10px] bg-[#EF4444] px-4 text-[13px] font-bold text-white shadow hover:bg-red-600 transition-colors">
+              <Button
+                onClick={approveAllEntries}
+                disabled={approvingAll || entries.length === 0}
+                className="h-[38px] rounded-[10px] bg-[#EF4444] px-4 text-[13px] font-bold text-white shadow hover:bg-red-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
                 <CheckSquare className="mr-2 h-4 w-4" />
-                Approve New Budget
+                {approvingAll ? "Approving..." : "Approve New Budget"}
               </Button>
               <Button className="h-[38px] rounded-[10px] bg-[#3B5BDB] px-4 text-[13px] font-bold text-white shadow hover:bg-blue-700 transition-colors">
                 <Download className="mr-2 h-4 w-4" />
@@ -246,6 +318,11 @@ export default function Page() {
               </Button>
             </div>
           </div>
+          {approveError && (
+            <div className="mb-4 text-[12px] font-semibold text-rose-500">
+              {approveError}
+            </div>
+          )}
 
           <div style={{ fontFamily: "inherit" }}>
             {/* Performance Cards Row */}
@@ -265,9 +342,9 @@ export default function Page() {
                     </div>
                   </div>
                   <div className="mt-4">
-                    <div className="text-[24px] font-extrabold text-[#111827] tracking-tight">₦3,000,000</div>
-                    <div className="mt-1.5 flex items-center gap-1.5 text-[12px] font-bold text-emerald-600">
-                      <TrendingUp className="h-3.5 w-3.5 stroke-[3]" /> +5% vs last month
+                    <div className="text-[24px] font-extrabold text-[#111827] tracking-tight">{formatCurrency(totalBudget)}</div>
+                    <div className="mt-1.5 flex items-center gap-1.5 text-[12px] font-bold text-[#9CA3AF]">
+                      <TrendingUp className="h-3.5 w-3.5 stroke-[3]" /> Awaiting activity
                     </div>
                   </div>
                 </div>
@@ -281,9 +358,9 @@ export default function Page() {
                     </div>
                   </div>
                   <div className="mt-4">
-                    <div className="text-[24px] font-extrabold text-[#111827] tracking-tight">80%</div>
-                    <div className="mt-1.5 flex items-center gap-1.5 text-[12px] font-bold text-rose-600">
-                      <TrendingDown className="h-3.5 w-3.5 stroke-[3]" /> -2% vs projection
+                    <div className="text-[24px] font-extrabold text-[#111827] tracking-tight">{committedPercent}%</div>
+                    <div className="mt-1.5 flex items-center gap-1.5 text-[12px] font-bold text-[#9CA3AF]">
+                      <TrendingDown className="h-3.5 w-3.5 stroke-[3]" /> Awaiting activity
                     </div>
                   </div>
                 </div>
@@ -297,9 +374,9 @@ export default function Page() {
                     </div>
                   </div>
                   <div className="mt-4">
-                    <div className="text-[24px] font-extrabold text-[#111827] tracking-tight">65%</div>
-                    <div className="mt-1.5 flex items-center gap-1.5 text-[12px] font-bold text-emerald-600">
-                      <TrendingUp className="h-3.5 w-3.5 stroke-[3]" /> +10% usage rate
+                    <div className="text-[24px] font-extrabold text-[#111827] tracking-tight">{spentPercent}%</div>
+                    <div className="mt-1.5 flex items-center gap-1.5 text-[12px] font-bold text-[#9CA3AF]">
+                      <TrendingUp className="h-3.5 w-3.5 stroke-[3]" /> Awaiting activity
                     </div>
                   </div>
                 </div>
@@ -313,9 +390,9 @@ export default function Page() {
                     </div>
                   </div>
                   <div className="mt-4">
-                    <div className="text-[24px] font-extrabold text-[#111827] tracking-tight">15%</div>
-                    <div className="mt-1.5 flex items-center gap-1.5 text-[12px] font-bold text-rose-600">
-                      <TrendingDown className="h-3.5 w-3.5 stroke-[3]" /> -8% buffer left
+                    <div className="text-[24px] font-extrabold text-[#111827] tracking-tight">{availablePercent}%</div>
+                    <div className="mt-1.5 flex items-center gap-1.5 text-[12px] font-bold text-[#9CA3AF]">
+                      <TrendingDown className="h-3.5 w-3.5 stroke-[3]" /> Awaiting activity
                     </div>
                   </div>
                 </div>
@@ -349,53 +426,73 @@ export default function Page() {
                       </tr>
                     </thead>
                     <tbody className="text-[11px] sm:text-[15.57px] leading-[16px] sm:leading-[23.36px] font-bold align-middle h-full">
-                      {budgetHierarchy.map((row, idx) => (
-                        <React.Fragment key={idx}>
-                          {/* Parent Row */}
-                          <tr className={`border-b border-[#F3F4F6] ${row.isExpanded ? "bg-[#FAFBFF]" : "hover:bg-gray-50"} transition-colors align-middle`}>
-                            <td className="px-4 py-3">
-                              <div onClick={() => toggleRow(idx)} className="flex items-center gap-2 cursor-pointer font-extrabold text-[#374151] select-none w-max">
-                                <ChevronDown className={`h-4.5 w-4.5 text-[#9CA3AF] transition-transform duration-200 stroke-[2.5] ${!row.isExpanded && "-rotate-90"}`} />
-                                {row.category}
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 font-bold text-[#4B5563] text-right">{row.annual}</td>
-                            <td className="px-4 py-3 font-extrabold text-[#111827] text-right">{row.ytd}</td>
-                            <td className="px-4 py-3 font-extrabold text-[#111827] text-right">{row.remaining}</td>
-                            <td className="px-4 py-3 whitespace-nowrap">
-                              <div className="flex items-center justify-end gap-2">
-                                <div className="h-2 w-[30px] sm:w-[55px] rounded-full bg-gray-100 overflow-hidden shrink-0">
-                                  <div className={`h-full rounded-full ${row.usageColor}`} style={{ width: `${row.usage}%` }} />
-                                </div>
-                                <span className="w-[44px] text-right font-extrabold text-[11px] sm:text-[14px] text-[#111827]">{row.usage}%</span>
-                              </div>
-                            </td>
-                          </tr>
-                          
-                          {/* Children Rows (If expanded) */}
-                          {row.isExpanded && row.children && row.children.map((child, cIdx) => (
-                            <tr key={`${idx}-${cIdx}`} className="border-b border-[#EEF1F6] bg-white hover:bg-gray-50 transition-colors align-middle">
-                              <td className="px-4 py-3 pl-[44px]">
-                                <div className="flex items-center gap-2 relative">
-                                  <div className="absolute -left-3 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-[#D1D5DB]" />
-                                  <span className="font-bold text-[#6B7280] text-[13px]">{child.category}</span>
+                      {loading ? (
+                        <tr>
+                          <td className="px-4 py-6 text-center text-[12px] text-[#6B7280]" colSpan={5}>
+                            Loading budget entries?
+                          </td>
+                        </tr>
+                      ) : error ? (
+                        <tr>
+                          <td className="px-4 py-6 text-center text-[12px] text-rose-500" colSpan={5}>
+                            {error}
+                          </td>
+                        </tr>
+                      ) : budgetHierarchy.length === 0 ? (
+                        <tr>
+                          <td className="px-4 py-6 text-center text-[12px] text-[#6B7280]" colSpan={5}>
+                            No budget entries available for this period.
+                          </td>
+                        </tr>
+                      ) : (
+                        budgetHierarchy.map((row, idx) => (
+                          <React.Fragment key={idx}>
+                            {/* Parent Row */}
+                            <tr className={`border-b border-[#F3F4F6] ${row.isExpanded ? "bg-[#FAFBFF]" : "hover:bg-gray-50"} transition-colors align-middle`}>
+                              <td className="px-4 py-3">
+                                <div onClick={() => toggleRow(idx)} className="flex items-center gap-2 cursor-pointer font-extrabold text-[#374151] select-none w-max">
+                                  <ChevronDown className={`h-4.5 w-4.5 text-[#9CA3AF] transition-transform duration-200 stroke-[2.5] ${!row.isExpanded && "-rotate-90"}`} />
+                                  {row.category}
                                 </div>
                               </td>
-                              <td className="px-4 py-3 text-[13px] font-semibold text-[#6B7280] text-right">{child.annual}</td>
-                              <td className="px-4 py-3 text-[13px] font-extrabold text-[#111827] text-right">{child.ytd}</td>
-                              <td className="px-4 py-3 text-[13px] font-extrabold text-[#111827] text-right">{child.remaining}</td>
-                              <td className="px-4 py-3 items-center whitespace-nowrap">
+                              <td className="px-4 py-3 font-bold text-[#4B5563] text-right">{row.annual}</td>
+                              <td className="px-4 py-3 font-extrabold text-[#111827] text-right">{row.ytd}</td>
+                              <td className="px-4 py-3 font-extrabold text-[#111827] text-right">{row.remaining}</td>
+                              <td className="px-4 py-3 whitespace-nowrap">
                                 <div className="flex items-center justify-end gap-2">
-                                  <div className="h-1.5 w-[30px] sm:w-[55px] rounded-full bg-gray-100 overflow-hidden shrink-0">
-                                    <div className={`h-full rounded-full ${child.usageColor}`} style={{ width: `${child.usage}%` }} />
+                                  <div className="h-2 w-[30px] sm:w-[55px] rounded-full bg-gray-100 overflow-hidden shrink-0">
+                                    <div className={`h-full rounded-full ${row.usageColor}`} style={{ width: `${row.usage}%` }} />
                                   </div>
-                                  <span className="w-[40px] text-right font-bold text-[11px] sm:text-[12px] text-[#111827]">{child.usage}%</span>
+                                  <span className="w-[44px] text-right font-extrabold text-[11px] sm:text-[14px] text-[#111827]">{row.usage}%</span>
                                 </div>
                               </td>
                             </tr>
-                          ))}
-                        </React.Fragment>
-                      ))}
+                            
+                            {/* Children Rows (If expanded) */}
+                            {row.isExpanded && row.children && row.children.map((child, cIdx) => (
+                              <tr key={`${idx}-${cIdx}`} className="border-b border-[#EEF1F6] bg-white hover:bg-gray-50 transition-colors align-middle">
+                                <td className="px-4 py-3 pl-[44px]">
+                                  <div className="flex items-center gap-2 relative">
+                                    <div className="absolute -left-3 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-[#D1D5DB]" />
+                                    <span className="font-bold text-[#6B7280] text-[13px]">{child.category}</span>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3 text-[13px] font-semibold text-[#6B7280] text-right">{child.annual}</td>
+                                <td className="px-4 py-3 text-[13px] font-extrabold text-[#111827] text-right">{child.ytd}</td>
+                                <td className="px-4 py-3 text-[13px] font-extrabold text-[#111827] text-right">{child.remaining}</td>
+                                <td className="px-4 py-3 items-center whitespace-nowrap">
+                                  <div className="flex items-center justify-end gap-2">
+                                    <div className="h-1.5 w-[30px] sm:w-[55px] rounded-full bg-gray-100 overflow-hidden shrink-0">
+                                      <div className={`h-full rounded-full ${child.usageColor}`} style={{ width: `${child.usage}%` }} />
+                                    </div>
+                                    <span className="w-[40px] text-right font-bold text-[11px] sm:text-[12px] text-[#111827]">{child.usage}%</span>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </React.Fragment>
+                        ))
+                      )}
                     </tbody>
                     </table>
                   </div>
@@ -431,21 +528,21 @@ export default function Page() {
                         <span className="h-2.5 w-2.5 rounded-full bg-[#3B5BDB] ring-4 ring-[#EEF2FF]" />
                         <span className="text-[13px] font-bold text-[#4B5563]">Expended</span>
                       </div>
-                      <span className="text-[13px] font-extrabold text-[#111827]">₦1,550,000</span>
+                      <span className="text-[13px] font-extrabold text-[#111827]">{formatCurrency(expendedAmount)}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2.5">
                         <span className="h-2.5 w-2.5 rounded-full bg-[#F97316] ring-4 ring-[#FFF7ED]" />
                         <span className="text-[13px] font-bold text-[#4B5563]">Committed</span>
                       </div>
-                      <span className="text-[13px] font-extrabold text-[#111827]">₦450,000</span>
+                      <span className="text-[13px] font-extrabold text-[#111827]">{formatCurrency(committedAmount)}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2.5">
                         <span className="h-2.5 w-2.5 rounded-full bg-[#D1D5DB] ring-4 ring-gray-100" />
                         <span className="text-[13px] font-bold text-[#9CA3AF]">Remaining</span>
                       </div>
-                      <span className="text-[13px] font-extrabold text-[#6B7280]">₦1,000,000</span>
+                      <span className="text-[13px] font-extrabold text-[#6B7280]">{formatCurrency(remainingAmount)}</span>
                     </div>
                   </div>
                 </div>
@@ -460,8 +557,8 @@ export default function Page() {
                     Based on current trajectory, you will exceed your Q1 budget by:
                   </p>
                   <div className="mt-5 flex items-center gap-3">
-                    <div className="text-[28px] font-black tracking-tight text-white drop-shadow-sm">₦1,240,000</div>
-                    <span className="rounded-[6px] bg-white/10 px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-widest text-[#93C5FD] border border-white/20 backdrop-blur-md">Critical</span>
+                    <div className="text-[28px] font-black tracking-tight text-white drop-shadow-sm">{formatCurrency(forecastOverrun)}</div>
+                    <span className="rounded-[6px] bg-white/10 px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-widest text-[#93C5FD] border border-white/20 backdrop-blur-md">{forecastLabel}</span>
                   </div>
                 </div>
 

@@ -1,8 +1,10 @@
 "use client"
 
 import Image from "next/image"
+import { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { useAuth } from "@/components/auth/AuthProvider"
 import {
   Bell,
   Search,
@@ -61,6 +63,116 @@ const historyData = [
 ]
 
 export default function MaintenanceManagementPage() {
+  const { user } = useAuth()
+  const [urgentAlerts, setUrgentAlerts] = useState<
+    { id: string; title: string; meta: string; daysOverdue: number }[]
+  >([])
+  const [alertsLoading, setAlertsLoading] = useState(false)
+  const [alertsError, setAlertsError] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+
+  const tenantId = useMemo(
+    () => user?.tenantId ?? user?.tenant?.id ?? "",
+    [user]
+  )
+
+  const getCsrfToken = () => {
+    if (typeof document === "undefined") return ""
+    const match = document.cookie
+      .split("; ")
+      .find((cookie) => cookie.startsWith("csrf_token="))
+    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
+  }
+
+  const handleDeleteTask = async (taskId: string) => {
+    if (!taskId) return
+    setDeletingId(taskId)
+    setDeleteError(null)
+
+    try {
+      const csrfToken = getCsrfToken()
+      const response = await fetch(`/api/core/financial/maintenance-tasks/${taskId}`, {
+        method: "DELETE",
+        headers: { "x-csrf-token": csrfToken },
+        credentials: "include",
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Unable to delete maintenance task.")
+      }
+      setUrgentAlerts((prev) => prev.filter((alert) => alert.id !== taskId))
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : "Unable to delete maintenance task.")
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchOverdueTasks = async () => {
+      if (!tenantId) {
+        setUrgentAlerts([])
+        setAlertsError("Tenant is required to load maintenance alerts.")
+        return
+      }
+
+      try {
+        setAlertsLoading(true)
+        setAlertsError(null)
+        const today = new Date()
+        const currentDate = today.toISOString().split("T")[0]
+        const params = new URLSearchParams({
+          scheduledBefore: currentDate,
+          status: "SCHEDULED",
+          tenantId,
+        })
+
+        const response = await fetch(`/api/core/financial/maintenance-tasks?${params.toString()}`, {
+          method: "GET",
+          credentials: "include",
+        })
+        const payload = await response.json().catch(() => null)
+        if (!response.ok) {
+          throw new Error(payload?.message ?? "Unable to load maintenance tasks.")
+        }
+
+        const tasks = payload?.data?.content ?? payload?.data ?? payload?.content ?? []
+        const mapped = (Array.isArray(tasks) ? tasks : []).map((task, index) => {
+          const scheduled = task?.scheduledDate ? new Date(task.scheduledDate) : null
+          const diffDays = scheduled ? Math.max(0, Math.floor((today.getTime() - scheduled.getTime()) / 86400000)) : 0
+          return {
+            id: String(task?.id ?? task?.maintenanceTaskId ?? task?.taskId ?? task?.assetId ?? `task-${index}`),
+            title: task?.assetName ?? task?.asset?.description ?? task?.description ?? "Maintenance Task",
+            meta: task?.notes ?? "Overdue scheduled maintenance",
+            daysOverdue: diffDays,
+          }
+        })
+
+        if (isMounted) {
+          setUrgentAlerts(mapped)
+        }
+      } catch (error) {
+        if (isMounted) {
+          setUrgentAlerts([])
+          setAlertsError(error instanceof Error ? error.message : "Unable to load maintenance tasks.")
+        }
+      } finally {
+        if (isMounted) {
+          setAlertsLoading(false)
+        }
+      }
+    }
+
+    fetchOverdueTasks()
+
+    return () => {
+      isMounted = false
+    }
+  }, [tenantId])
+
   return (
     <div 
       className="min-h-screen bg-[#F4F6F9] text-sm flex overflow-hidden lg:flex-row flex-col"
@@ -180,31 +292,40 @@ export default function MaintenanceManagementPage() {
                 </div>
 
                 <div className="space-y-4 flex-1">
-                  {/* Card 1 */}
-                  <div className="bg-white rounded-[16px] p-6 shadow-sm border-2 border-red-100 hover:border-red-200 transition-colors">
-                    <div className="flex items-center justify-between mb-4">
-                      <span className="bg-red-50 text-[#DC2626] text-[10.5px] font-extrabold uppercase px-2.5 py-1 rounded-[6px] tracking-widest border border-red-100">OVERDUE</span>
-                      <span className="text-[#EF4444] font-extrabold text-[12px]">7 Days</span>
-                    </div>
-                    <h3 className="text-[16px] font-extrabold text-[#111827] mb-2 tracking-tight">Diesel Generator 500kVA</h3>
-                    <p className="text-[#64748B] text-[13px] font-medium leading-relaxed mb-6">Oil & Filter change required for sanctuary backup power.</p>
-                    <button className="w-full bg-red-50 hover:bg-red-100 transition-colors text-[#DC2626] font-extrabold text-[13.5px] py-3 rounded-[10px] border border-red-100/50">
-                      Action Required
-                    </button>
-                  </div>
-
-                  {/* Card 2 */}
-                  <div className="bg-white rounded-[16px] p-6 shadow-sm border-2 border-red-100 hover:border-red-200 transition-colors">
-                    <div className="flex items-center justify-between mb-4">
-                      <span className="bg-red-50 text-[#DC2626] text-[10.5px] font-extrabold uppercase px-2.5 py-1 rounded-[6px] tracking-widest border border-red-100">CRITICAL</span>
-                      <span className="text-[#EF4444] font-extrabold text-[12px]">23 Days</span>
-                    </div>
-                    <h3 className="text-[16px] font-extrabold text-[#111827] mb-2 tracking-tight">Fire Extinguishers (Hall A)</h3>
-                    <p className="text-[#64748B] text-[13px] font-medium leading-relaxed mb-6">Annual safety inspection and refilling overdue.</p>
-                    <button className="w-full bg-red-50 hover:bg-red-100 transition-colors text-[#DC2626] font-extrabold text-[13.5px] py-3 rounded-[10px] border border-red-100/50">
-                      Action Required
-                    </button>
-                  </div>
+                  {alertsLoading && (
+                    <div className="text-[12px] font-medium text-[#64748B]">Loading overdue tasks...</div>
+                  )}
+                  {alertsError && (
+                    <div className="text-[12px] font-medium text-[#EF4444]">{alertsError}</div>
+                  )}
+                  {deleteError && (
+                    <div className="text-[12px] font-medium text-[#EF4444]">{deleteError}</div>
+                  )}
+                  {!alertsLoading && !alertsError && urgentAlerts.length === 0 && (
+                    <div className="text-[12px] font-medium text-[#64748B]">No overdue maintenance tasks.</div>
+                  )}
+                  {urgentAlerts.map((alert) => {
+                    const severityLabel = alert.daysOverdue >= 14 ? "CRITICAL" : "OVERDUE"
+                    return (
+                      <div key={alert.id} className="bg-white rounded-[16px] p-6 shadow-sm border-2 border-red-100 hover:border-red-200 transition-colors">
+                        <div className="flex items-center justify-between mb-4">
+                          <span className="bg-red-50 text-[#DC2626] text-[10.5px] font-extrabold uppercase px-2.5 py-1 rounded-[6px] tracking-widest border border-red-100">
+                            {severityLabel}
+                          </span>
+                          <span className="text-[#EF4444] font-extrabold text-[12px]">{alert.daysOverdue} Days</span>
+                        </div>
+                        <h3 className="text-[16px] font-extrabold text-[#111827] mb-2 tracking-tight">{alert.title}</h3>
+                        <p className="text-[#64748B] text-[13px] font-medium leading-relaxed mb-6">{alert.meta}</p>
+                        <button
+                          onClick={() => handleDeleteTask(alert.id)}
+                          disabled={deletingId === alert.id}
+                          className="w-full bg-red-50 hover:bg-red-100 transition-colors text-[#DC2626] font-extrabold text-[13.5px] py-3 rounded-[10px] border border-red-100/50 disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                          {deletingId === alert.id ? "Deleting..." : "Delete Task"}
+                        </button>
+                      </div>
+                    )
+                  })}
 
                   {/* Tip Card */}
                   <div className="bg-[#EFF6FF] rounded-[16px] p-6 border border-[#DBEAFE]/80 shadow-sm mt-2">

@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
 import {
   LayoutDashboard,
@@ -29,23 +29,121 @@ const categories = [
   { category: "Buildings", method: "Straight-line", cost: "₦45.0M", opening: "₦40.5M", current: "₦900k", closing: "₦39.6M", methodColor: "bg-[#EFF6FF] text-[#2563EB]" },
 ]
 
-const months = [
-  { name: "JAN", value: "₦121k", status: "past" },
-  { name: "FEB", value: "₦121k", status: "past" },
-  { name: "MAR", value: "₦121k", status: "past" },
-  { name: "APR", value: "₦120k", status: "past" },
-  { name: "MAY", value: "₦120k", status: "past" },
-  { name: "JUN", value: "₦120k", status: "current" },
-  { name: "JUL", value: "₦120k", status: "future" },
-  { name: "AUG", value: "₦120k", status: "future" },
-  { name: "SEP", value: "₦120k", status: "future" },
-  { name: "OCT", value: "₦120k", status: "future" },
-  { name: "NOV", value: "₦120k", status: "future" },
-  { name: "DEC", value: "₦120k", status: "future" },
-]
+type ScheduleItem = {
+  label: string
+  value: string
+  status: "past" | "current" | "future"
+}
+
 
 export default function Page() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [scheduleItems, setScheduleItems] = useState<ScheduleItem[]>([])
+  const [scheduleLoading, setScheduleLoading] = useState(false)
+  const [scheduleError, setScheduleError] = useState<string | null>(null)
+
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat("en-NG", {
+      style: "currency",
+      currency: "NGN",
+      maximumFractionDigits: 0,
+    }).format(amount)
+
+  const buildScheduleItems = (schedule: Array<Record<string, unknown>>): ScheduleItem[] => {
+    const currentIndex = 0
+    return schedule.map((item, index) => {
+      const label =
+        (typeof item.period === "string" && item.period) ||
+        (typeof item.year === "number" && `YR ${item.year}`) ||
+        (typeof item.label === "string" && item.label) ||
+        `Period ${index + 1}`
+      const rawValue =
+        (typeof item.depreciationExpense === "number" && item.depreciationExpense) ||
+        (typeof item.depreciation === "number" && item.depreciation) ||
+        (typeof item.amount === "number" && item.amount) ||
+        (typeof item.value === "number" && item.value) ||
+        0
+      return {
+        label,
+        value: formatCurrency(rawValue),
+        status: index < currentIndex ? "past" : index === currentIndex ? "current" : "future",
+      }
+    })
+  }
+
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchSchedule = async () => {
+      try {
+        setScheduleLoading(true)
+        setScheduleError(null)
+
+        const assetsResponse = await fetch("/api/core/financial/fixed-assets", {
+          method: "GET",
+          credentials: "include",
+        })
+        const assetsPayload = await assetsResponse.json().catch(() => null)
+        if (!assetsResponse.ok) {
+          throw new Error(assetsPayload?.message ?? "Unable to load fixed assets.")
+        }
+
+        const assetList =
+          assetsPayload?.data?.content ??
+          assetsPayload?.data ??
+          assetsPayload?.content ??
+          []
+        const firstAsset = Array.isArray(assetList) ? assetList[0] : null
+        const assetId = firstAsset?.id ?? firstAsset?.assetId
+
+        if (!assetId) {
+          throw new Error("No fixed asset found to generate depreciation schedule.")
+        }
+
+        const scheduleResponse = await fetch(
+          `/api/core/financial/fixed-assets/${assetId}/depreciation-schedule?granularity=yearly&periods=10`,
+          {
+            method: "GET",
+            credentials: "include",
+          }
+        )
+        const schedulePayload = await scheduleResponse.json().catch(() => null)
+        if (!scheduleResponse.ok) {
+          throw new Error(schedulePayload?.message ?? "Unable to load depreciation schedule.")
+        }
+
+        const schedule = schedulePayload?.data?.schedule ?? schedulePayload?.schedule ?? []
+        if (isMounted) {
+          setScheduleItems(buildScheduleItems(Array.isArray(schedule) ? schedule : []))
+        }
+      } catch (error) {
+        if (isMounted) {
+          setScheduleError(error instanceof Error ? error.message : "Unable to load depreciation schedule.")
+          setScheduleItems([])
+        }
+      } finally {
+        if (isMounted) {
+          setScheduleLoading(false)
+        }
+      }
+    }
+
+    fetchSchedule()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  const monthItems = useMemo(
+    () =>
+      scheduleItems.length
+        ? scheduleItems
+        : [
+            { label: "N/A", value: scheduleLoading ? "Loading..." : "Unavailable", status: "future" as const },
+          ],
+    [scheduleItems, scheduleLoading]
+  )
 
   return (
     <div className="flex flex-col xl:flex-row min-h-screen bg-[#F8FAFC] relative w-full font-sans antialiased" style={{ fontFamily: '"Public Sans", sans-serif' }}>
@@ -395,14 +493,17 @@ export default function Page() {
               <div className="px-6 sm:px-8 mb-8">
                 <h2 className="text-[18px] font-[800] text-[#111827] tracking-tight mb-1">2024 Monthly Distribution</h2>
                 <p className="text-[13px] font-medium text-[#6B7280]">Allocation of depreciation expense across the current calendar year</p>
+                {scheduleError && (
+                  <p className="mt-2 text-[12px] font-medium text-[#EF4444]">{scheduleError}</p>
+                )}
               </div>
 
               {/* Mobile Grid */}
               <div className="lg:hidden px-6 sm:px-8 pb-6 sm:pb-8">
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-4">
-                  {months.map((month, idx) => (
+                  {monthItems.map((month, idx) => (
                     <div key={idx} className="flex flex-col items-center gap-2 rounded-[10px] border border-[#EEF1F6] bg-white py-3">
-                      <div className="text-[11px] font-[800] text-[#9CA3AF] uppercase tracking-wider">{month.name}</div>
+                      <div className="text-[11px] font-[800] text-[#9CA3AF] uppercase tracking-wider">{month.label}</div>
                       <div
                         className={`text-[12px] ${
                           month.status === 'past'
@@ -422,9 +523,9 @@ export default function Page() {
               {/* Desktop Row */}
               <div className="hidden lg:block w-full overflow-x-auto no-scrollbar pb-6 sm:pb-8 px-6 sm:px-8">
                 <div className="flex items-center min-w-[750px] justify-between">
-                  {months.map((month, idx) => (
+                  {monthItems.map((month, idx) => (
                     <div key={idx} className="flex flex-col items-center gap-4">
-                      <div className="text-[11px] font-[800] text-[#9CA3AF] uppercase tracking-wider">{month.name}</div>
+                      <div className="text-[11px] font-[800] text-[#9CA3AF] uppercase tracking-wider">{month.label}</div>
                       <div 
                         className={`text-[13px] ${
                           month.status === 'past' 

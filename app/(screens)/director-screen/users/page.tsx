@@ -4,6 +4,7 @@ import SidebarNav from "@/components/navigation/SidebarNav"
 import ScreenHeader from "@/components/navigation/ScreenHeader"
 import { Button } from "@/components/ui/button"
 import {  Input } from "@/components/ui/input"
+import { useState, useEffect } from "react"
 import { 
   ChevronDown,
   Download,
@@ -18,65 +19,89 @@ import {
   MapPin,
 } from "lucide-react"
 
-const users = [
-  {
-    name: "Sarah Jenkins",
-    email: "sarah.j@shepherdwatch.com",
-    role: "Director",
-    roleTone: "bg-[#EDE9FE] text-[#7C3AED]",
-    roleDot: "bg-[#7C3AED]",
-    branch: "London HQ",
-    lastActive: "2 mins ago",
-    status: "Active",
-    statusTone: "bg-emerald-50 text-emerald-600",
-    initials: "SJ",
-    avatar: "/images/Beared%20Guy02-min%201.jpg",
-  },
-  {
-    name: "Michael Johnson",
-    email: "m.johnson@shepherdwatch.com",
-    role: "Senior Pastor",
-    roleTone: "bg-[#E0F2FE] text-[#0EA5E9]",
-    roleDot: "bg-[#0EA5E9]",
-    branch: "New York Branch",
-    lastActive: "1 day ago",
-    status: "Active",
-    statusTone: "bg-emerald-50 text-emerald-600",
-    initials: "MJ",
-  },
-  {
-    name: "David Chen",
-    email: "d.chen@shepherdwatch.com",
-    role: "Accountant",
-    roleTone: "bg-[#ECFDF3] text-[#16A34A]",
-    roleDot: "bg-[#16A34A]",
-    branch: "Singapore Branch",
-    lastActive: "3 days ago",
-    status: "Invited",
-    statusTone: "bg-amber-50 text-amber-600",
-    initials: "DC",
-    avatar: "/images/Beared%20Guy02-min%201.jpg",
-  },
-  {
-    name: "Eliza Ross",
-    email: "e.ross@shepherdwatch.com",
-    role: "Admin Officer",
-    roleTone: "bg-[#F3F4F6] text-[#6B7280]",
-    roleDot: "bg-[#6B7280]",
-    branch: "Liberty HQ",
-    lastActive: "4 hours ago",
-    status: "Active",
-    statusTone: "bg-emerald-50 text-emerald-600",
-    initials: "ER",
-  },
-]
-
-export { users as userDirectoryUsers }
-
 const smallText = "text-[12.4px] leading-[17.71px] font-normal"
 const bigText = "text-[22.23px] leading-[26.68px] font-bold tracking-[-0.56px]"
 
 export default function Page() {
+  const [users, setUsers] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function fetchUsers() {
+      try {
+        const res = await fetch("/api/users")
+        const json = await res.json()
+        
+        if (res.ok && json.data) {
+          const fetchedUsers = Array.isArray(json.data) ? json.data : []
+          
+          const mappedUsers = fetchedUsers.map((u: any) => {
+            const firstName = u.firstName || ""
+            const lastName = u.lastName || ""
+            const name = `${firstName} ${lastName}`.trim() || "Unknown User"
+            
+            const rawStatus = (u.status || "INACTIVE").toUpperCase()
+            const statusTone = rawStatus === "ACTIVE" 
+              ? "bg-emerald-50 text-emerald-600" 
+              : "bg-rose-50 text-rose-600"
+
+            return {
+              id: u.id,
+              name,
+              email: u.email,
+              role: u.roleName || "Staff",
+              roleTone: "bg-[#F3F4F6] text-[#6B7280]",
+              roleDot: "bg-[#6B7280]",
+              branch: u.address || "HQ",
+              lastActive: u.lastActive || "N/A",
+              rawStatus,
+              statusTone,
+              initials: `${firstName[0] || ""}${lastName[0] || ""}`.toUpperCase() || "?",
+              avatar: null,
+            }
+          })
+          setUsers(mappedUsers)
+        }
+      } catch (error) {
+        console.error("Failed to fetch users:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchUsers()
+  }, [])
+
+  const handleToggleStatus = async (user: any) => {
+    const newStatus = user.rawStatus === "ACTIVE" ? "INACTIVE" : "ACTIVE"
+    try {
+      const res = await fetch(`/api/users/${user.id}/status`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus })
+      })
+
+      if (res.ok) {
+        setUsers(users.map(u => {
+          if (u.id === user.id) {
+            return {
+              ...u,
+              rawStatus: newStatus,
+              statusTone: newStatus === "ACTIVE" 
+                ? "bg-emerald-50 text-emerald-600" 
+                : "bg-rose-50 text-rose-600"
+            }
+          }
+          return u;
+        }))
+      } else {
+        console.error("Failed to toggle status")
+      }
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
       <SidebarNav
@@ -100,7 +125,7 @@ export default function Page() {
                 <Button className="h-8 rounded-md border border-[#E5E7EB] bg-white text-[12px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50" variant="outline">
                   <Download className="h-4 w-4" /> Export Report
                 </Button>
-                <Button className="h-8 rounded-md bg-[#3B5BDB] text-[12px] font-medium text-white shadow hover:bg-blue-700">
+                <Button onClick={() => window.location.href = "/director-screen/invite-users"} className="h-8 rounded-md bg-[#3B5BDB] text-[12px] font-medium text-white shadow hover:bg-blue-700">
                   <UserPlus className="h-4 w-4" /> Invite New User
                 </Button>
               </div>
@@ -159,7 +184,7 @@ export default function Page() {
                     <th className="py-3 px-4 text-left">BRANCH</th>
                     <th className="py-3 px-4 text-left">LAST ACTIVE</th>
                     <th className="py-3 px-4 text-left">STATUS</th>
-                    <th className="py-3 px-4 text-right"></th>
+                    <th className="py-3 px-4 text-right">ACTION</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -195,11 +220,25 @@ export default function Page() {
                       </td>
                       <td className="py-3 px-4 text-[#6B7280]">{user.lastActive}</td>
                       <td className="py-3 px-4">
-                        <span className={`rounded-full px-2 py-1 text-[10px] ${user.statusTone}`}>{user.status}</span>
+                        <span className={`rounded-full px-2 py-1 text-[10px] ${user.statusTone}`}>{user.rawStatus === "ACTIVE" ? "Active" : "Inactive"}</span>
                       </td>
-                      <td className="py-3 px-4 text-right text-[#9CA3AF]">...</td>
+                      <td className="py-3 px-4 text-right">
+                        {user.id && (
+                          <button 
+                            onClick={() => handleToggleStatus(user)}
+                            className={`text-[11px] font-medium px-3 py-1.5 rounded-[6px] border transition-colors ${
+                              user.rawStatus === "ACTIVE" 
+                                ? "bg-white border-rose-200 text-rose-600 hover:bg-rose-50" 
+                                : "bg-white border-emerald-200 text-emerald-600 hover:bg-emerald-50"
+                            }`}
+                          >
+                            {user.rawStatus === "ACTIVE" ? "Suspend" : "Activate"}
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))}
+
                 </tbody>
               </table>
               <div className="flex items-center justify-between border-t border-[#EEF1F6] px-4 py-2 text-[11px] text-[#9CA3AF]">

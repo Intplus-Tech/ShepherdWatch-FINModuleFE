@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -30,6 +30,7 @@ import {
   Menu,
   X
 } from "lucide-react"
+import { useBudgetEntries } from "@/components/hooks/useBudgetEntries"
 
 type BudgetChild = {
   id: string
@@ -54,120 +55,194 @@ type BudgetRow = {
   children?: BudgetChild[]
 }
 
-// Mock Data
-const summaryCards = [
-  {
-    title: "Total Projected Income",
-    value: "₦12,500,450,000.00",
-    meta: "+5.2% vs Last Year",
-    metaColor: "text-emerald-600",
-    icon: TrendingUp,
-    iconBg: "bg-emerald-50",
-    iconColor: "text-emerald-500",
-    titleColor: "text-gray-500",
-  },
-  {
-    title: "Total Expenditure",
-    value: "₦380,000,215.00",
-    meta: "84% of Income",
-    metaColor: "text-gray-500",
-    icon: Wallet,
-    iconBg: "bg-blue-50",
-    iconColor: "text-blue-500",
-    titleColor: "text-gray-500",
-  },
-  {
-    title: "HQ Statutory Deductions",
-    value: "₦45,528,000.00",
-    meta: "Fixed 10% Tithe",
-    metaColor: "text-gray-500",
-    icon: Landmark,
-    iconBg: "bg-purple-50",
-    iconColor: "text-purple-600",
-    titleColor: "text-purple-600 font-semibold",
-  },
-  {
-    title: "Net Surplus",
-    value: "₦25,000,417.00",
-    meta: "Healthy buffer",
-    metaColor: "text-emerald-600",
-    icon: PiggyBank,
-    iconBg: "bg-gray-100",
-    iconColor: "text-gray-700",
-    titleColor: "text-gray-500",
-  },
-]
-
-const budgetData: BudgetRow[] = [
-  {
-    id: "facilities",
-    category: "Facilities",
-    itemCount: 4,
-    total: "$24,500",
-    isExpanded: true,
-    children: [
-      {
-        id: "rent",
-        name: "Building Rent",
-        desc: "Fixed monthly contract",
-        lastYear: "$12,000",
-        proposed: "$14,000",
-        allocated: "14000",
-        variance: "0%",
-        varianceColor: "text-gray-500"
-      },
-      {
-        id: "maintenance",
-        name: "Maintenance & Repairs",
-        desc: "High Variance",
-        warning: true,
-        lastYear: "$2,000",
-        proposed: "$5,000",
-        allocated: "3000",
-        variance: "-40%",
-        varianceColor: "text-rose-500"
-      },
-      {
-        id: "utilities",
-        name: "Utilities (Electric/Water)",
-        desc: "",
-        lastYear: "$4,500",
-        proposed: "$5,000",
-        allocated: "5000",
-        variance: "0%",
-        varianceColor: "text-gray-500"
-      }
-    ]
-  },
-  {
-    id: "personnel",
-    category: "Personnel",
-    itemCount: 5,
-    total: "$85,000",
-    isExpanded: false,
-    children: []
-  },
-  {
-    id: "outreach",
-    category: "Outreach & Missions",
-    itemCount: 3,
-    total: "$8,500",
-    isExpanded: false,
-    children: []
-  },
-  {
-    id: "admin",
-    category: "Administration",
-    itemCount: 5,
-    total: "$7,000",
-    isExpanded: false,
-    children: []
-  }
-]
-
 export function BudgetReviewContent({ rightSidebar, activeRowId }: { rightSidebar?: React.ReactNode, activeRowId?: string }) {
-  const [data, setData] = useState(budgetData)
+  const { entries, loading, error } = useBudgetEntries()
+  const [data, setData] = useState<BudgetRow[]>([])
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [approvingId, setApprovingId] = useState<string | null>(null)
+  const [approvedIds, setApprovedIds] = useState<Set<string>>(new Set())
+  const [approveError, setApproveError] = useState<string | null>(null)
+  const [approvingAll, setApprovingAll] = useState(false)
+
+  const getCsrfToken = () => {
+    if (typeof document === "undefined") return ""
+    const match = document.cookie
+      .split("; ")
+      .find((cookie) => cookie.startsWith("csrf_token="))
+    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
+  }
+
+  const approveEntry = async (entryId: string) => {
+    if (!entryId) return
+    setApprovingId(entryId)
+    setApproveError(null)
+
+    try {
+      const csrfToken = getCsrfToken()
+      const response = await fetch(`/api/core/financial/budget-entries/${entryId}/approve`, {
+        method: "POST",
+        headers: {
+          "x-csrf-token": csrfToken,
+        },
+        credentials: "include",
+      })
+      const payload = await response.json().catch(() => null)
+
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Unable to approve budget entry.")
+      }
+
+      setApprovedIds((prev) => new Set(prev).add(entryId))
+    } catch (err) {
+      setApproveError(err instanceof Error ? err.message : "Unable to approve budget entry.")
+    } finally {
+      setApprovingId(null)
+    }
+  }
+
+  const approveAllEntries = async () => {
+    const entryIds = entries.map((entry) => entry.id).filter(Boolean)
+    if (entryIds.length === 0) return
+    setApprovingAll(true)
+    setApproveError(null)
+
+    try {
+      const csrfToken = getCsrfToken()
+      await Promise.all(
+        entryIds.map(async (entryId) => {
+          const response = await fetch(`/api/core/financial/budget-entries/${entryId}/approve`, {
+            method: "POST",
+            headers: { "x-csrf-token": csrfToken },
+            credentials: "include",
+          })
+          const payload = await response.json().catch(() => null)
+          if (!response.ok) {
+            throw new Error(payload?.message ?? "Unable to approve budget entry.")
+          }
+          setApprovedIds((prev) => new Set(prev).add(entryId))
+        })
+      )
+    } catch (err) {
+      setApproveError(err instanceof Error ? err.message : "Unable to approve budget entry.")
+    } finally {
+      setApprovingAll(false)
+    }
+  }
+
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat("en-NG", {
+      style: "currency",
+      currency: "NGN",
+      maximumFractionDigits: 0,
+    }).format(value)
+
+  const totals = useMemo(() => {
+    const income = entries
+      .filter((entry) => (entry.type ?? "").toUpperCase() === "INCOME")
+      .reduce((sum, entry) => sum + Number(entry.amount ?? 0), 0)
+
+    const expense = entries
+      .filter((entry) => (entry.type ?? "").toUpperCase() === "EXPENSE")
+      .reduce((sum, entry) => sum + Number(entry.amount ?? 0), 0)
+
+    const overall = entries.reduce((sum, entry) => sum + Number(entry.amount ?? 0), 0)
+    const resolvedIncome = income || overall
+    const resolvedExpense = expense || overall
+    const deduction = resolvedIncome * 0.1
+    const surplus = resolvedIncome - resolvedExpense - deduction
+
+    return { income: resolvedIncome, expense: resolvedExpense, deduction, surplus }
+  }, [entries])
+
+  const summaryCards = useMemo(
+    () => [
+      {
+        title: "Total Projected Income",
+        value: formatCurrency(totals.income),
+        meta: totals.income ? "+5.2% vs Last Year" : "Awaiting entries",
+        metaColor: "text-emerald-600",
+        icon: TrendingUp,
+        iconBg: "bg-emerald-50",
+        iconColor: "text-emerald-500",
+        titleColor: "text-gray-500",
+      },
+      {
+        title: "Total Expenditure",
+        value: formatCurrency(totals.expense),
+        meta: totals.income ? "84% of Income" : "Awaiting entries",
+        metaColor: "text-gray-500",
+        icon: Wallet,
+        iconBg: "bg-blue-50",
+        iconColor: "text-blue-500",
+        titleColor: "text-gray-500",
+      },
+      {
+        title: "HQ Statutory Deductions",
+        value: formatCurrency(totals.deduction),
+        meta: "Fixed 10% Tithe",
+        metaColor: "text-gray-500",
+        icon: Landmark,
+        iconBg: "bg-purple-50",
+        iconColor: "text-purple-600",
+        titleColor: "text-purple-600 font-semibold",
+      },
+      {
+        title: "Net Surplus",
+        value: formatCurrency(totals.surplus),
+        meta: totals.surplus > 0 ? "Healthy buffer" : "Monitor spend",
+        metaColor: totals.surplus > 0 ? "text-emerald-600" : "text-rose-500",
+        icon: PiggyBank,
+        iconBg: "bg-gray-100",
+        iconColor: "text-gray-700",
+        titleColor: "text-gray-500",
+      },
+    ],
+    [totals]
+  )
+
+  const groupedRows = useMemo(() => {
+    const map = new Map<string, { id: string; total: number; children: BudgetChild[] }>()
+
+    entries.forEach((entry, index) => {
+      const category = entry.category ?? entry.stream ?? "Budget Entries"
+      const amount = Number(entry.amount ?? 0)
+      const child: BudgetChild = {
+        id: entry.id ?? `entry-${index}`,
+        name: entry.coaName ?? entry.name ?? "Line Item",
+        desc: entry.period ?? "",
+        lastYear: "—",
+        proposed: formatCurrency(amount),
+        allocated: formatCurrency(amount),
+        variance: "0%",
+        varianceColor: "text-gray-500",
+      }
+
+      if (!map.has(category)) {
+        map.set(category, {
+          id: category.toLowerCase().replace(/\s+/g, "-"),
+          total: 0,
+          children: [],
+        })
+      }
+
+      const group = map.get(category)!
+      group.total += amount
+      group.children.push(child)
+    })
+
+    return Array.from(map.entries()).map(([category, group]) => ({
+      id: group.id,
+      category,
+      itemCount: group.children.length,
+      total: formatCurrency(group.total),
+      isExpanded: true,
+      children: group.children,
+    }))
+  }, [entries])
+
+  useEffect(() => {
+    setData(groupedRows)
+  }, [groupedRows])
 
   const toggleExpand = (id: string) => {
     setData(data.map(row => row.id === id ? { ...row, isExpanded: !row.isExpanded } : row))
@@ -345,7 +420,9 @@ export function BudgetReviewContent({ rightSidebar, activeRowId }: { rightSideba
                 Send Back
               </Button>
               <Button 
-                className="bg-[#2563EB] text-white shadow hover:bg-blue-700 transition-colors flex items-center gap-1.5 justify-center px-0"
+                onClick={approveAllEntries}
+                disabled={approvingAll || entries.length === 0}
+                className="bg-[#2563EB] text-white shadow hover:bg-blue-700 transition-colors flex items-center gap-1.5 justify-center px-0 disabled:opacity-60 disabled:cursor-not-allowed"
                 style={{
                   width: "125.88px",
                   height: "35.93px",
@@ -363,9 +440,14 @@ export function BudgetReviewContent({ rightSidebar, activeRowId }: { rightSideba
                 }}
               >
                 <Check className="h-3.5 w-3.5" />
-                Approve Budget
+                {approvingAll ? "Approving..." : "Approve Budget"}
               </Button>
             </div>
+            {approveError && (
+              <div className="mt-2 text-[12px] font-semibold text-rose-500">
+                {approveError}
+              </div>
+            )}
           </div>
         </div>
 
@@ -422,82 +504,82 @@ export function BudgetReviewContent({ rightSidebar, activeRowId }: { rightSideba
                   </tr>
                 </thead>
                 <tbody className="text-[13.5px] font-medium text-[#111827]">
-                  {data.map((row) => (
-                    <React.Fragment key={row.id}>
-                      {/* Parent Row */}
-                      <tr className="border-b border-[#F1F5F9] bg-[#F8FAFC]/50 hover:bg-[#F1F5F9]/50 transition-colors">
-                        <td className="px-6 py-4">
-                          <button onClick={() => toggleExpand(row.id)} className="flex items-center gap-2 font-bold text-[#334155] hover:text-[#0F172A] transition-colors focus:outline-none">
-                            {row.isExpanded ? (
-                              <ChevronDown className="h-4 w-4 text-[#94A3B8]" />
-                            ) : (
-                              <ChevronRight className="h-4 w-4 text-[#94A3B8]" />
-                            )}
-                            {row.category}
-                            <span className="ml-2 inline-flex items-center rounded-md bg-[#F1F5F9] px-2 py-0.5 text-[10px] font-semibold text-[#64748B]">
-                              {row.itemCount} items
-                            </span>
-                          </button>
-                        </td>
-                        <td className="px-6 py-4 text-center"></td>
-                        <td className="px-6 py-4 text-center"></td>
-                        <td className="px-6 py-4 text-center"></td>
-                        <td className="px-6 py-4 text-right text-[#475569] pr-8 text-[12.5px]">Total: {row.total}</td>
-                      </tr>
-                      
-                      {/* Children Rows */}
-                      {row.isExpanded && row.children?.map((child: BudgetChild) => {
-                        const isActive = activeRowId === child.id || child.isActive;
-                        return (
-                        <tr 
-                          key={child.id} 
-                          className={`border-b border-[#F1F5F9] group transition-colors ${isActive ? "bg-[#F0F9FF]" : "bg-white hover:bg-[#F8FAFC]"}`}
-                        >
-                          <td className="px-6 py-4 pl-12 relative">
-                            {/* Active Edge Indicator inside TD to prevent layout shift */}
-                            {isActive && (
-                              <div className="absolute left-0 top-0 bottom-0 w-[4px] bg-[#2563EB]"></div>
-                            )}
-                            <div className="font-semibold text-[#1E293B]">{child.name}</div>
-                            {child.desc && (
-                              <div className={`mt-1 text-[11.5px] flex items-center gap-1 ${child.warning ? "text-amber-600 font-medium" : "text-[#64748B]"}`}>
-                                {child.warning && <AlertTriangle className="h-3 w-3" />}
-                                {child.desc}
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 text-center text-[#475569] font-medium">{child.lastYear}</td>
-                          <td className="px-6 py-4 text-center font-semibold text-[#1E293B]">{child.proposed}</td>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-6 text-center text-[12px] text-[#6B7280]">
+                        Loading budget entries?
+                      </td>
+                    </tr>
+                  ) : error ? (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-6 text-center text-[12px] text-rose-500">
+                        {error}
+                      </td>
+                    </tr>
+                  ) : data.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-6 text-center text-[12px] text-[#6B7280]">
+                        No budget entries available for this period.
+                      </td>
+                    </tr>
+                  ) : (
+                    data.map((row) => (
+                      <React.Fragment key={row.id}>
+                        {/* Parent Row */}
+                        <tr className="border-b border-[#F1F5F9] bg-[#F8FAFC]/50 hover:bg-[#F1F5F9]/50 transition-colors">
                           <td className="px-6 py-4">
-                            <div className="flex items-center justify-center">
-                              <div className={`relative transition-shadow rounded-md overflow-hidden border bg-white ${isActive ? "border-amber-400 ring-1 ring-amber-400" : "border-[#E2E8F0] group-hover:shadow-sm"}`}>
-                                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-[#94A3B8] font-medium text-[13px]">
-                                  $
-                                </div>
-                                <input
-                                  type="text"
-                                  defaultValue={child.allocated}
-                                  className="w-[100px] xl:w-[120px] rounded-md border-0 py-2 pl-7 pr-3 text-[13px] font-semibold text-[#1E293B] ring-0 focus:outline-none"
-                                />
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="flex items-center justify-end pr-4 gap-3 relative">
-                              <span className={`font-semibold ${child.varianceColor}`}>
-                                {child.variance}
-                              </span>
-                              {(child.hasThread || isActive) && (
-                                <button className={`p-1.5 rounded-[4px] border ${isActive ? "border-[#2563EB]/20 bg-[#EEF2FF] text-[#2563EB]" : "border-transparent text-[#94A3B8] hover:bg-[#F1F5F9]"} transition-colors ml-1`}>
-                                  <MessageCircle className="h-4 w-4" />
-                                </button>
+                            <button onClick={() => toggleExpand(row.id)} className="flex items-center gap-2 font-bold text-[#334155] hover:text-[#0F172A] transition-colors focus:outline-none">
+                              {row.isExpanded ? (
+                                <ChevronDown className="h-4 w-4 text-[#94A3B8]" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4 text-[#94A3B8]" />
                               )}
-                            </div>
+                              {row.category}
+                            </button>
+                          </td>
+                          <td className="px-6 py-4 text-[#64748B]">{row.itemCount}</td>
+                          <td className="px-6 py-4 text-right font-bold">{row.total}</td>
+                          <td className="px-6 py-4 text-right text-[#64748B]">?</td>
+                          <td className="px-6 py-4 text-right text-[#64748B]">?</td>
+                          <td className="px-6 py-4 text-right">
+                            <span className="inline-flex items-center rounded-full bg-[#EEF2FF] px-2.5 py-1 text-[11px] font-semibold text-[#3B5BDB]">Active</span>
                           </td>
                         </tr>
-                      )})}
-                    </React.Fragment>
-                  ))}
+
+                        {row.isExpanded && row.children?.map((child) => (
+                          <tr key={child.id} className="border-b border-[#F1F5F9] bg-white">
+                            <td className="px-6 py-4">
+                              <div className="flex flex-col">
+                                <span className="font-semibold text-[#0F172A]">{child.name}</span>
+                                <span className="text-[12px] text-[#94A3B8]">{child.desc || "—"}</span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-[#64748B]">?</td>
+                            <td className="px-6 py-4 text-right text-[#0F172A] font-semibold">{child.proposed}</td>
+                            <td className="px-6 py-4 text-right text-[#64748B]">{child.allocated}</td>
+                            <td className="px-6 py-4 text-right text-[#64748B]">{child.variance}</td>
+                            <td className="px-6 py-4 text-right">
+                              {approvedIds.has(child.id) ? (
+                                <div className="inline-flex items-center gap-1 text-[12px] font-semibold text-emerald-600">
+                                  <Check className="h-3.5 w-3.5" />
+                                  Approved
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => approveEntry(child.id)}
+                                  disabled={approvingId === child.id}
+                                  className="inline-flex items-center gap-1 rounded-full border border-[#E5E7EB] px-3 py-1 text-[11px] font-semibold text-[#374151] hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed"
+                                >
+                                  <Check className="h-3.5 w-3.5" />
+                                  {approvingId === child.id ? "Approving..." : "Approve"}
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </React.Fragment>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>

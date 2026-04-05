@@ -1,23 +1,26 @@
 import { NextRequest, NextResponse } from "next/server"
 import { verifyToken } from "@/lib/jwt"
-import { sessionStore } from "@/lib/session"
+import { ACCESS_TOKEN_COOKIE } from "@/lib/auth-config"
+import { applyCors, getCorsHeaders } from "@/lib/cors"
 
 export async function GET(req: NextRequest) {
-  const token = req.cookies.get("token")?.value
-  if (!token) return NextResponse.json({ message: "Unauthenticated" }, { status: 401 })
+  const token = req.cookies.get(ACCESS_TOKEN_COOKIE)?.value
+  if (!token) return applyCors(NextResponse.json({ message: "Unauthenticated" }, { status: 401 }), req)
 
   const payload = verifyToken(token)
-  if (!payload) return NextResponse.json({ message: "Invalid token" }, { status: 401 })
+  if (!payload) return applyCors(NextResponse.json({ message: "Invalid token" }, { status: 401 }), req)
 
-  const session = sessionStore.getSession(payload.userId)
-  if (!session) return NextResponse.json({ message: "Session expired" }, { status: 401 })
-
-  return NextResponse.json({
+  return applyCors(NextResponse.json({
     user: {
-      id: payload.userId,
-      email: payload.userId,
-      role: session.role,
-      name: payload.userId.split("@")[0],
+      id: payload.id,
+      email: payload.email,
+      role: payload.role,
+      name: payload.name,
     },
-  })
+  }), req)
+}
+
+export async function OPTIONS(req: NextRequest) {
+  const headers = getCorsHeaders(req);
+  return new NextResponse(null, { status: 204, headers: headers ?? undefined });
 }

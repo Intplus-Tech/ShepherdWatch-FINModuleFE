@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
 import { Inter } from "next/font/google"
 import {
@@ -28,69 +28,240 @@ import {
 } from "lucide-react"
 
 import BranchAdminHeader from "@/components/navigation/BranchAdminHeader"
+import { useRequisitions } from "@/components/hooks/useRequisitions"
 
 const inter = Inter({ subsets: ["latin"] })
 
-const tableData = [
-  {
-    id: "#REQ-2023-089",
-    date: "Oct 24, 2023",
-    time: "10:30 AM",
-    categoryIcon: "purple", // simplified category indicator
-    categoryLabel: "Office Supplies",
-    amount: "₦ 45,000.00",
-    status: "Approved",
-    statusColor: "green",
-    selected: false,
-  },
-  {
-    id: "#REQ-2023-088",
-    date: "Oct 23, 2023",
-    time: "02:15 PM",
-    categoryIcon: "orange",
-    categoryLabel: "Maintenance",
-    amount: "₦ 120,500.00",
-    status: "Submitted",
-    statusColor: "blue",
-    selected: false,
-  },
-  {
-    id: "#REQ-2023-087",
-    date: "Oct 22, 2023",
-    time: "09:45 AM",
-    categoryIcon: "blue",
-    categoryLabel: "Logistics",
-    amount: "₦ 15,000.00",
-    status: "Paid",
-    statusColor: "purple",
-    selected: false,
-  },
-  {
-    id: "#REQ-2023-086",
-    date: "Oct 21, 2023",
-    time: "11:00 AM",
-    categoryIcon: "gray",
-    categoryLabel: "IT Equipment",
-    amount: "₦ 250,000.00",
-    status: "Draft",
-    statusColor: "gray",
-    selected: false,
-  },
-  {
-    id: "#REQ-2023-085",
-    date: "Oct 20, 2023",
-    time: "04:45 PM",
-    categoryIcon: "cyan",
-    categoryLabel: "Utilities",
-    amount: "₦ 25,000.00",
-    status: "Rejected",
-    statusColor: "red",
-    selected: true,
-  }
-]
+type AuditTimelineItem = {
+  id: string
+  title: string
+  description: string
+  timeLabel: string
+  tone: "success" | "danger" | "info" | "neutral" | "warning"
+}
 
 export default function RequisitionsHub() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [auditItems, setAuditItems] = useState<AuditTimelineItem[]>([])
+  const [auditLoading, setAuditLoading] = useState(true)
+  const [auditError, setAuditError] = useState<string | null>(null)
+  const [deletingReqId, setDeletingReqId] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const { requisitions, loading: reqLoading, error: reqError } = useRequisitions({
+    currentStatus: "PENDING_ACCOUNTANT",
+  })
+  const [selectedReqId, setSelectedReqId] = useState<string>("")
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadAuditTrails = async () => {
+      setAuditLoading(true)
+      setAuditError(null)
+
+      try {
+        const params = new URLSearchParams({ page: "1", size: "20", entity: "Requisition" })
+        const response = await fetch(`/api/core/financial/audit-logs?${params.toString()}`, {
+          method: "GET",
+          credentials: "include",
+        })
+        const data = await response.json().catch(() => null)
+
+        if (!response.ok) {
+          throw new Error(
+            data?.message ?? "Unable to load audit trails. Please try again."
+          )
+        }
+
+        const rawItems = Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data?.items)
+            ? data.items
+            : Array.isArray(data?.audits)
+              ? data.audits
+              : Array.isArray(data)
+                ? data
+                : []
+
+        const mapped: AuditTimelineItem[] = rawItems.map(
+          (item: any, index: number) => {
+            const action =
+              item?.action ??
+              item?.event ??
+              item?.activity ??
+              item?.actionType ??
+              "Audit Event"
+            const actor =
+              item?.userName ??
+              item?.actor ??
+              item?.performedBy ??
+              item?.user ??
+              "System"
+            const role =
+              item?.role ??
+              item?.roleName ??
+              item?.userRole ??
+              item?.actorRole ??
+              ""
+            const reason =
+              item?.reason ??
+              item?.justification ??
+              item?.details ??
+              item?.message ??
+              ""
+            const timestamp =
+              item?.timestamp ??
+              item?.createdAt ??
+              item?.time ??
+              item?.date ??
+              ""
+            const status = String(item?.status ?? "").toUpperCase()
+
+            const tone =
+              status === "FAILED"
+                ? "danger"
+                : status === "PENDING"
+                  ? "warning"
+                  : status === "SUCCESS"
+                    ? "success"
+                    : "info"
+
+            return {
+              id: String(item?.id ?? item?.auditId ?? `audit-${index}`),
+              title: action,
+              description:
+                actor || role
+                  ? `${actor}${role ? ` (${role})` : ""}${
+                      reason ? `. ${reason}` : ""
+                    }`
+                  : reason || "Update recorded.",
+              timeLabel: timestamp
+                ? new Date(timestamp).toLocaleString()
+                : "—",
+              tone,
+            }
+          }
+        )
+
+        if (isMounted) {
+          setAuditItems(mapped)
+        }
+      } catch (error) {
+        if (isMounted) {
+          setAuditError(
+            error instanceof Error ? error.message : "Unable to load audit trails."
+          )
+        }
+      } finally {
+        if (isMounted) {
+          setAuditLoading(false)
+        }
+      }
+    }
+
+    loadAuditTrails()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!selectedReqId && requisitions.length > 0) {
+      setSelectedReqId(requisitions[0].id)
+    }
+  }, [requisitions, selectedReqId])
+
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat("en-NG", {
+      style: "currency",
+      currency: "NGN",
+      maximumFractionDigits: 2,
+    }).format(value)
+
+  const formatDateParts = (value?: string) => {
+    if (!value) return { date: "—", time: "" }
+    const parsed = new Date(value)
+    if (Number.isNaN(parsed.getTime())) {
+      return { date: value, time: "" }
+    }
+    return {
+      date: parsed.toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      }),
+      time: parsed.toLocaleTimeString("en-GB", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    }
+  }
+
+  const pickCategoryTone = (label: string) => {
+    const palette = ["purple", "orange", "blue", "gray", "cyan"]
+    if (!label) return "gray"
+    const hash = Array.from(label).reduce((sum, char) => sum + char.charCodeAt(0), 0)
+    return palette[hash % palette.length]
+  }
+
+  const requisitionRows = useMemo(() => {
+    return requisitions.map((req, index) => {
+      const dateParts = formatDateParts(req.createdAt)
+      const status = (req.currentStatus ?? "PENDING").toUpperCase()
+      const statusMap: Record<string, string> = {
+        PENDING_ACCOUNTANT: "blue",
+        APPROVED: "green",
+        PAID: "purple",
+        REJECTED: "red",
+        DRAFT: "gray",
+      }
+
+      return {
+        id: req.reference ? `#${req.reference}` : `#${req.id.slice(0, 8).toUpperCase()}`,
+        date: dateParts.date,
+        time: dateParts.time,
+        categoryLabel: req.coaName || "Uncategorized",
+        categoryIcon: pickCategoryTone(req.coaName || ""),
+        amount: formatCurrency(req.amount || 0),
+        statusLabel: status.replace(/_/g, " "),
+        statusColor: statusMap[status] ?? "blue",
+        selected: req.id === selectedReqId || (!selectedReqId && index === 0),
+        rawId: req.id,
+      }
+    })
+  }, [requisitions, selectedReqId])
+
+  const getCsrfToken = () => {
+    if (typeof document === "undefined") return ""
+    const match = document.cookie
+      .split("; ")
+      .find((cookie) => cookie.startsWith("csrf_token="))
+    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
+  }
+
+  const handleDeleteRequisition = async (reqId: string) => {
+    if (!reqId) return
+    setDeletingReqId(reqId)
+    setDeleteError(null)
+
+    try {
+      const csrfToken = getCsrfToken()
+      const response = await fetch(`/api/core/financial/requisitions/${reqId}`, {
+        method: "DELETE",
+        headers: { "x-csrf-token": csrfToken },
+        credentials: "include",
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Unable to delete requisition.")
+      }
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : "Unable to delete requisition.")
+    } finally {
+      setDeletingReqId(null)
+    }
+  }
 
   // Sub-components for styling
   const StatusPill = ({ status, color }: { status: string, color: string }) => {
@@ -420,15 +591,47 @@ export default function RequisitionsHub() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#EEF1F6]">
-                    {tableData.map((req, idx) => (
-                      <tr key={idx} className={`group transition-colors ${req.selected ? 'bg-[#EFF6FF]/40 border-l-[3px] border-l-[#2563EB]' : 'hover:bg-[#F8FAFC] border-l-[3px] border-l-transparent bg-white'}`}>
+                    {reqLoading && (
+                      <tr>
+                        <td colSpan={6} className="py-8 text-center text-[13px] font-medium text-[#6B7280]">
+                          Loading requisitions...
+                        </td>
+                      </tr>
+                    )}
+                    {!reqLoading && reqError && (
+                      <tr>
+                        <td colSpan={6} className="py-8 text-center text-[13px] font-medium text-red-500">
+                          {reqError}
+                        </td>
+                      </tr>
+                    )}
+                    {!reqLoading && !reqError && deleteError && (
+                      <tr>
+                        <td colSpan={6} className="py-6 text-center text-[13px] font-medium text-red-500">
+                          {deleteError}
+                        </td>
+                      </tr>
+                    )}
+                    {!reqLoading && !reqError && requisitionRows.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="py-8 text-center text-[13px] font-medium text-[#6B7280]">
+                          No pending requisitions found.
+                        </td>
+                      </tr>
+                    )}
+                    {requisitionRows.map((req) => (
+                      <tr
+                        key={req.rawId}
+                        onClick={() => setSelectedReqId(req.rawId)}
+                        className={`group transition-colors cursor-pointer ${req.selected ? 'bg-[#EFF6FF]/40 border-l-[3px] border-l-[#2563EB]' : 'hover:bg-[#F8FAFC] border-l-[3px] border-l-transparent bg-white'}`}
+                      >
                         <td className="py-5 px-6">
                           <div className="text-[13.5px] font-[900] text-[#111827]">{req.id}</div>
                         </td>
                         <td className="py-5 px-6">
                           <div className="flex flex-col gap-0.5">
                             <div className="text-[13px] font-[700] text-[#4B5563]">{req.date}</div>
-                            <div className="text-[11.5px] font-[500] text-[#9CA3AF]">{req.time}</div>
+                            {req.time && <div className="text-[11.5px] font-[500] text-[#9CA3AF]">{req.time}</div>}
                           </div>
                         </td>
                         <td className="py-5 px-6">
@@ -441,13 +644,37 @@ export default function RequisitionsHub() {
                           <div className="text-[14px] font-[900] text-[#111827]">{req.amount}</div>
                         </td>
                         <td className="py-5 px-6">
-                          <StatusPill status={req.status} color={req.statusColor} />
+                          <StatusPill status={req.statusLabel} color={req.statusColor} />
                         </td>
                         <td className="py-5 px-6">
                           <div className="flex items-center justify-center w-full">
-                            <button className={`h-8 w-8 rounded-[8px] flex items-center justify-center transition-colors ${req.selected ? 'bg-[#DBEAFE] text-[#2563EB]' : 'text-[#9CA3AF] hover:bg-gray-100 hover:text-[#4B5563]'}`}>
-                              <Eye className="h-4.5 w-4.5" strokeWidth={2.5}/>
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={(event) => event.stopPropagation()}
+                                className={`h-8 w-8 rounded-[8px] flex items-center justify-center transition-colors ${
+                                  req.selected
+                                    ? "bg-[#DBEAFE] text-[#2563EB]"
+                                    : "text-[#9CA3AF] hover:bg-gray-100 hover:text-[#4B5563]"
+                                }`}
+                              >
+                                <Eye className="h-4.5 w-4.5" strokeWidth={2.5}/>
+                              </button>
+                              <button
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  handleDeleteRequisition(req.rawId)
+                                }}
+                                disabled={deletingReqId === req.rawId}
+                                className="h-8 w-8 rounded-[8px] flex items-center justify-center text-rose-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-60 disabled:cursor-not-allowed"
+                                title="Delete requisition"
+                              >
+                                {deletingReqId === req.rawId ? (
+                                  <span className="text-[10px] font-[800]">...</span>
+                                ) : (
+                                  <X className="h-4 w-4" />
+                                )}
+                              </button>
+                            </div>
                           </div>
                         </td>
                       </tr>
@@ -458,9 +685,10 @@ export default function RequisitionsHub() {
               
               {/* Pagination Footer */}
               <div className="border-t border-[#EEF1F6] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white">
-                <div className="text-[13px] font-[600] text-[#9CA3AF]">
-                  Showing <span className="font-[800] text-[#111827]">1-5</span> of <span className="font-[800] text-[#111827]">128</span> items
-                </div>
+                  <div className="text-[13px] font-[600] text-[#9CA3AF]">
+                    Showing <span className="font-[800] text-[#111827]">{requisitionRows.length ? `1-${Math.min(5, requisitionRows.length)}` : "0"}</span> of{" "}
+                    <span className="font-[800] text-[#111827]">{requisitionRows.length}</span> items
+                  </div>
                 <div className="flex items-center gap-2">
                   <button className="h-[36px] px-4 rounded-[6px] border border-[#E5E7EB] bg-white text-[13px] font-[700] text-[#4B5563] hover:bg-gray-50 transition-colors shadow-sm">
                     Previous
@@ -477,56 +705,51 @@ export default function RequisitionsHub() {
             <div className="bg-[#EFF6FF]/40 rounded-[16px] border border-[#DBEAFE] p-6 sm:p-8 mt-2 shadow-sm">
               <div className="flex items-center gap-2.5 mb-8">
                 <List className="h-5 w-5 text-[#2563EB]" strokeWidth={2.5}/>
-                <h2 className="text-[14px] uppercase tracking-wider font-[900] text-[#2563EB]">AUDIT LOG: #REQ-2023-085</h2>
+                <h2 className="text-[14px] uppercase tracking-wider font-[900] text-[#2563EB]">AUDIT LOG</h2>
               </div>
 
               {/* Timeline Items */}
               <div className="flex flex-col relative pl-2">
-                {/* Connecting Line */}
                 <div className="absolute top-2 bottom-2 left-[18.5px] w-[2px] bg-[#DBEAFE] z-0" />
-                
-                {/* Item 1 */}
-                <div className="flex gap-5 relative z-10 mb-8">
-                  <div className="h-6 w-6 shrink-0 rounded-full bg-white border-[2px] border-[#DBEAFE] flex items-center justify-center mt-0.5">
-                    <XIcon className="h-3 w-3 text-[#EF4444]" strokeWidth={3} />
-                  </div>
-                  <div className="flex flex-col gap-1 -mt-0.5">
-                    <div className="text-[14px] font-[800] text-[#111827]">Request Rejected</div>
-                    <div className="text-[13px] font-[500] text-[#6B7280]">
-                      Rejected by <span className="font-[700] text-[#111827]">Sarah Jenkins (Regional Manager)</span>. Reason: &quot;Incorrect budget code selected.&quot;
-                    </div>
-                    <div className="text-[11.5px] font-[600] text-[#9CA3AF] mt-1 tracking-wide">Oct 21, 2023 • 09:15 AM</div>
-                  </div>
-                </div>
 
-                {/* Item 2 */}
-                <div className="flex gap-5 relative z-10 mb-8">
-                  <div className="h-6 w-6 shrink-0 rounded-full bg-white border-[2px] border-[#DBEAFE] flex items-center justify-center mt-0.5">
-                    <Send className="h-2.5 w-2.5 text-[#2563EB] -ml-0.5 mt-0.5" strokeWidth={3} />
-                  </div>
-                  <div className="flex flex-col gap-1 -mt-0.5">
-                    <div className="text-[14px] font-[800] text-[#111827]">Request Submitted</div>
-                    <div className="text-[13px] font-[500] text-[#6B7280]">
-                      Submitted by <span className="font-[700] text-[#111827]">John Doe (Admin Officer)</span> for approval.
-                    </div>
-                    <div className="text-[11.5px] font-[600] text-[#9CA3AF] mt-1 tracking-wide">Oct 20, 2023 • 04:45 PM</div>
-                  </div>
-                </div>
+                {auditLoading ? (
+                  <div className="text-[13px] font-[600] text-[#9CA3AF]">Loading audit trails...</div>
+                ) : auditError ? (
+                  <div className="text-[13px] font-[600] text-rose-600">{auditError}</div>
+                ) : auditItems.length === 0 ? (
+                  <div className="text-[13px] font-[600] text-[#9CA3AF]">No audit activity found.</div>
+                ) : (
+                  auditItems.slice(0, 5).map((item, index) => {
+                    const icon =
+                      item.tone === "danger" ? (
+                        <XIcon className="h-3 w-3 text-[#EF4444]" strokeWidth={3} />
+                      ) : item.tone === "warning" ? (
+                        <Clock className="h-3 w-3 text-[#F97316]" strokeWidth={2.5} />
+                      ) : item.tone === "success" ? (
+                        <Check className="h-3 w-3 text-[#10B981]" strokeWidth={2.5} />
+                      ) : item.tone === "info" ? (
+                        <Send className="h-2.5 w-2.5 text-[#2563EB] -ml-0.5 mt-0.5" strokeWidth={3} />
+                      ) : (
+                        <FileText className="h-3 w-3 text-[#9CA3AF]" strokeWidth={2.5} />
+                      )
 
-                {/* Item 3 */}
-                <div className="flex gap-5 relative z-10">
-                  <div className="h-6 w-6 shrink-0 rounded-full bg-white border-[2px] border-[#DBEAFE] flex items-center justify-center mt-0.5">
-                    <FileText className="h-3 w-3 text-[#9CA3AF]" strokeWidth={2.5} />
-                  </div>
-                  <div className="flex flex-col gap-1 -mt-0.5">
-                    <div className="text-[14px] font-[800] text-[#111827]">Draft Created</div>
-                    <div className="text-[13px] font-[500] text-[#6B7280]">
-                      Initial draft saved.
-                    </div>
-                    <div className="text-[11.5px] font-[600] text-[#9CA3AF] mt-1 tracking-wide">Oct 20, 2023 • 04:30 PM</div>
-                  </div>
-                </div>
-
+                    return (
+                      <div
+                        key={item.id}
+                        className={`flex gap-5 relative z-10 ${index < Math.min(auditItems.length, 5) - 1 ? "mb-8" : ""}`}
+                      >
+                        <div className="h-6 w-6 shrink-0 rounded-full bg-white border-[2px] border-[#DBEAFE] flex items-center justify-center mt-0.5">
+                          {icon}
+                        </div>
+                        <div className="flex flex-col gap-1 -mt-0.5">
+                          <div className="text-[14px] font-[800] text-[#111827]">{item.title}</div>
+                          <div className="text-[13px] font-[500] text-[#6B7280]">{item.description}</div>
+                          <div className="text-[11.5px] font-[600] text-[#9CA3AF] mt-1 tracking-wide">{item.timeLabel}</div>
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
               </div>
             </div>
 

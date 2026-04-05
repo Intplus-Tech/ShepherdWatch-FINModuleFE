@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
 import { Inter } from "next/font/google"
 import {
@@ -21,21 +21,16 @@ import {
   ChevronLeft,
   ChevronRight
 } from "lucide-react"
+import { useAuth } from "@/components/auth/AuthProvider"
 
 const inter = Inter({ subsets: ["latin"] })
 
-const urgentAlerts = [
-  {
-    title: "Diesel Generator 500kVA",
-    meta: "Last serviced: 2 weeks ago",
-    status: "Action Required"
-  },
-  {
-    title: "Fire Extinguishers (Hall A)",
-    meta: "Due in 7 days",
-    status: "Action Required"
-  }
-]
+type UrgentAlert = {
+  id: string
+  title: string
+  meta: string
+  daysOverdue: number
+}
 
 type EventColorType = "blue-light" | "blue-solid" | "yellow" | "green"
 type CalendarEvent = { title: string; sub?: string; colorType: EventColorType }
@@ -87,6 +82,113 @@ const completedMaintenance = [
 
 export default function Page() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const { user } = useAuth()
+  const [urgentAlerts, setUrgentAlerts] = useState<UrgentAlert[]>([])
+  const [alertsLoading, setAlertsLoading] = useState(false)
+  const [alertsError, setAlertsError] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+
+  const tenantId = useMemo(
+    () => user?.tenantId ?? user?.tenant?.id ?? "",
+    [user]
+  )
+
+  const getCsrfToken = () => {
+    if (typeof document === "undefined") return ""
+    const match = document.cookie
+      .split("; ")
+      .find((cookie) => cookie.startsWith("csrf_token="))
+    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
+  }
+
+  const handleDeleteTask = async (taskId: string) => {
+    if (!taskId) return
+    setDeletingId(taskId)
+    setDeleteError(null)
+
+    try {
+      const csrfToken = getCsrfToken()
+      const response = await fetch(`/api/core/financial/maintenance-tasks/${taskId}`, {
+        method: "DELETE",
+        headers: { "x-csrf-token": csrfToken },
+        credentials: "include",
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Unable to delete maintenance task.")
+      }
+      setUrgentAlerts((prev) => prev.filter((alert) => alert.id !== taskId))
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : "Unable to delete maintenance task.")
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchOverdueTasks = async () => {
+      if (!tenantId) {
+        setUrgentAlerts([])
+        setAlertsError("Tenant is required to load maintenance alerts.")
+        return
+      }
+
+      try {
+        setAlertsLoading(true)
+        setAlertsError(null)
+        const today = new Date()
+        const currentDate = today.toISOString().split("T")[0]
+        const params = new URLSearchParams({
+          scheduledBefore: currentDate,
+          status: "SCHEDULED",
+          tenantId,
+        })
+
+        const response = await fetch(`/api/core/financial/maintenance-tasks?${params.toString()}`, {
+          method: "GET",
+          credentials: "include",
+        })
+        const payload = await response.json().catch(() => null)
+        if (!response.ok) {
+          throw new Error(payload?.message ?? "Unable to load maintenance tasks.")
+        }
+
+        const tasks = payload?.data?.content ?? payload?.data ?? payload?.content ?? []
+        const mapped = (Array.isArray(tasks) ? tasks : []).map((task, index) => {
+          const scheduled = task?.scheduledDate ? new Date(task.scheduledDate) : null
+          const diffDays = scheduled ? Math.max(0, Math.floor((today.getTime() - scheduled.getTime()) / 86400000)) : 0
+          return {
+            id: String(task?.id ?? task?.maintenanceTaskId ?? task?.taskId ?? task?.assetId ?? `task-${index}`),
+            title: task?.assetName ?? task?.asset?.description ?? task?.description ?? "Maintenance Task",
+            meta: task?.notes ?? "Overdue scheduled maintenance",
+            daysOverdue: diffDays,
+          } as UrgentAlert
+        })
+
+        if (isMounted) {
+          setUrgentAlerts(mapped)
+        }
+      } catch (error) {
+        if (isMounted) {
+          setUrgentAlerts([])
+          setAlertsError(error instanceof Error ? error.message : "Unable to load maintenance tasks.")
+        }
+      } finally {
+        if (isMounted) {
+          setAlertsLoading(false)
+        }
+      }
+    }
+
+    fetchOverdueTasks()
+
+    return () => {
+      isMounted = false
+    }
+  }, [tenantId])
 
   const getEventStyles = (colorType: EventColorType) => {
     switch (colorType) {
@@ -246,15 +348,38 @@ export default function Page() {
                     <h3 className="text-[15px] font-[800] text-[#111827] tracking-tight">Urgent Alerts</h3>
                   </div>
                   <div className="flex flex-col gap-3.5">
-                    {urgentAlerts.map((alert, idx) => (
-                      <div key={idx} className="rounded-[10px] border border-[#FECACA] bg-[#FEF2F2] p-4 flex flex-col items-start gap-1">
-                        <div className="text-[13.5px] font-[800] text-[#DC2626] leading-snug">{alert.title}</div>
-                        <div className="text-[12px] font-medium text-[#9CA3AF]">{alert.meta}</div>
-                        <button className="mt-1 text-[12.5px] font-[800] text-[#DC2626] hover:text-[#B91C1C] transition-colors uppercase tracking-wide">
-                          {alert.status}
-                        </button>
-                      </div>
-                    ))}
+                    {alertsLoading && (
+                      <div className="text-[12px] font-medium text-[#6B7280]">Loading overdue tasks...</div>
+                    )}
+                    {alertsError && (
+                      <div className="text-[12px] font-medium text-[#EF4444]">{alertsError}</div>
+                    )}
+                    {deleteError && (
+                      <div className="text-[12px] font-medium text-[#EF4444]">{deleteError}</div>
+                    )}
+                    {!alertsLoading && !alertsError && urgentAlerts.length === 0 && (
+                      <div className="text-[12px] font-medium text-[#6B7280]">No overdue maintenance tasks.</div>
+                    )}
+                    {urgentAlerts.map((alert) => {
+                      const severityLabel = alert.daysOverdue >= 14 ? "CRITICAL" : "OVERDUE"
+                      return (
+                        <div key={alert.id} className="rounded-[10px] border border-[#FECACA] bg-[#FEF2F2] p-4 flex flex-col items-start gap-1">
+                          <div className="text-[11px] font-[900] text-[#DC2626] uppercase tracking-widest">{severityLabel}</div>
+                          <div className="text-[13.5px] font-[800] text-[#DC2626] leading-snug">{alert.title}</div>
+                          <div className="text-[12px] font-medium text-[#9CA3AF]">{alert.meta}</div>
+                          <div className="mt-1 flex w-full items-center justify-between text-[12px] font-[800] text-[#DC2626] uppercase tracking-wide">
+                            <span>{alert.daysOverdue} Days</span>
+                            <button
+                              onClick={() => handleDeleteTask(alert.id)}
+                              disabled={deletingId === alert.id}
+                              className="text-[11px] font-[800] text-rose-600 hover:text-rose-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                            >
+                              {deletingId === alert.id ? "Deleting..." : "Delete Task"}
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
 

@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useState, useEffect } from "react"
 import Image from "next/image"
 import { Inter } from "next/font/google"
 import {
@@ -16,13 +16,34 @@ import {
   Search,
   Bell,
   MapPin,
-  Save
+  Save,
+  User
 } from "lucide-react"
 
 const inter = Inter({ subsets: ["latin"] })
 
 export default function Page() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [profile, setProfile] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetch("/api/users/profile")
+      .then(res => res.json())
+      .then(data => {
+        if (data.data) {
+          setProfile(data.data)
+        }
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false))
+  }, [])
+
+  const fullName = profile ? `${profile.firstName || ""} ${profile.lastName || ""}`.trim() : "Loading..."
+  const roleName = profile?.roleName || "Accountant"
+  const email = profile?.email || ""
+  const phone = profile?.phoneNumber || ""
+  const initials = profile ? `${profile.firstName?.[0] || ""}${profile.lastName?.[0] || ""}`.toUpperCase() : ""
 
   return (
     <div className={`flex flex-col xl:flex-row min-h-screen bg-[#F8FAFC] relative w-full ${inter.className} antialiased`}>
@@ -47,7 +68,7 @@ export default function Page() {
             <Image src="/images/icon-shepherdwatch.svg" alt="ShepherdWatch logo" width={32} height={32} className="shrink-0" />
             <div>
               <div className="text-[15px] font-bold text-[#3B5BDB] leading-none tracking-tight">ShepherdWatch</div>
-              <div className="text-[11px] text-[#6B7280] font-medium mt-1 tracking-wide">Accountant&apos;s View</div>
+              <div className="text-[11px] text-[#6B7280] font-medium mt-1 tracking-wide">{roleName}&apos;s View</div>
             </div>
           </div>
 
@@ -87,12 +108,16 @@ export default function Page() {
             </div>
 
             <div className="mt-8 flex items-center gap-3.5 px-3.5 pb-2 cursor-pointer hover:opacity-80 transition-opacity">
-              <div className="h-10 w-10 relative rounded-full overflow-hidden bg-gray-200 shrink-0 ring-2 ring-white shadow-sm flex items-center justify-center">
-                <Image src="/images/Beared%20Guy02-min%201.jpg" alt="Profile avatar" fill className="object-cover" />
+              <div className="h-10 w-10 relative rounded-full overflow-hidden bg-[#EEF2FF] text-[#3B5BDB] shrink-0 ring-2 ring-white shadow-sm flex items-center justify-center font-bold">
+                {profile?.avatar ? (
+                  <Image src={profile.avatar} alt="Profile avatar" fill className="object-cover" />
+                ) : (
+                  initials || <User className="h-5 w-5" />
+                )}
               </div>
               <div>
-                <div className="text-[14px] font-bold text-[#111827]">Alex Morgan</div>
-                <div className="text-[11px] text-[#9CA3AF] font-medium">Accountant</div>
+                <div className="text-[14px] font-bold text-[#111827] truncate max-w-[120px]">{fullName}</div>
+                <div className="text-[11px] text-[#9CA3AF] font-medium truncate max-w-[120px]">{roleName}</div>
               </div>
             </div>
           </div>
@@ -166,88 +191,99 @@ export default function Page() {
             </header>
 
             {/* Card Container */}
-            <div className="rounded-[16px] bg-white border border-[#EEF1F6] shadow-[0_2px_10px_rgba(0,0,0,0.02)] p-6 sm:p-8 md:p-10 w-full mb-12">
-              
-              {/* Profile Top Row */}
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8 lg:mb-10 pb-8 sm:pb-0 border-b sm:border-0 border-[#EEF1F6]">
-                <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-4 sm:gap-5">
-                  {/* Avatar */}
-                  <div className="h-20 w-20 lg:h-24 lg:w-24 rounded-full overflow-hidden bg-gray-200 border-[3px] sm:border-[4px] border-white shadow-md relative shrink-0">
-                    <Image 
-                      src="/images/Beared%20Guy02-min%201.jpg" 
-                      alt="Alex Mercer Profile" 
-                      fill 
-                      className="object-cover"
+            {loading ? (
+              <div className="p-8 text-center text-gray-500">Loading profile data...</div>
+            ) : (
+              <div className="rounded-[16px] bg-white border border-[#EEF1F6] shadow-[0_2px_10px_rgba(0,0,0,0.02)] p-6 sm:p-8 md:p-10 w-full mb-12">
+                
+                {/* Profile Top Row */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8 lg:mb-10 pb-8 sm:pb-0 border-b sm:border-0 border-[#EEF1F6]">
+                  <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-4 sm:gap-5">
+                    {/* Avatar */}
+                    <div className="h-20 w-20 lg:h-24 lg:w-24 rounded-full overflow-hidden bg-[#EEF2FF] border-[3px] sm:border-[4px] border-white shadow-md relative shrink-0 flex items-center justify-center text-[28px] font-bold text-[#3B5BDB]">
+                      {profile?.avatar ? (
+                        <Image src={profile.avatar} alt="Profile avatar" fill className="object-cover" />
+                      ) : (
+                        initials || <User className="h-10 w-10" />
+                      )}
+                    </div>
+                    {/* Info */}
+                    <div className="flex flex-col gap-1 sm:gap-1.5 pt-1">
+                      <h2 className="text-[20px] lg:text-[22px] font-bold text-[#111827] tracking-tight">{fullName}</h2>
+                      <div className="text-[13px] lg:text-[14px] font-medium text-[#6B7280] flex flex-col sm:flex-row sm:items-center">
+                        <span>{roleName}</span> 
+                        {profile?.id && (
+                          <>
+                            <span className="hidden sm:inline mx-2 text-gray-300">|</span>
+                            <span className="mt-1 sm:mt-0">ID: <span className="font-bold text-[#4B5563]">{profile.id.substring(0,6)}</span></span>
+                          </>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-center sm:justify-start gap-1.5 mt-2 sm:mt-0.5">
+                        <MapPin className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-[#3B5BDB]" />
+                        <span className="text-[12.5px] sm:text-[13px] font-medium text-[#3B5BDB]">{profile?.address || "Headquarters"}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-center md:justify-end mt-2 md:mt-0">
+                    <button className="text-[13.5px] font-bold text-[#2563EB] hover:text-[#1D4ED8] hover:underline underline-offset-4 transition-all tracking-tight whitespace-nowrap bg-blue-50 md:bg-transparent px-8 md:px-0 py-2.5 md:py-0 rounded-full md:rounded-none w-full sm:w-auto">
+                      Change Password
+                    </button>
+                  </div>
+                </div>
+
+                {/* Form Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-7">
+                  
+                  {/* Full Name */}
+                  <div className="flex flex-col gap-2.5">
+                    <label className="text-[12px] font-[800] text-[#111827] px-1 uppercase tracking-wider">Full Name</label>
+                    <input 
+                      type="text" 
+                      value={fullName}
+                      readOnly
+                      className="w-full rounded-[10px] bg-[#F9FAFB] border border-transparent h-[46px] px-4 text-[14px] font-medium text-[#111827] focus-visible:bg-white focus-visible:border-[#3B5BDB] focus-visible:ring-1 focus-visible:ring-[#3B5BDB]/20 outline-none transition-all" 
                     />
                   </div>
-                  {/* Info */}
-                  <div className="flex flex-col gap-1 sm:gap-1.5 pt-1">
-                    <h2 className="text-[20px] lg:text-[22px] font-bold text-[#111827] tracking-tight">Alex Mercer</h2>
-                    <div className="text-[13px] lg:text-[14px] font-medium text-[#6B7280] flex flex-col sm:flex-row sm:items-center">
-                      <span>Branch Administrative Officer</span> 
-                      <span className="hidden sm:inline mx-2 text-gray-300">|</span>
-                      <span className="mt-1 sm:mt-0">ID: <span className="font-bold text-[#4B5563]">6821</span></span>
-                    </div>
-                    <div className="flex items-center justify-center sm:justify-start gap-1.5 mt-2 sm:mt-0.5">
-                      <MapPin className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-[#3B5BDB]" />
-                      <span className="text-[12.5px] sm:text-[13px] font-medium text-[#3B5BDB]">Victoria Island Branch, Lagos</span>
-                    </div>
+
+                  {/* Employee ID */}
+                  <div className="flex flex-col gap-2.5">
+                    <label className="text-[12px] font-[800] text-[#111827] px-1 uppercase tracking-wider">Employee ID</label>
+                    <input 
+                      type="text" 
+                      value={profile?.id || ""}
+                      readOnly
+                      className="w-full rounded-[10px] bg-[#F9FAFB] border border-transparent h-[46px] px-4 text-[14px] font-medium text-[#111827] focus-visible:bg-white focus-visible:border-[#3B5BDB] focus-visible:ring-1 focus-visible:ring-[#3B5BDB]/20 outline-none transition-all" 
+                    />
                   </div>
-                </div>
 
-                <div className="flex justify-center md:justify-end mt-2 md:mt-0">
-                  <button className="text-[13.5px] font-bold text-[#2563EB] hover:text-[#1D4ED8] hover:underline underline-offset-4 transition-all tracking-tight whitespace-nowrap bg-blue-50 md:bg-transparent px-8 md:px-0 py-2.5 md:py-0 rounded-full md:rounded-none w-full sm:w-auto">
-                    Change Password
-                  </button>
-                </div>
-              </div>
+                  {/* Work Email */}
+                  <div className="flex flex-col gap-2.5">
+                    <label className="text-[12px] font-[800] text-[#111827] px-1 uppercase tracking-wider">Work Email</label>
+                    <input 
+                      type="email" 
+                      value={email}
+                      readOnly
+                      className="w-full rounded-[10px] bg-[#F9FAFB] border border-transparent h-[46px] px-4 text-[14px] font-medium text-[#111827] focus-visible:bg-white focus-visible:border-[#3B5BDB] focus-visible:ring-1 focus-visible:ring-[#3B5BDB]/20 outline-none transition-all" 
+                    />
+                  </div>
 
-              {/* Form Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-7">
-                
-                {/* Full Name */}
-                <div className="flex flex-col gap-2.5">
-                  <label className="text-[12px] font-[800] text-[#111827] px-1 uppercase tracking-wider">Full Name</label>
-                  <input 
-                    type="text" 
-                    defaultValue="Alex Mercer"
-                    className="w-full rounded-[10px] bg-[#F9FAFB] border border-transparent h-[46px] px-4 text-[14px] font-medium text-[#111827] focus-visible:bg-white focus-visible:border-[#3B5BDB] focus-visible:ring-1 focus-visible:ring-[#3B5BDB]/20 outline-none transition-all" 
-                  />
-                </div>
+                  {/* Phone Number */}
+                  <div className="flex flex-col gap-2.5">
+                    <label className="text-[12px] font-[800] text-[#111827] px-1 uppercase tracking-wider">Phone Number</label>
+                    <input 
+                      type="tel" 
+                      value={phone}
+                      readOnly
+                      className="w-full rounded-[10px] bg-[#F9FAFB] border border-transparent h-[46px] px-4 text-[14px] font-medium text-[#111827] focus-visible:bg-white focus-visible:border-[#3B5BDB] focus-visible:ring-1 focus-visible:ring-[#3B5BDB]/20 outline-none transition-all" 
+                    />
+                  </div>
 
-                {/* Employee ID */}
-                <div className="flex flex-col gap-2.5">
-                  <label className="text-[12px] font-[800] text-[#111827] px-1 uppercase tracking-wider">Employee ID</label>
-                  <input 
-                    type="text" 
-                    defaultValue="6821"
-                    className="w-full rounded-[10px] bg-[#F9FAFB] border border-transparent h-[46px] px-4 text-[14px] font-medium text-[#111827] focus-visible:bg-white focus-visible:border-[#3B5BDB] focus-visible:ring-1 focus-visible:ring-[#3B5BDB]/20 outline-none transition-all" 
-                  />
-                </div>
-
-                {/* Work Email */}
-                <div className="flex flex-col gap-2.5">
-                  <label className="text-[12px] font-[800] text-[#111827] px-1 uppercase tracking-wider">Work Email</label>
-                  <input 
-                    type="email" 
-                    defaultValue="alex.mercer@shepherdwatch.co"
-                    className="w-full rounded-[10px] bg-[#F9FAFB] border border-transparent h-[46px] px-4 text-[14px] font-medium text-[#111827] focus-visible:bg-white focus-visible:border-[#3B5BDB] focus-visible:ring-1 focus-visible:ring-[#3B5BDB]/20 outline-none transition-all" 
-                  />
-                </div>
-
-                {/* Phone Number */}
-                <div className="flex flex-col gap-2.5">
-                  <label className="text-[12px] font-[800] text-[#111827] px-1 uppercase tracking-wider">Phone Number</label>
-                  <input 
-                    type="tel" 
-                    defaultValue="+234 703-812-3495"
-                    className="w-full rounded-[10px] bg-[#F9FAFB] border border-transparent h-[46px] px-4 text-[14px] font-medium text-[#111827] focus-visible:bg-white focus-visible:border-[#3B5BDB] focus-visible:ring-1 focus-visible:ring-[#3B5BDB]/20 outline-none transition-all" 
-                  />
                 </div>
 
               </div>
-
-            </div>
+            )}
 
           </div>
         </main>

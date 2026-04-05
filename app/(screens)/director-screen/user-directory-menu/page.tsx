@@ -1,10 +1,61 @@
-﻿"use client"
+"use client"
 
 import SidebarNav from "@/components/navigation/SidebarNav"
 import ScreenHeader from "@/components/navigation/ScreenHeader"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { userDirectoryUsers } from "@/app/(screens)/director-screen/users/page"
+const userDirectoryUsers = [
+  {
+    name: "Sarah Jenkins",
+    email: "sarah.j@shepherdwatch.com",
+    role: "Director",
+    roleTone: "bg-[#EDE9FE] text-[#7C3AED]",
+    roleDot: "bg-[#7C3AED]",
+    branch: "London HQ",
+    lastActive: "2 mins ago",
+    status: "Active",
+    statusTone: "bg-emerald-50 text-emerald-600",
+    initials: "SJ",
+    avatar: "/images/Beared%20Guy02-min%201.jpg",
+  },
+  {
+    name: "Michael Johnson",
+    email: "m.johnson@shepherdwatch.com",
+    role: "Senior Pastor",
+    roleTone: "bg-[#E0F2FE] text-[#0EA5E9]",
+    roleDot: "bg-[#0EA5E9]",
+    branch: "New York Branch",
+    lastActive: "1 day ago",
+    status: "Active",
+    statusTone: "bg-emerald-50 text-emerald-600",
+    initials: "MJ",
+  },
+  {
+    name: "David Chen",
+    email: "d.chen@shepherdwatch.com",
+    role: "Accountant",
+    roleTone: "bg-[#ECFDF3] text-[#16A34A]",
+    roleDot: "bg-[#16A34A]",
+    branch: "Singapore Branch",
+    lastActive: "3 days ago",
+    status: "Invited",
+    statusTone: "bg-amber-50 text-amber-600",
+    initials: "DC",
+    avatar: "/images/Beared%20Guy02-min%201.jpg",
+  },
+  {
+    name: "Eliza Ross",
+    email: "e.ross@shepherdwatch.com",
+    role: "Admin Officer",
+    roleTone: "bg-[#F3F4F6] text-[#6B7280]",
+    roleDot: "bg-[#6B7280]",
+    branch: "Liberty HQ",
+    lastActive: "4 hours ago",
+    status: "Active",
+    statusTone: "bg-emerald-50 text-emerald-600",
+    initials: "ER",
+  },
+]
 import {
   ChevronDown,
   Download,

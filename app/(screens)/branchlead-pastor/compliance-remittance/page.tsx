@@ -1,22 +1,257 @@
 "use client"
 
-import React from "react"
+import React, { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
 import { 
   Search, Bell, LayoutDashboard, BarChart3, Building2, Wallet, 
   ShieldCheck, ChevronRight, Settings, HelpCircle, ArrowUpRight, 
   ArrowDownRight, CheckCircle2, Calculator, Info, Menu, X 
 } from "lucide-react"
+import { useAuth } from "@/components/auth/AuthProvider"
 
-const rows = [
-  { requirement: "HQ Tithe", rate: "10.0%", dueDate: "Jan 25, 2024", amount: "₦150,000", status: "DUE SOON", statusColor: "text-amber-600 bg-amber-50 ring-amber-500/20" },
-  { requirement: "General Savings", rate: "1.0%", dueDate: "Jan 28, 2024", amount: "₦15,000", status: "DUE SOON", statusColor: "text-amber-600 bg-amber-50 ring-amber-500/20" },
-  { requirement: "Capital Savings", rate: "20.0%", dueDate: "Jan 28, 2024", amount: "₦110,000", status: "PENDING", statusColor: "text-gray-600 bg-gray-50/80 ring-gray-400/20" },
-  { requirement: "Pension Contrib.", rate: "Fixed", dueDate: "Jan 30, 2024", amount: "₦42,500", status: "PENDING", statusColor: "text-gray-600 bg-gray-50/80 ring-gray-400/20" },
+type ComplianceRow = {
+  requirement: string
+  rate: string
+  dueDate: string
+  amount: string
+  status: string
+  statusColor: string
+  complianceId?: string
+}
+
+const rows: ComplianceRow[] = [
+  // Intentionally empty until compliance records endpoint is wired.
 ]
 
 export default function ComplianceRemittancePage() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false)
+  const { user } = useAuth()
+  const [summary, setSummary] = useState<{ totalDue: number; totalPaid: number; complianceScore: number } | null>(null)
+  const [summaryError, setSummaryError] = useState<string | null>(null)
+  const [markingId, setMarkingId] = useState<string | null>(null)
+  const [markError, setMarkError] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [complianceScore, setComplianceScore] = useState<number | null>(null)
+  const [scoreError, setScoreError] = useState<string | null>(null)
+  const [statutory, setStatutory] = useState<{ totalTitheInflow: number; hqRemittanceAmount: number } | null>(null)
+  const [statutoryError, setStatutoryError] = useState<string | null>(null)
+
+  const tenantId = useMemo(
+    () => user?.tenantId ?? user?.tenant?.id ?? "",
+    [user]
+  )
+
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchSummary = async () => {
+      if (!tenantId) {
+        setSummaryError("Tenant is required to load compliance summary.")
+        return
+      }
+
+      try {
+        setSummaryError(null)
+        const year = new Date().getFullYear()
+        const params = new URLSearchParams({
+          tenantId,
+          periodStart: `${year}-01-01`,
+          periodEnd: `${year}-12-31`,
+        })
+        const response = await fetch(`/api/core/financial/compliance/summary?${params.toString()}`, {
+          method: "GET",
+          credentials: "include",
+        })
+        const payload = await response.json().catch(() => null)
+        if (!response.ok) {
+          throw new Error(payload?.message ?? "Unable to load compliance summary.")
+        }
+
+        const data = payload?.data ?? payload
+        if (isMounted && data) {
+          setSummary({
+            totalDue: Number(data.totalDue ?? 0),
+            totalPaid: Number(data.totalPaid ?? 0),
+            complianceScore: Number(data.complianceScore ?? 0),
+          })
+        }
+      } catch (error) {
+        if (isMounted) {
+          setSummaryError(error instanceof Error ? error.message : "Unable to load compliance summary.")
+        }
+      }
+    }
+
+    fetchSummary()
+
+    return () => {
+      isMounted = false
+    }
+  }, [tenantId])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchStatutory = async () => {
+      if (!tenantId) {
+        setStatutoryError("Tenant is required to load statutory report.")
+        return
+      }
+      try {
+        setStatutoryError(null)
+        const now = new Date()
+        const periodStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0]
+        const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0]
+        const params = new URLSearchParams({
+          tenantId,
+          periodStart,
+          periodEnd,
+          deductionRate: "10",
+        })
+        const response = await fetch(`/api/core/financial/reports/statutory?${params.toString()}`, {
+          method: "GET",
+          credentials: "include",
+        })
+        const payload = await response.json().catch(() => null)
+        if (!response.ok) {
+          throw new Error(payload?.message ?? "Unable to load statutory report.")
+        }
+        const data = payload?.data ?? payload
+        if (isMounted) {
+          setStatutory({
+            totalTitheInflow: Number(data?.totalTitheInflow ?? 0),
+            hqRemittanceAmount: Number(data?.hqRemittanceAmount ?? 0),
+          })
+        }
+      } catch (error) {
+        if (isMounted) {
+          setStatutory(null)
+          setStatutoryError(error instanceof Error ? error.message : "Unable to load statutory report.")
+        }
+      }
+    }
+
+    fetchStatutory()
+
+    return () => {
+      isMounted = false
+    }
+  }, [tenantId])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchScore = async () => {
+      if (!tenantId) {
+        setScoreError("Tenant is required to load compliance score.")
+        return
+      }
+      try {
+        setScoreError(null)
+        const year = new Date().getFullYear()
+        const params = new URLSearchParams({
+          tenantId,
+          periodStart: `${year}-01-01`,
+          periodEnd: `${year}-12-31`,
+        })
+        const response = await fetch(`/api/core/financial/compliance/score?${params.toString()}`, {
+          method: "GET",
+          credentials: "include",
+        })
+        const payload = await response.json().catch(() => null)
+        if (!response.ok) {
+          throw new Error(payload?.message ?? "Unable to load compliance score.")
+        }
+        const data = payload?.data ?? payload
+        if (isMounted) {
+          setComplianceScore(Number(data?.complianceScore ?? 0))
+        }
+      } catch (error) {
+        if (isMounted) {
+          setScoreError(error instanceof Error ? error.message : "Unable to load compliance score.")
+        }
+      }
+    }
+
+    fetchScore()
+
+    return () => {
+      isMounted = false
+    }
+  }, [tenantId])
+
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat("en-NG", {
+      style: "currency",
+      currency: "NGN",
+      maximumFractionDigits: 0,
+    }).format(amount)
+
+  const getCsrfToken = () => {
+    if (typeof document === "undefined") return ""
+    const match = document.cookie
+      .split("; " )
+      .find((cookie) => cookie.startsWith("csrf_token="))
+    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
+  }
+
+  const handleMarkPaid = async (recordId: string, amount: string) => {
+    if (!recordId) return
+    setMarkingId(recordId)
+    setMarkError(null)
+
+    try {
+      const numericAmount = Number(amount.replace(/[^\d.]/g, "")) || 0
+      const csrfToken = getCsrfToken()
+      const response = await fetch(`/api/core/financial/compliance/records/${recordId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": csrfToken,
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          amountPaid: numericAmount,
+          paymentDate: new Date().toISOString(),
+          status: "PAID",
+        }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Unable to update compliance record.")
+      }
+    } catch (error) {
+      setMarkError(error instanceof Error ? error.message : "Unable to update compliance record.")
+    } finally {
+      setMarkingId(null)
+    }
+  }
+
+  const handleDeleteRecord = async (recordId: string) => {
+    if (!recordId) return
+    setDeletingId(recordId)
+    setDeleteError(null)
+
+    try {
+      const csrfToken = getCsrfToken()
+      const response = await fetch(`/api/core/financial/compliance/records/${recordId}`, {
+        method: "DELETE",
+        headers: {
+          "x-csrf-token": csrfToken,
+        },
+        credentials: "include",
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Unable to delete compliance record.")
+      }
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : "Unable to delete compliance record.")
+    } finally {
+      setDeletingId(null)
+    }
+  }
 
   return (
     <div className="flex flex-col xl:flex-row min-h-screen overflow-hidden bg-[#F8FAFC] relative w-full font-sans" style={{ fontFamily: '"Public Sans", sans-serif' }}>
@@ -158,7 +393,9 @@ export default function ComplianceRemittancePage() {
             {/* Liability Card */}
             <div className="rounded-[16px] border border-[#E2E8F0] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
               <div className="text-[10px] font-bold text-[#64748B] uppercase tracking-wider">TOTAL JANUARY LIABILITY</div>
-              <div className="mt-3 text-[24px] font-bold text-[#111827]">₦317,500</div>
+              <div className="mt-3 text-[24px] font-bold text-[#111827]">
+                {statutory ? formatCurrency(statutory.hqRemittanceAmount) : summary ? formatCurrency(summary.totalDue) : "—"}
+              </div>
               <div className="mt-2.5 flex items-center gap-1.5 text-[11.5px] font-semibold text-emerald-600">
                 <ArrowUpRight className="h-3.5 w-3.5 stroke-[3]" />
                 +2.3% from last month
@@ -168,7 +405,9 @@ export default function ComplianceRemittancePage() {
             {/* Funds Card */}
             <div className="rounded-[16px] border border-[#E2E8F0] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
               <div className="text-[10px] font-bold text-[#64748B] uppercase tracking-wider">AVAILABLE FUNDS</div>
-              <div className="mt-3 text-[24px] font-bold text-[#111827]">₦4.25M</div>
+              <div className="mt-3 text-[24px] font-bold text-[#111827]">
+                {summary ? formatCurrency(summary.totalPaid) : "—"}
+              </div>
               <div className="mt-2.5 flex items-center gap-1.5 text-[11.5px] font-semibold text-rose-500">
                 <ArrowDownRight className="h-3.5 w-3.5 stroke-[3]" />
                 -1.2% operating expenses
@@ -178,13 +417,30 @@ export default function ComplianceRemittancePage() {
             {/* Coverage Card */}
             <div className="rounded-[16px] border border-[#E2E8F0] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.02)] sm:col-span-2 lg:col-span-1">
               <div className="text-[10px] font-bold text-[#64748B] uppercase tracking-wider">COVERAGE RATIO</div>
-              <div className="mt-3 text-[24px] font-bold text-[#111827]">13.4x</div>
+              <div className="mt-3 text-[24px] font-bold text-[#111827]">
+                {complianceScore !== null ? `${complianceScore.toFixed(1)}x` : "—"}
+              </div>
               <div className="mt-2.5 flex items-center gap-1.5 text-[11.5px] font-semibold text-emerald-600">
                 <CheckCircle2 className="h-3.5 w-3.5 stroke-[2.5]" />
                 Healthy liquidity status
               </div>
             </div>
           </div>
+          {summaryError && (
+            <div className="mb-6 text-[12px] font-medium text-[#EF4444]">{summaryError}</div>
+          )}
+          {scoreError && (
+            <div className="mb-6 text-[12px] font-medium text-[#EF4444]">{scoreError}</div>
+          )}
+          {statutoryError && (
+            <div className="mb-6 text-[12px] font-medium text-[#EF4444]">{statutoryError}</div>
+          )}
+          {markError && (
+            <div className="mb-6 text-[12px] font-medium text-[#EF4444]">{markError}</div>
+          )}
+          {deleteError && (
+            <div className="mb-6 text-[12px] font-medium text-[#EF4444]">{deleteError}</div>
+          )}
 
           <div className="flex flex-col xl:flex-row gap-6 items-start">
             {/* Left Column: Table */}
@@ -206,6 +462,13 @@ export default function ComplianceRemittancePage() {
                     </tr>
                   </thead>
                   <tbody className="text-[13px] font-semibold text-[#111827]">
+                    {rows.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="px-6 py-6 text-center text-[12px] text-[#6B7280]">
+                          No compliance records available for this period.
+                        </td>
+                      </tr>
+                    )}
                     {rows.map((row, idx) => (
                       <tr key={idx} className="border-b border-[#F1F5F9] hover:bg-[#F8FAFC] transition-colors">
                         <td className="px-6 py-4.5">{row.requirement}</td>
@@ -216,6 +479,24 @@ export default function ComplianceRemittancePage() {
                           <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[9px] font-black uppercase tracking-widest ring-1 ring-inset ${row.statusColor}`}>
                             {row.status}
                           </span>
+                          {row.complianceId && (
+                            <div className="mt-2 flex items-center justify-end gap-3">
+                              <button
+                                onClick={() => handleMarkPaid(row.complianceId as string, row.amount)}
+                                disabled={markingId === row.complianceId}
+                                className="text-[10px] font-extrabold text-[#3B5BDB] hover:text-[#1D4ED8] disabled:opacity-60 disabled:cursor-not-allowed"
+                              >
+                                {markingId === row.complianceId ? "Updating..." : "Mark Paid"}
+                              </button>
+                              <button
+                                onClick={() => handleDeleteRecord(row.complianceId as string)}
+                                disabled={deletingId === row.complianceId}
+                                className="text-[10px] font-extrabold text-rose-500 hover:text-rose-600 disabled:opacity-60 disabled:cursor-not-allowed"
+                              >
+                                {deletingId === row.complianceId ? "Deleting..." : "Delete"}
+                              </button>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -227,7 +508,9 @@ export default function ComplianceRemittancePage() {
                 {/* Subtle gradient matching the top border */}
                 <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#E2E8F0] to-[#E2E8F0]"></div>
                 <span className="text-[10px] sm:text-[11px] font-black text-[#64748B] tracking-[0.1em] sm:mr-8">TOTAL PAYABLE</span>
-                <span className="text-[15px] sm:text-[16px] font-black text-[#2563EB] sm:mr-4">₦317,500</span>
+                <span className="text-[15px] sm:text-[16px] font-black text-[#2563EB] sm:mr-4">
+                  {statutory ? formatCurrency(statutory.hqRemittanceAmount) : summary ? formatCurrency(summary.totalDue) : "—"}
+                </span>
               </div>
             </div>
 
@@ -249,7 +532,7 @@ export default function ComplianceRemittancePage() {
                      BRANCH TOTAL INCOME (JAN)
                    </label>
                    <div className="bg-[#1E40AF] border border-[#2563EB]/50 rounded-[10px] py-3.5 px-4 font-bold text-[15px] shadow-inner text-white flex items-center justify-between">
-                     ₦1,500,000
+                     {statutory ? formatCurrency(statutory.totalTitheInflow) : "—"}
                    </div>
                  </div>
 
@@ -259,28 +542,23 @@ export default function ComplianceRemittancePage() {
                    
                    <div className="space-y-4 text-[12px] font-medium text-blue-50">
                      <div className="flex justify-between items-center">
-                       <span>HQ Tithe (10%)</span>
-                       <span className="font-bold text-white">₦150,000</span>
+                       <span>HQ Remittance (10%)</span>
+                       <span className="font-bold text-white">
+                         {statutory ? formatCurrency(statutory.hqRemittanceAmount) : "—"}
+                       </span>
                      </div>
-                     <div className="flex justify-between items-center">
-                       <span>Gen. Savings (1%)</span>
-                       <span className="font-bold text-white">₦15,000</span>
-                     </div>
-                     <div className="flex justify-between items-center">
-                       <span>Capital Savings (20%)</span>
-                       <span className="font-bold text-white">₦300,000</span>
-                     </div>
-                     <div className="flex justify-between items-center">
-                       <span>Welfare Fund (5%)</span>
-                       <span className="font-bold text-white">₦75,000</span>
-                     </div>
+                     {!statutory && (
+                       <div className="text-[11px] text-blue-100">Breakdown available once statutory report loads.</div>
+                     )}
                    </div>
                  </div>
 
                  {/* Total Remittance */}
                  <div className="relative z-10 mt-6 pt-5 border-t border-white/20 flex justify-between items-center">
                    <span className="text-[13px] font-semibold text-blue-100">Total Remittance</span>
-                   <span className="text-[18px] font-black text-white tracking-tight">₦540,000</span>
+                   <span className="text-[18px] font-black text-white tracking-tight">
+                     {statutory ? formatCurrency(statutory.hqRemittanceAmount) : "—"}
+                   </span>
                  </div>
                  
                  {/* Decorative Background Elements */}

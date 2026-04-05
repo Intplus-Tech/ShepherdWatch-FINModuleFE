@@ -1,6 +1,6 @@
 "use client"
 
-import React from "react"
+import React, { useEffect, useMemo, useState } from "react"
 import { Inter } from "next/font/google"
 import Link from "next/link"
 import LogisticsRepairsPage from "../logistics-repair/page"
@@ -11,10 +11,127 @@ import {
   Wrench,
   Info
 } from "lucide-react"
+import { useAuth } from "@/components/auth/AuthProvider"
 
 const inter = Inter({ subsets: ["latin"] })
 
 export default function LogisticsModalPage() {
+  const { user } = useAuth()
+  const [assetId, setAssetId] = useState("")
+  const [assetLabel, setAssetLabel] = useState("Asset")
+  const [maintenanceType, setMaintenanceType] = useState("PREVENTIVE")
+  const [scheduleInterval, setScheduleInterval] = useState("30")
+  const [vendor, setVendor] = useState("")
+  const [cost, setCost] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null)
+
+  const tenantId = useMemo(
+    () => user?.tenantId ?? user?.tenant?.id ?? "",
+    [user]
+  )
+  const userId = user?.id ?? ""
+
+  const getCsrfToken = () => {
+    if (typeof document === "undefined") return ""
+    const match = document.cookie
+      .split("; ")
+      .find((cookie) => cookie.startsWith("csrf_token="))
+    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
+  }
+
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchFirstAsset = async () => {
+      if (!tenantId) return
+      try {
+        const response = await fetch(`/api/core/financial/fixed-assets?tenantId=${tenantId}`, {
+          method: "GET",
+          credentials: "include",
+        })
+        const payload = await response.json().catch(() => null)
+        if (!response.ok) {
+          throw new Error(payload?.message ?? "Unable to load assets.")
+        }
+
+        const data =
+          payload?.data?.content ??
+          payload?.data ??
+          payload?.content ??
+          []
+        const firstAsset = Array.isArray(data) ? data[0] : null
+        if (firstAsset && isMounted) {
+          setAssetId(firstAsset?.id ?? firstAsset?.assetId ?? "")
+          setAssetLabel(firstAsset?.description ?? firstAsset?.name ?? "Asset")
+        }
+      } catch (error) {
+        if (isMounted) {
+          setSubmitError(error instanceof Error ? error.message : "Unable to load assets.")
+        }
+      }
+    }
+
+    fetchFirstAsset()
+
+    return () => {
+      isMounted = false
+    }
+  }, [tenantId])
+
+  const handleSubmit = async () => {
+    if (!tenantId) {
+      setSubmitError("Tenant is required to schedule maintenance.")
+      return
+    }
+    if (!assetId) {
+      setSubmitError("Asset is required to schedule maintenance.")
+      return
+    }
+
+    setIsSubmitting(true)
+    setSubmitError(null)
+    setSubmitSuccess(null)
+
+    try {
+      const intervalDays = Number(scheduleInterval) || 30
+      const scheduledDate = new Date()
+      scheduledDate.setDate(scheduledDate.getDate() + intervalDays)
+
+      const csrfToken = getCsrfToken()
+      const response = await fetch("/api/core/financial/maintenance-tasks", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": csrfToken,
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          assetId,
+          description: `${maintenanceType === "PREVENTIVE" ? "Routine check" : "Repair"} - ${assetLabel}`,
+          type: maintenanceType,
+          status: "SCHEDULED",
+          scheduledDate: scheduledDate.toISOString(),
+          cost: cost ? Number(cost.replace(/[^\d.]/g, "")) : 0,
+          performedBy: userId,
+          notes: vendor ? `Service Provider: ${vendor}` : undefined,
+          tenantId,
+        }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Unable to schedule maintenance.")
+      }
+
+      setSubmitSuccess("Maintenance scheduled successfully.")
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "Unable to schedule maintenance.")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   return (
     <div className={`relative w-full min-h-[100dvh] bg-white ${inter.className}`}>
       
@@ -64,7 +181,7 @@ export default function LogisticsModalPage() {
               </div>
               <div className="flex flex-col gap-0.5">
                 <div className="text-[12px] sm:text-[13.5px] font-[800] text-[#1E3A8A] leading-tight">
-                  Asset: Hilux Ute - Maint Due: 15 Oct, 2023
+                  Asset: {assetLabel} - Maint Due: {new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
                 </div>
                 <div className="text-[10.5px] sm:text-[12px] font-[500] text-[#3B82F6] leading-snug">
                   Regular maintenance helps extend asset lifespan.
@@ -77,9 +194,13 @@ export default function LogisticsModalPage() {
               <div className="flex flex-col gap-1.5">
                 <label className="text-[11.5px] sm:text-[13px] font-[700] text-[#4B5563]">Maintenance Type</label>
                 <div className="relative">
-                  <select className="h-[38px] sm:h-[44px] w-full rounded-[8px] border border-[#E5E7EB] bg-white px-2.5 sm:px-3.5 pr-8 sm:pr-10 text-[12px] sm:text-[14px] font-[500] text-[#111827] focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20 outline-none transition-all shadow-sm appearance-none cursor-pointer">
-                    <option value="routine" selected>Routine Check</option>
-                    <option value="repair">Emergency Repair</option>
+                  <select
+                    value={maintenanceType}
+                    onChange={(event) => setMaintenanceType(event.target.value)}
+                    className="h-[38px] sm:h-[44px] w-full rounded-[8px] border border-[#E5E7EB] bg-white px-2.5 sm:px-3.5 pr-8 sm:pr-10 text-[12px] sm:text-[14px] font-[500] text-[#111827] focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20 outline-none transition-all shadow-sm appearance-none cursor-pointer"
+                  >
+                    <option value="PREVENTIVE">Routine Check</option>
+                    <option value="REPAIR">Emergency Repair</option>
                   </select>
                   <ChevronDown className="absolute right-2.5 sm:right-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 sm:h-4 sm:w-4 text-[#6B7280] pointer-events-none" />
                 </div>
@@ -87,8 +208,12 @@ export default function LogisticsModalPage() {
               <div className="flex flex-col gap-1.5">
                 <label className="text-[11.5px] sm:text-[13px] font-[700] text-[#4B5563]">Scheduled Date</label>
                 <div className="relative">
-                  <select className="h-[38px] sm:h-[44px] w-full rounded-[8px] border border-[#E5E7EB] bg-white px-2.5 sm:px-3.5 pr-8 sm:pr-10 text-[12px] sm:text-[14px] font-[500] text-[#111827] focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20 outline-none transition-all shadow-sm appearance-none cursor-pointer">
-                    <option value="30" selected>Every 30 Days</option>
+                  <select
+                    value={scheduleInterval}
+                    onChange={(event) => setScheduleInterval(event.target.value)}
+                    className="h-[38px] sm:h-[44px] w-full rounded-[8px] border border-[#E5E7EB] bg-white px-2.5 sm:px-3.5 pr-8 sm:pr-10 text-[12px] sm:text-[14px] font-[500] text-[#111827] focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20 outline-none transition-all shadow-sm appearance-none cursor-pointer"
+                  >
+                    <option value="30">Every 30 Days</option>
                     <option value="60">Every 60 Days</option>
                     <option value="90">Every 90 Days</option>
                   </select>
@@ -102,9 +227,11 @@ export default function LogisticsModalPage() {
               <label className="text-[11.5px] sm:text-[13px] font-[700] text-[#4B5563]">Service Provider / Vendor</label>
               <div className="relative flex items-center">
                 <Building2 className="absolute left-2.5 sm:left-3.5 h-3.5 w-3.5 sm:h-4.5 sm:w-4.5 text-[#9CA3AF]" strokeWidth={2} />
-                <input 
+                <input
                   type="text" 
                   placeholder="e.g. Excellence Auto Services Ltd." 
+                  value={vendor}
+                  onChange={(event) => setVendor(event.target.value)}
                   className="h-[38px] sm:h-[44px] w-full rounded-[8px] border border-[#E5E7EB] bg-white pl-[30px] sm:pl-[38px] pr-3 sm:pr-4 text-[12px] sm:text-[14px] font-[500] text-[#111827] placeholder:text-[#9CA3AF] focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20 outline-none transition-all shadow-sm"
                 />
               </div>
@@ -118,6 +245,8 @@ export default function LogisticsModalPage() {
                 <input 
                   type="text" 
                   placeholder="0.00" 
+                  value={cost}
+                  onChange={(event) => setCost(event.target.value)}
                   className="h-full w-full bg-transparent text-[12px] sm:text-[14px] font-[500] text-[#111827] placeholder:text-[#9CA3AF] outline-none"
                 />
               </div>
@@ -143,13 +272,25 @@ export default function LogisticsModalPage() {
           </div>
 
           {/* Footer Actions */}
-          <div className="p-3 sm:p-5 sm:px-6 sm:py-4 bg-[#F9FAFB] border-t border-[#EEF1F6] flex items-center justify-end gap-2.5 sm:gap-3 mt-auto">
+          <div className="p-3 sm:p-5 sm:px-6 sm:py-4 bg-[#F9FAFB] border-t border-[#EEF1F6] flex flex-col gap-2.5 sm:gap-3 mt-auto">
+            {(submitError || submitSuccess) && (
+              <div className="text-[11.5px] font-[700] text-left">
+                {submitSuccess && <span className="text-emerald-600">{submitSuccess}</span>}
+                {submitError && <span className="text-[#DC2626]">{submitError}</span>}
+              </div>
+            )}
+            <div className="flex items-center justify-end gap-2.5 sm:gap-3">
             <Link href="/branch-admin/logistics-repair" className="w-[110px] sm:w-auto h-[36px] sm:h-[40px] px-3 sm:px-6 rounded-[8px] border border-[#E5E7EB] bg-white flex items-center justify-center text-[11.5px] sm:text-[13.5px] font-[800] text-[#4B5563] hover:bg-gray-50 transition-colors shadow-sm">
               Cancel
             </Link>
-            <button className="flex-1 sm:flex-none h-[36px] sm:h-[40px] px-3 sm:px-6 rounded-[8px] bg-[#2563EB] hover:bg-[#1D4ED8] flex items-center justify-center text-[11.5px] sm:text-[13.5px] font-[800] text-white transition-colors shadow-sm">
-              Confirm Schedule
+            <button
+              onClick={handleSubmit}
+              disabled={isSubmitting}
+              className="flex-1 sm:flex-none h-[36px] sm:h-[40px] px-3 sm:px-6 rounded-[8px] bg-[#2563EB] hover:bg-[#1D4ED8] flex items-center justify-center text-[11.5px] sm:text-[13.5px] font-[800] text-white transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {isSubmitting ? "Scheduling..." : "Confirm Schedule"}
             </button>
+            </div>
           </div>
 
         </div>
@@ -158,5 +299,4 @@ export default function LogisticsModalPage() {
     </div>
   )
 }
-
 

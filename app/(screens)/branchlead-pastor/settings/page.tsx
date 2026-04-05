@@ -1,6 +1,6 @@
 "use client"
 
-import React from "react"
+import React, { useState, useEffect } from "react"
 import Image from "next/image"
 import { 
   Search, Bell, LayoutDashboard, Wallet, BarChart3, Building2,
@@ -8,7 +8,27 @@ import {
 } from "lucide-react"
 
 export default function SettingsPage() {
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false)
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [profile, setProfile] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetch("/api/users/profile")
+      .then(res => res.json())
+      .then(data => {
+        if (data.data) {
+          setProfile(data.data)
+        }
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false))
+  }, [])
+
+  const fullName = profile ? `${profile.firstName || ""} ${profile.lastName || ""}`.trim() : "Loading..."
+  const roleName = profile?.roleName || "Lead Pastor"
+  const email = profile?.email || ""
+  const phone = profile?.phoneNumber || ""
+  const initials = profile ? `${profile.firstName?.[0] || ""}${profile.lastName?.[0] || ""}`.toUpperCase() : ""
 
   return (
     <div className="flex flex-col xl:flex-row min-h-screen overflow-hidden bg-[#F8FAFC] relative w-full font-sans" style={{ fontFamily: "Inter, sans-serif" }}>
@@ -75,12 +95,16 @@ export default function SettingsPage() {
             </div>
 
             <div className="mt-6 flex items-center gap-3.5 px-3.5 pb-2 cursor-pointer hover:opacity-80 transition-opacity">
-              <div className="h-10 w-10 rounded-full overflow-hidden bg-gray-200 shrink-0 ring-2 ring-white shadow-sm relative">
-                <Image src="/images/Beared%20Guy02-min%201.jpg" alt="Profile avatar" fill className="object-cover" />
+              <div className="h-10 w-10 relative rounded-full overflow-hidden bg-[#EEF2FF] text-[#3B5BDB] shrink-0 ring-2 ring-white shadow-sm flex items-center justify-center font-bold">
+                {profile?.avatar ? (
+                  <Image src={profile.avatar} alt="Profile avatar" fill className="object-cover" />
+                ) : (
+                  initials || <User className="h-5 w-5" />
+                )}
               </div>
               <div>
-                <div className="text-[14px] font-bold text-[#111827]">Alex Morgan</div>
-                <div className="text-[11px] text-[#9CA3AF] font-medium">Lead Pastor</div>
+                <div className="text-[14px] font-bold text-[#111827] truncate max-w-[120px]">{fullName}</div>
+                <div className="text-[11px] text-[#9CA3AF] font-medium truncate max-w-[120px]">{roleName}</div>
               </div>
             </div>
           </div>
@@ -124,7 +148,7 @@ export default function SettingsPage() {
         <main className="flex-1 flex flex-col w-full max-w-[1400px] mx-auto px-4 pt-0 pb-6 sm:px-6 sm:pt-0 sm:pb-8 xl:px-8 xl:pt-0 xl:pb-10">
           
           {/* Header Title Row */}
-          <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row sm:items-start justify-between gap-5">
+          <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row sm:items-start justify-between gap-5 mt-6">
             <div>
               <h1 className="text-[20px] sm:text-[24px] font-bold text-[#111827] tracking-tight">
                 User Settings
@@ -141,91 +165,106 @@ export default function SettingsPage() {
           </div>
 
           {/* Profile Card Module */}
-          <div className="w-full bg-white rounded-[16px] border border-[#E2E8F0] shadow-[0_2px_4px_rgba(0,0,0,0.02)] p-5 sm:p-6 lg:p-8">
-            
-            {/* Top Profile Section */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-              <div className="flex items-center gap-4">
-                <div className="h-14 w-14 sm:h-16 sm:w-16 rounded-full overflow-hidden bg-[#EEF2FF] shrink-0 border border-gray-100 shadow-inner relative">
-                  <Image src="/images/Beared%20Guy02-min%201.jpg" alt="Alex Mercer avatar" fill className="object-cover" />
-                </div>
-                <div>
-                  <h2 className="text-[18px] sm:text-[20px] font-bold text-[#111827]">Alex Mercer</h2>
-                  <div className="flex flex-wrap items-center gap-1.5 mt-1 sm:mt-1.5">
-                    <span className="text-[13px] font-medium text-[#6B7280]">Branch Accountant</span>
-                    <span className="text-[13px] text-[#D1D5DB]">|</span>
-                    <span className="text-[13px] font-medium text-[#9CA3AF]">ID: #8821</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-[13px] font-medium text-[#6B7280] mt-1.5">
-                    <MapPin className="h-3.5 w-3.5 text-[#9CA3AF]" />
-                    Victoria Island Branch, Lagos
-                  </div>
-                </div>
-              </div>
-
-              <button className="text-[13px] sm:text-[14px] font-semibold text-[#3B5BDB] hover:text-blue-800 transition-colors self-start sm:self-auto py-1">
-                Change Password
-              </button>
-            </div>
-
-            {/* Separator Divider */}
-            <div className="h-[1px] w-full bg-[#E5E7EB] mb-8"></div>
-
-            {/* 2x2 Form Input Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 lg:gap-8">
+          {loading ? (
+            <div className="p-8 text-center text-gray-500">Loading profile data...</div>
+          ) : (
+            <div className="w-full bg-white rounded-[16px] border border-[#E2E8F0] shadow-[0_2px_4px_rgba(0,0,0,0.02)] p-5 sm:p-6 lg:p-8">
               
-              {/* Box 1: Full Name */}
-              <div className="space-y-2">
-                <label className="block text-[12px] sm:text-[13px] font-medium text-[#6B7280]">
-                  Full Name
-                </label>
-                <input 
-                  type="text" 
-                  defaultValue="Alex Mercer" 
-                  className="h-[42px] sm:h-[48px] w-full rounded-[10px] border border-[#E2E8F0] bg-white px-4 text-[13px] sm:text-[14px] font-semibold text-[#111827] focus:outline-none focus:border-[#3B5BDB] focus:ring-1 focus:ring-[#3B5BDB] transition-all" 
-                />
+              {/* Top Profile Section */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+                <div className="flex items-center gap-4">
+                  <div className="h-14 w-14 sm:h-16 sm:w-16 rounded-full overflow-hidden bg-[#EEF2FF] shrink-0 border border-gray-100 shadow-inner relative flex items-center justify-center text-[20px] font-bold text-[#3B5BDB]">
+                    {profile?.avatar ? (
+                      <Image src={profile.avatar} alt="Profile avatar" fill className="object-cover" />
+                    ) : (
+                      initials || <User className="h-7 w-7" />
+                    )}
+                  </div>
+                  <div>
+                    <h2 className="text-[18px] sm:text-[20px] font-bold text-[#111827]">{fullName}</h2>
+                    <div className="flex flex-wrap items-center gap-1.5 mt-1 sm:mt-1.5">
+                      <span className="text-[13px] font-medium text-[#6B7280]">{profile?.roleName || "Pastor"}</span>
+                      {profile?.id && (
+                        <>
+                          <span className="text-[13px] text-[#D1D5DB]">|</span>
+                          <span className="text-[13px] font-medium text-[#9CA3AF]">ID: #{profile.id.substring(0, 6)}</span>
+                        </>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[13px] font-medium text-[#6B7280] mt-1.5">
+                      <MapPin className="h-3.5 w-3.5 text-[#9CA3AF]" />
+                      {profile?.address || "Branch Office"}
+                    </div>
+                  </div>
+                </div>
+
+                <button className="text-[13px] sm:text-[14px] font-semibold text-[#3B5BDB] hover:text-blue-800 transition-colors self-start sm:self-auto py-1">
+                  Change Password
+                </button>
               </div>
 
-              {/* Box 2: Employee ID (Readonly) */}
-              <div className="space-y-2">
-                <label className="block text-[12px] sm:text-[13px] font-medium text-[#6B7280]">
-                  Employee ID
-                </label>
-                <input 
-                  type="text" 
-                  defaultValue="8821" 
-                  readOnly 
-                  className="h-[42px] sm:h-[48px] w-full rounded-[10px] border border-[#E2E8F0] bg-[#F9FAFB] px-4 text-[13px] sm:text-[14px] font-semibold text-[#3B5BDB] focus:outline-none cursor-not-allowed" 
-                />
-              </div>
+              {/* Separator Divider */}
+              <div className="h-[1px] w-full bg-[#E5E7EB] mb-8"></div>
 
-              {/* Box 3: Work Email */}
-              <div className="space-y-2">
-                <label className="block text-[12px] sm:text-[13px] font-medium text-[#6B7280]">
-                  Work Email
-                </label>
-                <input 
-                  type="email" 
-                  defaultValue="alex.mercer@shepherdwatch.co" 
-                  className="h-[42px] sm:h-[48px] w-full rounded-[10px] border border-[#E2E8F0] bg-white px-4 text-[13px] sm:text-[14px] font-semibold text-[#111827] focus:outline-none focus:border-[#3B5BDB] focus:ring-1 focus:ring-[#3B5BDB] transition-all" 
-                />
-              </div>
+              {/* 2x2 Form Input Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 lg:gap-8">
+                
+                {/* Box 1: Full Name */}
+                <div className="space-y-2">
+                  <label className="block text-[12px] sm:text-[13px] font-medium text-[#6B7280]">
+                    Full Name
+                  </label>
+                  <input 
+                    type="text" 
+                    value={fullName}
+                    readOnly
+                    className="h-[42px] sm:h-[48px] w-full rounded-[10px] border border-[#E2E8F0] bg-white px-4 text-[13px] sm:text-[14px] font-semibold text-[#111827] focus:outline-none focus:border-[#3B5BDB] focus:ring-1 focus:ring-[#3B5BDB] transition-all" 
+                  />
+                </div>
 
-              {/* Box 4: Phone Number */}
-              <div className="space-y-2">
-                <label className="block text-[12px] sm:text-[13px] font-medium text-[#6B7280]">
-                  Phone Number
-                </label>
-                <input 
-                  type="text" 
-                  defaultValue="+234 703-012-3456" 
-                  className="h-[42px] sm:h-[48px] w-full rounded-[10px] border border-[#E2E8F0] bg-white px-4 text-[13px] sm:text-[14px] font-semibold text-[#111827] focus:outline-none focus:border-[#3B5BDB] focus:ring-1 focus:ring-[#3B5BDB] transition-all" 
-                />
-              </div>
+                {/* Box 2: Employee ID (Readonly) */}
+                <div className="space-y-2">
+                  <label className="block text-[12px] sm:text-[13px] font-medium text-[#6B7280]">
+                    Employee ID
+                  </label>
+                  <input 
+                    type="text" 
+                    value={profile?.id || ""} 
+                    readOnly 
+                    className="h-[42px] sm:h-[48px] w-full rounded-[10px] border border-[#E2E8F0] bg-[#F9FAFB] px-4 text-[13px] sm:text-[14px] font-semibold text-[#3B5BDB] focus:outline-none cursor-not-allowed" 
+                  />
+                </div>
 
+                {/* Box 3: Work Email */}
+                <div className="space-y-2">
+                  <label className="block text-[12px] sm:text-[13px] font-medium text-[#6B7280]">
+                    Work Email
+                  </label>
+                  <input 
+                    type="email" 
+                    value={email}
+                    readOnly
+                    className="h-[42px] sm:h-[48px] w-full rounded-[10px] border border-[#E2E8F0] bg-white px-4 text-[13px] sm:text-[14px] font-semibold text-[#111827] focus:outline-none focus:border-[#3B5BDB] focus:ring-1 focus:ring-[#3B5BDB] transition-all" 
+                  />
+                </div>
+
+                {/* Box 4: Phone Number */}
+                <div className="space-y-2">
+                  <label className="block text-[12px] sm:text-[13px] font-medium text-[#6B7280]">
+                    Phone Number
+                  </label>
+                  <input 
+                    type="text" 
+                    value={phone}
+                    readOnly
+                    className="h-[42px] sm:h-[48px] w-full rounded-[10px] border border-[#E2E8F0] bg-white px-4 text-[13px] sm:text-[14px] font-semibold text-[#111827] focus:outline-none focus:border-[#3B5BDB] focus:ring-1 focus:ring-[#3B5BDB] transition-all" 
+                  />
+                </div>
+
+              </div>
+              
             </div>
-            
-          </div>
+          )}
         </main>
       </div>
     </div>

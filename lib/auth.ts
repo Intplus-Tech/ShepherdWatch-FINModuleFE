@@ -1,25 +1,32 @@
 import { NextApiRequest, NextApiResponse } from "next";
-import { createToken, verifyToken, JWTPayload } from "./jwt";
-import { sessionStore } from "./session";
+import { signAccessToken, verifyToken, JWTPayload } from "./jwt";
 import { setCookie, deleteCookie } from "cookies-next";
+import { randomUUID } from "crypto";
 
-export const login = (req: NextApiRequest, res: NextApiResponse, userId: string, role: string) => {
-  const token = createToken({ userId, role });
-  sessionStore.createSession(userId, { role, expires: Date.now() + 1000 * 60 * 60 }); // 1h
-  setCookie("token", token, { req, res, httpOnly: true, secure: process.env.NODE_ENV === "production" });
+const SESSION_COOKIE_NAME = "token";
+const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7; // 7 days
+
+export const login = (req: NextApiRequest, res: NextApiResponse, user: JWTPayload) => {
+  const token = signAccessToken(user, randomUUID());
+  setCookie(SESSION_COOKIE_NAME, token, {
+    req,
+    res,
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: SESSION_MAX_AGE_SECONDS,
+  });
 };
 
-export const logout = (req: NextApiRequest, res: NextApiResponse, userId: string) => {
-  deleteCookie("token", { req, res });
-  sessionStore.deleteSession(userId);
+export const logout = (req: NextApiRequest, res: NextApiResponse) => {
+  deleteCookie(SESSION_COOKIE_NAME, { req, res, path: "/" });
 };
 
 export const getUserFromRequest = (req: NextApiRequest): JWTPayload | null => {
-  const token = req.cookies.token as string | undefined;
+  const token = req.cookies[SESSION_COOKIE_NAME] as string | undefined;
   if (!token) return null;
   const payload = verifyToken(token);
   if (!payload) return null;
-  const session = sessionStore.getSession(payload.userId);
-  if (!session) return null;
-  return { userId: session.userId, role: session.role };
+  return payload;
 };

@@ -1,6 +1,7 @@
 ﻿"use client"
 
 import React from "react"
+import { useEffect, useMemo, useState } from "react"
 import SidebarNav from "@/components/navigation/SidebarNav"
 import ScreenHeader from "@/components/navigation/ScreenHeader"
 import { Button } from "@/components/ui/button"
@@ -10,59 +11,244 @@ import {
   ChevronDown,
   Download,
   Eye,
-  Filter,
   History,
   Search,
   ShieldCheck,
   Users,
 } from "lucide-react"
+import {
+  flattenRolePermissions,
+  formatRoleLabel,
+  flattenRoles,
+  normalizeRoleKey,
+} from "@/lib/role-permissions"
 
-const logs = [
-  {
-    id: "log-1",
-    time: "Apr 12, 10:42 AM",
-    user: "Rev. Ladokun",
-    role: "Lead Pastor",
-    action: "Budget Override",
-    actionTone: "bg-amber-50 text-amber-600",
-    impactLabel: "Before",
-    impactValue: "$11,265,000.00",
-    impactAfterLabel: "After",
-    impactAfterValue: "$32,112,000.00",
-    justification:
-      "Emergency sound system repair required before Easter service. Board was notified via email chain but formal approval was delayed.",
-  },
-  {
-    id: "log-2",
-    time: "Apr 11, 04:15 PM",
-    user: "Sarah Smith",
-    role: "Treasurer",
-    action: "COA Update",
-    actionTone: "bg-blue-50 text-blue-600",
-    impactLabel: "Added Category",
-    impactValue: "6604 - Global Missions",
-    impactAfterLabel: "",
-    impactAfterValue: "",
-    justification:
-      "Board approved new mission initiative for Q3. Account created to track incoming donations.",
-  },
-  {
-    id: "log-3",
-    time: "Apr 08, 02:12 PM",
-    user: "Michael Chen",
-    role: "System Admin",
-    action: "Role Modified",
-    actionTone: "bg-slate-100 text-slate-600",
-    impactLabel: "User",
-    impactValue: "J. Peterson",
-    impactAfterLabel: "Change",
-    impactAfterValue: "Read-Only ? Editor",
-    justification:
-      "Promoted to Assistant Treasurer upon request of the Finance Committee.",
-  },
-]
+const logs: AuditLogRow[] = []
+
+type AuditLogRow = {
+  id: string
+  time: string
+  user: string
+  role: string
+  action: string
+  actionTone: string
+  impactLabel: string
+  impactValue: string
+  impactAfterLabel: string
+  impactAfterValue: string
+  justification: string
+}
 
 export default function Page() {
+  const [searchText, setSearchText] = useState("")
+  const [actionFilter, setActionFilter] = useState("")
+  const [roleFilter, setRoleFilter] = useState("")
+  const [permissionOptions, setPermissionOptions] = useState<string[]>([])
+  const [roleOptions, setRoleOptions] = useState<string[]>([])
+  const [auditLogs, setAuditLogs] = useState<AuditLogRow[]>(logs)
+  const [auditLoading, setAuditLoading] = useState(true)
+  const [auditError, setAuditError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadPermissions = async () => {
+      try {
+        const [permissionsResponse, rolesResponse] = await Promise.all([
+          fetch("/api/core/roles/permissions", {
+            method: "GET",
+            credentials: "include",
+          }),
+          fetch("/api/core/roles", {
+            method: "GET",
+            credentials: "include",
+          }),
+        ])
+
+        const permissionsData = await permissionsResponse.json().catch(() => null)
+        const rolesData = await rolesResponse.json().catch(() => null)
+
+        if (!permissionsResponse.ok && !rolesResponse.ok) {
+          return
+        }
+
+        const flattenedPermissions = permissionsResponse.ok
+          ? flattenRolePermissions(permissionsData)
+          : []
+        const flattenedRoles = rolesResponse.ok ? flattenRoles(rolesData) : []
+
+        if (!isMounted) return
+
+        const apiPermissions = flattenedPermissions
+          .map((perm) => perm.name)
+          .filter(Boolean)
+        const apiRoles = [
+          ...flattenedPermissions
+            .map((perm) => normalizeRoleKey(perm.roleType))
+            .filter(Boolean)
+            .map((role) => formatRoleLabel(role as string)),
+          ...flattenedRoles.map((role) => role.name),
+        ]
+
+        const uniquePermissions = Array.from(
+          new Set([...auditLogs.map((log) => log.action), ...apiPermissions])
+        )
+        const uniqueRoles = Array.from(
+          new Set([...auditLogs.map((log) => log.role), ...apiRoles])
+        )
+
+        setPermissionOptions(uniquePermissions)
+        setRoleOptions(uniqueRoles)
+      } catch {
+        // Silent fail: audit log can render without permissions metadata.
+      }
+    }
+
+    loadPermissions()
+
+    return () => {
+      isMounted = false
+    }
+  }, [auditLogs])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadAudits = async () => {
+      setAuditLoading(true)
+      setAuditError(null)
+
+      try {
+        const params = new URLSearchParams({ page: "1", size: "20" })
+        const response = await fetch(`/api/core/financial/audit-logs?${params.toString()}`, {
+          method: "GET",
+          credentials: "include",
+        })
+        const data = await response.json().catch(() => null)
+
+        if (!response.ok) {
+          throw new Error(
+            data?.message ?? "Unable to load audit trails. Please try again."
+          )
+        }
+
+        const rawItems = Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data?.items)
+            ? data.items
+            : Array.isArray(data?.audits)
+              ? data.audits
+              : Array.isArray(data)
+                ? data
+                : []
+
+        const mapped: AuditLogRow[] = rawItems.map((item: any, index: number) => {
+          const action =
+            item?.action ??
+            item?.event ??
+            item?.activity ??
+            item?.actionType ??
+            "Audit Event"
+          const roleLabel =
+            item?.role ??
+            item?.roleName ??
+            item?.userRole ??
+            item?.actorRole ??
+            "User"
+          const userLabel =
+            item?.userName ??
+            item?.actor ??
+            item?.performedBy ??
+            item?.user ??
+            "System"
+          const timestamp =
+            item?.timestamp ??
+            item?.createdAt ??
+            item?.time ??
+            item?.date ??
+            ""
+          const justification =
+            item?.reason ??
+            item?.justification ??
+            item?.details ??
+            item?.message ??
+            "No justification provided."
+
+          const impactValue =
+            item?.impactValue ??
+            item?.before ??
+            item?.previousValue ??
+            item?.oldValue ??
+            ""
+          const impactAfterValue =
+            item?.impactAfterValue ??
+            item?.after ??
+            item?.newValue ??
+            item?.updatedValue ??
+            ""
+
+          const actionTone =
+            item?.status === "FAILED"
+              ? "bg-rose-50 text-rose-600"
+              : item?.status === "PENDING"
+                ? "bg-amber-50 text-amber-600"
+                : "bg-blue-50 text-blue-600"
+
+          return {
+            id: String(item?.id ?? item?.auditId ?? `audit-${index}`),
+            time: timestamp
+              ? new Date(timestamp).toLocaleString()
+              : "—",
+            user: userLabel,
+            role: roleLabel,
+            action,
+            actionTone,
+            impactLabel: impactValue ? "Before" : "",
+            impactValue: impactValue ? String(impactValue) : "—",
+            impactAfterLabel: impactAfterValue ? "After" : "",
+            impactAfterValue: impactAfterValue ? String(impactAfterValue) : "",
+            justification: String(justification),
+          }
+        })
+
+        if (isMounted) {
+          setAuditLogs(mapped)
+        }
+      } catch (error) {
+        if (isMounted) {
+          setAuditError(
+            error instanceof Error ? error.message : "Unable to load audit trails."
+          )
+        }
+      } finally {
+        if (isMounted) {
+          setAuditLoading(false)
+        }
+      }
+    }
+
+    loadAudits()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  const filteredLogs = useMemo(() => {
+    return auditLogs.filter((log) => {
+      const matchesSearch = searchText
+        ? log.justification.toLowerCase().includes(searchText.toLowerCase()) ||
+          log.action.toLowerCase().includes(searchText.toLowerCase()) ||
+          log.user.toLowerCase().includes(searchText.toLowerCase())
+        : true
+
+      const matchesAction = actionFilter ? log.action === actionFilter : true
+      const matchesRole = roleFilter ? log.role === roleFilter : true
+
+      return matchesSearch && matchesAction && matchesRole
+    })
+  }, [searchText, actionFilter, roleFilter, auditLogs])
+
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
       <SidebarNav
@@ -107,22 +293,49 @@ export default function Page() {
                   <div className="text-[10px] text-[#9CA3AF] font-semibold">SEARCH</div>
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
-                    <Input className="h-9 rounded-md border-[#E5E7EB] bg-[#F9FAFB] pl-9 text-[12px] text-[#6B7280]" placeholder="Search justification..." />
+                    <Input
+                      className="h-9 rounded-md border-[#E5E7EB] bg-[#F9FAFB] pl-9 text-[12px] text-[#6B7280]"
+                      placeholder="Search justification..."
+                      value={searchText}
+                      onChange={(event) => setSearchText(event.target.value)}
+                    />
                   </div>
                 </div>
                 <div className="space-y-1">
                   <div className="text-[10px] text-[#9CA3AF] font-semibold">ACTION TYPE</div>
-                  <Button variant="outline" size="sm" className="h-9 w-full justify-between rounded-md border-[#E5E7EB] bg-white text-[12px] text-[#6B7280]">
-                    All Actions
-                    <ChevronDown className="h-3.5 w-3.5" />
-                  </Button>
+                  <div className="relative">
+                    <select
+                      className="h-9 w-full rounded-md border border-[#E5E7EB] bg-white px-3 pr-8 text-[12px] text-[#6B7280] outline-none transition-all focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20 appearance-none"
+                      value={actionFilter}
+                      onChange={(event) => setActionFilter(event.target.value)}
+                    >
+                      <option value="">All Actions</option>
+                      {permissionOptions.map((permission) => (
+                        <option key={permission} value={permission}>
+                          {permission}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9CA3AF]" />
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <div className="text-[10px] text-[#9CA3AF] font-semibold">USER / ROLE</div>
-                  <Button variant="outline" size="sm" className="h-9 w-full justify-between rounded-md border-[#E5E7EB] bg-white text-[12px] text-[#6B7280]">
-                    All Users
-                    <ChevronDown className="h-3.5 w-3.5" />
-                  </Button>
+                  <div className="relative">
+                    <select
+                      className="h-9 w-full rounded-md border border-[#E5E7EB] bg-white px-3 pr-8 text-[12px] text-[#6B7280] outline-none transition-all focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20 appearance-none"
+                      value={roleFilter}
+                      onChange={(event) => setRoleFilter(event.target.value)}
+                    >
+                      <option value="">All Users</option>
+                      {roleOptions.map((role) => (
+                        <option key={role} value={role}>
+                          {role}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9CA3AF]" />
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <div className="text-[10px] text-[#9CA3AF] font-semibold">DATE RANGE</div>
@@ -147,7 +360,21 @@ export default function Page() {
                   </tr>
                 </thead>
                 <tbody>
-                  {logs.map((log) => (
+                  {filteredLogs.length === 0 ? (
+                    <tr>
+                      <td
+                        className="py-6 px-4 text-center text-[12px] text-[#9CA3AF]"
+                        colSpan={6}
+                      >
+                        {auditLoading
+                          ? "Loading audit trails..."
+                          : auditError
+                            ? auditError
+                            : "No audit trails available."}
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredLogs.map((log) => (
                     <tr key={log.id} className="border-t border-[#EEF1F6] align-top">
                       <td className="py-4 px-4 text-[#6B7280]">{log.time}</td>
                       <td className="py-4 px-4">
@@ -177,11 +404,17 @@ export default function Page() {
                         <Eye className="h-4 w-4" />
                       </td>
                     </tr>
-                  ))}
+                  )))}
                 </tbody>
               </table>
               <div className="flex items-center justify-between border-t border-[#EEF1F6] px-4 py-3 text-[11px] text-[#9CA3AF]">
-                <div>Showing 1-5 of 45 branches</div>
+                <div>
+                  {auditLoading
+                    ? "Loading audit trails..."
+                    : auditError
+                      ? auditError
+                      : `Showing ${filteredLogs.length} entries`}
+                </div>
                 <div className="flex items-center gap-2">
                   <Button variant="outline" size="sm" className="h-7 rounded-md border-[#E5E7EB] bg-white text-[10px] text-[#6B7280]">Previous</Button>
                   <Button variant="outline" size="sm" className="h-7 rounded-md border-[#E5E7EB] bg-white text-[10px] text-[#6B7280]">Next</Button>

@@ -1,6 +1,6 @@
-"use client"
+﻿"use client"
 
-import { Fragment } from "react"
+import { Fragment, useMemo, useState } from "react"
 import SidebarNav from "@/components/navigation/SidebarNav"
 import {
   ArrowLeft,
@@ -17,52 +17,181 @@ import {
   Calendar,
   Building2,
 } from "lucide-react"
-
-const branches = [
-  {
-    id: "branch-1",
-    code: "ML",
-    name: "Maryland, Lagos",
-    lastYear: "N43,125,000.00",
-    proposed: "N43,125,000.00",
-    variance: "-5.6%",
-    status: "Pending Review",
-    selected: true,
-    expanded: true,
-  },
-  {
-    id: "branch-2",
-    code: "AE",
-    name: "Ado-Ekiti, Ekiti",
-    lastYear: "N18,425,500.00",
-    proposed: "N18,425,500.00",
-    variance: "+3.5%",
-    status: "Pending Review",
-  },
-  {
-    id: "branch-3",
-    code: "VL",
-    name: "Victoria Island, Lagos",
-    lastYear: "N46,523,850.00",
-    proposed: "N45,800,714.00",
-    variance: "-2.1%",
-    status: "Pending Review",
-  },
-  {
-    id: "branch-4",
-    code: "AE",
-    name: "Akala Express, Ibadan",
-    lastYear: "N86,312,000.00",
-    proposed: "N84,515,000.00",
-    variance: "+1.5%",
-    status: "Approved",
-  },
-]
+import { useBudgetEntries } from "@/components/hooks/useBudgetEntries"
+import { useAuth } from "@/components/auth/AuthProvider"
 
 const bigText = "text-[14.36px] leading-[22.33px] font-bold"
 const smallText = "text-[11.17px] leading-[15.95px] font-semibold"
 
 export default function Page() {
+  const { user } = useAuth()
+  const { entries, loading, error } = useBudgetEntries()
+  const [approvingAll, setApprovingAll] = useState(false)
+  const [approveError, setApproveError] = useState<string | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
+
+  const tenantId = useMemo(
+    () => user?.tenantId ?? user?.tenant?.id ?? "",
+    [user]
+  )
+
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat("en-NG", {
+      style: "currency",
+      currency: "NGN",
+      maximumFractionDigits: 0,
+    }).format(value)
+
+  const totals = useMemo(() => {
+    const totalBudget = entries.reduce((sum, entry) => sum + Number(entry.amount ?? 0), 0)
+    const appropriated = totalBudget * 0.65
+    const remaining = totalBudget - appropriated
+    return { totalBudget, appropriated, remaining }
+  }, [entries])
+
+  const branches = useMemo(
+    () =>
+      entries.map((entry, index) => {
+        const id = String(entry.id ?? `entry-${index}`)
+        const name = entry.coaName ?? entry.name ?? `Entry ${index + 1}`
+        const amount = Number(entry.amount ?? 0)
+        const approved =
+          Boolean((entry as any).approvedBy) ||
+          Boolean((entry as any).approvedAt) ||
+          String((entry as any).status ?? "").toUpperCase() === "APPROVED"
+
+        return {
+          id,
+          code: name
+            .split(" ")
+            .map((part) => part[0])
+            .slice(0, 2)
+            .join("")
+            .toUpperCase() || "BE",
+          name,
+          lastYear: formatCurrency(amount),
+          proposed: formatCurrency(amount),
+          variance: "0.0%",
+          status: approved ? "Approved" : "Pending Review",
+          selected: selectedIds.has(id),
+          expanded: false,
+        }
+      }),
+    [entries, selectedIds]
+  )
+
+  const selectedCount = useMemo(() => selectedIds.size, [selectedIds])
+
+  const getCsrfToken = () => {
+    if (typeof document === "undefined") return ""
+    const match = document.cookie
+      .split("; ")
+      .find((cookie) => cookie.startsWith("csrf_token="))
+    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
+  }
+
+  const approveAllEntries = async () => {
+    const entryIds = entries.map((entry) => entry.id).filter(Boolean)
+    if (entryIds.length === 0) return
+    setApprovingAll(true)
+    setApproveError(null)
+
+    try {
+      const csrfToken = getCsrfToken()
+      await Promise.all(
+        entryIds.map(async (entryId) => {
+          const response = await fetch(`/api/core/financial/budget-entries/${entryId}/approve`, {
+            method: "POST",
+            headers: { "x-csrf-token": csrfToken },
+            credentials: "include",
+          })
+          const payload = await response.json().catch(() => null)
+          if (!response.ok) {
+            throw new Error(payload?.message ?? "Unable to approve budget entry.")
+          }
+        })
+      )
+    } catch (err) {
+      setApproveError(err instanceof Error ? err.message : "Unable to approve budget entry.")
+    } finally {
+      setApprovingAll(false)
+    }
+  }
+
+  const approveSelectedEntries = async () => {
+    const entryIds = Array.from(selectedIds).filter(Boolean)
+    if (entryIds.length === 0) return
+    setApprovingAll(true)
+    setApproveError(null)
+
+    try {
+      const csrfToken = getCsrfToken()
+      await Promise.all(
+        entryIds.map(async (entryId) => {
+          const response = await fetch(`/api/core/financial/budget-entries/${entryId}/approve`, {
+            method: "POST",
+            headers: { "x-csrf-token": csrfToken },
+            credentials: "include",
+          })
+          const payload = await response.json().catch(() => null)
+          if (!response.ok) {
+            throw new Error(payload?.message ?? "Unable to approve budget entry.")
+          }
+        })
+      )
+    } catch (err) {
+      setApproveError(err instanceof Error ? err.message : "Unable to approve budget entry.")
+    } finally {
+      setApprovingAll(false)
+    }
+  }
+
+  const handleExport = async () => {
+    if (!tenantId) {
+      setExportError("Tenant is required to export budget entries.")
+      return
+    }
+    setExporting(true)
+    setExportError(null)
+
+    try {
+      const params = new URLSearchParams({ tenantId })
+      const response = await fetch(`/api/core/export/budget-entries?${params.toString()}`, {
+        method: "GET",
+        credentials: "include",
+      })
+
+      if (!response.ok) {
+        const payload = await response.json().catch(async () => ({
+          message: await response.text().catch(() => ""),
+        }))
+        throw new Error(payload?.message ?? "Unable to export budget entries.")
+      }
+
+      const blob = await response.blob()
+      const disposition = response.headers.get("Content-Disposition") ?? ""
+      const filenameMatch =
+        disposition.match(/filename\\*=UTF-8''([^;]+)/i) ??
+        disposition.match(/filename=\"?([^\";]+)\"?/i)
+      const filename = filenameMatch ? decodeURIComponent(filenameMatch[1]) : "budget-entries.csv"
+
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "Unable to export budget entries.")
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
       <aside className="fixed inset-y-0 left-0 z-20 hidden w-[260px] border-r border-[#EEF1F6] bg-white xl:flex">
@@ -105,8 +234,12 @@ export default function Page() {
                 ))}
               </div>
 
-              <button className="flex items-center gap-2 rounded-md bg-[#3B5BDB] px-4 py-2 text-[12px] font-medium text-white shadow hover:bg-blue-700">
-                <Download className="h-4 w-4" /> Export
+              <button
+                onClick={handleExport}
+                disabled={exporting}
+                className="flex items-center gap-2 rounded-md bg-[#3B5BDB] px-4 py-2 text-[12px] font-medium text-white shadow hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <Download className="h-4 w-4" /> {exporting ? "Exporting..." : "Export"}
               </button>
             </div>
           </div>
@@ -124,21 +257,39 @@ export default function Page() {
             </div>
 
             <div className="flex items-center gap-3">
-              <button className={`flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-3.5 py-2 ${smallText} text-[#4B5563] shadow-sm hover:bg-gray-50`}>
-                <Download className="h-4 w-4 text-[#6B7280]" /> Export Report
+              <button
+                onClick={handleExport}
+                disabled={exporting}
+                className={`flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-3.5 py-2 ${smallText} text-[#4B5563] shadow-sm hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed`}
+              >
+                <Download className="h-4 w-4 text-[#6B7280]" /> {exporting ? "Exporting..." : "Export Report"}
               </button>
 
-              <button className={`flex items-center gap-2 rounded-md bg-[#3B5BDB] px-4 py-2 ${smallText} text-white shadow hover:bg-blue-700`}>
-                <Check className="h-4 w-4" /> Approve All Pending
+              <button
+                onClick={approveAllEntries}
+                disabled={approvingAll || entries.length === 0}
+                className={`flex items-center gap-2 rounded-md bg-[#3B5BDB] px-4 py-2 ${smallText} text-white shadow hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed`}
+              >
+                <Check className="h-4 w-4" /> {approvingAll ? "Approving..." : "Approve All Pending"}
               </button>
             </div>
           </div>
+          {approveError && (
+            <div className="mt-3 text-[12px] font-semibold text-rose-500">
+              {approveError}
+            </div>
+          )}
+          {exportError && (
+            <div className="mt-3 text-[12px] font-semibold text-rose-500">
+              {exportError}
+            </div>
+          )}
 
           <div className="mt-5 grid grid-cols-1 lg:grid-cols-[1fr_2fr] gap-4">
             <div className="rounded-[12px] border border-[#EEF1F6] bg-white p-4">
               <div className={`text-[#9CA3AF] ${smallText}`}>Total Church Budget</div>
 
-              <div className={`mt-2 ${bigText} text-[#111827]`}>N70,880,840,250</div>
+              <div className={`mt-2 ${bigText} text-[#111827]`}>{formatCurrency(totals.totalBudget)}</div>
 
               <div className={`mt-2 ${smallText} text-emerald-600`}>+4.2% vs last fiscal year</div>
             </div>
@@ -147,8 +298,8 @@ export default function Page() {
               <div className="flex items-center justify-between">
                 <div>
                   <div className={`text-[#9CA3AF] ${smallText}`}>Appropriation Progress</div>
-                  <div className={`mt-1 ${bigText} text-[#111827]`}>N43,880,840,250</div>
-                  <div className={`text-[#9CA3AF] ${smallText}`}>N70.3M Allocated</div>
+                  <div className={`mt-1 ${bigText} text-[#111827]`}>{formatCurrency(totals.appropriated)}</div>
+                  <div className={`text-[#9CA3AF] ${smallText}`}>{formatCurrency(totals.totalBudget)} Allocated</div>
                 </div>
 
                 <div className={`text-[#3B5BDB] ${bigText}`}>65%</div>
@@ -159,8 +310,8 @@ export default function Page() {
               </div>
 
               <div className={`mt-2 flex items-center justify-between text-[#9CA3AF] ${smallText}`}>
-                <span>12 Branches Pending Review</span>
-                <span>N27,000,840,250 Remaining</span>
+                <span>{branches.length} Branches Pending Review</span>
+                <span>{formatCurrency(totals.remaining)} Remaining</span>
               </div>
             </div>
           </div>
@@ -199,11 +350,59 @@ export default function Page() {
                 </thead>
 
                 <tbody>
-                  {branches.map((branch) => (
+                  {loading ? (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-6 text-center text-[12px] text-[#6B7280]">
+                        Loading budget entries…
+                      </td>
+                    </tr>
+                  ) : error ? (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-6 text-center text-[12px] text-rose-500">
+                        {error}
+                      </td>
+                    </tr>
+                  ) : branches.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-6 text-center text-[12px] text-[#6B7280]">
+                        No budget entries available for this period.
+                      </td>
+                    </tr>
+                  ) : (
+                    branches.map((branch) => (
                     <Fragment key={branch.id}>
                       <tr className="border-t border-[#EEF1F6]">
                         <td className="py-3 px-4">
-                          <div className="h-4 w-4 rounded border border-[#E5E7EB] flex items-center justify-center">
+                          <div
+                            role="button"
+                            tabIndex={0}
+                            onClick={() =>
+                              setSelectedIds((prev) => {
+                                const next = new Set(prev)
+                                if (next.has(branch.id)) {
+                                  next.delete(branch.id)
+                                } else {
+                                  next.add(branch.id)
+                                }
+                                return next
+                              })
+                            }
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault()
+                                setSelectedIds((prev) => {
+                                  const next = new Set(prev)
+                                  if (next.has(branch.id)) {
+                                    next.delete(branch.id)
+                                  } else {
+                                    next.add(branch.id)
+                                  }
+                                  return next
+                                })
+                              }
+                            }}
+                            className="h-4 w-4 rounded border border-[#E5E7EB] flex items-center justify-center cursor-pointer"
+                          >
                             {branch.selected && (
                               <Check className="h-3 w-3 text-[#3B5BDB]" />
                             )}
@@ -278,9 +477,9 @@ export default function Page() {
                           <td colSpan={5} className="py-3 px-4">
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                               {[
-                                { label: "Operational", value: "N85,886,000" },
-                                { label: "Capital", value: "N15,125,000" },
-                                { label: "Program", value: "N4,325,000" },
+                                { label: "Operational", value: "" },
+                                { label: "Capital", value: "" },
+                                { label: "Program", value: "" },
                                 { label: "Monthly Cashflow", value: "" },
                               ].map((item) => (
                                 <div key={item.label} className="rounded-[10px] border border-[#EEF1F6] bg-white p-2">
@@ -302,13 +501,16 @@ export default function Page() {
                         </tr>
                       )}
                     </Fragment>
-                  ))}
+                  ))
+                  )}
                 </tbody>
               </table>
             </div>
 
             <div className={`flex items-center justify-between px-4 py-3 text-[#9CA3AF] ${smallText}`}>
-              <div>Showing 1-5 of 45 branches</div>
+              <div>
+                Showing {branches.length ? `1-${branches.length}` : 0} of {branches.length} branches
+              </div>
 
               <div className="flex items-center gap-2">
                 <button className={`rounded-[6px] border border-[#E5E7EB] bg-white px-2 py-1 text-[#6B7280] ${smallText}`}>
@@ -324,12 +526,16 @@ export default function Page() {
 
           <div className="mt-4 flex items-center justify-center">
             <div className={`flex items-center gap-4 rounded-full bg-[#111827] px-4 py-2 text-white ${smallText}`}>
-              <span>2 Items Selected</span>
+              <span>{selectedCount} Items Selected</span>
 
               <button className="text-[#9CA3AF]">Reject</button>
 
-              <button className="rounded-full bg-[#3B5BDB] px-3 py-1">
-                Approve Selected
+              <button
+                onClick={approveSelectedEntries}
+                disabled={approvingAll || selectedIds.size === 0}
+                className="rounded-full bg-[#3B5BDB] px-3 py-1 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {approvingAll ? "Approving..." : "Approve Selected"}
               </button>
             </div>
           </div>
@@ -338,3 +544,4 @@ export default function Page() {
     </div>
   )
 }
+

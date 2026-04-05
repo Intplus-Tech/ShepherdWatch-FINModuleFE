@@ -2,6 +2,8 @@
 
 import SidebarNav from "@/components/navigation/SidebarNav"
 import ScreenHeader from "@/components/navigation/ScreenHeader"
+import { useAuth } from "@/components/auth/AuthProvider"
+import { useEffect, useMemo, useState } from "react"
 import {
   CalendarDays,
   ChevronDown,
@@ -40,14 +42,185 @@ const cards = [
 ]
 
 const rows = [
-  { name: "Maryland, Lagos", id: "BR-1001", total: "$15,000.00", outstanding: "$0.00", last: "Oct 24, 2023", status: "Compliant" },
-  { name: "Victoria Island, Lagos", id: "BR-1045", total: "$2,000.00", outstanding: "$5,500.00", last: "Sep 15, 2023", status: "Overdue" },
-  { name: "HQ, Ibadan", id: "BR-1022", total: "$12,500.00", outstanding: "$0.00", last: "Oct 22, 2023", status: "Compliant" },
-  { name: "Ado-Ekiti, Ekiti", id: "BR-1089", total: "$8,000.00", outstanding: "$1,200.00", last: "Oct 01, 2023", status: "Pending" },
-  { name: "Gwagwalada, FCT", id: "BR-1033", total: "$500.00", outstanding: "$3,500.00", last: "Aug 20, 2023", status: "Overdue" },
+  // Intentionally empty until compliance records endpoint is wired.
 ]
 
 export default function Page() {
+  const { user } = useAuth()
+  const [summary, setSummary] = useState<{ totalDue: number; totalPaid: number; complianceScore: number } | null>(null)
+  const [summaryError, setSummaryError] = useState<string | null>(null)
+  const [complianceScore, setComplianceScore] = useState<number | null>(null)
+  const [scoreError, setScoreError] = useState<string | null>(null)
+  const [statutory, setStatutory] = useState<{ totalTitheInflow: number; hqRemittanceAmount: number } | null>(null)
+  const [statutoryError, setStatutoryError] = useState<string | null>(null)
+
+  const tenantId = useMemo(
+    () => user?.tenantId ?? user?.tenant?.id ?? "",
+    [user]
+  )
+
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchSummary = async () => {
+      if (!tenantId) {
+        setSummaryError("Tenant is required to load compliance summary.")
+        return
+      }
+
+      try {
+        setSummaryError(null)
+        const year = new Date().getFullYear()
+        const params = new URLSearchParams({
+          tenantId,
+          periodStart: `${year}-01-01`,
+          periodEnd: `${year}-12-31`,
+        })
+        const response = await fetch(`/api/core/financial/compliance/summary?${params.toString()}`, {
+          method: "GET",
+          credentials: "include",
+        })
+        const payload = await response.json().catch(() => null)
+        if (!response.ok) {
+          throw new Error(payload?.message ?? "Unable to load compliance summary.")
+        }
+
+        const data = payload?.data ?? payload
+        if (isMounted && data) {
+          setSummary({
+            totalDue: Number(data.totalDue ?? 0),
+            totalPaid: Number(data.totalPaid ?? 0),
+            complianceScore: Number(data.complianceScore ?? 0),
+          })
+        }
+      } catch (error) {
+        if (isMounted) {
+          setSummaryError(error instanceof Error ? error.message : "Unable to load compliance summary.")
+        }
+      }
+    }
+
+    fetchSummary()
+
+    return () => {
+      isMounted = false
+    }
+  }, [tenantId])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchStatutory = async () => {
+      if (!tenantId) {
+        setStatutoryError("Tenant is required to load statutory report.")
+        return
+      }
+      try {
+        setStatutoryError(null)
+        const now = new Date()
+        const periodStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0]
+        const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0]
+        const params = new URLSearchParams({
+          tenantId,
+          periodStart,
+          periodEnd,
+          deductionRate: "10",
+        })
+        const response = await fetch(`/api/core/financial/reports/statutory?${params.toString()}`, {
+          method: "GET",
+          credentials: "include",
+        })
+        const payload = await response.json().catch(() => null)
+        if (!response.ok) {
+          throw new Error(payload?.message ?? "Unable to load statutory report.")
+        }
+        const data = payload?.data ?? payload
+        if (isMounted) {
+          setStatutory({
+            totalTitheInflow: Number(data?.totalTitheInflow ?? 0),
+            hqRemittanceAmount: Number(data?.hqRemittanceAmount ?? 0),
+          })
+        }
+      } catch (error) {
+        if (isMounted) {
+          setStatutory(null)
+          setStatutoryError(error instanceof Error ? error.message : "Unable to load statutory report.")
+        }
+      }
+    }
+
+    fetchStatutory()
+
+    return () => {
+      isMounted = false
+    }
+  }, [tenantId])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchScore = async () => {
+      if (!tenantId) {
+        setScoreError("Tenant is required to load compliance score.")
+        return
+      }
+      try {
+        setScoreError(null)
+        const year = new Date().getFullYear()
+        const params = new URLSearchParams({
+          tenantId,
+          periodStart: `${year}-01-01`,
+          periodEnd: `${year}-12-31`,
+        })
+        const response = await fetch(`/api/core/financial/compliance/score?${params.toString()}`, {
+          method: "GET",
+          credentials: "include",
+        })
+        const payload = await response.json().catch(() => null)
+        if (!response.ok) {
+          throw new Error(payload?.message ?? "Unable to load compliance score.")
+        }
+        const data = payload?.data ?? payload
+        if (isMounted) {
+          setComplianceScore(Number(data?.complianceScore ?? 0))
+        }
+      } catch (error) {
+        if (isMounted) {
+          setScoreError(error instanceof Error ? error.message : "Unable to load compliance score.")
+        }
+      }
+    }
+
+    fetchScore()
+
+    return () => {
+      isMounted = false
+    }
+  }, [tenantId])
+
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat("en-NG", {
+      style: "currency",
+      currency: "NGN",
+      maximumFractionDigits: 0,
+    }).format(amount)
+
+  const cardData = cards.map((card, index) => {
+    if (!summary) return card
+    if (index === 0) {
+      const value = statutory?.totalTitheInflow ?? summary.totalPaid
+      return { ...card, value: formatCurrency(value) }
+    }
+    if (index === 1) {
+      const value = statutory?.hqRemittanceAmount ?? summary.totalDue
+      return { ...card, value: formatCurrency(value) }
+    }
+    if (complianceScore !== null) {
+      return { ...card, value: `${complianceScore.toFixed(1)}%` }
+    }
+    return { ...card, value: `${summary.complianceScore.toFixed(1)}%` }
+  })
+
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
       <SidebarNav
@@ -78,7 +251,7 @@ export default function Page() {
             </div>
 
             <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {cards.map((card) => {
+              {cardData.map((card) => {
                 const Icon = card.icon
                 return (
                   <div key={card.title} className="rounded-xl border border-[#EEF1F6] bg-white p-5 shadow-sm">
@@ -99,6 +272,15 @@ export default function Page() {
                 )}
               )}
             </div>
+            {summaryError && (
+              <div className="mt-4 text-[12px] font-medium text-[#EF4444]">{summaryError}</div>
+            )}
+            {scoreError && (
+              <div className="mt-2 text-[12px] font-medium text-[#EF4444]">{scoreError}</div>
+            )}
+            {statutoryError && (
+              <div className="mt-2 text-[12px] font-medium text-[#EF4444]">{statutoryError}</div>
+            )}
 
             <div className="mt-6 rounded-xl border border-[#EEF1F6] bg-white shadow-sm overflow-hidden">
               <div className="flex flex-col gap-3 px-6 py-4 md:flex-row md:items-center md:justify-between">
@@ -126,6 +308,13 @@ export default function Page() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#EEF1F6]">
+                    {rows.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="px-6 py-6 text-center text-[12px] text-[#6B7280]">
+                          No compliance records available for this period.
+                        </td>
+                      </tr>
+                    )}
                     {rows.map((row) => (
                       <tr key={row.name} className="hover:bg-gray-50/50 font-semibold text-[#111827] transition-colors">
                         <td className="px-6 py-5">{row.name}</td>

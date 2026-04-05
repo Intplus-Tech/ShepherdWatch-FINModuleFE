@@ -1,11 +1,92 @@
 "use client"
 
-import React from "react"
+import React, { useEffect, useMemo, useState } from "react"
 import { X, Mail, ChevronDown } from "lucide-react"
 import Link from "next/link"
 import DashboardPage from "../dashboard/page"
+import { useAuth } from "@/components/auth/AuthProvider"
 
 export default function AddNewAccountPage() {
+  const { user } = useAuth()
+  const [coaOptions, setCoaOptions] = useState<Array<{ id: string; label: string }>>([])
+  const [coaLoading, setCoaLoading] = useState(true)
+  const [coaError, setCoaError] = useState<string | null>(null)
+
+  const tenantId = useMemo(
+    () => user?.tenantId ?? user?.tenant?.id ?? "",
+    [user]
+  )
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadCoaOptions = async () => {
+      setCoaLoading(true)
+      setCoaError(null)
+
+      try {
+        const url = tenantId
+          ? `/api/core/financial/coa?type=EXPENSE&tenantId=${encodeURIComponent(tenantId)}`
+          : "/api/core/financial/coa?type=EXPENSE"
+
+        const coaResponse = await fetch(url, {
+          method: "GET",
+          credentials: "include",
+        })
+        const coaData = await coaResponse.json().catch(() => null)
+
+        if (!coaResponse.ok) {
+          throw new Error(coaData?.message ?? "Unable to fetch chart of accounts.")
+        }
+
+        const rawItems = Array.isArray(coaData?.data?.content)
+          ? coaData.data.content
+          : Array.isArray(coaData?.data)
+            ? coaData.data
+            : Array.isArray(coaData?.items)
+              ? coaData.items
+              : Array.isArray(coaData)
+                ? coaData
+                : []
+
+        const options = rawItems.map((item: any, index: number) => {
+          const name =
+            item?.name ?? item?.accountName ?? item?.title ?? `COA ${index + 1}`
+          const code = item?.code ?? item?.accountCode ?? item?.number
+          return {
+            id: String(item?.id ?? item?.coaId ?? `${index}`),
+            label: code ? `${code} - ${name}` : name,
+          }
+        })
+
+        if (isMounted) {
+          setCoaOptions(options)
+        }
+      } catch (error) {
+        if (isMounted) {
+          setCoaError(
+            error instanceof Error ? error.message : "Unable to load COA list."
+          )
+        }
+      } finally {
+        if (isMounted) {
+          setCoaLoading(false)
+        }
+      }
+    }
+
+    if (tenantId) {
+      loadCoaOptions()
+    } else {
+      setCoaLoading(false)
+      setCoaError("Tenant context is missing.")
+    }
+
+    return () => {
+      isMounted = false
+    }
+  }, [tenantId])
+
   return (
     <div className="relative font-['Public_Sans',_sans-serif]">
       {/* Background Layer: Dashboard */}
@@ -94,8 +175,19 @@ export default function AddNewAccountPage() {
                       <label className="mb-1.5 block text-[12px] font-semibold text-[#374151]">Assign to Budget Head</label>
                       <div className="relative">
                         <select className="h-[30.7px] w-full appearance-none rounded-[3.23px] border-[0.81px] border-gray-200 bg-white pl-3 pr-10 text-[12.5px] font-medium text-gray-900 focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]/20 transition-all">
-                          <option>Primary COA - Operational</option>
-                          <option>Secondary COA - Project</option>
+                          {coaLoading ? (
+                            <option>Loading chart of accounts...</option>
+                          ) : coaError ? (
+                            <option>{coaError}</option>
+                          ) : coaOptions.length === 0 ? (
+                            <option>No COA entries available</option>
+                          ) : (
+                            coaOptions.map((option) => (
+                              <option key={option.id} value={option.id}>
+                                {option.label}
+                              </option>
+                            ))
+                          )}
                         </select>
                         <ChevronDown className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 pointer-events-none" />
                       </div>

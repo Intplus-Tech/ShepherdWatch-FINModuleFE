@@ -1,13 +1,56 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { Inter } from "next/font/google";
 import { X } from "lucide-react";
 import UserSettingsPage from "../user-settings/page";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/components/auth/AuthProvider";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export default function UpdatePasswordModalPage() {
+  const router = useRouter();
+  const { changePassword } = useAuth();
+
+  const [oldPassword, setOldPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handleClose = () => {
+    router.back();
+  };
+
+  const handleSubmit = async () => {
+    setError(null);
+    setSuccess(false);
+
+    if (!oldPassword || !newPassword || !confirmPassword) {
+      setError("Please fill in all fields.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError("New passwords do not match.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await changePassword({ oldPassword, newPassword });
+      setSuccess(true);
+      setTimeout(() => {
+        handleClose();
+      }, 2000);
+    } catch (err: any) {
+      setError(err.message || "Failed to update password.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className={`relative min-h-[100dvh] w-full ${inter.className} antialiased`}>
       {/* Blurred Background Page - Inherits the User settings background */}
@@ -32,18 +75,20 @@ export default function UpdatePasswordModalPage() {
                 Enter your new password credentials.
               </p>
             </div>
-            <button className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors shrink-0 text-[#9CA3AF]">
+            <button onClick={handleClose} className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors shrink-0 text-[#9CA3AF]">
               <X className="h-4 w-4 stroke-[2.5px]" />
             </button>
           </div>
 
-          <div className="px-6 sm:px-8 pt-2 pb-8 flex flex-col gap-5 w-full">
+          <div className="px-6 sm:px-8 pt-2 pb-6 flex flex-col gap-5 w-full">
             
             {/* Old Password Input */}
             <div className="flex flex-col gap-2">
               <label className="text-[#111827] text-[12px] font-[800]">Old Password</label>
               <input 
                 type="password" 
+                value={oldPassword}
+                onChange={(e) => setOldPassword(e.target.value)}
                 className="h-[48px] w-full px-4 rounded-[8px] border border-[#E2E8F0] bg-[#F8FAFC] text-[#111827] text-[14px] font-[500] outline-none focus:border-[#2563EB] focus:bg-white focus:ring-2 focus:ring-[#2563EB]/20 transition-all" 
               />
             </div>
@@ -53,6 +98,8 @@ export default function UpdatePasswordModalPage() {
               <label className="text-[#111827] text-[12px] font-[800]">New Password</label>
               <input 
                 type="password" 
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
                 className="h-[48px] w-full px-4 rounded-[8px] border border-[#E2E8F0] bg-[#F8FAFC] text-[#111827] text-[14px] font-[500] outline-none focus:border-[#2563EB] focus:bg-white focus:ring-2 focus:ring-[#2563EB]/20 transition-all" 
               />
             </div>
@@ -62,19 +109,23 @@ export default function UpdatePasswordModalPage() {
               <label className="text-[#111827] text-[12px] font-[800]">Re-Enter New Password</label>
               <input 
                 type="password" 
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
                 className="h-[48px] w-full px-4 rounded-[8px] border border-[#E2E8F0] bg-[#F8FAFC] text-[#111827] text-[14px] font-[500] outline-none focus:border-[#2563EB] focus:bg-white focus:ring-2 focus:ring-[#2563EB]/20 transition-all" 
               />
             </div>
 
+            {error && <p className="text-rose-600 text-[12px] font-[600] mt-1">{error}</p>}
+            {success && <p className="text-emerald-600 text-[12px] font-[600] mt-1">Password updated successfully!</p>}
           </div>
 
           {/* Footer Navigation Bar */}
           <div className="px-6 sm:px-8 py-5 bg-white flex flex-col sm:flex-row items-center justify-end gap-3 sm:gap-4 rounded-b-[16px] sm:rounded-b-[20px]">
-            <button className="h-[42px] px-5 bg-transparent text-[#475569] text-[13.5px] font-[700] hover:text-[#111827] hover:bg-gray-50 rounded-[8px] transition-colors w-full sm:w-auto">
+            <button onClick={handleClose} disabled={loading} className="h-[42px] px-5 bg-transparent text-[#475569] text-[13.5px] font-[700] hover:text-[#111827] hover:bg-gray-50 rounded-[8px] transition-colors w-full sm:w-auto">
               Cancel
             </button>
-            <button className="h-[42px] px-6 rounded-[8px] bg-[#2563EB] text-white text-[13.5px] font-[800] hover:bg-[#1D4ED8] transition-colors shadow-sm w-full sm:w-auto">
-              Update Password
+            <button onClick={handleSubmit} disabled={loading} className="h-[42px] px-6 rounded-[8px] bg-[#2563EB] text-white text-[13.5px] font-[800] hover:bg-[#1D4ED8] transition-colors shadow-sm w-full sm:w-auto disabled:opacity-70">
+              {loading ? "Updating..." : "Update Password"}
             </button>
           </div>
           

@@ -1,6 +1,8 @@
 "use client"
 
 import BudgetPage from "../budget/page"
+import { useAuth } from "@/components/auth/AuthProvider"
+import { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import {
   AlertTriangle,
@@ -13,109 +15,140 @@ import {
   TrendingDown,
 } from "lucide-react"
 
-const cards = [
-  {
-    title: "TOTAL ANNUAL BUDGET",
-    value: "$1,250,000.00",
-    meta: "FY 2024",
-  },
-  {
-    title: "YTD ACTUAL SPENT",
-    value: "$412,305.50",
-    meta: "5% below target",
-  },
-  {
-    title: "OVERALL VARIANCE",
-    value: "+12.4%",
-    meta: "Healthy Surplus",
-  },
-]
-
-const rows = [
-  {
-    type: "parent",
-    category: "Operational Expenses",
-    budget: "$850,000.00",
-    monthly: "$70,833.33",
-    actual: "$280,500.00",
-    variance: "+5.2%",
-    status: "On Track",
-  },
-  {
-    type: "child",
-    category: "Facilities & Maintenance",
-    budget: "$120,000.00",
-    monthly: "$10,000.00",
-    actual: "$32,500.00",
-    variance: "-8.3%",
-    status: "Warning",
-  },
-  {
-    type: "child",
-    category: "Staff Salaries & Benefits",
-    budget: "$600,000.00",
-    monthly: "$50,000.00",
-    actual: "$195,000.00",
-    variance: "+2.5%",
-    status: "On Track",
-  },
-  {
-    type: "child",
-    category: "Office Supplies & Tech",
-    budget: "$130,000.00",
-    monthly: "$10,833.33",
-    actual: "$53,000.00",
-    variance: "+15.0%",
-    status: "On Track",
-  },
-  {
-    type: "parent",
-    category: "Program Expenses",
-    budget: "$300,000.00",
-    monthly: "$25,000.00",
-    actual: "$112,000.00",
-    variance: "-12.0%",
-    status: "Exceeded",
-  },
-  {
-    type: "child",
-    category: "Youth Ministry",
-    budget: "$100,000.00",
-    monthly: "$8,333.33",
-    actual: "$45,000.00",
-    variance: "-35.0%",
-    status: "Exceeded",
-  },
-  {
-    type: "child",
-    category: "Worship & Media",
-    budget: "$150,000.00",
-    monthly: "$12,500.00",
-    actual: "$55,000.00",
-    variance: "+10.0%",
-    status: "On Track",
-  },
-  {
-    type: "child",
-    category: "Community Outreach",
-    budget: "$50,000.00",
-    monthly: "$4,166.67",
-    actual: "$12,000.00",
-    variance: "+4.0%",
-    status: "On Track",
-  },
-  {
-    type: "parent",
-    category: "Capital Projects",
-    budget: "$100,000.00",
-    monthly: "$8,333.33",
-    actual: "$19,805.50",
-    variance: "+40.0%",
-    status: "On Track",
-  },
-]
+type BvaRow = {
+  type: "parent" | "child"
+  category: string
+  budget: string
+  monthly: string
+  actual: string
+  variance: string
+  status: string
+}
 
 export default function Page() {
+  const { user } = useAuth()
+  const [bva, setBva] = useState<{ totalBudgeted: number; totalActual: number; categories: Array<Record<string, any>> } | null>(null)
+  const [bvaLoading, setBvaLoading] = useState(false)
+  const [bvaError, setBvaError] = useState<string | null>(null)
+
+  const tenantId = useMemo(
+    () => user?.tenantId ?? user?.tenant?.id ?? "",
+    [user]
+  )
+
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat("en-NG", {
+      style: "currency",
+      currency: "NGN",
+      maximumFractionDigits: 0,
+    }).format(value)
+
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchBva = async () => {
+      if (!tenantId) {
+        setBvaError("Tenant is required to load BVA report.")
+        return
+      }
+      try {
+        setBvaLoading(true)
+        setBvaError(null)
+        const now = new Date()
+        const periodStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0]
+        const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0]
+        const params = new URLSearchParams({
+          tenantId,
+          periodStart,
+          periodEnd,
+        })
+        const response = await fetch(`/api/core/financial/reports/bva?${params.toString()}`, {
+          method: "GET",
+          credentials: "include",
+        })
+        const payload = await response.json().catch(() => null)
+        if (!response.ok) {
+          throw new Error(payload?.message ?? "Unable to load BVA report.")
+        }
+        const data = payload?.data ?? payload
+        if (isMounted) {
+          setBva({
+            totalBudgeted: Number(data?.totalBudgeted ?? 0),
+            totalActual: Number(data?.totalActual ?? 0),
+            categories: Array.isArray(data?.categories) ? data.categories : [],
+          })
+        }
+      } catch (error) {
+        if (isMounted) {
+          setBva(null)
+          setBvaError(error instanceof Error ? error.message : "Unable to load BVA report.")
+        }
+      } finally {
+        if (isMounted) {
+          setBvaLoading(false)
+        }
+      }
+    }
+
+    fetchBva()
+
+    return () => {
+      isMounted = false
+    }
+  }, [tenantId])
+
+  const cards = useMemo(() => {
+    const totalBudgeted = bva?.totalBudgeted ?? 0
+    const totalActual = bva?.totalActual ?? 0
+    const variancePct = totalBudgeted ? ((totalBudgeted - totalActual) / totalBudgeted) * 100 : 0
+    return [
+      {
+        title: "TOTAL ANNUAL BUDGET",
+        value: formatCurrency(totalBudgeted),
+        meta: "FY 2024",
+      },
+      {
+        title: "YTD ACTUAL SPENT",
+        value: formatCurrency(totalActual),
+        meta: totalBudgeted ? "5% below target" : "Awaiting entries",
+      },
+      {
+        title: "OVERALL VARIANCE",
+        value: `${variancePct >= 0 ? "+" : ""}${variancePct.toFixed(1)}%`,
+        meta: variancePct >= 0 ? "Healthy Surplus" : "Over Target",
+      },
+    ]
+  }, [bva])
+
+  const rows: BvaRow[] = useMemo(() => {
+    const categories = bva?.categories ?? []
+    return categories.map((category) => {
+      const budget = Number(category?.budgeted ?? category?.totalBudgeted ?? category?.budget ?? 0)
+      const actual = Number(category?.actual ?? category?.totalActual ?? category?.spent ?? 0)
+      const variancePct = budget ? ((budget - actual) / budget) * 100 : 0
+      const status = variancePct < -5 ? "Exceeded" : variancePct < 0 ? "Warning" : "On Track"
+      return {
+        type: "parent",
+        category: category?.name ?? category?.category ?? "Category",
+        budget: formatCurrency(budget),
+        monthly: formatCurrency(budget / 12),
+        actual: formatCurrency(actual),
+        variance: `${variancePct >= 0 ? "+" : ""}${variancePct.toFixed(1)}%`,
+        status,
+      }
+    })
+  }, [bva])
+
+  const totals = useMemo(() => {
+    const totalBudgeted = bva?.totalBudgeted ?? 0
+    const totalActual = bva?.totalActual ?? 0
+    const variancePct = totalBudgeted ? ((totalBudgeted - totalActual) / totalBudgeted) * 100 : 0
+    return {
+      totalBudgeted,
+      totalActual,
+      variancePct,
+    }
+  }, [bva])
   return (
     <div className="relative min-h-screen w-full overflow-hidden bg-[#0F1115] font-sans" style={{ fontFamily: '"Inter", sans-serif' }}>
       <div className="absolute inset-0 pointer-events-none">
@@ -151,6 +184,16 @@ export default function Page() {
           </div>
 
           <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+            {bvaLoading && (
+              <div className="md:col-span-3 text-[12px] font-medium text-[#6B7280]">
+                Loading BVA report...
+              </div>
+            )}
+            {bvaError && (
+              <div className="md:col-span-3 text-[12px] font-medium text-rose-500">
+                {bvaError}
+              </div>
+            )}
             {cards.map((card) => (
               <div key={card.title} className="rounded-[14px] border border-[#EEF1F6] bg-white p-4">
                 <div className="text-[11px] font-semibold text-[#94A3B8] tracking-wide">{card.title}</div>
@@ -194,7 +237,26 @@ export default function Page() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
+                {bvaLoading ? (
+                  <tr>
+                    <td colSpan={6} className="py-6 px-4 text-center text-[12px] text-[#6B7280]">
+                      Loading BVA report…
+                    </td>
+                  </tr>
+                ) : bvaError ? (
+                  <tr>
+                    <td colSpan={6} className="py-6 px-4 text-center text-[12px] text-rose-500">
+                      {bvaError}
+                    </td>
+                  </tr>
+                ) : rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-6 px-4 text-center text-[12px] text-[#6B7280]">
+                      No BVA report data available for this period.
+                    </td>
+                  </tr>
+                ) : (
+                  rows.map((row) => (
                   <tr key={row.category} className="border-t border-[#EEF1F6] text-[#111827]">
                     <td className={`py-3 px-4 font-medium ${row.type === "child" ? "pl-9 text-[#475569]" : "text-[#111827]"}`}>
                       <span className="inline-flex items-center gap-2">
@@ -233,13 +295,16 @@ export default function Page() {
                       </span>
                     </td>
                   </tr>
-                ))}
+                ))
+                )}
                 <tr className="border-t border-[#EEF1F6] bg-[#F8FAFF] font-semibold">
                   <td className="py-3 px-4 text-[#111827]">TOTALS</td>
-                  <td className="py-3 px-4 text-right">$1,250,000.00</td>
-                  <td className="py-3 px-4 text-right">$104,166.66</td>
-                  <td className="py-3 px-4 text-right">$412,305.50</td>
-                  <td className="py-3 px-4 text-right text-emerald-600">+12.4%</td>
+                  <td className="py-3 px-4 text-right">{formatCurrency(totals.totalBudgeted)}</td>
+                  <td className="py-3 px-4 text-right">{formatCurrency(totals.totalBudgeted / 12)}</td>
+                  <td className="py-3 px-4 text-right">{formatCurrency(totals.totalActual)}</td>
+                  <td className={`py-3 px-4 text-right ${totals.variancePct < 0 ? "text-rose-600" : "text-emerald-600"}`}>
+                    {`${totals.variancePct >= 0 ? "+" : ""}${totals.variancePct.toFixed(1)}%`}
+                  </td>
                   <td className="py-3 px-4"></td>
                 </tr>
               </tbody>

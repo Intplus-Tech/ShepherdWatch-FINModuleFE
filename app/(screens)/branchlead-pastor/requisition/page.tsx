@@ -1,5 +1,5 @@
 "use client"
-import { useState } from "react"
+import { useMemo, useState } from "react"
 
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
@@ -28,9 +28,93 @@ import {
   MoreVertical,
   LockKeyhole
 } from "lucide-react"
+import { useAuth } from "@/components/auth/AuthProvider"
+import { useRequisitions } from "@/components/hooks/useRequisitions"
 
 export default function Page() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { user } = useAuth()
+  const { requisitions, loading: reqLoading, error: reqError, refresh } = useRequisitions({
+    currentStatus: "PENDING_ACCOUNTANT",
+    tenantId: user?.tenantId ?? user?.tenant?.id ?? "",
+  })
+
+  const [isApproving, setIsApproving] = useState<string | null>(null)
+  const [approveError, setApproveError] = useState<string | null>(null)
+  const [approveSuccess, setApproveSuccess] = useState<string | null>(null)
+
+  const getCsrfToken = () => {
+    if (typeof document === "undefined") return ""
+    const match = document.cookie
+      .split("; ")
+      .find((cookie) => cookie.startsWith("csrf_token="))
+    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
+  }
+
+  const handleApprove = async (id: string) => {
+    if (!id) return
+    setIsApproving(id)
+    setApproveError(null)
+    setApproveSuccess(null)
+    try {
+      const csrfToken = getCsrfToken()
+      const res = await fetch(`/api/core/financial/requisitions/${id}/approve-lead-pastor`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": csrfToken,
+        },
+        credentials: "include",
+        body: JSON.stringify({ overrideReason: "Approved within budget" }),
+      })
+      const payload = await res.json().catch(() => null)
+      if (!res.ok) {
+        throw new Error(payload?.message ?? "Failed to approve requisition")
+      }
+      setApproveSuccess("Requisition approved successfully.")
+      refresh()
+    } catch (err: any) {
+      setApproveError(err?.message ?? "Failed to approve requisition")
+    } finally {
+      setIsApproving(null)
+    }
+  }
+
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat("en-NG", {
+      style: "currency",
+      currency: "NGN",
+      maximumFractionDigits: 2,
+    }).format(value)
+
+  const pendingRows = useMemo(() => {
+    return requisitions.map((req) => {
+      const createdAt = req.createdAt ? new Date(req.createdAt) : null
+      const timeLabel =
+        createdAt && !Number.isNaN(createdAt.getTime())
+          ? createdAt.toLocaleString("en-GB", {
+              day: "2-digit",
+              month: "short",
+              hour: "2-digit",
+              minute: "2-digit",
+            })
+          : "—"
+
+      return {
+      id: req.reference ? `#${req.reference}` : `#${req.id.slice(0, 8).toUpperCase()}`,
+      description: req.justification || "Requisition",
+      category: req.coaName || "Operational",
+      amount: formatCurrency(req.amount || 0),
+      status: (req.currentStatus ?? "PENDING").toUpperCase().replace(/_/g, " "),
+      requestedBy: req.requestedBy || "Branch Admin",
+      rawId: req.id,
+      timeLabel,
+    }
+  })
+  }, [requisitions])
+
+  const priorityCards = pendingRows.slice(0, 2)
+  const recentActivity = pendingRows.slice(2, 5)
 
   return (
     <div className="h-screen w-full bg-[#F9FAFB] font-sans antialiased text-[#111827] flex overflow-hidden">
@@ -179,92 +263,87 @@ export default function Page() {
 
               {/* Priority Cards */}
               <div className="flex flex-col gap-6">
-                {/* Card 1: Critical Over Budget */}
-                <div className="rounded-[16px] border border-[#E5E7EB] bg-white shadow-sm flex flex-col md:flex-row overflow-hidden border-l-[4px] border-l-rose-500">
-                  <div className="flex-1 p-6 md:p-8">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="text-[11px] font-extrabold tracking-widest text-rose-500 uppercase">CRITICAL - OVER-BUDGET</div>
-                      <div className="text-[12px] font-semibold text-[#9CA3AF]">Requested: Today, 09:42 AM</div>
-                    </div>
-                    <h3 className="text-[22px] font-black text-[#111827] tracking-tight leading-tight mb-3">#REQ-2301 Audio Upgrade</h3>
-                    <p className="text-[14px] text-[#6B7280] font-medium leading-relaxed max-w-[90%] mb-8">
-                      The proposed equipment list for the main hall exceeds the Q1 Capital allocation by $1,200.
-                    </p>
-                    
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-8 mb-8">
-                      <div>
-                        <div className="text-[10px] font-bold text-[#9CA3AF] tracking-widest uppercase mb-1">REQUEST AMOUNT</div>
-                        <div className="text-[18px] font-extrabold text-[#111827]">₦1,150,000</div>
+                {reqLoading && (
+                  <div className="rounded-[16px] border border-[#E5E7EB] bg-white shadow-sm p-6 text-[13px] font-semibold text-[#6B7280]">
+                    Loading priority requisitions...
+                  </div>
+                )}
+                {!reqLoading && reqError && (
+                  <div className="rounded-[16px] border border-[#FECACA] bg-[#FEF2F2] shadow-sm p-6 text-[13px] font-semibold text-rose-600">
+                    {reqError}
+                  </div>
+                )}
+                {!reqLoading && !reqError && priorityCards.length === 0 && (
+                  <div className="rounded-[16px] border border-[#E5E7EB] bg-white shadow-sm p-6 text-[13px] font-semibold text-[#6B7280]">
+                    No pending requisitions to review right now.
+                  </div>
+                )}
+                {priorityCards.map((card, index) => (
+                  <div
+                    key={card.rawId}
+                    className={`rounded-[16px] border border-[#E5E7EB] bg-white shadow-sm flex flex-col md:flex-row overflow-hidden border-l-[4px] ${index === 0 ? "border-l-rose-500" : "border-l-orange-500"}`}
+                  >
+                    <div className="flex-1 p-6 md:p-8">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className={`text-[11px] font-extrabold tracking-widest uppercase ${index === 0 ? "text-rose-500" : "text-orange-500"}`}>
+                          {index === 0 ? "CRITICAL - OVER-BUDGET" : "URGENT - OVER-BUDGET"}
+                        </div>
+                        <div className="text-[12px] font-semibold text-[#9CA3AF]">Requested: {card.timeLabel}</div>
                       </div>
-                      <div>
-                        <div className="text-[10px] font-bold text-[#9CA3AF] tracking-widest uppercase mb-1">CATEGORY</div>
-                        <div className="text-[14px] font-bold text-[#111827]">Capital Expenditure</div>
+                      <h3 className="text-[22px] font-black text-[#111827] tracking-tight leading-tight mb-3">
+                        {card.id} {card.description}
+                      </h3>
+                      <p className="text-[14px] text-[#6B7280] font-medium leading-relaxed max-w-[90%] mb-8">
+                        {card.description}
+                      </p>
+                      
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-8 mb-8">
+                        <div>
+                          <div className="text-[10px] font-bold text-[#9CA3AF] tracking-widest uppercase mb-1">REQUEST AMOUNT</div>
+                          <div className="text-[18px] font-extrabold text-[#111827]">{card.amount}</div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] font-bold text-[#9CA3AF] tracking-widest uppercase mb-1">CATEGORY</div>
+                          <div className="text-[14px] font-bold text-[#111827]">{card.category}</div>
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="flex items-center gap-6">
-                      <button className="h-[44px] rounded-[8px] bg-[#2563EB] px-6 text-[14px] font-bold text-white shadow-md hover:bg-[#1D4ED8] transition-colors flex items-center gap-2">
-                        <LockKeyhole className="h-4 w-4" /> Review & Approve
-                      </button>
-                      <button className="text-[14px] font-bold text-[#6B7280] hover:text-[#111827] transition-colors">
-                        View Details
-                      </button>
-                    </div>
-                  </div>
-                  {/* Right side image chunk */}
-                  <div className="w-full md:w-[220px] md:h-auto h-[200px] shrink-0 p-5 pl-0 hidden md:block">
-                    <div className="w-full h-full relative rounded-[12px] overflow-hidden bg-black">
-                      <Image src="/images/login%20page%20picture.jpg" alt="Audio Mixer" fill className="object-cover opacity-80" />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Card 2: Urgent Over Budget */}
-                <div className="rounded-[16px] border border-[#E5E7EB] bg-white shadow-sm flex flex-col md:flex-row overflow-hidden border-l-[4px] border-l-orange-500">
-                  <div className="flex-1 p-6 md:p-8">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="text-[11px] font-extrabold tracking-widest text-orange-500 uppercase">URGENT - OVER-BUDGET</div>
-                      <div className="text-[12px] font-semibold text-[#9CA3AF]">Requested: Yesterday, 04:15 PM</div>
-                    </div>
-                    <h3 className="text-[22px] font-black text-[#111827] tracking-tight leading-tight mb-3">#REQ-2302 Emergency Repairs</h3>
-                    <p className="text-[14px] text-[#6B7280] font-medium leading-relaxed max-w-[90%] mb-8">
-                      Leaking roof in the youth center requires immediate professional repair. Exceeds Maintenance budget by $300.
-                    </p>
-                    
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-8 mb-8">
-                      <div>
-                        <div className="text-[10px] font-bold text-[#9CA3AF] tracking-widest uppercase mb-1">REQUEST AMOUNT</div>
-                        <div className="text-[18px] font-extrabold text-[#111827]">₦3,150,000</div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] font-bold text-[#9CA3AF] tracking-widest uppercase mb-1">CATEGORY</div>
-                        <div className="text-[14px] font-bold text-[#111827]">Maintenance</div>
+                      <div className="flex items-center gap-6">
+                        <button 
+                          onClick={() => handleApprove(card.rawId)}
+                          disabled={isApproving === card.rawId}
+                          className="h-[44px] rounded-[8px] bg-[#2563EB] px-6 text-[14px] font-bold text-white shadow-md hover:bg-[#1D4ED8] transition-colors flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed">
+                          <LockKeyhole className="h-4 w-4" /> {isApproving === card.rawId ? "Approving..." : "Review & Approve"}
+                        </button>
+                        <button className="text-[14px] font-bold text-[#6B7280] hover:text-[#111827] transition-colors">
+                          View Details
+                        </button>
                       </div>
                     </div>
-
-                    <div className="flex items-center gap-6">
-                      <button className="h-[44px] rounded-[8px] bg-[#2563EB] px-6 text-[14px] font-bold text-white shadow-md hover:bg-[#1D4ED8] transition-colors flex items-center gap-2">
-                        <LockKeyhole className="h-4 w-4" /> Review & Approve
-                      </button>
-                      <button className="text-[14px] font-bold text-[#6B7280] hover:text-[#111827] transition-colors">
-                        View Details
-                      </button>
+                    <div className="w-full md:w-[220px] md:h-auto h-[200px] shrink-0 p-5 pl-0 hidden md:block">
+                      <div className="w-full h-full relative rounded-[12px] overflow-hidden bg-black">
+                        <Image src="/images/login%20page%20picture.jpg" alt="Requisition" fill className="object-cover opacity-80" />
+                      </div>
                     </div>
                   </div>
-                  {/* Right side image chunk */}
-                  <div className="w-full md:w-[220px] md:h-auto h-[200px] shrink-0 p-5 pl-0 hidden md:block">
-                    <div className="w-full h-full relative rounded-[12px] overflow-hidden bg-gray-200">
-                      <Image src="/images/login%20page%20picture.jpg" alt="Maintenance" fill className="object-cover" />
-                    </div>
-                  </div>
-                </div>
+                ))}
               </div>
+              {(approveError || approveSuccess) && (
+                <div className="rounded-[12px] border px-4 py-3 text-[13px] font-semibold">
+                  {approveError && (
+                    <div className="text-rose-600">{approveError}</div>
+                  )}
+                  {approveSuccess && (
+                    <div className="text-emerald-600">{approveSuccess}</div>
+                  )}
+                </div>
+              )}
 
               {/* Pending Requisitions Data Table */}
               <div className="mt-4 flex flex-col gap-4">
                 <div className="flex items-center justify-between">
                   <h2 className="text-[18px] font-extrabold text-[#111827] tracking-tight">Pending Requisitions</h2>
-                  <button className="text-[13px] font-bold text-[#2563EB] hover:underline">View All (12)</button>
+                  <button className="text-[13px] font-bold text-[#2563EB] hover:underline">View All ({pendingRows.length})</button>
                 </div>
                 
                 <div className="rounded-[16px] border border-[#E5E7EB] bg-white overflow-hidden shadow-sm flex flex-col">
@@ -280,101 +359,47 @@ export default function Page() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#F3F4F6]">
-                        {/* Row 1 */}
-                        <tr className="hover:bg-[#F9FAFB] transition-colors">
-                          <td className="px-6 py-4">
-                            <div className="text-[14px] font-black text-[#111827]">#REQ-2303 Weekly Cleaning Supplies</div>
-                            <div className="text-[12px] font-semibold text-[#9CA3AF] mt-0.5">Requested by Admin Dept.</div>
-                          </td>
-                          <td className="px-5 py-4 text-[13px] font-semibold text-[#4B5563]">Operational</td>
-                          <td className="px-5 py-4 text-[15px] font-black text-[#111827]">₦250.00</td>
-                          <td className="px-5 py-4">
-                            <span className="inline-flex rounded-[6px] bg-[#EFF6FF] px-2.5 py-1 text-[10px] font-bold text-[#2563EB] uppercase tracking-widest">
-                              IN REVIEW
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            <button className="text-[#9CA3AF] hover:text-[#111827] transition-colors">
-                              <MoreVertical className="h-5 w-5" />
-                            </button>
-                          </td>
-                        </tr>
-                        {/* Row 2 */}
-                        <tr className="hover:bg-[#F9FAFB] transition-colors">
-                          <td className="px-6 py-4">
-                            <div className="text-[14px] font-black text-[#111827]">#REQ-2304 Sunday Bulletin Print</div>
-                            <div className="text-[12px] font-semibold text-[#9CA3AF] mt-0.5">Requested by Media Dept.</div>
-                          </td>
-                          <td className="px-5 py-4 text-[13px] font-semibold text-[#4B5563]">Programs</td>
-                          <td className="px-5 py-4 text-[15px] font-black text-[#111827]">₦185.00</td>
-                          <td className="px-5 py-4">
-                            <span className="inline-flex rounded-[6px] bg-[#EFF6FF] px-2.5 py-1 text-[10px] font-bold text-[#2563EB] uppercase tracking-widest">
-                              IN REVIEW
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            <button className="text-[#9CA3AF] hover:text-[#111827] transition-colors">
-                              <MoreVertical className="h-5 w-5" />
-                            </button>
-                          </td>
-                        </tr>
-                        {/* Row 3 */}
-                        <tr className="hover:bg-[#F9FAFB] transition-colors">
-                          <td className="px-6 py-4">
-                            <div className="text-[14px] font-black text-[#111827]">#REQ-2305 Guest Speaker Honorarium</div>
-                            <div className="text-[12px] font-semibold text-[#9CA3AF] mt-0.5">Requested by Pastoral</div>
-                          </td>
-                          <td className="px-5 py-4 text-[13px] font-semibold text-[#4B5563]">Programs</td>
-                          <td className="px-5 py-4 text-[15px] font-black text-[#111827]">₦500.00</td>
-                          <td className="px-5 py-4">
-                            <span className="inline-flex rounded-[6px] bg-[#EFF6FF] px-2.5 py-1 text-[10px] font-bold text-[#2563EB] uppercase tracking-widest">
-                              IN REVIEW
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            <button className="text-[#9CA3AF] hover:text-[#111827] transition-colors">
-                              <MoreVertical className="h-5 w-5" />
-                            </button>
-                          </td>
-                        </tr>
-                        {/* Row 4 */}
-                        <tr className="hover:bg-[#F9FAFB] transition-colors">
-                          <td className="px-6 py-4">
-                            <div className="text-[14px] font-black text-[#111827]">#REQ-2306 Utility Bill - Water</div>
-                            <div className="text-[12px] font-semibold text-[#9CA3AF] mt-0.5">Requested by Facility</div>
-                          </td>
-                          <td className="px-5 py-4 text-[13px] font-semibold text-[#4B5563]">Operational</td>
-                          <td className="px-5 py-4 text-[15px] font-black text-[#111827]">₦120.00</td>
-                          <td className="px-5 py-4">
-                            <span className="inline-flex rounded-[6px] bg-[#EFF6FF] px-2.5 py-1 text-[10px] font-bold text-[#2563EB] uppercase tracking-widest">
-                              IN REVIEW
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            <button className="text-[#9CA3AF] hover:text-[#111827] transition-colors">
-                              <MoreVertical className="h-5 w-5" />
-                            </button>
-                          </td>
-                        </tr>
-                        {/* Row 5 */}
-                        <tr className="hover:bg-[#F9FAFB] transition-colors">
-                          <td className="px-6 py-4">
-                            <div className="text-[14px] font-black text-[#111827]">#REQ-2307 Stationery & Ink</div>
-                            <div className="text-[12px] font-semibold text-[#9CA3AF] mt-0.5">Requested by Admin Dept.</div>
-                          </td>
-                          <td className="px-5 py-4 text-[13px] font-semibold text-[#4B5563]">Operational</td>
-                          <td className="px-5 py-4 text-[15px] font-black text-[#111827]">₦85.00</td>
-                          <td className="px-5 py-4">
-                            <span className="inline-flex rounded-[6px] bg-[#EFF6FF] px-2.5 py-1 text-[10px] font-bold text-[#2563EB] uppercase tracking-widest">
-                              IN REVIEW
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            <button className="text-[#9CA3AF] hover:text-[#111827] transition-colors">
-                              <MoreVertical className="h-5 w-5" />
-                            </button>
-                          </td>
-                        </tr>
+                        {reqLoading && (
+                          <tr>
+                            <td colSpan={5} className="px-6 py-6 text-center text-[13px] font-semibold text-[#6B7280]">
+                              Loading requisitions...
+                            </td>
+                          </tr>
+                        )}
+                        {!reqLoading && reqError && (
+                          <tr>
+                            <td colSpan={5} className="px-6 py-6 text-center text-[13px] font-semibold text-rose-500">
+                              {reqError}
+                            </td>
+                          </tr>
+                        )}
+                        {!reqLoading && !reqError && pendingRows.length === 0 && (
+                          <tr>
+                            <td colSpan={5} className="px-6 py-6 text-center text-[13px] font-semibold text-[#6B7280]">
+                              No pending requisitions available.
+                            </td>
+                          </tr>
+                        )}
+                        {pendingRows.slice(0, 5).map((row) => (
+                          <tr key={row.rawId} className="hover:bg-[#F9FAFB] transition-colors">
+                            <td className="px-6 py-4">
+                              <div className="text-[14px] font-black text-[#111827]">{row.id} {row.description}</div>
+                              <div className="text-[12px] font-semibold text-[#9CA3AF] mt-0.5">Requested by {row.requestedBy}</div>
+                            </td>
+                            <td className="px-5 py-4 text-[13px] font-semibold text-[#4B5563]">{row.category}</td>
+                            <td className="px-5 py-4 text-[15px] font-black text-[#111827]">{row.amount}</td>
+                            <td className="px-5 py-4">
+                              <span className="inline-flex rounded-[6px] bg-[#EFF6FF] px-2.5 py-1 text-[10px] font-bold text-[#2563EB] uppercase tracking-widest">
+                                {row.status}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <button className="text-[#9CA3AF] hover:text-[#111827] transition-colors">
+                                <MoreVertical className="h-5 w-5" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                   </div>
@@ -480,44 +505,30 @@ export default function Page() {
 
               {/* Recent Activity */}
               <div className="rounded-[16px] border border-[#E5E7EB] bg-white p-6 shadow-sm flex flex-col h-fit">
-                <h3 className="text-[15px] font-extrabold text-[#111827] tracking-tight mb-5">Recent Activity (Jan 18-22)</h3>
+                <h3 className="text-[15px] font-extrabold text-[#111827] tracking-tight mb-5">Recent Activity</h3>
                 
                 <div className="space-y-6 relative before:absolute before:inset-y-0 before:left-[11px] before:w-[2px] before:bg-[#F3F4F6]">
-                  {/* Item 1 */}
-                  <div className="relative flex gap-4">
-                    <div className="h-6 w-6 shrink-0 rounded-full bg-white flex items-center justify-center z-10 border-2 border-white">
-                      <CheckCircle2 className="h-5 w-5 text-green-500" strokeWidth={2.5} />
+                  {reqLoading && (
+                    <div className="text-[13px] font-semibold text-[#9CA3AF]">Loading activity...</div>
+                  )}
+                  {!reqLoading && reqError && (
+                    <div className="text-[13px] font-semibold text-rose-500">{reqError}</div>
+                  )}
+                  {!reqLoading && !reqError && recentActivity.length === 0 && (
+                    <div className="text-[13px] font-semibold text-[#9CA3AF]">No recent requisition activity yet.</div>
+                  )}
+                  {recentActivity.map((item) => (
+                    <div key={item.rawId} className="relative flex gap-4">
+                      <div className="h-6 w-6 shrink-0 rounded-full bg-white flex items-center justify-center z-10 border-2 border-white">
+                        <CheckCircle2 className="h-5 w-5 text-green-500" strokeWidth={2.5} />
+                      </div>
+                      <div className="flex-1 pb-1">
+                        <div className="text-[13px] font-extrabold text-[#111827]">{item.id} {item.status}</div>
+                        <div className="text-[12px] font-semibold text-[#6B7280]">{item.description} - {item.amount}</div>
+                        <div className="text-[11px] font-bold text-[#9CA3AF] mt-1">{item.timeLabel}</div>
+                      </div>
                     </div>
-                    <div className="flex-1 pb-1">
-                      <div className="text-[13px] font-extrabold text-[#111827]">#REQ-2306 Paid</div>
-                      <div className="text-[12px] font-semibold text-[#6B7280]">Generator Fuel - ₦150,000.00</div>
-                      <div className="text-[11px] font-bold text-[#9CA3AF] mt-1">Jan 22, 09AM</div>
-                    </div>
-                  </div>
-
-                  {/* Item 2 */}
-                  <div className="relative flex gap-4">
-                    <div className="h-6 w-6 shrink-0 rounded-full bg-white flex items-center justify-center z-10 border-2 border-white">
-                      <CheckCircle2 className="h-5 w-5 text-green-500" strokeWidth={2.5} />
-                    </div>
-                    <div className="flex-1 pb-1">
-                      <div className="text-[13px] font-extrabold text-[#111827]">#REQ-2295 Approved</div>
-                      <div className="text-[12px] font-semibold text-[#6B7280]">Sunday Service Decor - ₦75,000.00</div>
-                      <div className="text-[11px] font-bold text-[#9CA3AF] mt-1">Jan 20, 04PM</div>
-                    </div>
-                  </div>
-
-                  {/* Item 3 */}
-                  <div className="relative flex gap-4">
-                    <div className="h-6 w-6 shrink-0 rounded-full bg-white flex items-center justify-center z-10 border-2 border-white">
-                      <CheckCircle2 className="h-5 w-5 text-green-500" strokeWidth={2.5} />
-                    </div>
-                    <div className="flex-1 pb-1">
-                      <div className="text-[13px] font-extrabold text-[#111827]">#REQ-2280 Paid</div>
-                      <div className="text-[12px] font-semibold text-[#6B7280]">Guest Week Honorarium - ₦2,000,000</div>
-                      <div className="text-[11px] font-bold text-[#9CA3AF] mt-1">Jan 18, 10AM</div>
-                    </div>
-                  </div>
+                  ))}
                 </div>
 
                 <Button variant="outline" className="mt-8 w-full h-[44px] rounded-[10px] border-[#E5E7EB] text-[13px] font-bold text-[#111827] shadow-sm hover:bg-gray-50 flex items-center justify-center">

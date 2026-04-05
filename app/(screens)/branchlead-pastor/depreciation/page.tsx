@@ -1,6 +1,7 @@
 "use client"
 
 import Image from "next/image"
+import { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -61,22 +62,121 @@ const categoryData = [
   },
 ]
 
-const months = [
-  { name: "JAN", value: "₦121k", active: true },
-  { name: "FEB", value: "₦121k", active: true },
-  { name: "MAR", value: "₦121k", active: true },
-  { name: "APR", value: "₦120k", active: true },
-  { name: "MAY", value: "₦120k", active: true },
-  { name: "JUN", value: "₦120k", active: true, bold: true },
-  { name: "JUL", value: "₦120k", active: false },
-  { name: "AUG", value: "₦120k", active: false },
-  { name: "SEP", value: "₦120k", active: false },
-  { name: "OCT", value: "₦120k", active: false },
-  { name: "NOV", value: "₦120k", active: false },
-  { name: "DEC", value: "₦120k", active: false },
-]
+type ScheduleItem = {
+  label: string
+  value: string
+  status: "past" | "current" | "future"
+}
+
 
 export default function DepreciationPage() {
+  const [scheduleItems, setScheduleItems] = useState<ScheduleItem[]>([])
+  const [scheduleLoading, setScheduleLoading] = useState(false)
+  const [scheduleError, setScheduleError] = useState<string | null>(null)
+
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat("en-NG", {
+      style: "currency",
+      currency: "NGN",
+      maximumFractionDigits: 0,
+    }).format(amount)
+
+  const buildScheduleItems = (schedule: Array<Record<string, unknown>>): ScheduleItem[] => {
+    const currentIndex = 0
+    return schedule.map((item, index) => {
+      const label =
+        (typeof item.period === "string" && item.period) ||
+        (typeof item.year === "number" && `YR ${item.year}`) ||
+        (typeof item.label === "string" && item.label) ||
+        `Period ${index + 1}`
+      const rawValue =
+        (typeof item.depreciationExpense === "number" && item.depreciationExpense) ||
+        (typeof item.depreciation === "number" && item.depreciation) ||
+        (typeof item.amount === "number" && item.amount) ||
+        (typeof item.value === "number" && item.value) ||
+        0
+      return {
+        label,
+        value: formatCurrency(rawValue),
+        status: index < currentIndex ? "past" : index === currentIndex ? "current" : "future",
+      }
+    })
+  }
+
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchSchedule = async () => {
+      try {
+        setScheduleLoading(true)
+        setScheduleError(null)
+
+        const assetsResponse = await fetch("/api/core/financial/fixed-assets", {
+          method: "GET",
+          credentials: "include",
+        })
+        const assetsPayload = await assetsResponse.json().catch(() => null)
+        if (!assetsResponse.ok) {
+          throw new Error(assetsPayload?.message ?? "Unable to load fixed assets.")
+        }
+
+        const assetList =
+          assetsPayload?.data?.content ??
+          assetsPayload?.data ??
+          assetsPayload?.content ??
+          []
+        const firstAsset = Array.isArray(assetList) ? assetList[0] : null
+        const assetId = firstAsset?.id ?? firstAsset?.assetId
+
+        if (!assetId) {
+          throw new Error("No fixed asset found to generate depreciation schedule.")
+        }
+
+        const scheduleResponse = await fetch(
+          `/api/core/financial/fixed-assets/${assetId}/depreciation-schedule?granularity=yearly&periods=10`,
+          {
+            method: "GET",
+            credentials: "include",
+          }
+        )
+        const schedulePayload = await scheduleResponse.json().catch(() => null)
+        if (!scheduleResponse.ok) {
+          throw new Error(schedulePayload?.message ?? "Unable to load depreciation schedule.")
+        }
+
+        const schedule = schedulePayload?.data?.schedule ?? schedulePayload?.schedule ?? []
+        if (isMounted) {
+          setScheduleItems(buildScheduleItems(Array.isArray(schedule) ? schedule : []))
+        }
+      } catch (error) {
+        if (isMounted) {
+          setScheduleError(error instanceof Error ? error.message : "Unable to load depreciation schedule.")
+          setScheduleItems([])
+        }
+      } finally {
+        if (isMounted) {
+          setScheduleLoading(false)
+        }
+      }
+    }
+
+    fetchSchedule()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  const monthItems = useMemo(
+    () =>
+      scheduleItems.length
+        ? scheduleItems
+        : [
+            { label: "N/A", value: scheduleLoading ? "Loading..." : "Unavailable", status: "future" as const },
+          ],
+    [scheduleItems, scheduleLoading]
+  )
+
   return (
     <div 
       className="min-h-screen bg-[#F7F9FC] text-sm flex overflow-hidden lg:flex-row flex-col"
@@ -303,16 +403,19 @@ export default function DepreciationPage() {
               <div className="mb-8">
                 <h2 className="text-[20px] font-extrabold text-[#111827] tracking-tight mb-2">2024 Monthly Distribution</h2>
                 <p className="text-[13.5px] text-[#64748B] font-medium">Allocation of depreciation expense across the current calendar year</p>
+                {scheduleError && (
+                  <p className="mt-2 text-[12px] font-medium text-[#EF4444]">{scheduleError}</p>
+                )}
               </div>
               
               <div className="overflow-x-auto pb-4">
                 <div className="flex items-center min-w-max justify-between px-1">
-                  {months.map((m, i) => (
+                  {monthItems.map((m, i) => (
                     <div key={i} className="flex flex-col items-center gap-6 w-[70px] shrink-0">
                       <span className="text-[11px] font-extrabold text-[#94A3B8] tracking-widest uppercase">
-                        {m.name}
+                        {m.label}
                       </span>
-                      <span className={`text-[13.5px] ${m.bold ? 'font-extrabold text-[#111827]' : m.active ? 'font-bold text-[#475569]' : 'font-semibold text-[#CBD5E1]'}`}>
+                      <span className={`text-[13.5px] ${m.status === "current" ? 'font-extrabold text-[#111827]' : m.status === "past" ? 'font-bold text-[#475569]' : 'font-semibold text-[#CBD5E1]'}`}>
                         {m.value}
                       </span>
                     </div>

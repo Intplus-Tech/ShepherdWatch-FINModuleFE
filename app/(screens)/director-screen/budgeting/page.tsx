@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useMemo, useState } from "react"
 import SidebarNav from "@/components/navigation/SidebarNav"
 import {
   ChevronDown,
@@ -12,38 +13,188 @@ import {
   Building2,
   Calendar,
 } from "lucide-react"
-
-const summary = [
-  {
-    label: "Total Annual Budget",
-    value: "₦70,880,840,250",
-    note: "FY 2024",
-  },
-  {
-    label: "YTD Actual Spent",
-    value: "₦70,880,840,250",
-    note: "5% below target",
-  },
-  {
-    label: "Overall Variance",
-    value: "+12.4%",
-    note: "Healthy Surplus",
-  },
-]
-
-const rows = [
-  { group: true, name: "Operational Expenses", budget: "₦850,000.00", target: "₦70,833.33", spent: "₦280,500.00", variance: "+5.2%", status: "On Track" },
-  { name: "Facilities & Maintenance", budget: "₦120,000.00", target: "₦10,000.00", spent: "₦32,500.00", variance: "-8.3%", status: "Warning" },
-  { name: "Staff Salaries & Benefits", budget: "₦600,000.00", target: "₦50,000.00", spent: "₦195,000.00", variance: "+2.5%", status: "On Track" },
-  { name: "Office Supplies & Tech", budget: "₦130,000.00", target: "₦10,833.33", spent: "₦53,000.00", variance: "+15.0%", status: "On Track" },
-  { group: true, name: "Program Expenses", budget: "₦300,000.00", target: "₦25,000.00", spent: "₦112,000.00", variance: "-12.0%", status: "Exceeded" },
-  { name: "Youth Ministry", budget: "₦100,000.00", target: "₦8,333.33", spent: "₦45,000.00", variance: "-35.0%", status: "Exceeded" },
-  { name: "Worship & Media", budget: "₦150,000.00", target: "₦12,500.00", spent: "₦55,000.00", variance: "+10.0%", status: "On Track" },
-  { name: "Community Outreach", budget: "₦50,000.00", target: "₦4,166.67", spent: "₦12,000.00", variance: "+4.0%", status: "On Track" },
-  { group: true, name: "Capital Projects", budget: "₦100,000.00", target: "₦8,333.33", spent: "₦19,805.50", variance: "+40.0%", status: "On Track" },
-]
+import { useAuth } from "@/components/auth/AuthProvider"
 
 export default function Page() {
+  const { user } = useAuth()
+  const [bva, setBva] = useState<{ totalBudgeted: number; totalActual: number; categories: Array<Record<string, any>> } | null>(null)
+  const [bvaLoading, setBvaLoading] = useState(false)
+  const [bvaError, setBvaError] = useState<string | null>(null)
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
+
+  const tenantId = useMemo(
+    () => user?.tenantId ?? user?.tenant?.id ?? "",
+    [user]
+  )
+
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat("en-NG", {
+      style: "currency",
+      currency: "NGN",
+      maximumFractionDigits: 0,
+    }).format(value)
+
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchBva = async () => {
+      if (!tenantId) {
+        setBvaError("Tenant is required to load BVA report.")
+        return
+      }
+      try {
+        setBvaLoading(true)
+        setBvaError(null)
+        const now = new Date()
+        const periodStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0]
+        const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0]
+        const params = new URLSearchParams({
+          tenantId,
+          periodStart,
+          periodEnd,
+        })
+        const response = await fetch(`/api/core/financial/reports/bva?${params.toString()}`, {
+          method: "GET",
+          credentials: "include",
+        })
+        const payload = await response.json().catch(() => null)
+        if (!response.ok) {
+          throw new Error(payload?.message ?? "Unable to load BVA report.")
+        }
+        const data = payload?.data ?? payload
+        if (isMounted) {
+          setBva({
+            totalBudgeted: Number(data?.totalBudgeted ?? 0),
+            totalActual: Number(data?.totalActual ?? 0),
+            categories: Array.isArray(data?.categories) ? data.categories : [],
+          })
+        }
+      } catch (error) {
+        if (isMounted) {
+          setBva(null)
+          setBvaError(error instanceof Error ? error.message : "Unable to load BVA report.")
+        }
+      } finally {
+        if (isMounted) {
+          setBvaLoading(false)
+        }
+      }
+    }
+
+    fetchBva()
+
+    return () => {
+      isMounted = false
+    }
+  }, [tenantId])
+
+  const summary = useMemo(() => {
+    const yearly = bva?.totalBudgeted ?? 0
+    const ytdSpent = bva?.totalActual ?? 0
+    const variancePct = yearly ? ((yearly - ytdSpent) / yearly) * 100 : 0
+
+    return [
+      {
+        label: "Total Annual Budget",
+        value: formatCurrency(yearly),
+        note: "FY 2024",
+      },
+      {
+        label: "YTD Actual Spent",
+        value: formatCurrency(ytdSpent),
+        note: yearly ? "5% below target" : "Awaiting entries",
+      },
+      {
+        label: "Overall Variance",
+        value: `${variancePct >= 0 ? "+" : ""}${variancePct.toFixed(1)}%`,
+        note: variancePct >= 0 ? "Healthy Surplus" : "Over Target",
+      },
+    ]
+  }, [bva])
+
+  const rows = useMemo(() => {
+    const categories = bva?.categories ?? []
+    const result: Array<{
+      group?: boolean
+      name: string
+      budget: string
+      target: string
+      spent: string
+      variance: string
+      status: string
+    }> = []
+    categories.forEach((category) => {
+      const budget = Number(category?.budgeted ?? category?.totalBudgeted ?? category?.budget ?? 0)
+      const actual = Number(category?.actual ?? category?.totalActual ?? category?.spent ?? 0)
+      const variancePct = budget ? ((budget - actual) / budget) * 100 : 0
+      const status = variancePct < -5 ? "Exceeded" : variancePct < 0 ? "Warning" : "On Track"
+      result.push({
+        group: true,
+        name: category?.name ?? category?.category ?? "Category",
+        budget: formatCurrency(budget),
+        target: formatCurrency(budget / 12),
+        spent: formatCurrency(actual),
+        variance: `${variancePct >= 0 ? "+" : ""}${variancePct.toFixed(1)}%`,
+        status,
+      })
+    })
+
+    return result
+  }, [bva])
+
+  const totals = useMemo(() => {
+    const totalBudget = bva?.totalBudgeted ?? 0
+    const totalTarget = totalBudget / 12
+    const totalSpent = bva?.totalActual ?? 0
+    const variancePct = totalBudget ? ((totalBudget - totalSpent) / totalBudget) * 100 : 0
+    return { totalBudget, totalTarget, totalSpent, variancePct }
+  }, [bva])
+
+  const handleExport = async () => {
+    if (!tenantId) {
+      setExportError("Tenant is required to export budget entries.")
+      return
+    }
+    setExporting(true)
+    setExportError(null)
+
+    try {
+      const params = new URLSearchParams({ tenantId })
+      const response = await fetch(`/api/core/export/budget-entries?${params.toString()}`, {
+        method: "GET",
+        credentials: "include",
+      })
+
+      if (!response.ok) {
+        const payload = await response.json().catch(async () => ({
+          message: await response.text().catch(() => ""),
+        }))
+        throw new Error(payload?.message ?? "Unable to export budget entries.")
+      }
+
+      const blob = await response.blob()
+      const disposition = response.headers.get("Content-Disposition") ?? ""
+      const filenameMatch =
+        disposition.match(/filename\\*=UTF-8''([^;]+)/i) ??
+        disposition.match(/filename=\"?([^\";]+)\"?/i)
+      const filename = filenameMatch ? decodeURIComponent(filenameMatch[1]) : "budget-entries.csv"
+
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "Unable to export budget entries.")
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
       <aside className="fixed inset-y-0 left-0 z-20 hidden w-[260px] border-r border-[#EEF1F6] bg-white xl:flex">
@@ -80,12 +231,21 @@ export default function Page() {
                 <button className="rounded px-3 py-1.5 text-[11px] font-bold text-[#9CA3AF] hover:text-[#4B5563]">EUR</button>
               </div>
 
-              <button className="flex items-center gap-2 rounded-md bg-[#3B5BDB] px-4 py-2 text-[12px] font-medium text-white shadow hover:bg-blue-700 ml-2">
+              <button
+                onClick={handleExport}
+                disabled={exporting}
+                className="flex items-center gap-2 rounded-md bg-[#3B5BDB] px-4 py-2 text-[12px] font-medium text-white shadow hover:bg-blue-700 ml-2 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
                 <Download className="h-4 w-4" />
-                Export
+                {exporting ? "Exporting..." : "Export"}
               </button>
             </div>
           </div>
+          {exportError && (
+            <div className="mb-4 text-[12px] font-semibold text-rose-500">
+              {exportError}
+            </div>
+          )}
 
           <div className="flex flex-col gap-6">
              {/* Main Budgeting Panel */}
@@ -110,6 +270,16 @@ export default function Page() {
 
                   {/* Stat Cards */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
+                    {bvaLoading && (
+                      <div className="md:col-span-3 text-[12px] font-medium text-[#6B7280]">
+                        Loading BVA report?
+                      </div>
+                    )}
+                    {bvaError && (
+                      <div className="md:col-span-3 text-[12px] font-medium text-rose-500">
+                        {bvaError}
+                      </div>
+                    )}
                     {summary.map((card, i) => (
                       <div key={i} className="rounded-xl border border-[#EEF1F6] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
                         <p className="text-[11px] font-bold text-[#6B7280] tracking-wider mb-2 uppercase">{card.label}</p>
@@ -166,53 +336,72 @@ export default function Page() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#EEF1F6]">
-                      {rows.map((row, idx) => (
-                        <tr key={row.name + idx} className={`bg-white hover:bg-gray-50/50 transition-colors`}>
-                          <td className={`px-6 py-5 text-[12px] flex items-center ${row.group ? "font-bold text-[#111827]" : "font-semibold text-[#6B7280] ml-6"} uppercase tracking-wide`}>
-                            {row.group && row.name !== "Capital Projects" ? (
-                              <ChevronDown className="h-4 w-4 mr-2" strokeWidth={3} />
-                            ) : row.group ? (
-                              <ChevronDown className="h-4 w-4 mr-2 -rotate-90" strokeWidth={3} />
-                            ) : null}
-                            {row.name}
-                          </td>
-                          <td className={`px-6 py-5 text-[13px] ${row.group ? "font-bold text-[#111827]" : "font-bold text-[#6B7280]"}`}>{row.budget}</td>
-                          <td className="px-6 py-5 text-[13px] font-bold text-[#9CA3AF]">{row.target}</td>
-                          <td className={`px-6 py-5 text-[13px] ${row.group ? "font-bold text-[#111827]" : "font-bold text-[#6B7280]"}`}>{row.spent}</td>
-                          <td className={`px-6 py-5 text-[13px] font-bold ${row.variance.startsWith("-") ? "text-rose-500" : "text-emerald-500"}`}>
-                            {row.variance}
-                          </td>
-                          <td className="px-6 py-5">
-                            <span
-                              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold ${
-                                row.status == "On Track"
-                                  ? "bg-emerald-50 text-emerald-600"
-                                  : row.status == "Warning"
-                                  ? "bg-amber-50 text-amber-600"
-                                  : "bg-rose-50 text-rose-600"
-                              }`}
-                            >
-                              {row.status == "On Track" ? (
-                                <CheckCircle2 className="h-3.5 w-3.5" />
-                              ) : row.status == "Warning" ? (
-                                <AlertTriangle className="h-3.5 w-3.5" />
-                              ) : (
-                                <XCircle className="h-3.5 w-3.5" />
-                              )}
-                              {row.status}
-                            </span>
+                      {bvaLoading ? (
+                        <tr>
+                          <td colSpan={6} className="px-6 py-6 text-center text-[12px] text-[#6B7280]">
+                            Loading budget entries…
                           </td>
                         </tr>
-                      ))}
-                      {/* Totals Row */}
-                      <tr className="bg-[#FAFBFF] border-t-2 border-[#E5E7EB]">
-                        <td className="px-6 py-5 text-[12px] font-bold text-[#111827] uppercase tracking-wide">TOTALS</td>
-                        <td className="px-6 py-5 text-[13px] font-bold text-[#111827]">₦1,250,000.00</td>
-                        <td className="px-6 py-5 text-[13px] font-bold text-[#111827]">₦104,166.66</td>
-                        <td className="px-6 py-5 text-[13px] font-bold text-[#111827]">₦412,305.50</td>
-                        <td className="px-6 py-5 text-[13px] font-bold text-emerald-600">+12.4%</td>
-                        <td className="px-6 py-5"></td>
-                      </tr>
+                      ) : bvaError ? (
+                        <tr>
+                          <td colSpan={6} className="px-6 py-6 text-center text-[12px] text-rose-500">
+                            {bvaError}
+                          </td>
+                        </tr>
+                      ) : rows.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="px-6 py-6 text-center text-[12px] text-[#6B7280]">
+                            No BVA report data available for this period.
+                          </td>
+                        </tr>
+                      ) : (
+                        rows.map((row, idx) => (
+                          <tr key={row.name + idx} className={`bg-white hover:bg-gray-50/50 transition-colors`}>
+                            <td className={`px-6 py-5 text-[12px] flex items-center ${row.group ? "font-bold text-[#111827]" : "font-semibold text-[#6B7280] ml-6"} uppercase tracking-wide`}>
+                              {row.group ? <ChevronDown className="h-4 w-4 mr-2" strokeWidth={3} /> : null}
+                              {row.name}
+                            </td>
+                            <td className={`px-6 py-5 text-[13px] ${row.group ? "font-bold text-[#111827]" : "font-bold text-[#6B7280]"}`}>{row.budget}</td>
+                            <td className="px-6 py-5 text-[13px] font-bold text-[#9CA3AF]">{row.target}</td>
+                            <td className={`px-6 py-5 text-[13px] ${row.group ? "font-bold text-[#111827]" : "font-bold text-[#6B7280]"}`}>{row.spent}</td>
+                            <td className={`px-6 py-5 text-[13px] font-bold ${row.variance.startsWith("-") ? "text-rose-500" : "text-emerald-500"}`}>
+                              {row.variance}
+                            </td>
+                            <td className="px-6 py-5">
+                              <span
+                                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold ${
+                                  row.status == "On Track"
+                                    ? "bg-emerald-50 text-emerald-600"
+                                    : row.status == "Warning"
+                                    ? "bg-amber-50 text-amber-600"
+                                    : "bg-rose-50 text-rose-600"
+                                }`}
+                              >
+                                {row.status == "On Track" ? (
+                                  <CheckCircle2 className="h-3.5 w-3.5" />
+                                ) : row.status == "Warning" ? (
+                                  <AlertTriangle className="h-3.5 w-3.5" />
+                                ) : (
+                                  <XCircle className="h-3.5 w-3.5" />
+                                )}
+                                {row.status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                      {!bvaLoading && !bvaError && rows.length > 0 && (
+                        <tr className="bg-[#FAFBFF] border-t-2 border-[#E5E7EB]">
+                          <td className="px-6 py-5 text-[12px] font-bold text-[#111827] uppercase tracking-wide">TOTALS</td>
+                          <td className="px-6 py-5 text-[13px] font-bold text-[#111827]">{formatCurrency(totals.totalBudget)}</td>
+                          <td className="px-6 py-5 text-[13px] font-bold text-[#111827]">{formatCurrency(totals.totalTarget)}</td>
+                          <td className="px-6 py-5 text-[13px] font-bold text-[#111827]">{formatCurrency(totals.totalSpent)}</td>
+                          <td className={`px-6 py-5 text-[13px] font-bold ${totals.variancePct >= 0 ? "text-emerald-600" : "text-rose-500"}`}>
+                            {`${totals.variancePct >= 0 ? "+" : ""}${totals.variancePct.toFixed(1)}%`}
+                          </td>
+                          <td className="px-6 py-5"></td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>

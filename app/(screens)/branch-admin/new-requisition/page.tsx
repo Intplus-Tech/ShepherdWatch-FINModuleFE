@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
 import { Inter } from "next/font/google"
 import {
@@ -20,11 +20,153 @@ import {
   CloudUpload,
   Send,
 } from "lucide-react"
+import { useAuth } from "@/components/auth/AuthProvider"
 
 const inter = Inter({ subsets: ["latin"] })
 
 export default function NewRequisitionPage() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const { user } = useAuth()
+  const [title, setTitle] = useState("")
+  const [coaId, setCoaId] = useState("")
+  const [amount, setAmount] = useState("")
+  const [justification, setJustification] = useState("")
+  const [coaOptions, setCoaOptions] = useState<Array<{ id: string; label: string }>>([])
+  const [coaLoading, setCoaLoading] = useState(true)
+  const [coaError, setCoaError] = useState<string | null>(null)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+
+  const tenantId = useMemo(
+    () => user?.tenantId ?? user?.tenant?.id ?? "",
+    [user]
+  )
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadCoaOptions = async () => {
+      setCoaLoading(true)
+      setCoaError(null)
+
+      try {
+        const url = tenantId
+          ? `/api/core/financial/coa?type=EXPENSE&tenantId=${encodeURIComponent(tenantId)}`
+          : "/api/core/financial/coa?type=EXPENSE"
+        const response = await fetch(url, {
+          method: "GET",
+          credentials: "include",
+        })
+        const payload = await response.json().catch(() => null)
+        if (!response.ok) {
+          throw new Error(payload?.message ?? "Unable to fetch budget categories.")
+        }
+
+        const rawItems = Array.isArray(payload?.data?.content)
+          ? payload.data.content
+          : Array.isArray(payload?.data)
+            ? payload.data
+            : Array.isArray(payload?.items)
+              ? payload.items
+              : Array.isArray(payload)
+                ? payload
+                : []
+
+        const mapped = rawItems.map((item: any) => ({
+          id: String(item?.id ?? item?._id ?? ""),
+          label: item?.name ?? item?.accountName ?? item?.coaName ?? "Budget Category",
+        }))
+
+        if (isMounted) {
+          setCoaOptions(mapped.filter((option) => option.id))
+        }
+      } catch (err) {
+        if (isMounted) {
+          setCoaError(err instanceof Error ? err.message : "Unable to fetch budget categories.")
+        }
+      } finally {
+        if (isMounted) {
+          setCoaLoading(false)
+        }
+      }
+    }
+
+    loadCoaOptions()
+
+    return () => {
+      isMounted = false
+    }
+  }, [tenantId])
+
+  const getCsrfToken = () => {
+    if (typeof document === "undefined") return ""
+    const match = document.cookie
+      .split("; ")
+      .find((cookie) => cookie.startsWith("csrf_token="))
+    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
+  }
+
+  const handleSubmit = async () => {
+    setSubmitError(null)
+    setSubmitSuccess(null)
+
+    const amountValue = Number(String(amount).replace(/,/g, "").trim())
+    if (!tenantId) {
+      setSubmitError("Tenant is required to create a requisition.")
+      return
+    }
+    if (!coaId) {
+      setSubmitError("Please select a budget category.")
+      return
+    }
+    if (!justification.trim()) {
+      setSubmitError("Please provide a justification for this request.")
+      return
+    }
+    if (!Number.isFinite(amountValue) || amountValue <= 0) {
+      setSubmitError("Please enter a valid amount.")
+      return
+    }
+
+    setSubmitting(true)
+
+    try {
+      const csrfToken = getCsrfToken()
+      const justificationText = title.trim()
+        ? `${title.trim()} — ${justification.trim()}`
+        : justification.trim()
+
+      const response = await fetch("/api/core/financial/requisitions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": csrfToken,
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          tenantId,
+          coaId,
+          amount: amountValue,
+          justification: justificationText,
+        }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Unable to submit requisition.")
+      }
+
+      setSubmitSuccess("Requisition submitted successfully.")
+      setTitle("")
+      setCoaId("")
+      setAmount("")
+      setJustification("")
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "Unable to submit requisition.")
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   return (
     <div className={`flex flex-col xl:flex-row min-h-[100dvh] bg-[#F8FAFC] relative w-full ${inter.className} antialiased`}>
@@ -187,6 +329,8 @@ export default function NewRequisitionPage() {
                       <input 
                         type="text" 
                         placeholder="e.g., Q3 Office Supplies Restock" 
+                        value={title}
+                        onChange={(event) => setTitle(event.target.value)}
                         className="h-[46px] w-full rounded-[8px] border border-[#E5E7EB] bg-white px-4 text-[14px] font-[500] text-[#111827] placeholder:text-[#9CA3AF] focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20 outline-none transition-all shadow-sm"
                       />
                     </div>
@@ -199,16 +343,25 @@ export default function NewRequisitionPage() {
                         </label>
                         <div className="relative">
                           <select
-                            defaultValue=""
+                            value={coaId}
+                            onChange={(event) => setCoaId(event.target.value)}
+                            disabled={coaLoading}
                             className="h-[46px] w-full rounded-[8px] border border-[#E5E7EB] bg-white px-4 pr-10 text-[14px] font-[500] text-[#111827] focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20 outline-none transition-all shadow-sm appearance-none cursor-pointer"
                           >
-                            <option value="" disabled hidden>Select a category</option>
-                            <option value="1">Office Supplies</option>
-                            <option value="2">Maintenance</option>
-                            <option value="3">Logistics</option>
+                            <option value="" disabled hidden>
+                              {coaLoading ? "Loading categories..." : "Select a category"}
+                            </option>
+                            {coaOptions.map((option) => (
+                              <option key={option.id} value={option.id}>
+                                {option.label}
+                              </option>
+                            ))}
                           </select>
                           <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6B7280] pointer-events-none" />
                         </div>
+                        {coaError && (
+                          <p className="text-[12px] text-red-500 font-medium mt-1">{coaError}</p>
+                        )}
                       </div>
 
                       <div className="flex flex-col gap-2">
@@ -220,6 +373,8 @@ export default function NewRequisitionPage() {
                           <input 
                             type="text" 
                             placeholder="0.00" 
+                            value={amount}
+                            onChange={(event) => setAmount(event.target.value)}
                             className="h-full w-full bg-transparent text-[14px] font-[500] text-[#111827] placeholder:text-[#9CA3AF] outline-none"
                           />
                           <span className="text-[12px] font-[800] text-[#9CA3AF] ml-2 shrink-0 tracking-wide">NGN</span>
@@ -238,6 +393,8 @@ export default function NewRequisitionPage() {
                       <textarea 
                         className="w-full min-h-[120px] sm:min-h-[140px] rounded-[8px] border border-[#E5E7EB] bg-white p-4 text-[14px] font-[500] text-[#111827] placeholder:text-[#9CA3AF] focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20 outline-none transition-all shadow-sm resize-y"
                         placeholder="Explain why this expense is necessary..."
+                        value={justification}
+                        onChange={(event) => setJustification(event.target.value)}
                       ></textarea>
                     </div>
                   </div>
@@ -245,14 +402,32 @@ export default function NewRequisitionPage() {
                 
                 {/* Buttons mapped below Left Card */}
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4 mt-6 sm:mt-8">
-                  <button className="h-[42px] sm:h-[46px] px-5 sm:px-6 md:px-8 rounded-[8px] bg-[#2563EB] hover:bg-[#1D4ED8] flex items-center justify-center gap-2 text-[13px] sm:text-[14px] font-[800] text-white transition-colors shadow-sm w-full sm:w-auto shrink-0">
-                    Submit Requisition
+                  <button
+                    onClick={handleSubmit}
+                    disabled={submitting}
+                    className="h-[42px] sm:h-[46px] px-5 sm:px-6 md:px-8 rounded-[8px] bg-[#2563EB] hover:bg-[#1D4ED8] flex items-center justify-center gap-2 text-[13px] sm:text-[14px] font-[800] text-white transition-colors shadow-sm w-full sm:w-auto shrink-0 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {submitting ? "Submitting..." : "Submit Requisition"}
                     <Send className="h-4 w-4" strokeWidth={2.5} />
                   </button>
                   <button className="h-[42px] sm:h-[46px] px-5 sm:px-6 md:px-8 rounded-[8px] bg-white border border-[#E5E7EB] flex items-center justify-center text-[13px] sm:text-[14px] font-[800] text-[#4B5563] hover:bg-gray-50 transition-colors shadow-sm w-full sm:w-auto shrink-0">
                     Save as Draft
                   </button>
                 </div>
+                {(submitError || submitSuccess) && (
+                  <div className="mt-3">
+                    {submitError && (
+                      <div className="rounded-[10px] border border-red-200 bg-red-50 px-4 py-2 text-[13px] font-medium text-red-600">
+                        {submitError}
+                      </div>
+                    )}
+                    {submitSuccess && (
+                      <div className="rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-2 text-[13px] font-medium text-emerald-700">
+                        {submitSuccess}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Right Column (Attachments) */}

@@ -1,25 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyToken, JWTPayload } from "@/lib/jwt";
-import { sessionStore } from "@/lib/session";
+import { verifyToken } from "@/lib/jwt";
+import { ACCESS_TOKEN_COOKIE } from "@/lib/auth-config";
 
 export async function middleware(req: NextRequest) {
-  const token = req.cookies.get("token")?.value;
+  const token = req.cookies.get(ACCESS_TOKEN_COOKIE)?.value;
   if (!token) return NextResponse.redirect(new URL("/login", req.url));
 
   const decoded = verifyToken(token);
   if (!decoded) return NextResponse.redirect(new URL("/login", req.url));
 
-  const session = sessionStore.getSession(decoded.userId);
-  if (!session) return NextResponse.redirect(new URL("/login", req.url));
-
   // role-based check
-  if (req.nextUrl.pathname.startsWith("/admin") && session.role !== "admin") {
+  if (req.nextUrl.pathname.startsWith("/admin") && decoded.role !== "admin") {
     return NextResponse.redirect(new URL("/dashboard", req.url));
   }
 
   const res = NextResponse.next();
-  res.headers.set("x-user-id", session.userId);
-  res.headers.set("x-user-role", session.role);
+  res.headers.set("x-user-id", decoded.id);
+  res.headers.set("x-user-role", decoded.role);
   return res;
 }
 

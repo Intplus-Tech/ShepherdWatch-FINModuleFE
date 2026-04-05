@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
 import { Inter } from "next/font/google"
 import {
@@ -21,47 +21,201 @@ import {
   FileText,
   Image as ImageIcon
 } from "lucide-react"
+import { useAuth } from "@/components/auth/AuthProvider"
 
 const inter = Inter({ subsets: ["latin"] })
 
-const assets = [
-  {
-    id: "SW-PA-001",
-    name: "PA System",
-    desc: "Digital Mixing Console + 8 Line Array Speakers",
-    category: "Electronics",
-    location: "Main Sanctuary",
-    status: "Operational",
-    statusColor: "bg-emerald-50 text-emerald-600",
-    value: "₦850,000",
-    active: true
-  },
-  {
-    id: "SW-VEH-042",
-    name: "Toyota Hiace",
-    desc: "2018 Model, White Bus",
-    category: "Vehicle",
-    location: "Garage",
-    status: "Maintenance",
-    statusColor: "bg-amber-50 text-amber-600",
-    value: "₦8,500,000",
-    active: false
-  },
-  {
-    id: "SW-FUR-110",
-    name: "Office Chair",
-    desc: "Ergonomic Leather Chair",
-    category: "Furniture",
-    location: "Pastor's Office",
-    status: "Pending Disposal",
-    statusColor: "bg-rose-50 text-rose-600",
-    value: "₦25,000",
-    active: false
-  },
-]
+type AssetRow = {
+  id: string
+  name: string
+  desc: string
+  category: string
+  location: string
+  status: string
+  statusColor: string
+  value: string
+  active: boolean
+}
+
 
 export default function Page() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const { user } = useAuth()
+  const [creatingAsset, setCreatingAsset] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
+  const [createSuccess, setCreateSuccess] = useState<string | null>(null)
+  const [activeCategory, setActiveCategory] = useState("All Assets")
+  const [assets, setAssets] = useState<AssetRow[]>([])
+  const [assetsLoading, setAssetsLoading] = useState(false)
+  const [assetsError, setAssetsError] = useState<string | null>(null)
+
+  const tenantId = useMemo(
+    () => user?.tenantId ?? user?.tenant?.id ?? "",
+    [user]
+  )
+
+  const getCsrfToken = () => {
+    if (typeof document === "undefined") return ""
+    const match = document.cookie
+      .split("; ")
+      .find((cookie) => cookie.startsWith("csrf_token="))
+    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
+  }
+
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat("en-NG", {
+      style: "currency",
+      currency: "NGN",
+      maximumFractionDigits: 0,
+    }).format(amount)
+
+  const getStatusColor = (status: string) => {
+    const normalized = status.toLowerCase()
+    if (normalized.includes("operational") || normalized.includes("active")) {
+      return "bg-emerald-50 text-emerald-600"
+    }
+    if (normalized.includes("maintenance") || normalized.includes("service")) {
+      return "bg-amber-50 text-amber-600"
+    }
+    if (normalized.includes("pending") || normalized.includes("disposal")) {
+      return "bg-rose-50 text-rose-600"
+    }
+    return "bg-slate-100 text-slate-600"
+  }
+
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchAssets = async () => {
+      if (!tenantId) {
+        setAssets([])
+        setAssetsError("Tenant is required to load assets.")
+        return
+      }
+
+      try {
+        setAssetsLoading(true)
+        setAssetsError(null)
+
+        const params = new URLSearchParams()
+        params.set("tenantId", tenantId)
+        const categoryMap: Record<string, string> = {
+          "All Assets": "",
+          Electronics: "Electronics",
+          Vehicles: "Vehicle",
+          Furniture: "Furniture",
+          "Musical Equipment": "Musical Equipment",
+        }
+        const categoryParam = categoryMap[activeCategory] ?? activeCategory
+        if (categoryParam) {
+          params.set("category", categoryParam)
+        }
+
+        const response = await fetch(`/api/core/financial/fixed-assets?${params.toString()}`, {
+          method: "GET",
+          credentials: "include",
+        })
+        const payload = await response.json().catch(() => null)
+        if (!response.ok) {
+          throw new Error(payload?.message ?? "Unable to load assets.")
+        }
+
+        const data =
+          payload?.data?.content ??
+          payload?.data ??
+          payload?.content ??
+          []
+        const mapped = (Array.isArray(data) ? data : []).map((asset, index) => {
+          const id = asset?.assetCode ?? asset?.assetTag ?? asset?.code ?? asset?.id ?? `ASSET-${index + 1}`
+          const name = asset?.name ?? asset?.description ?? asset?.assetName ?? "Unnamed Asset"
+          const desc = asset?.description ?? asset?.details ?? ""
+          const category = asset?.category ?? "General"
+          const location = asset?.location ?? "N/A"
+          const status = asset?.status ?? "Active"
+          const valueAmount = asset?.currentValue ?? asset?.purchaseValue ?? asset?.value ?? 0
+
+          return {
+            id,
+            name,
+            desc,
+            category,
+            location,
+            status,
+            statusColor: getStatusColor(String(status)),
+            value: formatCurrency(Number(valueAmount) || 0),
+            active: index === 0,
+          } as AssetRow
+        })
+
+        if (isMounted) {
+          setAssets(mapped)
+        }
+      } catch (error) {
+        if (isMounted) {
+          setAssets([])
+          setAssetsError(error instanceof Error ? error.message : "Unable to load assets.")
+        }
+      } finally {
+        if (isMounted) {
+          setAssetsLoading(false)
+        }
+      }
+    }
+
+    fetchAssets()
+
+    return () => {
+      isMounted = false
+    }
+  }, [activeCategory, tenantId])
+
+  const handleCreateAsset = async () => {
+    if (!tenantId) {
+      setCreateError("Tenant is required to create a fixed asset.")
+      return
+    }
+
+    setCreatingAsset(true)
+    setCreateError(null)
+    setCreateSuccess(null)
+
+    try {
+      const csrfToken = getCsrfToken()
+      const assetCode = `GEN-${String(Date.now()).slice(-4)}`
+      const response = await fetch("/api/core/financial/fixed-assets", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": csrfToken,
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          assetCode,
+          description: "Perkins 150KVA Diesel Generator",
+          category: "Machinery",
+          location: "Main Church Building",
+          status: "ACTIVE",
+          purchaseDate: new Date().toISOString(),
+          purchaseValue: 8500000,
+          currentValue: 8500000,
+          depreciationMethod: "STRAIGHT_LINE",
+          usefulLifeYears: 10,
+          residualValue: 850000,
+          tenantId,
+        }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Unable to create fixed asset.")
+      }
+
+      setCreateSuccess(`Fixed asset ${assetCode} created successfully.`)
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : "Unable to create fixed asset.")
+    } finally {
+      setCreatingAsset(false)
+    }
+  }
 
   return (
     <div className={`flex flex-col xl:flex-row min-h-screen bg-[#F8FAFC] relative w-full ${inter.className} antialiased`}>
@@ -203,11 +357,19 @@ export default function Page() {
 
             {/* Tabs */}
             <div className="mb-6 flex overflow-x-auto no-scrollbar items-center gap-2.5 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 sm:pb-0 sm:flex-wrap">
-              <button className="shrink-0 whitespace-nowrap rounded-[20px] bg-[#2563EB] px-5 py-2 text-[13px] font-bold text-white shadow-[0_2px_8px_rgba(37,99,235,0.25)] transition-colors tracking-wide">All Assets</button>
-              <button className="shrink-0 whitespace-nowrap rounded-[20px] bg-[#F3F4F6] px-5 py-2 text-[13px] font-semibold text-[#6B7280] hover:bg-[#E5E7EB] transition-colors tracking-wide">Electronics</button>
-              <button className="shrink-0 whitespace-nowrap rounded-[20px] bg-[#F3F4F6] px-5 py-2 text-[13px] font-semibold text-[#6B7280] hover:bg-[#E5E7EB] transition-colors tracking-wide">Vehicles</button>
-              <button className="shrink-0 whitespace-nowrap rounded-[20px] bg-[#F3F4F6] px-5 py-2 text-[13px] font-semibold text-[#6B7280] hover:bg-[#E5E7EB] transition-colors tracking-wide">Furniture</button>
-              <button className="shrink-0 whitespace-nowrap rounded-[20px] bg-[#F3F4F6] px-5 py-2 text-[13px] font-semibold text-[#6B7280] hover:bg-[#E5E7EB] transition-colors tracking-wide">Musical Equipment</button>
+              {["All Assets", "Electronics", "Vehicles", "Furniture", "Musical Equipment"].map((label) => (
+                <button
+                  key={label}
+                  onClick={() => setActiveCategory(label)}
+                  className={`shrink-0 whitespace-nowrap rounded-[20px] px-5 py-2 text-[13px] font-semibold transition-colors tracking-wide ${
+                    activeCategory === label
+                      ? "bg-[#2563EB] text-white font-bold shadow-[0_2px_8px_rgba(37,99,235,0.25)]"
+                      : "bg-[#F3F4F6] text-[#6B7280] hover:bg-[#E5E7EB]"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
 
             {/* Split Content Area: Adjusted proportions here to reduce the table card width relative to right panel */}
@@ -215,6 +377,12 @@ export default function Page() {
 
               {/* Left Column: Asset Table Container */}
               <div className="rounded-[16px] bg-white border border-[#EEF1F6] shadow-sm flex flex-col min-h-0 lg:min-h-[500px] w-full max-w-full">
+                {(assetsLoading || assetsError) && (
+                  <div className="px-4 sm:px-5 pt-4">
+                    {assetsLoading && <p className="text-[12px] font-medium text-[#6B7280]">Loading assets...</p>}
+                    {assetsError && <p className="text-[12px] font-medium text-[#EF4444]">{assetsError}</p>}
+                  </div>
+                )}
 
                 {/* Mobile Card List */}
                 <div className="lg:hidden divide-y divide-[#EEF1F6]/60">

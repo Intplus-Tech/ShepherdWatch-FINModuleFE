@@ -51,7 +51,7 @@ export default function SignInForm() {
     setError(null)
     try {
       await login(values)
-      router.push("/director-screen/dashboard")
+      router.push("/login")
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed")
     }

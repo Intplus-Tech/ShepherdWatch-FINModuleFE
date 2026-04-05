@@ -1,86 +1,361 @@
 "use client"
 
-import React from "react"
+import React, { useEffect, useMemo, useState } from "react"
 import SidebarNav from "@/components/navigation/SidebarNav"
 import ScreenHeader from "@/components/navigation/ScreenHeader"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
-  ChevronDown,
   Filter,
   History,
   ShieldCheck,
   Users,
   Check,
 } from "lucide-react"
+import {
+  flattenRolePermissions,
+  formatRoleLabel,
+  flattenRoles,
+  normalizeRoleKey,
+} from "@/lib/role-permissions"
 
-const permissions = [
-  {
-    section: "Financial Controls",
-    items: [
-      {
-        name: "Approve Budgets",
-        desc: "Authorize annual branch budget proposals",
-        checks: [true, true, false, false],
-      },
-      {
-        name: "Edit Chart of Accounts (COA)",
-        desc: "Modify ledger account structures",
-        checks: [true, false, true, false],
-      },
-      {
-        name: "Approve Over-Budget Expenses",
-        desc: "Override soft limits on expense categories",
-        checks: [true, true, false, false],
-      },
-    ],
+type RoleColumn = {
+  key: string
+  label: string
+  subLabel: string
+  textClass: string
+}
+
+type MatrixItem = {
+  name: string
+  desc: string
+  section: string
+  roles: Set<string>
+}
+
+type MatrixSection = {
+  section: string
+  items: MatrixItem[]
+}
+
+const DEFAULT_ROLE_META: Record<string, Omit<RoleColumn, "key">> = {
+  SUPER_ADMIN: {
+    label: "Super Admin",
+    subLabel: "Full Access",
+    textClass: "text-[#7C3AED]",
   },
-  {
-    section: "User Management",
-    items: [
-      {
-        name: "Invite New Users",
-        desc: "Send invitations to new staff",
-        checks: [true, true, false, true],
-      },
-      {
-        name: "Revoke Access",
-        desc: "Disable user accounts",
-        checks: [true, false, false, false],
-      },
-    ],
+  PASTOR: {
+    label: "Pastor",
+    subLabel: "Overseer",
+    textClass: "text-[#2563EB]",
   },
-  {
-    section: "Branch Settings",
-    items: [
-      {
-        name: "Configure Branch Info",
-        desc: "Edit location details and contacts",
-        checks: [true, true, false, true],
-      },
-    ],
+  ACCOUNTANT: {
+    label: "Accountant",
+    subLabel: "Financial Ops",
+    textClass: "text-[#16A34A]",
   },
-  {
-    section: "Reports",
-    items: [
-      {
-        name: "View Sensitive Reports",
-        desc: "Access salary and donation details",
-        checks: [true, true, true, false],
-      },
-      {
-        name: "Export Data",
-        desc: "Download CSV/PDF reports",
-        checks: [true, true, true, true],
-      },
-    ],
+  ADMIN_OFFICER: {
+    label: "Admin Officer",
+    subLabel: "Administrative",
+    textClass: "text-[#6B7280]",
   },
+}
+
+const DEFAULT_ROLE_ORDER = [
+  "SUPER_ADMIN",
+  "PASTOR",
+  "ACCOUNTANT",
+  "ADMIN_OFFICER",
+  "ADMIN",
+  "FINANCE",
+  "DIRECTOR",
 ]
 
 const smallText = "text-[10.63px] leading-[14.17px] font-normal"
 const bigText = "text-[12.4px] leading-[17.71px] font-medium"
 
 export default function Page() {
+  const [searchText, setSearchText] = useState("")
+  const [isLoading, setIsLoading] = useState(true)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [payload, setPayload] = useState<unknown>(null)
+  const [rolesPayload, setRolesPayload] = useState<unknown>(null)
+  const [selectedRoleId, setSelectedRoleId] = useState("")
+  const [roleDetail, setRoleDetail] = useState<any>(null)
+  const [roleLoading, setRoleLoading] = useState(false)
+  const [roleError, setRoleError] = useState<string | null>(null)
+  const [isEditingRole, setIsEditingRole] = useState(false)
+  const [roleForm, setRoleForm] = useState({
+    roleName: "",
+    roleDescription: "",
+    roleType: "",
+    tenantId: "",
+    permissions: [] as string[],
+  })
+  const [roleSaving, setRoleSaving] = useState(false)
+  const [roleSaveError, setRoleSaveError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadPermissions = async () => {
+      setIsLoading(true)
+      setErrorMessage(null)
+
+      try {
+        const [permissionsResponse, rolesResponse] = await Promise.all([
+          fetch("/api/core/roles/permissions", {
+            method: "GET",
+            credentials: "include",
+          }),
+          fetch("/api/core/roles", {
+            method: "GET",
+            credentials: "include",
+          }),
+        ])
+
+        const permissionsData = await permissionsResponse.json().catch(() => null)
+        const rolesData = await rolesResponse.json().catch(() => null)
+
+        if (!permissionsResponse.ok) {
+          throw new Error(
+            permissionsData?.message ??
+              "Unable to load permissions. Please try again."
+          )
+        }
+
+        if (isMounted) {
+          setPayload(permissionsData)
+          if (rolesResponse.ok) {
+            setRolesPayload(rolesData)
+          }
+        }
+      } catch (error) {
+        if (isMounted) {
+          setErrorMessage(
+            error instanceof Error ? error.message : "Unable to load permissions."
+          )
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    loadPermissions()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  const flattenedPermissions = useMemo(
+    () => flattenRolePermissions(payload),
+    [payload]
+  )
+
+  const permissionOptions = useMemo(() => {
+    const names = flattenedPermissions.map((perm) => perm.name).filter(Boolean)
+    return Array.from(new Set(names)).sort((a, b) => a.localeCompare(b))
+  }, [flattenedPermissions])
+
+  const rolesList = useMemo(() => flattenRoles(rolesPayload), [rolesPayload])
+
+  const { columns, sections } = useMemo(() => {
+    const roleSet = new Set<string>()
+    const roleMetaMap = new Map<string, { label: string; subLabel: string; textClass: string }>()
+    const itemMap = new Map<string, MatrixItem>()
+    const sectionOrder: string[] = []
+
+    flattenRoles(rolesPayload).forEach((role) => {
+      const key = normalizeRoleKey(role.roleType ?? role.name)
+      if (!key) return
+      roleSet.add(key)
+      roleMetaMap.set(key, {
+        label: role.name ?? formatRoleLabel(key),
+        subLabel: role.description ?? "Permissions",
+        textClass: DEFAULT_ROLE_META[key]?.textClass ?? "text-[#6B7280]",
+      })
+    })
+
+    flattenedPermissions.forEach((perm) => {
+      const roleKey = normalizeRoleKey(perm.roleType)
+      if (roleKey) {
+        roleSet.add(roleKey)
+      }
+
+      const section = perm.section || "General"
+      const itemKey = `${section}::${perm.name}`
+
+      if (!itemMap.has(itemKey)) {
+        itemMap.set(itemKey, {
+          name: perm.name,
+          desc: perm.description,
+          section,
+          roles: new Set(),
+        })
+        if (!sectionOrder.includes(section)) {
+          sectionOrder.push(section)
+        }
+      }
+
+      if (roleKey) {
+        itemMap.get(itemKey)?.roles.add(roleKey)
+      }
+    })
+
+    const roleKeys =
+      roleSet.size > 0 ? Array.from(roleSet) : Object.keys(DEFAULT_ROLE_META)
+
+    const columns: RoleColumn[] = roleKeys
+      .sort((a, b) => {
+        const aIndex = DEFAULT_ROLE_ORDER.indexOf(a)
+        const bIndex = DEFAULT_ROLE_ORDER.indexOf(b)
+        if (aIndex === -1 && bIndex === -1) return a.localeCompare(b)
+        if (aIndex === -1) return 1
+        if (bIndex === -1) return -1
+        return aIndex - bIndex
+      })
+      .map((key) => {
+        const meta = roleMetaMap.get(key) ?? DEFAULT_ROLE_META[key]
+        return {
+          key,
+          label: meta?.label ?? formatRoleLabel(key),
+          subLabel: meta?.subLabel ?? "Permissions",
+          textClass: meta?.textClass ?? "text-[#6B7280]",
+        }
+      })
+
+    const sections: MatrixSection[] = sectionOrder.map((section) => ({
+      section,
+      items: Array.from(itemMap.values()).filter(
+        (item) => item.section === section
+      ),
+    }))
+
+    return { columns, sections }
+  }, [flattenedPermissions])
+
+  const filteredSections = useMemo(() => {
+    if (!searchText.trim()) return sections
+    const term = searchText.toLowerCase()
+    return sections
+      .map((section) => ({
+        ...section,
+        items: section.items.filter(
+          (item) =>
+            item.name.toLowerCase().includes(term) ||
+            item.desc.toLowerCase().includes(term)
+        ),
+      }))
+      .filter((section) => section.items.length > 0)
+  }, [searchText, sections])
+
+  const showLockedNote = columns.some((col) => col.key === "SUPER_ADMIN")
+
+  useEffect(() => {
+    if (!selectedRoleId && rolesList.length > 0) {
+      setSelectedRoleId(rolesList[0].id)
+    }
+  }, [rolesList, selectedRoleId])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadRole = async () => {
+      if (!selectedRoleId) {
+        setRoleDetail(null)
+        return
+      }
+
+      setRoleLoading(true)
+      setRoleError(null)
+
+      try {
+        const response = await fetch(`/api/core/roles/${selectedRoleId}`, {
+          method: "GET",
+          credentials: "include",
+        })
+        const data = await response.json().catch(() => null)
+
+        if (!response.ok) {
+          throw new Error(
+            data?.message ?? "Unable to load role details. Please try again."
+          )
+        }
+
+        if (isMounted) {
+          setRoleDetail(data?.data ?? data)
+          setRoleSaveError(null)
+          setIsEditingRole(false)
+        }
+      } catch (error) {
+        if (isMounted) {
+          setRoleError(
+            error instanceof Error ? error.message : "Unable to load role details."
+          )
+        }
+      } finally {
+        if (isMounted) {
+          setRoleLoading(false)
+        }
+      }
+    }
+
+    loadRole()
+
+    return () => {
+      isMounted = false
+    }
+  }, [selectedRoleId])
+
+  useEffect(() => {
+    if (!roleDetail) return
+    setRoleForm({
+      roleName:
+        roleDetail?.roleName ??
+        roleDetail?.name ??
+        roleDetail?.roleType ??
+        "",
+      roleDescription:
+        roleDetail?.roleDescription ??
+        roleDetail?.description ??
+        "",
+      roleType: roleDetail?.roleType ?? roleDetail?.type ?? "",
+      tenantId: roleDetail?.tenantId ?? "",
+      permissions: Array.isArray(roleDetail?.permissions)
+        ? roleDetail.permissions
+        : Array.isArray(roleDetail?.permissionList)
+          ? roleDetail.permissionList
+          : [],
+    })
+  }, [roleDetail])
+
+  const isRoleDirty = useMemo(() => {
+    if (!roleDetail) return false
+    const currentPermissions = Array.isArray(roleDetail?.permissions)
+      ? roleDetail.permissions
+      : Array.isArray(roleDetail?.permissionList)
+        ? roleDetail.permissionList
+        : []
+    return (
+      roleForm.roleName !==
+        (roleDetail?.roleName ??
+          roleDetail?.name ??
+          roleDetail?.roleType ??
+          "") ||
+      roleForm.roleDescription !==
+        (roleDetail?.roleDescription ?? roleDetail?.description ?? "") ||
+      roleForm.roleType !== (roleDetail?.roleType ?? roleDetail?.type ?? "") ||
+      roleForm.tenantId !== (roleDetail?.tenantId ?? "") ||
+      roleForm.permissions.length !== currentPermissions.length ||
+      roleForm.permissions.some(
+        (perm) => !currentPermissions.includes(perm)
+      )
+    )
+  }, [roleDetail, roleForm])
+
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
       <SidebarNav
@@ -131,6 +406,8 @@ export default function Page() {
                   <Input
                     className="h-9 w-[280px] rounded-md border-[#E5E7EB] bg-white pl-9 text-[11px] text-[#6B7280]"
                     placeholder="Filter permissions (e.g. 'budget', 'invite')"
+                    value={searchText}
+                    onChange={(event) => setSearchText(event.target.value)}
                   />
                 </div>
               </div>
@@ -146,48 +423,391 @@ export default function Page() {
               </div>
             </div>
 
+            <div className="mt-4 rounded-[12px] border border-[#EEF1F6] bg-[#F9FAFB] p-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <div className="text-[10px] font-semibold text-[#9CA3AF]">
+                    ROLE DETAILS
+                  </div>
+                  <div className="mt-1 text-[12px] font-semibold text-[#111827]">
+                    {roleDetail?.roleName ??
+                      roleDetail?.name ??
+                      roleDetail?.roleType ??
+                      "Select a role"}
+                  </div>
+                  <div className="text-[11px] text-[#6B7280]">
+                    {roleDetail?.roleDescription ??
+                      roleDetail?.description ??
+                      "Role description not available."}
+                  </div>
+                </div>
+                <div className="flex w-full flex-col gap-2 md:w-[260px]">
+                  <div className="text-[10px] font-semibold text-[#9CA3AF]">
+                    ROLE
+                  </div>
+                  <div className="relative">
+                    <select
+                      className="h-9 w-full rounded-md border border-[#E5E7EB] bg-white px-3 pr-8 text-[12px] text-[#6B7280] outline-none transition-all focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20 appearance-none"
+                      value={selectedRoleId}
+                      onChange={(event) => setSelectedRoleId(event.target.value)}
+                    >
+                      {rolesList.length === 0 ? (
+                        <option value="">No roles available</option>
+                      ) : null}
+                      {rolesList.map((role) => (
+                        <option key={role.id} value={role.id}>
+                          {role.name}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9CA3AF]">
+                      ▾
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Button
+                  className="h-8 rounded-md border border-[#E5E7EB] bg-white text-[11px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50"
+                  variant="outline"
+                  onClick={() => setIsEditingRole((prev) => !prev)}
+                  disabled={!roleDetail || roleLoading}
+                >
+                  {isEditingRole ? "Close Editor" : "Edit Role"}
+                </Button>
+                {isEditingRole ? (
+                  <>
+                    <Button
+                      className="h-8 rounded-md bg-[#3B5BDB] text-[11px] font-medium text-white shadow hover:bg-blue-700"
+                      onClick={async () => {
+                        if (!selectedRoleId || !roleDetail) return
+                        setRoleSaving(true)
+                        setRoleSaveError(null)
+                        const previousRole = roleDetail
+                        const optimisticRole = {
+                          ...roleDetail,
+                          roleName: roleForm.roleName,
+                          roleDescription: roleForm.roleDescription,
+                          roleType: roleForm.roleType,
+                          tenantId: roleForm.tenantId,
+                          permissions: roleForm.permissions,
+                        }
+                        setRoleDetail(optimisticRole)
+
+                        try {
+                          const response = await fetch(
+                            `/api/core/roles/${selectedRoleId}`,
+                            {
+                              method: "PUT",
+                              credentials: "include",
+                              headers: {
+                                "Content-Type": "application/json",
+                              },
+                              body: JSON.stringify({
+                                roleName: roleForm.roleName,
+                                roleDescription: roleForm.roleDescription,
+                                roleType: roleForm.roleType,
+                                tenantId: roleForm.tenantId || undefined,
+                                permissions: roleForm.permissions,
+                              }),
+                            }
+                          )
+                          const data = await response.json().catch(() => null)
+                          if (!response.ok) {
+                            throw new Error(
+                              data?.message ??
+                                "Unable to update role. Please try again."
+                            )
+                          }
+                          setRoleDetail(data?.data ?? data ?? optimisticRole)
+                          setIsEditingRole(false)
+                        } catch (error) {
+                          setRoleDetail(previousRole)
+                          setRoleSaveError(
+                            error instanceof Error
+                              ? error.message
+                              : "Unable to update role."
+                          )
+                        } finally {
+                          setRoleSaving(false)
+                        }
+                      }}
+                      disabled={roleSaving || !isRoleDirty}
+                    >
+                      {roleSaving ? "Saving..." : "Save Changes"}
+                    </Button>
+                    <Button
+                      className="h-8 rounded-md border border-[#E5E7EB] bg-white text-[11px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50"
+                      variant="outline"
+                      onClick={() => {
+                        if (isRoleDirty) {
+                          const confirmDiscard = window.confirm(
+                            "You have unsaved changes. Discard them?"
+                          )
+                          if (!confirmDiscard) return
+                        }
+                        setIsEditingRole(false)
+                        if (roleDetail) {
+                          setRoleForm({
+                            roleName:
+                              roleDetail?.roleName ??
+                              roleDetail?.name ??
+                              roleDetail?.roleType ??
+                              "",
+                            roleDescription:
+                              roleDetail?.roleDescription ??
+                              roleDetail?.description ??
+                              "",
+                            roleType:
+                              roleDetail?.roleType ?? roleDetail?.type ?? "",
+                            tenantId: roleDetail?.tenantId ?? "",
+                            permissions: Array.isArray(roleDetail?.permissions)
+                              ? roleDetail.permissions
+                              : Array.isArray(roleDetail?.permissionList)
+                                ? roleDetail.permissionList
+                                : [],
+                          })
+                        }
+                      }}
+                      disabled={roleSaving}
+                    >
+                      Cancel
+                    </Button>
+                  </>
+                ) : null}
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-4 text-[11px] text-[#6B7280]">
+                {roleLoading ? (
+                  <span>Loading role details...</span>
+                ) : roleError ? (
+                  <span className="text-rose-600">{roleError}</span>
+                ) : (
+                  <>
+                    <span>
+                      Role Type:{" "}
+                      <span className="font-semibold text-[#111827]">
+                        {roleDetail?.roleType ??
+                          roleDetail?.type ??
+                          "Not specified"}
+                      </span>
+                    </span>
+                    <span>
+                      Permissions:{" "}
+                      <span className="font-semibold text-[#111827]">
+                        {Array.isArray(roleDetail?.permissions)
+                          ? roleDetail.permissions.length
+                          : Array.isArray(roleDetail?.permissionList)
+                            ? roleDetail.permissionList.length
+                            : "—"}
+                      </span>
+                    </span>
+                    {roleDetail?.tenantId ? (
+                      <span>
+                        Tenant:{" "}
+                        <span className="font-semibold text-[#111827]">
+                          {roleDetail.tenantId}
+                        </span>
+                      </span>
+                    ) : null}
+                  </>
+                )}
+                {roleSaveError ? (
+                  <span className="text-rose-600">{roleSaveError}</span>
+                ) : null}
+              </div>
+            </div>
+
+            {isEditingRole ? (
+              <div className="mt-4 rounded-[12px] border border-[#EEF1F6] bg-white p-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div className="space-y-1">
+                    <div className="text-[10px] font-semibold text-[#9CA3AF]">
+                      ROLE NAME
+                    </div>
+                    <Input
+                      className="h-9 rounded-md border-[#E5E7EB] bg-white text-[12px] text-[#111827]"
+                      value={roleForm.roleName}
+                      onChange={(event) =>
+                        setRoleForm((prev) => ({
+                          ...prev,
+                          roleName: event.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-[10px] font-semibold text-[#9CA3AF]">
+                      ROLE TYPE
+                    </div>
+                    <Input
+                      className="h-9 rounded-md border-[#E5E7EB] bg-white text-[12px] text-[#111827]"
+                      value={roleForm.roleType}
+                      onChange={(event) =>
+                        setRoleForm((prev) => ({
+                          ...prev,
+                          roleType: event.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1 md:col-span-2">
+                    <div className="text-[10px] font-semibold text-[#9CA3AF]">
+                      ROLE DESCRIPTION
+                    </div>
+                    <Input
+                      className="h-9 rounded-md border-[#E5E7EB] bg-white text-[12px] text-[#111827]"
+                      value={roleForm.roleDescription}
+                      onChange={(event) =>
+                        setRoleForm((prev) => ({
+                          ...prev,
+                          roleDescription: event.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1 md:col-span-2">
+                    <div className="text-[10px] font-semibold text-[#9CA3AF]">
+                      TENANT ID (OPTIONAL)
+                    </div>
+                    <Input
+                      className="h-9 rounded-md border-[#E5E7EB] bg-white text-[12px] text-[#111827]"
+                      value={roleForm.tenantId}
+                      onChange={(event) =>
+                        setRoleForm((prev) => ({
+                          ...prev,
+                          tenantId: event.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <div className="text-[10px] font-semibold text-[#9CA3AF]">
+                    PERMISSIONS
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {permissionOptions.map((permission) => {
+                      const isSelected = roleForm.permissions.includes(permission)
+                      return (
+                        <button
+                          key={permission}
+                          type="button"
+                          className={`flex items-center justify-between rounded-md border px-3 py-2 text-left text-[11px] transition ${
+                            isSelected
+                              ? "border-[#3B5BDB] bg-[#EEF2FF] text-[#1D4ED8]"
+                              : "border-[#E5E7EB] bg-white text-[#6B7280]"
+                          }`}
+                          onClick={() =>
+                            setRoleForm((prev) => {
+                              const nextPermissions = isSelected
+                                ? prev.permissions.filter((perm) => perm !== permission)
+                                : [...prev.permissions, permission]
+                              return { ...prev, permissions: nextPermissions }
+                            })
+                          }
+                        >
+                          <span>{permission}</span>
+                          <span className="text-[10px]">
+                            {isSelected ? "✓" : ""}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
             <div className="mt-4 overflow-x-auto rounded-[12px] border border-[#EEF1F6]">
-              <table className={`${smallText} w-full text-[#111827]`}>
-                <thead className="bg-[#F9FAFB] text-[#9CA3AF]">
-                  <tr>
-                    <th className="py-3 px-4 text-left">PERMISSION / ACTION</th>
-                    <th className="py-3 px-4 text-center text-[#7C3AED]">Super Admin<br /><span className="text-[10px] text-[#9CA3AF]">Full Access</span></th>
-                    <th className="py-3 px-4 text-center text-[#2563EB]">Pastor<br /><span className="text-[10px] text-[#9CA3AF]">Overseer</span></th>
-                    <th className="py-3 px-4 text-center text-[#16A34A]">Accountant<br /><span className="text-[10px] text-[#9CA3AF]">Financial Ops</span></th>
-                    <th className="py-3 px-4 text-center text-[#6B7280]">Admin Officer<br /><span className="text-[10px] text-[#9CA3AF]">Administrative</span></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {permissions.map((section) => (
-                    <React.Fragment key={section.section}>
-                      <tr className="bg-[#F9FAFB] text-[#9CA3AF]">
-                        <td className="py-3 px-4 text-[11px] font-medium uppercase tracking-wide" colSpan={5}>
-                          {section.section}
-                        </td>
-                      </tr>
-                      {section.items.map((item) => (
-                        <tr key={item.name} className="border-t border-[#EEF1F6]">
-                          <td className="py-3 px-4">
-                            <div className={`${bigText} text-[#111827]`}>{item.name}</div>
-                            <div className={`${smallText} text-[#9CA3AF]`}>{item.desc}</div>
+              {isLoading ? (
+                <div className="px-6 py-10 text-center text-[12px] text-[#6B7280]">
+                  Loading permissions matrix...
+                </div>
+              ) : errorMessage ? (
+                <div className="px-6 py-10 text-center text-[12px] text-rose-600">
+                  {errorMessage}
+                </div>
+              ) : filteredSections.length === 0 ? (
+                <div className="px-6 py-10 text-center text-[12px] text-[#6B7280]">
+                  No permissions found for the current filters.
+                </div>
+              ) : (
+                <table className={`${smallText} w-full text-[#111827]`}>
+                  <thead className="bg-[#F9FAFB] text-[#9CA3AF]">
+                    <tr>
+                      <th className="py-3 px-4 text-left">
+                        PERMISSION / ACTION
+                      </th>
+                      {columns.map((column) => (
+                        <th
+                          key={column.key}
+                          className={`py-3 px-4 text-center ${column.textClass}`}
+                        >
+                          {column.label}
+                          <br />
+                          <span className="text-[10px] text-[#9CA3AF]">
+                            {column.subLabel}
+                          </span>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredSections.map((section) => (
+                      <React.Fragment key={section.section}>
+                        <tr className="bg-[#F9FAFB] text-[#9CA3AF]">
+                          <td
+                            className="py-3 px-4 text-[11px] font-medium uppercase tracking-wide"
+                            colSpan={columns.length + 1}
+                          >
+                            {section.section}
                           </td>
-                          {item.checks.map((val, idx) => (
-                            <td key={idx} className="py-3 px-4 text-center">
-                              <div className={`mx-auto h-4 w-4 rounded border ${val ? "bg-[#3B5BDB] border-[#3B5BDB]" : "bg-white border-[#D1D5DB]"} flex items-center justify-center`}>
-                                {val ? <Check className="h-3 w-3 text-white" /> : null}
+                        </tr>
+                        {section.items.map((item) => (
+                          <tr key={item.name} className="border-t border-[#EEF1F6]">
+                            <td className="py-3 px-4">
+                              <div className={`${bigText} text-[#111827]`}>
+                                {item.name}
+                              </div>
+                              <div className={`${smallText} text-[#9CA3AF]`}>
+                                {item.desc}
                               </div>
                             </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </React.Fragment>
-                  ))}
-                </tbody>
-              </table>
+                            {columns.map((column) => {
+                              const isGranted = item.roles.has(column.key)
+                              return (
+                                <td
+                                  key={column.key}
+                                  className="py-3 px-4 text-center"
+                                >
+                                  <div
+                                    className={`mx-auto h-4 w-4 rounded border ${
+                                      isGranted
+                                        ? "bg-[#3B5BDB] border-[#3B5BDB]"
+                                        : "bg-white border-[#D1D5DB]"
+                                    } flex items-center justify-center`}
+                                  >
+                                    {isGranted ? (
+                                      <Check className="h-3 w-3 text-white" />
+                                    ) : null}
+                                  </div>
+                                </td>
+                              )
+                            })}
+                          </tr>
+                        ))}
+                      </React.Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              )}
               <div className="flex items-center justify-between border-t border-[#EEF1F6] px-4 py-3 text-[11px] text-[#9CA3AF]">
                 <div className="flex items-center gap-2">
                   <div className="h-3 w-3 rounded border border-[#D1D5DB] bg-white" />
-                  Super Admin permissions are locked for security reasons.
+                  {showLockedNote
+                    ? "Super Admin permissions are locked for security reasons."
+                    : "Permissions are managed at the role level."}
                 </div>
                 <div>Last saved: 2 hours ago by Sarah Jenkins</div>
               </div>

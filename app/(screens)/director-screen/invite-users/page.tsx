@@ -1,5 +1,7 @@
-﻿"use client"
+"use client"
 
+import { useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import UserDirectoryMenuPage from "@/app/(screens)/director-screen/user-directory-menu/page"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,11 +12,78 @@ import {
   UserRound,
   X,
 } from "lucide-react"
+import { useAuth } from "@/components/auth/AuthProvider"
 
 const labelText = "text-[9.33px] leading-[13.33px] font-medium"
 const inputText = "text-[12px] leading-[16px]"
 
 export default function Page() {
+  const router = useRouter()
+  const [fullName, setFullName] = useState("")
+  const [email, setEmail] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
+  const { user } = useAuth()
+  const tenantId = useMemo(
+    () => user?.tenantId ?? user?.tenant?.id ?? null,
+    [user]
+  )
+
+  const handleClose = () => {
+    router.back()
+  }
+
+  const handleInvite = async () => {
+    setError(null)
+    setSuccess(false)
+
+    if (!fullName || !email) {
+      setError("Please provide a name and email.")
+      return
+    }
+    if (!tenantId) {
+      setError("Tenant context is missing. Please refresh and try again.")
+      return
+    }
+
+    setLoading(true)
+    const parts = fullName.trim().split(" ")
+    const firstName = parts[0] || "Unknown"
+    const lastName = parts.slice(1).join(" ") || "User"
+
+    try {
+      const res = await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          firstName,
+          lastName,
+          email,
+          phoneNumber: "+2347065643303",
+          address: "Balogun Ilawe, Ketu Alapere now",
+          roleId: "eb9bb88b-0104-4694-97ad-923f9c1023a0",
+          tenantId
+        })
+      })
+      
+      const data = await res.json().catch(() => ({}))
+      
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to create user.")
+      }
+
+      setSuccess(true)
+      setTimeout(() => {
+        router.push("/director-screen/users")
+      }, 2000)
+    } catch (err: any) {
+      setError(err.message || "Failed to send invite.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div className="relative min-h-screen bg-[#F8FAFC] font-sans">
       <div className="pointer-events-none select-none">
@@ -27,12 +96,17 @@ export default function Page() {
         <div className="w-full max-w-[320px] rounded-[12px] border border-[#E5E7EB] bg-white shadow-xl">
           <div className="flex items-center justify-between border-b border-[#EEF1F6] px-4 py-3">
             <div className="text-[12px] leading-[18.67px] font-bold text-[#111827]">Invite New User</div>
-            <button className="text-[#9CA3AF]">
+            <button onClick={handleClose} className="text-[#9CA3AF]">
               <X className="h-4 w-4" />
             </button>
           </div>
 
-          <div className="space-y-4 px-4 py-4">
+            <div className="space-y-4 px-4 py-4">
+              {!tenantId ? (
+                <div className="rounded-md border border-[#E5E7EB] bg-[#F9FAFB] px-3 py-2 text-[11px] text-[#9CA3AF]">
+                  Loading tenant context...
+                </div>
+              ) : null}
             <div className="space-y-1">
               <label className={`${labelText} text-[#6B7280]`}>Full Name</label>
               <div className="relative">
@@ -40,6 +114,8 @@ export default function Page() {
                 <Input
                   className={`${inputText} h-9 rounded-md border-[#E5E7EB] bg-white pl-9 text-[#111827]`}
                   placeholder="e.g. John Doe"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
                 />
               </div>
             </div>
@@ -51,6 +127,9 @@ export default function Page() {
                 <Input
                   className={`${inputText} h-9 rounded-md border-[#E5E7EB] bg-white pl-9 text-[#111827]`}
                   placeholder="e.g. john@shepherdwatch.com"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
             </div>
@@ -74,6 +153,9 @@ export default function Page() {
               </div>
               <div className="text-[10px] text-[#9CA3AF]">User will access data only from assigned branches.</div>
             </div>
+            
+            {error && <div className="text-[10px] text-rose-600 font-semibold">{error}</div>}
+            {success && <div className="text-[10px] text-emerald-600 font-semibold">User created successfully!</div>}
           </div>
 
           <div className="border-t border-[#EEF1F6] px-4 py-4 space-y-3">
@@ -83,11 +165,11 @@ export default function Page() {
             </div>
 
             <div className="flex items-center justify-end gap-2">
-              <Button variant="outline" className="h-8 rounded-md border-[#E5E7EB] bg-white text-[11px] text-[#6B7280]">
+              <Button onClick={handleClose} variant="outline" className="h-8 rounded-md border-[#E5E7EB] bg-white text-[11px] text-[#6B7280]">
                 Cancel
               </Button>
-              <Button className="h-8 rounded-md bg-[#3B5BDB] text-[11px] text-white shadow hover:bg-blue-700">
-                Send Invite
+              <Button onClick={handleInvite} disabled={loading} className="h-8 rounded-md bg-[#3B5BDB] text-[11px] text-white shadow hover:bg-blue-700 disabled:opacity-70">
+                {loading ? "Sending..." : "Send Invite"}
               </Button>
             </div>
           </div>

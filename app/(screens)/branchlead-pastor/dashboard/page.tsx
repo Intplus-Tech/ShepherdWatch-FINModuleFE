@@ -1,5 +1,6 @@
 "use client"
 
+import { useMemo } from "react"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -28,6 +29,7 @@ import {
   Wallet,
   Zap,
 } from "lucide-react"
+import { useTransactions } from "@/components/hooks/useTransactions"
 
 const approvals = [
   {
@@ -61,37 +63,51 @@ const approvals = [
   },
 ]
 
-const transactions = [
-  {
-    date: "Jan 22, 2024",
-    desc: "Sunday Tithes & Offerings",
-    category: "Income",
-    amount: "+₦642,500.00",
-    status: "VERIFIED",
-    statusTone: "bg-emerald-50 text-emerald-600",
-    icon: ShieldCheck,
-  },
-  {
-    date: "Jan 21, 2024",
-    desc: "NEPA/Utility Bill",
-    category: "Operational",
-    amount: "-₦42,000.00",
-    status: "PAID",
-    statusTone: "bg-blue-50 text-blue-600",
-    icon: BadgeCheck,
-  },
-  {
-    date: "Jan 20, 2024",
-    desc: "Diesel Purchase (Gen set)",
-    category: "Operational",
-    amount: "-₦85,000.00",
-    status: "UNVERIFIED",
-    statusTone: "bg-amber-50 text-amber-600",
-    icon: ShieldAlert,
-  },
-]
-
 export default function Page() {
+  const { transactions: rawTransactions, loading: txLoading, error: txError } = useTransactions()
+
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat("en-NG", {
+      style: "currency",
+      currency: "NGN",
+      maximumFractionDigits: 2,
+    }).format(value)
+
+  const formatDateLabel = (value?: string) => {
+    if (!value) return "—"
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return value
+    return date.toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    })
+  }
+
+  const transactions = useMemo(() => {
+    return rawTransactions.map((tx, idx) => {
+      const flowType = (tx.flowType ?? "").toUpperCase()
+      const isPositive = flowType === "INFLOW" || tx.amount >= 0
+      const status = (tx.status ?? "UNVERIFIED").toUpperCase()
+      const statusTone = status.includes("VERIFIED")
+        ? "bg-emerald-50 text-emerald-600"
+        : status.includes("PAID")
+          ? "bg-blue-50 text-blue-600"
+          : "bg-amber-50 text-amber-600"
+      const icon = status.includes("VERIFIED") ? ShieldCheck : status.includes("PAID") ? BadgeCheck : ShieldAlert
+
+      return {
+        id: tx.id ?? `tx-${idx}`,
+        date: formatDateLabel(tx.date),
+        desc: tx.description || "Transaction",
+        category: tx.category || tx.coaName || "General",
+        amount: `${isPositive ? "+" : "-"}${formatCurrency(Math.abs(tx.amount))}`,
+        status,
+        statusTone,
+        icon,
+      }
+    })
+  }, [rawTransactions])
   return (
     <div className="flex min-h-screen bg-[#F7F8FC] font-sans">
       <aside
@@ -497,23 +513,43 @@ export default function Page() {
                 </tr>
               </thead>
               <tbody>
-                {transactions.map((tx) => {
-                  const Icon = tx.icon
-                  return (
-                    <tr key={tx.desc} className="border-t border-[#EEF1F6]">
-                      <td className="py-3 text-[#6B7280]">{tx.date}</td>
-                      <td className="py-3 font-medium text-[#111827]">{tx.desc}</td>
-                      <td className="py-3 text-[#6B7280]">{tx.category}</td>
-                      <td className="py-3 font-semibold text-[#111827]">{tx.amount}</td>
-                      <td className="py-3">
-                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${tx.statusTone}`}>
-                          <Icon className="h-3 w-3" />
-                          {tx.status}
-                        </span>
-                      </td>
-                    </tr>
-                  )
-                })}
+                {txLoading ? (
+                  <tr>
+                    <td colSpan={5} className="py-6 text-center text-[12px] text-[#6B7280]">
+                      Loading transactions…
+                    </td>
+                  </tr>
+                ) : txError ? (
+                  <tr>
+                    <td colSpan={5} className="py-6 text-center text-[12px] text-rose-500">
+                      {txError}
+                    </td>
+                  </tr>
+                ) : transactions.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-6 text-center text-[12px] text-[#6B7280]">
+                      No transactions available.
+                    </td>
+                  </tr>
+                ) : (
+                  transactions.map((tx) => {
+                    const Icon = tx.icon
+                    return (
+                      <tr key={tx.id} className="border-t border-[#EEF1F6]">
+                        <td className="py-3 text-[#6B7280]">{tx.date}</td>
+                        <td className="py-3 font-medium text-[#111827]">{tx.desc}</td>
+                        <td className="py-3 text-[#6B7280]">{tx.category}</td>
+                        <td className="py-3 font-semibold text-[#111827]">{tx.amount}</td>
+                        <td className="py-3">
+                          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${tx.statusTone}`}>
+                            <Icon className="h-3 w-3" />
+                            {tx.status}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })
+                )}
               </tbody>
             </table>
           </div>
