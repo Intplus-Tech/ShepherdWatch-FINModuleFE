@@ -13,14 +13,15 @@ import Image from "next/image"
 import { useAuth } from "@/components/auth/AuthProvider"
 
 const loginSchema = z.object({
-  password: z.string().min(6, "Password must be at least 6 characters"),
+  email: z.string().email("Enter a valid email"),
+  password: z.string().min(1, "Password is required"),
 })
 
 type LoginValues = z.infer<typeof loginSchema>
 
 export default function LoginForm() {
   const router = useRouter()
-  const { login, user } = useAuth()
+  const { login } = useAuth()
   const [error, setError] = useState<string | null>(null)
 
   const {
@@ -29,14 +30,16 @@ export default function LoginForm() {
     formState: { errors, isSubmitting },
   } = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { password: "" },
+    defaultValues: { email: "", password: "" },
   })
 
   const onSubmit = async (values: LoginValues) => {
     setError(null)
-    const email = user?.email || localStorage.getItem("rememberedEmail") || "rev.victor@shepherdwatch.com"
     try {
-      await login({ email, password: values.password, rememberMe: true })
+      await login({
+        email: values.email,
+        password: values.password,
+      })
       router.push("/director-screen/dashboard")
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed")
@@ -76,13 +79,26 @@ export default function LoginForm() {
             </div>
 
             <div className="text-center">
-              <h1 className="text-[28px] font-bold text-[#111827] mb-2">Hi ! Rev. Victor</h1>
+              <h1 className="text-[28px] font-bold text-[#111827] mb-2">Welcome Back</h1>
               <p className="text-[14px] text-[#98A2B3]">
-                Enter your password to access your dashboard
+                Sign in with your email and password
               </p>
             </div>
 
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 w-full text-left">
+              <div className="space-y-2">
+                <Label htmlFor="email" className="text-[13px] text-[#98A2B3] font-medium">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  className="h-11 rounded-[6px] border-[#4F63FF] focus-visible:ring-[#5871F5] px-3 w-full"
+                  {...register("email")}
+                />
+                {errors.email ? (
+                  <p className="text-[11px] text-rose-600">{errors.email.message}</p>
+                ) : null}
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="password" className="text-[13px] text-[#98A2B3] font-medium">Password</Label>
                 <Input
@@ -94,6 +110,12 @@ export default function LoginForm() {
                 {errors.password ? (
                   <p className="text-[11px] text-rose-600">{errors.password.message}</p>
                 ) : null}
+              </div>
+
+              <div className="flex items-center justify-end pt-1">
+                <a href="/forgot-password" className="text-[13px] text-[#4F63FF] font-medium hover:underline">
+                  Forgot Password
+                </a>
               </div>
 
               {error ? <p className="text-[12px] text-rose-600 text-center">{error}</p> : null}

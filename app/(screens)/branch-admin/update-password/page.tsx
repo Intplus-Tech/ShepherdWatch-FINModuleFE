@@ -13,7 +13,7 @@ export default function UpdatePasswordModalPage() {
   const router = useRouter();
   const { changePassword } = useAuth();
 
-  const [oldPassword, setOldPassword] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -28,7 +28,7 @@ export default function UpdatePasswordModalPage() {
     setError(null);
     setSuccess(false);
 
-    if (!oldPassword || !newPassword || !confirmPassword) {
+    if (!currentPassword || !newPassword || !confirmPassword) {
       setError("Please fill in all fields.");
       return;
     }
@@ -39,7 +39,7 @@ export default function UpdatePasswordModalPage() {
 
     setLoading(true);
     try {
-      await changePassword({ oldPassword, newPassword });
+      await changePassword({ currentPassword, newPassword });
       setSuccess(true);
       setTimeout(() => {
         handleClose();
@@ -84,11 +84,11 @@ export default function UpdatePasswordModalPage() {
             
             {/* Old Password Input */}
             <div className="flex flex-col gap-2">
-              <label className="text-[#111827] text-[12px] font-[800]">Old Password</label>
+              <label className="text-[#111827] text-[12px] font-[800]">Current Password</label>
               <input 
                 type="password" 
-                value={oldPassword}
-                onChange={(e) => setOldPassword(e.target.value)}
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
                 className="h-[48px] w-full px-4 rounded-[8px] border border-[#E2E8F0] bg-[#F8FAFC] text-[#111827] text-[14px] font-[500] outline-none focus:border-[#2563EB] focus:bg-white focus:ring-2 focus:ring-[#2563EB]/20 transition-all" 
               />
             </div>

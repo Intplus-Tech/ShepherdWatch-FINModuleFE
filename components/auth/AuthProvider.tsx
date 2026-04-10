@@ -20,8 +20,15 @@ type AuthContextValue = {
   refreshUser: () => Promise<void>
   login: (payload: { email: string; password: string; rememberMe?: boolean }) => Promise<void>
   logout: () => Promise<void>
-  changePassword: (payload: { oldPassword: string; newPassword: string }) => Promise<void>
+  changePassword: (payload: { currentPassword: string; newPassword: string }) => Promise<void>
   forgotPassword: (email: string) => Promise<void>
+  resendOtp: (payload: { email: string; purpose: "email_verification" | "password_reset" }) => Promise<void>
+  updateProfile: (payload: {
+    firstName?: string
+    lastName?: string
+    phone?: string
+    avatar?: string
+  }) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -55,13 +62,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     async function loadSession() {
       try {
-        const res = await fetch("/api/auth/session", { credentials: "include" })
+        let res = await fetch("/api/auth/session", { credentials: "include" })
         if (!res.ok) {
-          if (active) setUser(null)
-          return
+          if (res.status === 401) {
+            const refreshRes = await fetch("/api/auth/refresh", {
+              method: "POST",
+              credentials: "include",
+            })
+            if (refreshRes.ok) {
+              res = await fetch("/api/auth/session", { credentials: "include" })
+            }
+          }
+
+          if (!res.ok) {
+            if (active) setUser(null)
+            return
+          }
         }
         const data = await res.json()
-        const sessionUser = data.user ?? null
+        const sessionUser = data.user ?? data?.data?.user ?? null
 
         if (!sessionUser) {
           if (active) setUser(null)
@@ -78,7 +97,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const controller = new AbortController()
           const timeoutId = setTimeout(() => controller.abort(), 8000)
           try {
-            const authRes = await fetch("/api/core/users/auth-user", {
+            const authRes = await fetch("/api/auth/me", {
               credentials: "include",
               signal: controller.signal,
             })
@@ -121,21 +140,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     const data = await res.json()
-    const sessionUser = data.data?.user ?? null
-    setUser(sessionUser)
+    const sessionUser = data?.data?.user ?? null
+    setUser(normalizeAuthUser(sessionUser))
+
+    // Always refresh profile after login so user data stays current.
+    const meRes = await fetch("/api/auth/me", { credentials: "include" })
+    if (meRes.ok) {
+      const meData = await meRes.json().catch(() => null)
+      const meUser = meData?.data ?? meData?.data?.user ?? meData?.user ?? meData
+      setUser(normalizeAuthUser(meUser))
+    }
+
+    const rememberRes = await fetch("/api/auth/remember-me", { credentials: "include" })
+    if (rememberRes.ok) {
+      const rememberData = await rememberRes.json().catch(() => null)
+      if (rememberData?.rememberMe) {
+        const meRes = await fetch("/api/auth/me", { credentials: "include" })
+        if (meRes.ok) {
+          const meData = await meRes.json().catch(() => null)
+          const meUser = meData?.data ?? meData?.data?.user ?? meData?.user ?? meData
+          setUser(normalizeAuthUser(meUser))
+        }
+      }
+    }
 
     // Refresh richer profile in the background without delaying login.
     void (async () => {
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 8000)
       try {
-        const authRes = await fetch("/api/core/users/auth-user", {
+        const authRes = await fetch("/api/auth/me", {
           credentials: "include",
           signal: controller.signal,
         })
         if (authRes.ok) {
           const authData = await authRes.json().catch(() => null)
-          setUser(normalizeAuthUser(authData) ?? sessionUser)
+          const authUser = authData?.data ?? authData?.data?.user ?? authData?.user ?? authData
+          setUser(normalizeAuthUser(authUser) ?? sessionUser)
         }
       } catch {
         // ignore fetch failure; session user already set
@@ -144,11 +185,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     })()
 
-    if (payload.rememberMe) {
-      localStorage.setItem("rememberedEmail", payload.email)
-    } else {
-      localStorage.removeItem("rememberedEmail")
-    }
   }
 
   const logout = async () => {
@@ -157,9 +193,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const refreshUser = async () => {
-    const res = await fetch("/api/core/users/auth-user", {
+    let res = await fetch("/api/auth/me", {
       credentials: "include",
     })
+    if (!res.ok && res.status === 401) {
+      const refreshRes = await fetch("/api/auth/refresh", {
+        method: "POST",
+        credentials: "include",
+      })
+      if (refreshRes.ok) {
+        res = await fetch("/api/auth/me", { credentials: "include" })
+      }
+    }
     if (!res.ok) {
       throw new Error("Unable to refresh user context")
     }
@@ -167,7 +212,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(normalizeAuthUser(data))
   }
 
-  const changePassword = async (payload: { oldPassword: string; newPassword: string }) => {
+  const changePassword = async (payload: { currentPassword: string; newPassword: string }) => {
     const res = await fetch("/api/auth/change-password", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -193,6 +238,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  const resendOtp = async (payload: { email: string; purpose: "email_verification" | "password_reset" }) => {
+    const res = await fetch("/api/auth/resend-otp", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      throw new Error(data.message || "Unable to resend OTP")
+    }
+  }
+
+  const updateProfile = async (payload: {
+    firstName?: string
+    lastName?: string
+    phone?: string
+    avatar?: string
+  }) => {
+    const res = await fetch("/api/auth/profile", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(payload),
+    })
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      throw new Error(data.message || "Unable to update profile")
+    }
+
+    const data = await res.json().catch(() => null)
+    const profile = data?.data ?? data?.data?.user ?? data?.user ?? data
+    setUser(normalizeAuthUser(profile))
+  }
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
@@ -202,6 +283,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       logout,
       changePassword,
       forgotPassword,
+      resendOtp,
+      updateProfile,
     }),
     [user, loading]
   )

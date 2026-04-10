@@ -1,26 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { applyCors, getCorsHeaders } from "@/lib/cors";
 
-const forgotSchema = z.object({
-  email: z.string().email(),
-});
+function getBackendForgotPasswordUrl(): string | null {
+  const baseUrl = process.env.BACKEND_API_URL?.replace(/\/+$/, "");
+  if (baseUrl) {
+    return `${baseUrl}/auth/forgot-password`;
+  }
+
+  const loginUrl = process.env.BACKEND_LOGIN_URL;
+  if (!loginUrl) return null;
+
+  if (loginUrl.includes("/auth/login")) {
+    return loginUrl.replace("/auth/login", "/auth/forgot-password");
+  }
+
+  if (loginUrl.endsWith("/login")) {
+    return loginUrl.replace(/\/login$/, "/forgot-password");
+  }
+
+  return null;
+}
 
 export async function POST(req: NextRequest) {
   try {
-    const rawBody = await req.json().catch(() => null);
-    const parsedBody = forgotSchema.safeParse(rawBody);
-
-    if (!parsedBody.success) {
-      return applyCors(
-        NextResponse.json({ success: false, message: "Invalid email" }, { status: 400 }),
-        req
-      );
-    }
-
-    const { email } = parsedBody.data;
-    const backendUrl = process.env.BACKEND_LOGIN_URL?.replace("/login", "/forgot-password");
-
+    const rawText = await req.text();
+    const backendUrl = getBackendForgotPasswordUrl();
     if (!backendUrl) {
       return applyCors(
         NextResponse.json({ success: false, message: "Backend URL not configured" }, { status: 500 }),
@@ -34,29 +38,34 @@ export async function POST(req: NextRequest) {
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: JSON.stringify({ email }),
+      body: rawText,
+      cache: "no-store",
     });
 
-    const responseData = await backendRes.json().catch(() => null);
+    const responseText = await backendRes.text();
+    const contentType = backendRes.headers.get("content-type") ?? "";
+    const isJson = contentType.includes("application/json");
 
-    if (!backendRes.ok) {
-      return applyCors(
-        NextResponse.json(
-          {
-            success: false,
-            message: responseData?.message || "Failed to send reset email. Please try again.",
-          },
-          { status: backendRes.status }
-        ),
-        req
-      );
+    if (isJson) {
+      try {
+        const responseData = responseText ? JSON.parse(responseText) : null;
+        return applyCors(NextResponse.json(responseData, { status: backendRes.status }), req);
+      } catch {
+        return applyCors(
+          NextResponse.json(
+            { success: false, message: "Invalid response received from authentication service" },
+            { status: 502 }
+          ),
+          req
+        );
+      }
     }
 
     return applyCors(
-      NextResponse.json(
-        { success: true, message: responseData?.message || "Password reset email sent." },
-        { status: 200 }
-      ),
+      new NextResponse(responseText, {
+        status: backendRes.status,
+        headers: contentType ? { "Content-Type": contentType } : undefined,
+      }),
       req
     );
   } catch (error) {

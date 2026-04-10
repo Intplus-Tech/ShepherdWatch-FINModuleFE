@@ -1,59 +1,43 @@
 import { NextRequest, NextResponse } from "next/server";
-import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config";
 import { applyCors, getCorsHeaders } from "@/lib/cors";
 
-function getBackendChangePasswordUrl(): string | null {
+function getBackendVerifyEmailUrl(): string | null {
   const baseUrl = process.env.BACKEND_API_URL?.replace(/\/+$/, "");
   if (baseUrl) {
-    return `${baseUrl}/auth/change-password`;
+    return `${baseUrl}/auth/verify-email`;
   }
 
   const loginUrl = process.env.BACKEND_LOGIN_URL;
   if (!loginUrl) return null;
 
   if (loginUrl.includes("/auth/login")) {
-    return loginUrl.replace("/auth/login", "/auth/change-password");
+    return loginUrl.replace("/auth/login", "/auth/verify-email");
   }
 
   if (loginUrl.endsWith("/login")) {
-    return loginUrl.replace(/\/login$/, "/change-password");
+    return loginUrl.replace(/\/login$/, "/verify-email");
   }
 
   return null;
 }
 
 export async function POST(req: NextRequest) {
-  const backendToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value;
-  if (!backendToken) {
-    return applyCors(
-      NextResponse.json(
-        { success: false, message: "Unauthorized. Please log in again." },
-        { status: 401 }
-      ),
-      req
-    );
-  }
-
-  const backendUrl = getBackendChangePasswordUrl();
-  if (!backendUrl) {
-    return applyCors(
-      NextResponse.json(
-        { success: false, message: "Backend URL not configured" },
-        { status: 500 }
-      ),
-      req
-    );
-  }
-
   try {
     const rawText = await req.text();
+
+    const backendUrl = getBackendVerifyEmailUrl();
+    if (!backendUrl) {
+      return applyCors(
+        NextResponse.json({ success: false, message: "Backend URL not configured" }, { status: 500 }),
+        req
+      );
+    }
 
     const backendRes = await fetch(backendUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
-        Authorization: `Bearer ${backendToken}`,
       },
       body: rawText,
       cache: "no-store",
@@ -88,7 +72,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     return applyCors(
       NextResponse.json(
-        { success: false, message: "Server error occurred while changing password" },
+        { success: false, message: "Server error occurred while verifying email" },
         { status: 502 }
       ),
       req

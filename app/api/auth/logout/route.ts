@@ -1,59 +1,101 @@
 import { NextRequest, NextResponse } from "next/server"
-import { verifyToken, verifyTokenWithMeta } from "@/lib/jwt"
-import { refreshStore } from "@/lib/refresh-store"
-import { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE } from "@/lib/auth-config"
-import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors"
-import { isCsrfValid } from "@/lib/csrf"
+import {
+  BACKEND_REFRESH_TOKEN_COOKIE,
+  BACKEND_TOKEN_COOKIE,
+} from "@/lib/auth-config"
+import { applyCors, getCorsHeaders } from "@/lib/cors"
+
+function getBackendLogoutUrl(): string | null {
+  const baseUrl = process.env.BACKEND_API_URL?.replace(/\/+$/, "")
+  if (baseUrl) {
+    return `${baseUrl}/auth/logout`
+  }
+
+  const loginUrl = process.env.BACKEND_LOGIN_URL
+  if (!loginUrl) return null
+
+  if (loginUrl.includes("/auth/login")) {
+    return loginUrl.replace("/auth/login", "/auth/logout")
+  }
+
+  if (loginUrl.endsWith("/login")) {
+    return loginUrl.replace(/\/login$/, "/logout")
+  }
+
+  return null
+}
 
 export async function POST(req: NextRequest) {
-  if (!isOriginAllowed(req)) {
+  const accessToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value
+  const refreshToken = req.cookies.get(BACKEND_REFRESH_TOKEN_COOKIE)?.value
+
+  if (!accessToken || !refreshToken) {
     return applyCors(
       NextResponse.json(
-      { ok: false, message: "Invalid request origin" },
-      { status: 403 }
+        { success: false, message: "Unauthorized. Please log in again." },
+        { status: 401 }
       ),
       req
-    );
+    )
   }
 
-  if (!isCsrfValid(req)) {
+  const backendUrl = getBackendLogoutUrl()
+  if (!backendUrl) {
     return applyCors(
-      NextResponse.json(
-        { ok: false, message: "CSRF token invalid" },
-        { status: 403 }
-      ),
+      NextResponse.json({ success: false, message: "Backend URL not configured" }, { status: 500 }),
       req
-    );
+    )
   }
 
-  const accessToken = req.cookies.get(ACCESS_TOKEN_COOKIE)?.value
-  const refreshToken = req.cookies.get(REFRESH_TOKEN_COOKIE)?.value
+  const backendRes = await fetch(backendUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ refreshToken }),
+    cache: "no-store",
+  })
 
-  const payload = accessToken ? verifyToken(accessToken) : null
-  const refreshMeta = !payload && refreshToken ? verifyTokenWithMeta(refreshToken) : null
-  const refreshPayload = refreshMeta?.tokenType === "refresh" ? refreshMeta.payload : null
+  const responseText = await backendRes.text()
+  const contentType = backendRes.headers.get("content-type") ?? ""
+  const isJson = contentType.includes("application/json")
 
-  const userId = payload?.id ?? refreshPayload?.id
-  if (userId) {
-    await refreshStore.deleteAllForUser(userId)
+  let response: NextResponse
+  if (isJson) {
+    try {
+      const responseData = responseText ? JSON.parse(responseText) : null
+      response = NextResponse.json(responseData, { status: backendRes.status })
+    } catch {
+      response = NextResponse.json(
+        { success: false, message: "Invalid response received from authentication service" },
+        { status: 502 }
+      )
+    }
+  } else {
+    response = new NextResponse(responseText, {
+      status: backendRes.status,
+      headers: contentType ? { "Content-Type": contentType } : undefined,
+    })
   }
 
-  const res = NextResponse.json({ ok: true })
-  res.cookies.set(ACCESS_TOKEN_COOKIE, "", {
+  response.cookies.set(BACKEND_TOKEN_COOKIE, "", {
     maxAge: 0,
     path: "/",
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
   })
-  res.cookies.set(REFRESH_TOKEN_COOKIE, "", {
+  response.cookies.set(BACKEND_REFRESH_TOKEN_COOKIE, "", {
     maxAge: 0,
     path: "/",
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
   })
-  return applyCors(res, req)
+
+  return applyCors(response, req)
 }
 
 export async function OPTIONS(req: NextRequest) {

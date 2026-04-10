@@ -11,6 +11,15 @@ export default function SettingsPage() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [profile, setProfile] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [sessions, setSessions] = useState<any[]>([])
+  const [sessionsLoading, setSessionsLoading] = useState(true)
+  const [sessionsError, setSessionsError] = useState<string | null>(null)
+  const [revokingSessions, setRevokingSessions] = useState(false)
+  const [revokeMessage, setRevokeMessage] = useState<string | null>(null)
+  const [selectedSession, setSelectedSession] = useState<any | null>(null)
+  const [sessionDetailsLoading, setSessionDetailsLoading] = useState(false)
+  const [sessionDetailsError, setSessionDetailsError] = useState<string | null>(null)
+  const [revokingSessionId, setRevokingSessionId] = useState<string | null>(null)
 
   useEffect(() => {
     fetch("/api/users/profile")
@@ -23,6 +32,86 @@ export default function SettingsPage() {
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [])
+
+  useEffect(() => {
+    setSessionsLoading(true)
+    setSessionsError(null)
+    fetch("/api/sessions?page=1&limit=20")
+      .then(async (res) => {
+        const data = await res.json().catch(() => null)
+        if (!res.ok) {
+          throw new Error(data?.message || "Unable to load sessions")
+        }
+        const items = data?.data?.data ?? []
+        setSessions(items)
+      })
+      .catch((err) => {
+        setSessionsError(err instanceof Error ? err.message : "Unable to load sessions")
+      })
+      .finally(() => setSessionsLoading(false))
+  }, [])
+
+  const handleRevokeAllSessions = async () => {
+    setRevokeMessage(null)
+    setRevokingSessions(true)
+    try {
+      const res = await fetch("/api/sessions/revoke-all", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data?.message || "Unable to revoke sessions")
+      }
+      setRevokeMessage(data?.message || "All sessions revoked successfully.")
+      setSessions((prev) => prev.map((session) => ({ ...session, isActive: false })))
+    } catch (err: any) {
+      setSessionsError(err.message || "Unable to revoke sessions")
+    } finally {
+      setRevokingSessions(false)
+    }
+  }
+
+  const handleViewSession = async (sessionId: string) => {
+    setSessionDetailsLoading(true)
+    setSessionDetailsError(null)
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}`)
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        throw new Error(data?.message || "Unable to load session details")
+      }
+      setSelectedSession(data?.data ?? null)
+    } catch (err: any) {
+      setSessionDetailsError(err.message || "Unable to load session details")
+    } finally {
+      setSessionDetailsLoading(false)
+    }
+  }
+
+  const handleRevokeSession = async (sessionId: string) => {
+    setRevokingSessionId(sessionId)
+    setSessionsError(null)
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}/revoke`, { method: "PATCH" })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        throw new Error(data?.message || "Unable to revoke session")
+      }
+      setSessions((prev) =>
+        prev.map((session) =>
+          session._id === sessionId ? { ...session, isActive: false } : session
+        )
+      )
+      if (selectedSession?._id === sessionId) {
+        setSelectedSession({ ...selectedSession, isActive: false })
+      }
+    } catch (err: any) {
+      setSessionsError(err.message || "Unable to revoke session")
+    } finally {
+      setRevokingSessionId(null)
+    }
+  }
 
   const fullName = profile ? `${profile.firstName || ""} ${profile.lastName || ""}`.trim() : "Loading..."
   const roleName = profile?.roleName || "Lead Pastor"
@@ -265,6 +354,85 @@ export default function SettingsPage() {
               
             </div>
           )}
+
+          {/* Active Sessions */}
+          <div className="mt-8 w-full bg-white rounded-[16px] border border-[#E2E8F0] shadow-[0_2px_4px_rgba(0,0,0,0.02)]">
+            <div className="p-5 sm:p-6 lg:p-8 border-b border-[#EEF1F6] flex items-center justify-between gap-4">
+              <h3 className="text-[#111827] text-[18px] sm:text-[20px] font-[800] tracking-tight">Active Sessions</h3>
+              <p className="text-[#6B7280] text-[12.5px] sm:text-[13.5px] font-[500] mt-1">
+                Devices currently logged into your account.
+              </p>
+              <button
+                onClick={handleRevokeAllSessions}
+                disabled={revokingSessions}
+                className="h-[38px] px-4 rounded-[8px] bg-[#2563EB] text-white text-[12.5px] font-[700] hover:bg-[#1D4ED8] transition-colors disabled:opacity-70 whitespace-nowrap"
+              >
+                {revokingSessions ? "Revoking..." : "Log out of all devices"}
+              </button>
+            </div>
+
+            {sessionsLoading ? (
+              <div className="p-6 sm:p-8 text-[#64748B] text-[14px]">Loading sessions...</div>
+            ) : revokeMessage ? (
+              <div className="p-6 sm:p-8 text-emerald-600 text-[13.5px] font-[600]">{revokeMessage}</div>
+            ) : sessionsError ? (
+              <div className="p-6 sm:p-8 text-rose-600 text-[13.5px] font-[600]">{sessionsError}</div>
+            ) : sessions.length === 0 ? (
+              <div className="p-6 sm:p-8 text-[#64748B] text-[14px]">No active sessions found.</div>
+            ) : (
+              <div className="p-6 sm:p-8 grid grid-cols-1 gap-4">
+                {sessions.map((session) => (
+                  <div
+                    key={session._id}
+                    className="border border-[#EEF1F6] rounded-[12px] p-4 sm:p-5 flex flex-col gap-2"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="text-[#111827] text-[14px] font-[800]">
+                        {session.device || "Unknown Device"}
+                      </div>
+                      <div className={`text-[12px] font-[700] ${session.isActive ? "text-emerald-600" : "text-[#94A3B8]"}`}>
+                        {session.isActive ? "Active" : "Expired"}
+                      </div>
+                    </div>
+                    <div className="text-[#64748B] text-[13px] font-[500]">
+                      {session.browser || "Unknown Browser"} • {session.os || "Unknown OS"}
+                    </div>
+                    <div className="text-[#64748B] text-[12.5px] font-[500]">
+                      IP: {session.ipAddress || "Unknown"} • {session.location || "Unknown location"}
+                    </div>
+                    <div className="text-[#94A3B8] text-[12px] font-[500]">
+                      Created: {session.createdAt ? new Date(session.createdAt).toLocaleString() : "N/A"} •
+                      Expires: {session.expiresAt ? new Date(session.expiresAt).toLocaleString() : "N/A"}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => handleViewSession(session._id)}
+                        className="text-[12px] font-[700] text-[#2563EB] hover:underline"
+                      >
+                        View details
+                      </button>
+                      <button
+                        onClick={() => handleRevokeSession(session._id)}
+                        disabled={revokingSessionId === session._id || !session.isActive}
+                        className="text-[12px] font-[700] text-rose-600 hover:underline disabled:opacity-60"
+                      >
+                        {revokingSessionId === session._id ? "Revoking..." : "Revoke"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {sessionDetailsLoading ? (
+              <div className="px-6 sm:px-8 pb-6 text-[#64748B] text-[13px]">Loading session details...</div>
+            ) : sessionDetailsError ? (
+              <div className="px-6 sm:px-8 pb-6 text-rose-600 text-[13px] font-[600]">{sessionDetailsError}</div>
+            ) : selectedSession ? (
+              <div className="px-6 sm:px-8 pb-6 text-[13px] text-[#64748B]">
+                Viewing: {selectedSession.device || "Unknown Device"} • {selectedSession.browser || "Unknown Browser"} • {selectedSession.os || "Unknown OS"} • {selectedSession.location || "Unknown location"}
+              </div>
+            ) : null}
+          </div>
         </main>
       </div>
     </div>

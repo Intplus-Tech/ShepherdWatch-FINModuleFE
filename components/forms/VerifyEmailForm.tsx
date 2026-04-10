@@ -12,18 +12,14 @@ import { Button } from "@/components/ui/button"
 import Image from "next/image"
 import { useAuth } from "@/components/auth/AuthProvider"
 
-const signInSchema = z.object({
-  firstName: z.string().min(2, "First name is required"),
-  lastName: z.string().min(2, "Last name is required"),
+const verifySchema = z.object({
   email: z.string().email("Enter a valid email"),
-  password: z.string().min(8, "Password must be at least 8 characters"),
-  phone: z.string().optional(),
-  rememberMe: z.boolean().optional(),
+  code: z.string().min(6, "Enter the 6-digit OTP").max(6, "Enter the 6-digit OTP"),
 })
 
-type SignInValues = z.infer<typeof signInSchema>
+type VerifyValues = z.infer<typeof verifySchema>
 
-export default function SignInForm() {
+export default function VerifyEmailForm() {
   const router = useRouter()
   const { resendOtp } = useAuth()
   const [error, setError] = useState<string | null>(null)
@@ -35,39 +31,34 @@ export default function SignInForm() {
     handleSubmit,
     getValues,
     formState: { errors, isSubmitting },
-  } = useForm<SignInValues>({
-    resolver: zodResolver(signInSchema),
+  } = useForm<VerifyValues>({
+    resolver: zodResolver(verifySchema),
     defaultValues: {
-      firstName: "",
-      lastName: "",
       email: "",
-      password: "",
-      phone: "",
-      rememberMe: false,
+      code: "",
     },
   })
 
-  const onSubmit = async (values: SignInValues) => {
+  const onSubmit = async (values: VerifyValues) => {
     setError(null)
     setSuccessMessage(null)
     setResendMessage(null)
     try {
-      const res = await fetch("/api/auth/register", {
+      const res = await fetch("/api/auth/verify-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(values),
       })
 
       const data = await res.json().catch(() => ({}))
-
       if (!res.ok) {
-        throw new Error(data.message || "Registration failed")
+        throw new Error(data.message || "Verification failed")
       }
 
-      setSuccessMessage(data?.message || "Registration successful. Please verify your email.")
+      setSuccessMessage(data?.message || "Email verified successfully.")
       router.push("/login")
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Registration failed")
+      setError(err instanceof Error ? err.message : "Verification failed")
     }
   }
 
@@ -106,37 +97,13 @@ export default function SignInForm() {
             </div>
 
             <div className="text-center">
-              <h1 className="text-[28px] font-bold text-[#111827] mb-2">Sign In</h1>
-              <p className="text-[14px] text-[#98A2B3]">Create your account to get started.</p>
+              <h1 className="text-[28px] font-bold text-[#111827] mb-2">Verify Email</h1>
+              <p className="text-[14px] text-[#98A2B3]">
+                Enter the 6-digit OTP sent to your email.
+              </p>
             </div>
 
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-5 w-full text-left">
-              <div className="space-y-2">
-                <Label htmlFor="firstName" className="text-[13px] text-[#98A2B3] font-medium">First Name</Label>
-                <Input
-                  id="firstName"
-                  type="text"
-                  className="h-[44px] rounded-[6px] border-[#4F63FF] focus-visible:ring-[#5871F5] px-3 w-full"
-                  {...register("firstName")}
-                />
-                {errors.firstName ? (
-                  <p className="text-[11px] text-rose-600">{errors.firstName.message}</p>
-                ) : null}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="lastName" className="text-[13px] text-[#98A2B3] font-medium">Last Name</Label>
-                <Input
-                  id="lastName"
-                  type="text"
-                  className="h-[44px] rounded-[6px] border-[#4F63FF] focus-visible:ring-[#5871F5] px-3 w-full"
-                  {...register("lastName")}
-                />
-                {errors.lastName ? (
-                  <p className="text-[11px] text-rose-600">{errors.lastName.message}</p>
-                ) : null}
-              </div>
-
               <div className="space-y-2">
                 <Label htmlFor="email" className="text-[13px] text-[#98A2B3] font-medium">Email</Label>
                 <Input
@@ -151,51 +118,22 @@ export default function SignInForm() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="phone" className="text-[13px] text-[#98A2B3] font-medium">Phone (Optional)</Label>
+                <Label htmlFor="code" className="text-[13px] text-[#98A2B3] font-medium">OTP Code</Label>
                 <Input
-                  id="phone"
-                  type="tel"
-                  placeholder="+2348012345678"
+                  id="code"
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
                   className="h-[44px] rounded-[6px] border-[#4F63FF] focus-visible:ring-[#5871F5] px-3 w-full"
-                  {...register("phone")}
+                  {...register("code")}
                 />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="password" className="text-[13px] text-[#98A2B3] font-medium">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  className="h-[44px] rounded-[6px] border-[#4F63FF] focus-visible:ring-[#5871F5] px-3 w-full"
-                  {...register("password")}
-                />
-                {errors.password ? (
-                  <p className="text-[11px] text-rose-600">{errors.password.message}</p>
+                {errors.code ? (
+                  <p className="text-[11px] text-rose-600">{errors.code.message}</p>
                 ) : null}
               </div>
 
-              <div className="flex items-center justify-between pt-1">
-                <label className="flex items-center space-x-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 rounded border-[#BFC7FF] text-[#3B5BDB] focus:ring-[#5871F5]"
-                    {...register("rememberMe")}
-                  />
-                  <span className="text-[13px] text-[#98A2B3]">Remember me?</span>
-                </label>
-              </div>
-
               {successMessage ? (
-                <div className="text-center space-y-2">
-                  <p className="text-[12px] text-emerald-600">{successMessage}</p>
-                  <button
-                    type="button"
-                    onClick={handleResendOtp}
-                    className="text-[12px] text-[#4F63FF] font-medium hover:underline"
-                  >
-                    Resend OTP
-                  </button>
-                </div>
+                <p className="text-[12px] text-emerald-600 text-center">{successMessage}</p>
               ) : null}
               {resendMessage ? (
                 <p className="text-[12px] text-emerald-600 text-center">{resendMessage}</p>
@@ -208,8 +146,18 @@ export default function SignInForm() {
                   disabled={isSubmitting}
                   className="h-[44px] px-12 bg-[#3B5BDB] hover:bg-[#2f4cc2] text-white rounded-[6px] text-[15px] shadow-[0_4px_12px_rgba(59,91,219,0.2)] font-medium"
                 >
-                  {isSubmitting ? "Signing in..." : "Sign in"}
+                  {isSubmitting ? "Verifying..." : "Verify Email"}
                 </Button>
+              </div>
+
+              <div className="text-center pt-2">
+                <button
+                  type="button"
+                  onClick={handleResendOtp}
+                  className="text-[12px] text-[#4F63FF] font-medium hover:underline"
+                >
+                  Resend OTP
+                </button>
               </div>
             </form>
           </div>
@@ -219,7 +167,7 @@ export default function SignInForm() {
           <div className="relative w-full h-full rounded-[24px] lg:rounded-[32px] overflow-hidden shadow-sm">
             <Image
               src="/images/login%20page%20picture.jpg"
-              alt="Login abstract background"
+              alt="Verification background"
               fill
               className="object-cover"
               priority
@@ -227,14 +175,14 @@ export default function SignInForm() {
             <div className="absolute inset-0 flex flex-col justify-between p-12">
               <div className="text-white">
                 <h2 className="text-[48px] leading-[1.15] font-normal tracking-tight">
-                  Welcome to<br />
+                  Secure your<br />
                   <span className="font-bold">ShepherdWatch</span>
                 </h2>
                 <p className="text-[15px] text-white/90 mt-2 font-medium">Global Harvest Church</p>
               </div>
 
               <div className="text-white/90 pb-4 text-[15px] font-medium">
-                All church workflow unified.
+                Verify once, access everywhere.
               </div>
             </div>
           </div>

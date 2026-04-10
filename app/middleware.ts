@@ -1,23 +1,58 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyToken } from "@/lib/jwt";
-import { ACCESS_TOKEN_COOKIE } from "@/lib/auth-config";
+import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config";
 
-export async function middleware(req: NextRequest) {
-  const token = req.cookies.get(ACCESS_TOKEN_COOKIE)?.value;
-  if (!token) return NextResponse.redirect(new URL("/login", req.url));
+const TOKEN_CHECK_TTL_MS = 60 * 1000;
+const tokenValidityCache = new Map<string, { valid: boolean; expiresAt: number }>();
 
-  const decoded = verifyToken(token);
-  if (!decoded) return NextResponse.redirect(new URL("/login", req.url));
+function getBackendMeUrl(): string | null {
+  const baseUrl = process.env.BACKEND_API_URL?.replace(/\/+$/, "");
+  if (baseUrl) {
+    return `${baseUrl}/auth/me`;
+  }
+  return null;
+}
 
-  // role-based check
-  if (req.nextUrl.pathname.startsWith("/admin") && decoded.role !== "admin") {
-    return NextResponse.redirect(new URL("/dashboard", req.url));
+async function isTokenValid(token: string): Promise<boolean> {
+  const now = Date.now();
+  const cached = tokenValidityCache.get(token);
+  if (cached && cached.expiresAt > now) {
+    return cached.valid;
   }
 
-  const res = NextResponse.next();
-  res.headers.set("x-user-id", decoded.id);
-  res.headers.set("x-user-role", decoded.role);
-  return res;
+  const backendUrl = getBackendMeUrl();
+  if (!backendUrl) {
+    // If backend isn't configured, don't block access here.
+    tokenValidityCache.set(token, { valid: true, expiresAt: now + TOKEN_CHECK_TTL_MS });
+    return true;
+  }
+
+  try {
+    const res = await fetch(backendUrl, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      cache: "no-store",
+    });
+    const valid = res.ok;
+    tokenValidityCache.set(token, { valid, expiresAt: now + TOKEN_CHECK_TTL_MS });
+    return valid;
+  } catch {
+    // On transient errors, allow access to avoid false negatives.
+    tokenValidityCache.set(token, { valid: true, expiresAt: now + TOKEN_CHECK_TTL_MS });
+    return true;
+  }
+}
+
+export async function middleware(req: NextRequest) {
+  const token = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value;
+  if (!token) return NextResponse.redirect(new URL("/login", req.url));
+
+  const valid = await isTokenValid(token);
+  if (!valid) return NextResponse.redirect(new URL("/login", req.url));
+
+  return NextResponse.next();
 }
 
 export const config = {

@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 export type FlatRolePermission = {
   id: string
   name: string
@@ -91,7 +93,7 @@ export function flattenRolePermissions(payload: any): FlatRolePermission[] {
         const roleType =
           item?.roleType ?? item?.role ?? item?.name ?? item?.roleName
         item.permissions.forEach((permission: any) =>
-          addPermission(permission, roleType)
+          addPermission(permission, roleType as string | undefined)
         )
         return
       }
@@ -100,14 +102,14 @@ export function flattenRolePermissions(payload: any): FlatRolePermission[] {
         const roleType =
           item?.roleType ?? item?.role ?? item?.name ?? item?.roleName
         item.items.forEach((permission: any) =>
-          addPermission(permission, roleType)
+          addPermission(permission, roleType as string | undefined)
         )
         return
       }
 
       addPermission(
         item,
-        item?.roleType ?? item?.role ?? item?.roleName ?? item?.role?.name
+        (item?.roleType ?? item?.role ?? item?.roleName ?? item?.role?.name) as string | undefined
       )
     })
   }
@@ -117,18 +119,18 @@ export function flattenRolePermissions(payload: any): FlatRolePermission[] {
     return result
   }
 
-  if (Array.isArray(data?.permissions)) {
-    handleCollection(data.permissions)
+  if (Array.isArray((data as any)?.permissions)) {
+    handleCollection((data as any).permissions)
     return result
   }
 
-  if (Array.isArray(data?.items)) {
-    handleCollection(data.items)
+  if (Array.isArray((data as any)?.items)) {
+    handleCollection((data as any).items)
     return result
   }
 
-  if (Array.isArray(data?.roles)) {
-    handleCollection(data.roles)
+  if (Array.isArray((data as any)?.roles)) {
+    handleCollection((data as any).roles)
     return result
   }
 
@@ -137,7 +139,7 @@ export function flattenRolePermissions(payload: any): FlatRolePermission[] {
 
 export function flattenRoles(payload: any): RoleItem[] {
   const data = payload?.data ?? payload
-  const roles = Array.isArray(data) ? data : data?.roles ?? data?.items ?? []
+  const roles = Array.isArray(data) ? data : (data as any)?.roles ?? (data as any)?.items ?? []
 
   if (!Array.isArray(roles)) {
     return []
