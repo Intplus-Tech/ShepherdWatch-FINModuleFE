@@ -79,6 +79,13 @@ export default function Page() {
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [payload, setPayload] = useState<unknown>(null)
+  const [matrixTimestamp, setMatrixTimestamp] = useState<string | null>(null)
+  const [matrixState, setMatrixState] = useState<Record<string, Record<string, Set<string>>>>({})
+  const [roleKeyMap, setRoleKeyMap] = useState<Record<string, string>>({})
+  const [matrixSaving, setMatrixSaving] = useState(false)
+  const [matrixSaveError, setMatrixSaveError] = useState<string | null>(null)
+  const [matrixSaveMessage, setMatrixSaveMessage] = useState<string | null>(null)
+  const [matrixResetting, setMatrixResetting] = useState(false)
   const [rolesPayload, setRolesPayload] = useState<unknown>(null)
   const [selectedRoleId, setSelectedRoleId] = useState("")
   const [roleDetail, setRoleDetail] = useState<any>(null)
@@ -104,7 +111,7 @@ export default function Page() {
 
       try {
         const [permissionsResponse, rolesResponse] = await Promise.all([
-          fetch("/api/core/roles/permissions", {
+          fetch("/api/permissions/matrix", {
             method: "GET",
             credentials: "include",
           }),
@@ -126,6 +133,7 @@ export default function Page() {
 
         if (isMounted) {
           setPayload(permissionsData)
+          setMatrixTimestamp(permissionsData?.timestamp ?? null)
           if (rolesResponse.ok) {
             setRolesPayload(rolesData)
           }
@@ -150,9 +158,31 @@ export default function Page() {
     }
   }, [])
 
+  const matrixPayload = useMemo(() => {
+    const data = (payload as any)?.data ?? payload
+    if (!Array.isArray(data)) {
+      return payload
+    }
+    const normalized = data.map((role: any) => ({
+      role: role?.role ?? role?.roleType ?? role?.name,
+      permissions: Array.isArray(role?.permissions)
+        ? role.permissions.flatMap((perm: any) => {
+            const category = perm?.category ?? "General"
+            const actions = Array.isArray(perm?.actions) ? perm.actions : []
+            return actions.map((action: string) => ({
+              name: String(action),
+              description: `${String(category)} permission`,
+              category,
+            }))
+          })
+        : [],
+    }))
+    return { data: normalized }
+  }, [payload])
+
   const flattenedPermissions = useMemo(
-    () => flattenRolePermissions(payload),
-    [payload]
+    () => flattenRolePermissions(matrixPayload),
+    [matrixPayload]
   )
 
   const permissionOptions = useMemo(() => {
@@ -237,6 +267,12 @@ export default function Page() {
     return { columns, sections }
   }, [flattenedPermissions])
 
+  const formatActionLabel = (value: string) =>
+    value
+      .toString()
+      .replace(/[_-]+/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase())
+
   const filteredSections = useMemo(() => {
     if (!searchText.trim()) return sections
     const term = searchText.toLowerCase()
@@ -245,7 +281,7 @@ export default function Page() {
         ...section,
         items: section.items.filter(
           (item) =>
-            item.name.toLowerCase().includes(term) ||
+            formatActionLabel(item.name).toLowerCase().includes(term) ||
             item.desc.toLowerCase().includes(term)
         ),
       }))
@@ -253,6 +289,162 @@ export default function Page() {
   }, [searchText, sections])
 
   const showLockedNote = columns.some((col) => col.key === "SUPER_ADMIN")
+  const parsedMatrixUpdated = matrixTimestamp ? new Date(matrixTimestamp) : null
+  const matrixUpdatedLabel =
+    parsedMatrixUpdated && !Number.isNaN(parsedMatrixUpdated.getTime())
+      ? parsedMatrixUpdated.toLocaleString()
+      : null
+
+  useEffect(() => {
+    const data = (payload as any)?.data ?? payload
+    if (!Array.isArray(data)) return
+
+    const nextMatrix: Record<string, Record<string, Set<string>>> = {}
+    const nextRoleMap: Record<string, string> = {}
+
+    data.forEach((role: any) => {
+      const roleValue = role?.role ?? role?.roleType ?? role?.name
+      const roleKey = normalizeRoleKey(roleValue)
+      if (!roleKey) return
+      nextRoleMap[roleKey] = String(roleValue)
+      if (!nextMatrix[roleKey]) {
+        nextMatrix[roleKey] = {}
+      }
+      const permissions = Array.isArray(role?.permissions) ? role.permissions : []
+      permissions.forEach((perm: any) => {
+        const category = String(perm?.category ?? "General")
+        const actions = Array.isArray(perm?.actions) ? perm.actions : []
+        if (!nextMatrix[roleKey][category]) {
+          nextMatrix[roleKey][category] = new Set<string>()
+        }
+        actions.forEach((action: string) =>
+          nextMatrix[roleKey][category].add(String(action))
+        )
+      })
+    })
+
+    setRoleKeyMap(nextRoleMap)
+    setMatrixState(nextMatrix)
+  }, [payload])
+
+  const togglePermission = (roleKey: string, category: string, action: string) => {
+    if (roleKey === "SUPER_ADMIN") return
+    setMatrixState((prev) => {
+      const next = { ...prev }
+      const rolePermissions = { ...(next[roleKey] ?? {}) }
+      const actionSet = new Set(rolePermissions[category] ?? [])
+      if (actionSet.has(action)) {
+        actionSet.delete(action)
+      } else {
+        actionSet.add(action)
+      }
+      rolePermissions[category] = actionSet
+      next[roleKey] = rolePermissions
+      return next
+    })
+  }
+
+  const isMatrixDirty = useMemo(() => {
+    const data = (payload as any)?.data ?? payload
+    if (!Array.isArray(data)) return false
+    const current = new Map<string, Map<string, Set<string>>>()
+    data.forEach((role: any) => {
+      const roleKey = normalizeRoleKey(role?.role ?? role?.roleType ?? role?.name)
+      if (!roleKey) return
+      if (!current.has(roleKey)) current.set(roleKey, new Map())
+      const permissions = Array.isArray(role?.permissions) ? role.permissions : []
+      permissions.forEach((perm: any) => {
+        const category = String(perm?.category ?? "General")
+        const actions = Array.isArray(perm?.actions) ? perm.actions : []
+        if (!current.get(roleKey)?.has(category)) {
+          current.get(roleKey)?.set(category, new Set())
+        }
+        actions.forEach((action: string) =>
+          current.get(roleKey)?.get(category)?.add(String(action))
+        )
+      })
+    })
+
+    const roleKeys = new Set<string>([
+      ...Object.keys(matrixState),
+      ...Array.from(current.keys()),
+    ])
+
+    for (const roleKey of roleKeys) {
+      const currentCats = current.get(roleKey) ?? new Map()
+      const nextCats = matrixState[roleKey] ?? {}
+      const categories = new Set<string>([
+        ...Array.from(currentCats.keys()),
+        ...Object.keys(nextCats),
+      ])
+      for (const category of categories) {
+        const currentActions = currentCats.get(category) ?? new Set()
+        const nextActions = nextCats[category] ?? new Set()
+        if (currentActions.size !== nextActions.size) return true
+        for (const action of currentActions) {
+          if (!nextActions.has(action)) return true
+        }
+      }
+    }
+    return false
+  }, [matrixState, payload])
+
+  const handleSaveMatrix = async () => {
+    setMatrixSaveError(null)
+    setMatrixSaveMessage(null)
+    setMatrixSaving(true)
+    try {
+      const matrix = Object.entries(matrixState).map(([roleKey, categories]) => ({
+        role: roleKeyMap[roleKey] ?? roleKey.toLowerCase(),
+        permissions: Object.entries(categories).map(([category, actions]) => ({
+          category,
+          actions: Array.from(actions),
+        })),
+      }))
+      const res = await fetch("/api/permissions/matrix", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ matrix }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data?.message || "Unable to save permission matrix")
+      }
+      setMatrixSaveMessage(data?.message || "Permission matrix saved successfully.")
+      setPayload(data?.data?.length ? { data: data.data } : payload)
+      setMatrixTimestamp(data?.timestamp ?? matrixTimestamp)
+    } catch (err: any) {
+      setMatrixSaveError(err.message || "Unable to save permission matrix")
+    } finally {
+      setMatrixSaving(false)
+    }
+  }
+
+  const handleResetMatrix = async () => {
+    const confirmed = window.confirm(
+      "Reset the permission matrix to system defaults? This will overwrite current customizations."
+    )
+    if (!confirmed) return
+    setMatrixSaveError(null)
+    setMatrixSaveMessage(null)
+    setMatrixResetting(true)
+    try {
+      const res = await fetch("/api/permissions/matrix/reset", {
+        method: "POST",
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data?.message || "Unable to reset permission matrix")
+      }
+      setMatrixSaveMessage(data?.message || "Permission matrix reset successfully.")
+      setPayload(data?.data?.length ? { data: data.data } : payload)
+      setMatrixTimestamp(data?.timestamp ?? matrixTimestamp)
+    } catch (err: any) {
+      setMatrixSaveError(err.message || "Unable to reset permission matrix")
+    } finally {
+      setMatrixResetting(false)
+    }
+  }
 
   useEffect(() => {
     if (!selectedRoleId && rolesList.length > 0) {
@@ -378,14 +570,29 @@ export default function Page() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <Button className="h-8 rounded-md border border-[#E5E7EB] bg-white text-[11px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50" variant="outline">
-                  Reset to Defaults
+                <Button
+                  className="h-8 rounded-md border border-[#E5E7EB] bg-white text-[11px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50"
+                  variant="outline"
+                  onClick={handleResetMatrix}
+                  disabled={matrixResetting}
+                >
+                  {matrixResetting ? "Resetting..." : "Reset to Defaults"}
                 </Button>
-                <Button className="h-8 rounded-md bg-[#3B5BDB] text-[11px] font-medium text-white shadow hover:bg-blue-700">
-                  Save Matrix
+                <Button
+                  className="h-8 rounded-md bg-[#3B5BDB] text-[11px] font-medium text-white shadow hover:bg-blue-700"
+                  onClick={handleSaveMatrix}
+                  disabled={matrixSaving || !isMatrixDirty}
+                >
+                  {matrixSaving ? "Saving..." : "Save Matrix"}
                 </Button>
               </div>
             </div>
+            {matrixSaveError ? (
+              <div className="mt-3 text-[11px] text-rose-600">{matrixSaveError}</div>
+            ) : null}
+            {matrixSaveMessage ? (
+              <div className="mt-3 text-[11px] text-emerald-600">{matrixSaveMessage}</div>
+            ) : null}
 
             <div className="mt-5 flex items-center gap-6 border-b border-[#EEF1F6] text-[11px]">
               <button className="flex items-center gap-2 pb-2 text-[#6B7280]">
@@ -768,14 +975,16 @@ export default function Page() {
                           <tr key={item.name} className="border-t border-[#EEF1F6]">
                             <td className="py-3 px-4">
                               <div className={`${bigText} text-[#111827]`}>
-                                {item.name}
+                                {formatActionLabel(item.name)}
                               </div>
                               <div className={`${smallText} text-[#9CA3AF]`}>
                                 {item.desc}
                               </div>
                             </td>
                             {columns.map((column) => {
-                              const isGranted = item.roles.has(column.key)
+                              const isGranted =
+                                matrixState[column.key]?.[item.section]?.has(item.name) ?? false
+                              const isLocked = column.key === "SUPER_ADMIN"
                               return (
                                 <td
                                   key={column.key}
@@ -786,7 +995,13 @@ export default function Page() {
                                       isGranted
                                         ? "bg-[#3B5BDB] border-[#3B5BDB]"
                                         : "bg-white border-[#D1D5DB]"
-                                    } flex items-center justify-center`}
+                                    } flex items-center justify-center ${
+                                      isLocked ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+                                    }`}
+                                    onClick={() => {
+                                      if (isLocked) return
+                                      togglePermission(column.key, item.section, item.name)
+                                    }}
                                   >
                                     {isGranted ? (
                                       <Check className="h-3 w-3 text-white" />
@@ -809,7 +1024,11 @@ export default function Page() {
                     ? "Super Admin permissions are locked for security reasons."
                     : "Permissions are managed at the role level."}
                 </div>
-                <div>Last saved: 2 hours ago by Sarah Jenkins</div>
+                <div>
+                  {matrixUpdatedLabel
+                    ? `Last updated on ${matrixUpdatedLabel}`
+                    : "Last updated timestamp unavailable"}
+                </div>
               </div>
             </div>
           </section>
