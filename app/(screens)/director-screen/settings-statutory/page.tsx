@@ -1,19 +1,15 @@
 ﻿"use client"
 
+import { useEffect, useState } from "react"
 import SidebarNav from "@/components/navigation/SidebarNav"
 import ScreenHeader from "@/components/navigation/ScreenHeader"
+import { useStatutoryConfig } from "@/components/hooks/useStatutoryConfig"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Switch } from "@/components/ui/switch"
 import {
   AlertTriangle,
-  Calendar,
-  ChevronDown,
-  Download,
   Info,
   Layers,
   Settings,
-  ShieldCheck,
   Wallet,
 } from "lucide-react"
 
@@ -25,28 +21,157 @@ const sideItems = [
   { label: "Permissions" },
 ]
 
-const dnaCards = [
-  {
-    title: "HQ TITHES",
-    value: "10%",
-    tone: "text-[#2563EB]",
-    active: true,
-  },
-  {
-    title: "CAPITAL SAVINGS",
-    value: "20%",
-    tone: "text-[#16A34A]",
-    active: true,
-  },
-  {
-    title: "GENERAL SAVINGS",
-    value: "1%",
-    tone: "text-[#F59E0B]",
-    active: true,
-  },
-]
-
 export default function Page() {
+  const { statutoryConfig, loading, error, lastUpdated, refresh } = useStatutoryConfig()
+  const [form, setForm] = useState({
+    pensionRate: "",
+    taxRate: "",
+    nhfRate: "",
+    savingsDnaRate: "",
+    enforcementAction: "",
+    remittanceFrequency: "",
+  })
+  const [saveMessage, setSaveMessage] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const parsedLastUpdated = lastUpdated ? new Date(lastUpdated) : null
+  const lastUpdatedLabel =
+    parsedLastUpdated && !Number.isNaN(parsedLastUpdated.getTime())
+      ? parsedLastUpdated.toLocaleString()
+      : null
+
+  const rateCards = [
+    {
+      title: "Pension Rate",
+      value:
+        statutoryConfig?.pensionRate !== undefined ? `${statutoryConfig.pensionRate}%` : "—",
+      tone: "text-[#2563EB]",
+    },
+    {
+      title: "Tax Rate",
+      value: statutoryConfig?.taxRate !== undefined ? `${statutoryConfig.taxRate}%` : "—",
+      tone: "text-[#16A34A]",
+    },
+    {
+      title: "NHF Rate",
+      value: statutoryConfig?.nhfRate !== undefined ? `${statutoryConfig.nhfRate}%` : "—",
+      tone: "text-[#F59E0B]",
+    },
+    {
+      title: "Savings DNA Rate",
+      value:
+        statutoryConfig?.savingsDnaRate !== undefined
+          ? `${statutoryConfig.savingsDnaRate}%`
+          : "—",
+      tone: "text-[#7C3AED]",
+    },
+  ]
+
+  const enforcementActionLabel =
+    form.enforcementAction === "warn_only"
+      ? "Warn Only"
+      : form.enforcementAction === "block_transactions"
+        ? "Block Transactions"
+        : form.enforcementAction === "require_approval"
+          ? "Require Approval"
+          : "Not configured"
+
+  const remittanceFrequencyLabel =
+    form.remittanceFrequency === "monthly"
+      ? "Monthly"
+      : form.remittanceFrequency === "quarterly"
+        ? "Quarterly"
+        : form.remittanceFrequency === "annually"
+          ? "Annually"
+          : "Not configured"
+
+  useEffect(() => {
+    if (!statutoryConfig) return
+    const enforcement =
+      statutoryConfig.enforcementAction === "block"
+        ? "block_transactions"
+        : statutoryConfig.enforcementAction === "notify"
+          ? "require_approval"
+          : statutoryConfig.enforcementAction ?? ""
+    const frequency =
+      statutoryConfig.remittanceFrequency === "yearly"
+        ? "annually"
+        : statutoryConfig.remittanceFrequency ?? ""
+    setForm({
+      pensionRate:
+        statutoryConfig.pensionRate !== undefined ? String(statutoryConfig.pensionRate) : "",
+      taxRate: statutoryConfig.taxRate !== undefined ? String(statutoryConfig.taxRate) : "",
+      nhfRate: statutoryConfig.nhfRate !== undefined ? String(statutoryConfig.nhfRate) : "",
+      savingsDnaRate:
+        statutoryConfig.savingsDnaRate !== undefined
+          ? String(statutoryConfig.savingsDnaRate)
+          : "",
+      enforcementAction: enforcement,
+      remittanceFrequency: frequency,
+    })
+  }, [statutoryConfig])
+
+  const handleSave = async () => {
+    setSaveMessage(null)
+    setSaveError(null)
+
+    const pensionRate = Number(form.pensionRate)
+    const taxRate = Number(form.taxRate)
+    const nhfRate = Number(form.nhfRate)
+    const savingsDnaRate = Number(form.savingsDnaRate)
+
+    if (!Number.isFinite(pensionRate)) {
+      setSaveError("Pension rate is required.")
+      return
+    }
+    if (!Number.isFinite(taxRate)) {
+      setSaveError("Tax rate is required.")
+      return
+    }
+    if (!Number.isFinite(nhfRate)) {
+      setSaveError("NHF rate is required.")
+      return
+    }
+    if (!Number.isFinite(savingsDnaRate)) {
+      setSaveError("Savings DNA rate is required.")
+      return
+    }
+    if (!form.enforcementAction) {
+      setSaveError("Enforcement action is required.")
+      return
+    }
+    if (!form.remittanceFrequency) {
+      setSaveError("Remittance frequency is required.")
+      return
+    }
+
+    setSaving(true)
+    try {
+      const res = await fetch("/api/settings/statutory-config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pensionRate,
+          taxRate,
+          nhfRate,
+          savingsDnaRate,
+          enforcementAction: form.enforcementAction,
+          remittanceFrequency: form.remittanceFrequency,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data?.message || "Unable to save statutory configuration")
+      }
+      setSaveMessage(data?.message || "Statutory settings updated successfully.")
+      refresh()
+    } catch (err: any) {
+      setSaveError(err.message || "Unable to save statutory configuration")
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
       <SidebarNav
@@ -88,7 +213,7 @@ export default function Page() {
                   Director&apos;s Note
                 </div>
                 <p className="mt-2 text-[9px] text-[#6B7280]">
-                  These settings are global. Changes here affect all department budgets and fiscal cycles immediately.
+                  These settings are global. Changes here affect statutory deductions and remittance rules immediately.
                 </p>
               </div>
             </aside>
@@ -103,22 +228,17 @@ export default function Page() {
                     Define the core financial rules, remittance logic, and automated compliance rules
                     applied across the entire branch network.
                   </p>
+                  {error ? (
+                    <div className="mt-2 text-[12px] text-rose-600 font-[700]">{error}</div>
+                  ) : null}
                 </div>
-                <Button className="h-8 rounded-[10px] bg-[#3B5BDB] text-[12.74px] leading-[16.98px] text-white">
-                  <Download className="h-4 w-4" /> Edit DNA
-                </Button>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-                {dnaCards.map((card) => (
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
+                {rateCards.map((card) => (
                   <div key={card.title} className="rounded-[12px] border border-[#EEF1F6] bg-white p-4">
                     <div className="flex items-center justify-between text-[12.74px] leading-[16.98px] font-semibold text-[#6B7280]">
                       {card.title}
-                      {card.active ? (
-                        <span className="rounded-full bg-[#ECFDF3] px-2 py-0.5 text-[10px] font-semibold text-[#16A34A]">
-                          ACTIVE
-                        </span>
-                      ) : null}
                     </div>
                     <div className={`mt-3 text-[24px] font-bold ${card.tone}`}>{card.value}</div>
                     <div className="mt-3 h-1.5 w-full rounded-full bg-[#EEF1F6]">
@@ -131,47 +251,174 @@ export default function Page() {
               <div className="rounded-[12px] border border-[#EEF1F6] bg-white p-4">
                 <div className="flex items-center gap-2 text-[16.98px] leading-[25.48px] font-bold text-[#111827]">
                   <Wallet className="h-4 w-4 text-[#3B5BDB]" />
+                  Statutory Rates
+                </div>
+
+                <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+                  <div className="space-y-2">
+                    <label className="text-[12.44px] leading-[17.78px] font-bold text-[#6B7280]">
+                      Pension Rate (%)
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={form.pensionRate}
+                      onChange={(e) => setForm((prev) => ({ ...prev, pensionRate: e.target.value }))}
+                      className="h-9 w-full rounded-[10px] border border-[#E5E7EB] bg-white px-2 text-[14px] font-semibold text-[#111827]"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[12.44px] leading-[17.78px] font-bold text-[#6B7280]">
+                      Tax Rate (%)
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={form.taxRate}
+                      onChange={(e) => setForm((prev) => ({ ...prev, taxRate: e.target.value }))}
+                      className="h-9 w-full rounded-[10px] border border-[#E5E7EB] bg-white px-2 text-[14px] font-semibold text-[#111827]"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[12.44px] leading-[17.78px] font-bold text-[#6B7280]">
+                      NHF Rate (%)
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={form.nhfRate}
+                      onChange={(e) => setForm((prev) => ({ ...prev, nhfRate: e.target.value }))}
+                      className="h-9 w-full rounded-[10px] border border-[#E5E7EB] bg-white px-2 text-[14px] font-semibold text-[#111827]"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[12.44px] leading-[17.78px] font-bold text-[#6B7280]">
+                      Savings DNA Rate (%)
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={form.savingsDnaRate}
+                      onChange={(e) =>
+                        setForm((prev) => ({ ...prev, savingsDnaRate: e.target.value }))
+                      }
+                      className="h-9 w-full rounded-[10px] border border-[#E5E7EB] bg-white px-2 text-[14px] font-semibold text-[#111827]"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[12px] border border-[#EEF1F6] bg-white p-4">
+                <div className="flex items-center gap-2 text-[16.98px] leading-[25.48px] font-bold text-[#111827]">
+                  <Wallet className="h-4 w-4 text-[#3B5BDB]" />
                   Remittance &amp; Automation
                 </div>
 
                 <div className="mt-4 space-y-4">
                   <div>
-                    <div className="text-[12.44px] leading-[17.78px] font-bold text-[#6B7280]">Remittance Frequency</div>
+                    <div className="text-[12.44px] leading-[17.78px] font-bold text-[#6B7280]">
+                      Remittance Frequency
+                    </div>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <button className="rounded-[10px] border border-[#DBEAFE] bg-[#EEF2FF] px-3 py-1.5 text-[12.74px] leading-[16.98px] font-semibold text-[#3B5BDB]">
-                        Weekly
-                      </button>
-                      <button className="rounded-[10px] border border-[#E5E7EB] bg-white px-3 py-1.5 text-[12.74px] leading-[16.98px] font-semibold text-[#6B7280]">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setForm((prev) => ({ ...prev, remittanceFrequency: "monthly" }))
+                        }
+                        className={`rounded-[10px] border px-3 py-1.5 text-[12.74px] leading-[16.98px] font-semibold ${
+                          form.remittanceFrequency === "monthly"
+                            ? "border-[#DBEAFE] bg-[#EEF2FF] text-[#3B5BDB]"
+                            : "border-[#E5E7EB] bg-white text-[#6B7280]"
+                        }`}
+                      >
                         Monthly
                       </button>
-                      <button className="rounded-[10px] border border-[#E5E7EB] bg-white px-3 py-1.5 text-[12.74px] leading-[16.98px] font-semibold text-[#6B7280]">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setForm((prev) => ({ ...prev, remittanceFrequency: "quarterly" }))
+                        }
+                        className={`rounded-[10px] border px-3 py-1.5 text-[12.74px] leading-[16.98px] font-semibold ${
+                          form.remittanceFrequency === "quarterly"
+                            ? "border-[#DBEAFE] bg-[#EEF2FF] text-[#3B5BDB]"
+                            : "border-[#E5E7EB] bg-white text-[#6B7280]"
+                        }`}
+                      >
                         Quarterly
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setForm((prev) => ({ ...prev, remittanceFrequency: "annually" }))
+                        }
+                        className={`rounded-[10px] border px-3 py-1.5 text-[12.74px] leading-[16.98px] font-semibold ${
+                          form.remittanceFrequency === "annually"
+                            ? "border-[#DBEAFE] bg-[#EEF2FF] text-[#3B5BDB]"
+                            : "border-[#E5E7EB] bg-white text-[#6B7280]"
+                        }`}
+                      >
+                        Annually
                       </button>
                     </div>
                     <div className="mt-2 text-[11.68px] leading-[14.6px] font-normal text-[#9CA3AF]">
-                      Funds will be processed every Saturday at 12:00 AM UTC
-                    </div>
-                  </div>
-
-                  <div className="rounded-[10px] border border-[#EEF1F6] bg-[#F9FAFB] px-3 py-2">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="text-[12.44px] leading-[17.78px] font-bold text-[#6B7280]">
-                          Automated Deduction
-                        </div>
-                        <div className="text-[11.68px] leading-[14.6px] font-normal text-[#9CA3AF]">
-                          Trigger automatic bank transfers based on frequency
-                        </div>
-                      </div>
-                      <Switch defaultChecked className="data-[state=checked]:bg-[#3B5BDB]" />
+                      Selected: {loading ? "Loading..." : remittanceFrequencyLabel}
                     </div>
                   </div>
 
                   <div>
                     <div className="text-[12.44px] leading-[17.78px] font-bold text-[#6B7280]">
-                      Minimum Remittance Threshold
+                      Enforcement Action
                     </div>
-                    <Input className="mt-2 h-8 rounded-[10px] border-[#E5E7EB] text-[14.86px] leading-[21.23px] font-semibold" value="$ 500.00" readOnly />
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setForm((prev) => ({ ...prev, enforcementAction: "warn_only" }))
+                        }
+                        className={`rounded-[10px] border px-3 py-1.5 text-[12.74px] leading-[16.98px] font-semibold ${
+                          form.enforcementAction === "warn_only"
+                            ? "border-[#DBEAFE] bg-[#EEF2FF] text-[#3B5BDB]"
+                            : "border-[#E5E7EB] bg-white text-[#6B7280]"
+                        }`}
+                      >
+                        Warn Only
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setForm((prev) => ({
+                            ...prev,
+                            enforcementAction: "block_transactions",
+                          }))
+                        }
+                        className={`rounded-[10px] border px-3 py-1.5 text-[12.74px] leading-[16.98px] font-semibold ${
+                          form.enforcementAction === "block_transactions"
+                            ? "border-[#DBEAFE] bg-[#EEF2FF] text-[#3B5BDB]"
+                            : "border-[#E5E7EB] bg-white text-[#6B7280]"
+                        }`}
+                      >
+                        Block Transactions
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setForm((prev) => ({
+                            ...prev,
+                            enforcementAction: "require_approval",
+                          }))
+                        }
+                        className={`rounded-[10px] border px-3 py-1.5 text-[12.74px] leading-[16.98px] font-semibold ${
+                          form.enforcementAction === "require_approval"
+                            ? "border-[#DBEAFE] bg-[#EEF2FF] text-[#3B5BDB]"
+                            : "border-[#E5E7EB] bg-white text-[#6B7280]"
+                        }`}
+                      >
+                        Require Approval
+                      </button>
+                    </div>
+                    <div className="mt-2 text-[11.68px] leading-[14.6px] font-normal text-[#9CA3AF]">
+                      Selected: {loading ? "Loading..." : enforcementActionLabel}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -184,7 +431,7 @@ export default function Page() {
                       Caution: Global DNA Changes
                     </div>
                     <p className="mt-1 text-[11.68px] leading-[14.6px] font-normal text-[#A16207]">
-                      Updating the HQ Tithes and Savings percentages will immediately update all remittance calculations for all 112 active branches. New sync triggers will take effect from the next billing cycle on Monday, Oct 21.
+                      Updating statutory rates or remittance settings affects all branches immediately and should be coordinated with payroll and compliance teams.
                     </p>
                   </div>
                 </div>
@@ -194,19 +441,20 @@ export default function Page() {
                 <div className="text-[12.74px] leading-[16.98px] italic font-normal text-[#9CA3AF]">
                   <div className="flex items-center gap-2">
                     <Layers className="h-3 w-3" />
-                    Last updated by Director Adewale on Oct 24, 2026
+                    {lastUpdatedLabel
+                      ? `Last updated on ${lastUpdatedLabel}`
+                      : "Last updated timestamp unavailable"}
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 rounded-[10px] border-[#E5E7EB] bg-white text-[12.74px] leading-[16.98px] text-[#6B7280]"
-                  >
-                    Cancel
-                  </Button>
-                  <Button size="sm" className="h-8 rounded-[10px] bg-[#3B5BDB] text-[12.74px] leading-[16.98px] text-white">
-                    Update DNA
+                <div className="flex flex-col items-end gap-2">
+                  {saveMessage ? (
+                    <div className="text-[12px] text-emerald-600 font-[700]">{saveMessage}</div>
+                  ) : null}
+                  {saveError ? (
+                    <div className="text-[12px] text-rose-600 font-[700]">{saveError}</div>
+                  ) : null}
+                  <Button size="sm" className="h-8 rounded-[10px]" onClick={handleSave} disabled={saving}>
+                    {saving ? "Saving..." : "Save Statutory Settings"}
                   </Button>
                 </div>
               </div>

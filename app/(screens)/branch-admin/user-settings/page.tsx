@@ -30,9 +30,76 @@ export default function UserSettingsPage() {
   const [sessionDetailsLoading, setSessionDetailsLoading] = useState(false);
   const [sessionDetailsError, setSessionDetailsError] = useState<string | null>(null);
   const [revokingSessionId, setRevokingSessionId] = useState<string | null>(null);
+  const [templateForm, setTemplateForm] = useState({
+    name: "",
+    purpose: "",
+    subject: "",
+    body: "",
+    branchId: "",
+    isActive: true,
+  });
+  const [templateSubmitting, setTemplateSubmitting] = useState(false);
+  const [templateMessage, setTemplateMessage] = useState<string | null>(null);
+  const [templateError, setTemplateError] = useState<string | null>(null);
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(true);
+  const [templatesError, setTemplatesError] = useState<string | null>(null);
+  const [templateFilters, setTemplateFilters] = useState({
+    purpose: "",
+    branchId: "",
+    isActive: "",
+  });
+  const [selectedTemplate, setSelectedTemplate] = useState<any | null>(null);
+  const [templateEdit, setTemplateEdit] = useState({
+    name: "",
+    purpose: "",
+    subject: "",
+    body: "",
+    branchId: "",
+    isActive: true,
+  });
+  const [templateUpdating, setTemplateUpdating] = useState(false);
+  const [templateEditError, setTemplateEditError] = useState<string | null>(null);
+  const [deletingTemplateId, setDeletingTemplateId] = useState<string | null>(null);
+  const [purposeForm, setPurposeForm] = useState({
+    name: "",
+    slug: "",
+    description: "",
+    isActive: true,
+  });
+  const [purposeSubmitting, setPurposeSubmitting] = useState(false);
+  const [purposeMessage, setPurposeMessage] = useState<string | null>(null);
+  const [purposeError, setPurposeError] = useState<string | null>(null);
+  const [purposes, setPurposes] = useState<any[]>([]);
+  const [purposesLoading, setPurposesLoading] = useState(true);
+  const [purposesError, setPurposesError] = useState<string | null>(null);
+  const [selectedPurpose, setSelectedPurpose] = useState<any | null>(null);
+  const [purposeDetailsLoading, setPurposeDetailsLoading] = useState(false);
+  const [purposeDetailsError, setPurposeDetailsError] = useState<string | null>(null);
+  const [purposeEdit, setPurposeEdit] = useState({
+    name: "",
+    slug: "",
+    description: "",
+    isActive: true,
+  });
+  const [updatingPurpose, setUpdatingPurpose] = useState(false);
+  const [deletingPurposeId, setDeletingPurposeId] = useState<string | null>(null);
+  const [headerFooterForm, setHeaderFooterForm] = useState({
+    type: "header",
+    content: "",
+    isActive: true,
+  });
+  const [headerFooterSubmitting, setHeaderFooterSubmitting] = useState(false);
+  const [headerFooterMessage, setHeaderFooterMessage] = useState<string | null>(null);
+  const [headerFooterError, setHeaderFooterError] = useState<string | null>(null);
+  const [headerFooters, setHeaderFooters] = useState<any[]>([]);
+  const [headerFootersLoading, setHeaderFootersLoading] = useState(true);
+  const [headerFootersError, setHeaderFootersError] = useState<string | null>(null);
+  const [activeHeader, setActiveHeader] = useState<any | null>(null);
+  const [activeFooter, setActiveFooter] = useState<any | null>(null);
 
   useEffect(() => {
-    fetch("/api/users/profile")
+    fetch("/api/auth/me")
       .then(res => res.json())
       .then(data => {
         if (data.data) {
@@ -122,6 +189,324 @@ export default function UserSettingsPage() {
       setRevokingSessionId(null);
     }
   };
+
+  const handleTemplateChange = (field: string, value: string | boolean) => {
+    setTemplateForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleCreateTemplate = async () => {
+    setTemplateSubmitting(true);
+    setTemplateMessage(null);
+    setTemplateError(null);
+    try {
+      const payload: any = {
+        name: templateForm.name,
+        purpose: templateForm.purpose,
+        subject: templateForm.subject,
+        body: templateForm.body,
+        isActive: templateForm.isActive,
+      };
+      if (templateForm.branchId) {
+        payload.branchId = templateForm.branchId;
+      }
+      const res = await fetch("/api/templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.message || "Unable to create template");
+      }
+      setTemplateMessage(data.message || "Template created successfully.");
+      setTemplateForm({
+        name: "",
+        purpose: "",
+        subject: "",
+        body: "",
+        branchId: "",
+        isActive: true,
+      });
+    } catch (err: any) {
+      setTemplateError(err.message || "Unable to create template");
+    } finally {
+      setTemplateSubmitting(false);
+    }
+  };
+
+  const handleCreatePurpose = async () => {
+    setPurposeSubmitting(true);
+    setPurposeMessage(null);
+    setPurposeError(null);
+    try {
+      const payload: any = {
+        name: purposeForm.name,
+        slug: purposeForm.slug,
+        description: purposeForm.description,
+        isActive: purposeForm.isActive,
+      };
+      const res = await fetch("/api/templates/purposes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.message || "Unable to create purpose");
+      }
+      setPurposeMessage(data.message || "Purpose created successfully.");
+      setPurposeForm({
+        name: "",
+        slug: "",
+        description: "",
+        isActive: true,
+      });
+    } catch (err: any) {
+      setPurposeError(err.message || "Unable to create purpose");
+    } finally {
+      setPurposeSubmitting(false);
+    }
+  };
+
+  const fetchPurposes = async () => {
+    setPurposesLoading(true);
+    setPurposesError(null);
+    try {
+      const res = await fetch("/api/templates/purposes?page=1&limit=20");
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.message || "Unable to load purposes");
+      }
+      setPurposes(data?.data ?? []);
+    } catch (err: any) {
+      setPurposesError(err.message || "Unable to load purposes");
+    } finally {
+      setPurposesLoading(false);
+    }
+  };
+
+  const handleViewPurpose = async (id: string) => {
+    setPurposeDetailsLoading(true);
+    setPurposeDetailsError(null);
+    try {
+      const res = await fetch(`/api/templates/purposes/${id}`);
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.message || "Unable to load purpose");
+      }
+      const purpose = data?.data ?? null;
+      setSelectedPurpose(purpose);
+      setPurposeEdit({
+        name: purpose?.name ?? "",
+        slug: purpose?.slug ?? "",
+        description: purpose?.description ?? "",
+        isActive: purpose?.isActive ?? true,
+      });
+    } catch (err: any) {
+      setPurposeDetailsError(err.message || "Unable to load purpose");
+    } finally {
+      setPurposeDetailsLoading(false);
+    }
+  };
+
+  const handleUpdatePurpose = async () => {
+    if (!selectedPurpose?._id) return;
+    setUpdatingPurpose(true);
+    setPurposeDetailsError(null);
+    try {
+      const res = await fetch(`/api/templates/purposes/${selectedPurpose._id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(purposeEdit),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.message || "Unable to update purpose");
+      }
+      setSelectedPurpose({ ...selectedPurpose, ...purposeEdit });
+      setPurposes((prev) =>
+        prev.map((p) => (p._id === selectedPurpose._id ? { ...p, ...purposeEdit } : p))
+      );
+    } catch (err: any) {
+      setPurposeDetailsError(err.message || "Unable to update purpose");
+    } finally {
+      setUpdatingPurpose(false);
+    }
+  };
+
+  const handleDeletePurpose = async (id: string) => {
+    setDeletingPurposeId(id);
+    setPurposeDetailsError(null);
+    try {
+      const res = await fetch(`/api/templates/purposes/${id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.message || "Unable to delete purpose");
+      }
+      setPurposes((prev) => prev.filter((p) => p._id !== id));
+      if (selectedPurpose?._id === id) {
+        setSelectedPurpose(null);
+      }
+    } catch (err: any) {
+      setPurposeDetailsError(err.message || "Unable to delete purpose");
+    } finally {
+      setDeletingPurposeId(null);
+    }
+  };
+
+  const fetchTemplates = async () => {
+    setTemplatesLoading(true);
+    setTemplatesError(null);
+    const params = new URLSearchParams();
+    params.set("page", "1");
+    params.set("limit", "20");
+    if (templateFilters.purpose) params.set("purpose", templateFilters.purpose);
+    if (templateFilters.branchId) params.set("branchId", templateFilters.branchId);
+    if (templateFilters.isActive) params.set("isActive", templateFilters.isActive);
+    try {
+      const res = await fetch(`/api/templates?${params.toString()}`);
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.message || "Unable to load templates");
+      }
+      setTemplates(data?.data?.data ?? []);
+    } catch (err: any) {
+      setTemplatesError(err.message || "Unable to load templates");
+    } finally {
+      setTemplatesLoading(false);
+    }
+  };
+
+  const handleEditTemplate = (tpl: any) => {
+    setSelectedTemplate(tpl);
+    setTemplateEdit({
+      name: tpl?.name ?? "",
+      purpose: tpl?.purpose ?? "",
+      subject: tpl?.subject ?? "",
+      body: tpl?.body ?? "",
+      branchId: tpl?.branchId ?? "",
+      isActive: tpl?.isActive ?? true,
+    });
+  };
+
+  const handleUpdateTemplate = async () => {
+    if (!selectedTemplate?._id) return;
+    setTemplateUpdating(true);
+    setTemplateEditError(null);
+    try {
+      const res = await fetch(`/api/templates/${selectedTemplate._id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: templateEdit.name,
+          purpose: templateEdit.purpose,
+          subject: templateEdit.subject,
+          body: templateEdit.body,
+          branchId: templateEdit.branchId || null,
+          isActive: templateEdit.isActive,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.message || "Unable to update template");
+      }
+      setTemplates((prev) =>
+        prev.map((tpl) =>
+          tpl._id === selectedTemplate._id ? { ...tpl, ...templateEdit } : tpl
+        )
+      );
+    } catch (err: any) {
+      setTemplateEditError(err.message || "Unable to update template");
+    } finally {
+      setTemplateUpdating(false);
+    }
+  };
+
+  const handleDeleteTemplate = async (id: string) => {
+    setDeletingTemplateId(id);
+    setTemplateEditError(null);
+    try {
+      const res = await fetch(`/api/templates/${id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.message || "Unable to delete template");
+      }
+      setTemplates((prev) => prev.filter((tpl) => tpl._id !== id));
+      if (selectedTemplate?._id === id) {
+        setSelectedTemplate(null);
+      }
+    } catch (err: any) {
+      setTemplateEditError(err.message || "Unable to delete template");
+    } finally {
+      setDeletingTemplateId(null);
+    }
+  };
+
+  const handleHeaderFooterSubmit = async () => {
+    setHeaderFooterSubmitting(true);
+    setHeaderFooterMessage(null);
+    setHeaderFooterError(null);
+    try {
+      const res = await fetch("/api/templates/header-footer", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: headerFooterForm.type,
+          content: headerFooterForm.content,
+          isActive: headerFooterForm.isActive,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.message || "Unable to save header/footer");
+      }
+      setHeaderFooterMessage(data.message || "Header/footer saved successfully.");
+      setHeaderFooterForm((prev) => ({ ...prev, content: "" }));
+    } catch (err: any) {
+      setHeaderFooterError(err.message || "Unable to save header/footer");
+    } finally {
+      setHeaderFooterSubmitting(false);
+    }
+  };
+
+  const fetchHeaderFooters = async () => {
+    setHeaderFootersLoading(true);
+    setHeaderFootersError(null);
+    try {
+      const res = await fetch("/api/templates/header-footer");
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.message || "Unable to load header/footer");
+      }
+      setHeaderFooters(data?.data ?? []);
+    } catch (err: any) {
+      setHeaderFootersError(err.message || "Unable to load header/footer");
+    } finally {
+      setHeaderFootersLoading(false);
+    }
+  };
+
+  const fetchActiveHeaderFooter = async (type: "header" | "footer") => {
+    try {
+      const res = await fetch(`/api/templates/header-footer/${type}`);
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.message || `Unable to load ${type}`);
+      }
+      if (type === "header") setActiveHeader(data?.data ?? null);
+      if (type === "footer") setActiveFooter(data?.data ?? null);
+    } catch (err: any) {
+      setHeaderFootersError(err.message || "Unable to load header/footer");
+    }
+  };
+
+  useEffect(() => {
+    fetchTemplates();
+    fetchHeaderFooters();
+    fetchActiveHeaderFooter("header");
+    fetchActiveHeaderFooter("footer");
+    fetchPurposes();
+  }, []);
 
   const fullName = profile ? `${profile.firstName || ""} ${profile.lastName || ""}`.trim() : "Loading...";
   const roleName = profile?.roleName || "Admin";
@@ -417,8 +802,485 @@ export default function UserSettingsPage() {
                     Viewing: {selectedSession.device || "Unknown Device"} • {selectedSession.browser || "Unknown Browser"} • {selectedSession.os || "Unknown OS"} • {selectedSession.location || "Unknown location"}
                   </div>
                 ) : null}
+          </div>
+
+          {/* Email Templates */}
+          <div className="mt-8 bg-white border text-left border-[#EEF1F6] shadow-[0px_2px_8px_rgba(0,0,0,0.02)] rounded-[16px] flex flex-col relative w-full overflow-hidden">
+            <div className="p-6 sm:p-8 border-b border-[#EEF1F6] bg-white flex items-center justify-between">
+              <div className="flex flex-col gap-1">
+                <h3 className="text-[#111827] text-[18px] sm:text-[20px] font-[900] tracking-tight leading-none">Email Templates</h3>
+                <p className="text-[#64748B] text-[13.5px] font-[500]">
+                  Create global or branch-specific email templates.
+                </p>
               </div>
-            
+            </div>
+
+            <div className="p-6 sm:p-8 grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div className="flex flex-col gap-2">
+                <label className="text-[12px] font-[800] text-[#111827]">Template Name</label>
+                <input
+                  type="text"
+                  value={templateForm.name}
+                  onChange={(e) => handleTemplateChange("name", e.target.value)}
+                  className="h-[46px] w-full px-4 rounded-[8px] border border-[#E2E8F0] bg-white text-[#111827] text-[14px] font-[500] outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/20"
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-[12px] font-[800] text-[#111827]">Purpose</label>
+                <input
+                  type="text"
+                  value={templateForm.purpose}
+                  onChange={(e) => handleTemplateChange("purpose", e.target.value)}
+                  className="h-[46px] w-full px-4 rounded-[8px] border border-[#E2E8F0] bg-white text-[#111827] text-[14px] font-[500] outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/20"
+                />
+              </div>
+              <div className="flex flex-col gap-2 md:col-span-2">
+                <label className="text-[12px] font-[800] text-[#111827]">Subject</label>
+                <input
+                  type="text"
+                  value={templateForm.subject}
+                  onChange={(e) => handleTemplateChange("subject", e.target.value)}
+                  className="h-[46px] w-full px-4 rounded-[8px] border border-[#E2E8F0] bg-white text-[#111827] text-[14px] font-[500] outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/20"
+                />
+              </div>
+              <div className="flex flex-col gap-2 md:col-span-2">
+                <label className="text-[12px] font-[800] text-[#111827]">Body</label>
+                <textarea
+                  value={templateForm.body}
+                  onChange={(e) => handleTemplateChange("body", e.target.value)}
+                  rows={4}
+                  className="w-full px-4 py-3 rounded-[8px] border border-[#E2E8F0] bg-white text-[#111827] text-[14px] font-[500] outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/20"
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-[12px] font-[800] text-[#111827]">Branch ID (optional)</label>
+                <input
+                  type="text"
+                  value={templateForm.branchId}
+                  onChange={(e) => handleTemplateChange("branchId", e.target.value)}
+                  className="h-[46px] w-full px-4 rounded-[8px] border border-[#E2E8F0] bg-white text-[#111827] text-[14px] font-[500] outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/20"
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-[12px] font-[800] text-[#111827]">Active</label>
+                <select
+                  value={templateForm.isActive ? "true" : "false"}
+                  onChange={(e) => handleTemplateChange("isActive", e.target.value === "true")}
+                  className="h-[46px] w-full px-4 rounded-[8px] border border-[#E2E8F0] bg-white text-[#111827] text-[14px] font-[500] outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/20"
+                >
+                  <option value="true">Active</option>
+                  <option value="false">Inactive</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="px-6 sm:px-8 pb-6 flex flex-col gap-2">
+              {templateMessage ? (
+                <p className="text-emerald-600 text-[12.5px] font-[700]">{templateMessage}</p>
+              ) : null}
+              {templateError ? (
+                <p className="text-rose-600 text-[12.5px] font-[700]">{templateError}</p>
+              ) : null}
+              <button
+                onClick={handleCreateTemplate}
+                disabled={templateSubmitting}
+                className="h-[42px] px-6 rounded-[8px] bg-[#2563EB] text-white text-[13px] font-[800] hover:bg-[#1D4ED8] transition-colors disabled:opacity-70"
+              >
+                {templateSubmitting ? "Creating..." : "Create Template"}
+              </button>
+            </div>
+
+            <div className="px-6 sm:px-8 pb-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <input
+                  type="text"
+                  placeholder="Filter by purpose"
+                  value={templateFilters.purpose}
+                  onChange={(e) => setTemplateFilters((prev) => ({ ...prev, purpose: e.target.value }))}
+                  className="h-[42px] px-3 rounded-[8px] border border-[#E2E8F0] bg-white text-[13px] font-[500]"
+                />
+                <input
+                  type="text"
+                  placeholder="Filter by branchId"
+                  value={templateFilters.branchId}
+                  onChange={(e) => setTemplateFilters((prev) => ({ ...prev, branchId: e.target.value }))}
+                  className="h-[42px] px-3 rounded-[8px] border border-[#E2E8F0] bg-white text-[13px] font-[500]"
+                />
+                <select
+                  value={templateFilters.isActive}
+                  onChange={(e) => setTemplateFilters((prev) => ({ ...prev, isActive: e.target.value }))}
+                  className="h-[42px] px-3 rounded-[8px] border border-[#E2E8F0] bg-white text-[13px] font-[500]"
+                >
+                  <option value="">All Status</option>
+                  <option value="true">Active</option>
+                  <option value="false">Inactive</option>
+                </select>
+              </div>
+              <button
+                onClick={fetchTemplates}
+                className="h-[36px] px-4 rounded-[8px] bg-[#3B5BDB] text-white text-[12px] font-[700] hover:bg-[#2f4cc2]"
+              >
+                Apply Filters
+              </button>
+            </div>
+
+            <div className="px-6 sm:px-8 pb-6">
+              {templatesLoading ? (
+                <div className="text-[13px] text-[#64748B]">Loading templates...</div>
+              ) : templatesError ? (
+                <div className="text-[13px] text-rose-600 font-[600]">{templatesError}</div>
+              ) : templates.length === 0 ? (
+                <div className="text-[13px] text-[#64748B]">No templates found.</div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3">
+                  {templates.map((tpl) => (
+                    <div key={tpl._id} className="border border-[#EEF1F6] rounded-[10px] p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="text-[14px] font-[800] text-[#111827]">{tpl.name}</div>
+                        <div className={`text-[12px] font-[700] ${tpl.isActive ? "text-emerald-600" : "text-[#94A3B8]"}`}>
+                          {tpl.isActive ? "Active" : "Inactive"}
+                        </div>
+                      </div>
+                      <div className="text-[12.5px] text-[#6B7280]">Purpose: {tpl.purpose}</div>
+                      <div className="text-[12.5px] text-[#6B7280]">Subject: {tpl.subject}</div>
+                      <div className="text-[12px] text-[#9CA3AF]">Branch: {tpl.branchId || "Global"}</div>
+                      <div className="mt-2 flex items-center gap-3">
+                        <button
+                          onClick={() => handleEditTemplate(tpl)}
+                          className="text-[12px] font-[700] text-[#2563EB] hover:underline"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteTemplate(tpl._id)}
+                          disabled={deletingTemplateId === tpl._id}
+                          className="text-[12px] font-[700] text-rose-600 hover:underline disabled:opacity-60"
+                        >
+                          {deletingTemplateId === tpl._id ? "Deleting..." : "Delete"}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {selectedTemplate ? (
+              <div className="px-6 sm:px-8 pb-6">
+                <div className="text-[13px] font-[800] text-[#111827] mb-2">Edit Template</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <input
+                    type="text"
+                    value={templateEdit.name}
+                    onChange={(e) => setTemplateEdit((prev) => ({ ...prev, name: e.target.value }))}
+                    className="h-[42px] px-3 rounded-[8px] border border-[#E2E8F0] bg-white text-[13px] font-[500]"
+                    placeholder="Name"
+                  />
+                  <input
+                    type="text"
+                    value={templateEdit.purpose}
+                    onChange={(e) => setTemplateEdit((prev) => ({ ...prev, purpose: e.target.value }))}
+                    className="h-[42px] px-3 rounded-[8px] border border-[#E2E8F0] bg-white text-[13px] font-[500]"
+                    placeholder="Purpose"
+                  />
+                  <input
+                    type="text"
+                    value={templateEdit.subject}
+                    onChange={(e) => setTemplateEdit((prev) => ({ ...prev, subject: e.target.value }))}
+                    className="h-[42px] px-3 rounded-[8px] border border-[#E2E8F0] bg-white text-[13px] font-[500]"
+                    placeholder="Subject"
+                  />
+                  <input
+                    type="text"
+                    value={templateEdit.branchId}
+                    onChange={(e) => setTemplateEdit((prev) => ({ ...prev, branchId: e.target.value }))}
+                    className="h-[42px] px-3 rounded-[8px] border border-[#E2E8F0] bg-white text-[13px] font-[500]"
+                    placeholder="Branch ID (optional)"
+                  />
+                  <textarea
+                    value={templateEdit.body}
+                    onChange={(e) => setTemplateEdit((prev) => ({ ...prev, body: e.target.value }))}
+                    rows={3}
+                    className="md:col-span-2 px-3 py-2 rounded-[8px] border border-[#E2E8F0] bg-white text-[13px] font-[500]"
+                    placeholder="Body"
+                  />
+                  <select
+                    value={templateEdit.isActive ? "true" : "false"}
+                    onChange={(e) => setTemplateEdit((prev) => ({ ...prev, isActive: e.target.value === "true" }))}
+                    className="h-[42px] px-3 rounded-[8px] border border-[#E2E8F0] bg-white text-[13px] font-[500]"
+                  >
+                    <option value="true">Active</option>
+                    <option value="false">Inactive</option>
+                  </select>
+                </div>
+                {templateEditError ? (
+                  <div className="text-[12px] text-rose-600 font-[700] mt-2">{templateEditError}</div>
+                ) : null}
+                <button
+                  onClick={handleUpdateTemplate}
+                  disabled={templateUpdating}
+                  className="mt-3 h-[38px] px-4 rounded-[8px] bg-[#2563EB] text-white text-[12.5px] font-[700] hover:bg-[#1D4ED8] disabled:opacity-70"
+                >
+                  {templateUpdating ? "Updating..." : "Update Template"}
+                </button>
+              </div>
+            ) : null}
+          </div>
+
+          {/* Email Header/Footer */}
+          <div className="mt-8 bg-white border text-left border-[#EEF1F6] shadow-[0px_2px_8px_rgba(0,0,0,0.02)] rounded-[16px] flex flex-col relative w-full overflow-hidden">
+            <div className="p-6 sm:p-8 border-b border-[#EEF1F6] bg-white flex items-center justify-between">
+              <div className="flex flex-col gap-1">
+                <h3 className="text-[#111827] text-[18px] sm:text-[20px] font-[900] tracking-tight leading-none">Email Header/Footer</h3>
+                <p className="text-[#64748B] text-[13.5px] font-[500]">
+                  Set global header or footer HTML for outgoing emails.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-6 sm:p-8 grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div className="flex flex-col gap-2">
+                <label className="text-[12px] font-[800] text-[#111827]">Type</label>
+                <select
+                  value={headerFooterForm.type}
+                  onChange={(e) => setHeaderFooterForm((prev) => ({ ...prev, type: e.target.value }))}
+                  className="h-[46px] w-full px-4 rounded-[8px] border border-[#E2E8F0] bg-white text-[#111827] text-[14px] font-[500] outline-none"
+                >
+                  <option value="header">Header</option>
+                  <option value="footer">Footer</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-[12px] font-[800] text-[#111827]">Active</label>
+                <select
+                  value={headerFooterForm.isActive ? "true" : "false"}
+                  onChange={(e) => setHeaderFooterForm((prev) => ({ ...prev, isActive: e.target.value === "true" }))}
+                  className="h-[46px] w-full px-4 rounded-[8px] border border-[#E2E8F0] bg-white text-[#111827] text-[14px] font-[500] outline-none"
+                >
+                  <option value="true">Active</option>
+                  <option value="false">Inactive</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-2 md:col-span-2">
+                <label className="text-[12px] font-[800] text-[#111827]">Content (HTML)</label>
+                <textarea
+                  value={headerFooterForm.content}
+                  onChange={(e) => setHeaderFooterForm((prev) => ({ ...prev, content: e.target.value }))}
+                  rows={4}
+                  className="w-full px-4 py-3 rounded-[8px] border border-[#E2E8F0] bg-white text-[#111827] text-[14px] font-[500] outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="px-6 sm:px-8 pb-6 flex flex-col gap-2">
+              {headerFooterMessage ? (
+                <p className="text-emerald-600 text-[12.5px] font-[700]">{headerFooterMessage}</p>
+              ) : null}
+              {headerFooterError ? (
+                <p className="text-rose-600 text-[12.5px] font-[700]">{headerFooterError}</p>
+              ) : null}
+              <button
+                onClick={handleHeaderFooterSubmit}
+                disabled={headerFooterSubmitting}
+                className="h-[42px] px-6 rounded-[8px] bg-[#2563EB] text-white text-[13px] font-[800] hover:bg-[#1D4ED8] transition-colors disabled:opacity-70"
+              >
+                {headerFooterSubmitting ? "Saving..." : "Save Header/Footer"}
+              </button>
+            </div>
+
+            <div className="px-6 sm:px-8 pb-6">
+              {headerFootersLoading ? (
+                <div className="text-[13px] text-[#64748B]">Loading headers/footers...</div>
+              ) : headerFootersError ? (
+                <div className="text-[13px] text-rose-600 font-[600]">{headerFootersError}</div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3">
+                  {headerFooters.map((hf) => (
+                    <div key={hf._id} className="border border-[#EEF1F6] rounded-[10px] p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="text-[13px] font-[800] text-[#111827] capitalize">{hf.type}</div>
+                        <div className={`text-[12px] font-[700] ${hf.isActive ? "text-emerald-600" : "text-[#94A3B8]"}`}>
+                          {hf.isActive ? "Active" : "Inactive"}
+                        </div>
+                      </div>
+                      <div className="text-[12px] text-[#6B7280] truncate">{hf.content}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="px-6 sm:px-8 pb-6">
+              <div className="text-[12px] font-[800] text-[#111827] mb-2">Active Header/Footer</div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="border border-[#EEF1F6] rounded-[10px] p-4">
+                  <div className="text-[12px] font-[700] text-[#6B7280] mb-1">Header</div>
+                  <div className="text-[12px] text-[#111827] truncate">{activeHeader?.content || "None"}</div>
+                </div>
+                <div className="border border-[#EEF1F6] rounded-[10px] p-4">
+                  <div className="text-[12px] font-[700] text-[#6B7280] mb-1">Footer</div>
+                  <div className="text-[12px] text-[#111827] truncate">{activeFooter?.content || "None"}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Template Purposes */}
+          <div className="mt-8 bg-white border text-left border-[#EEF1F6] shadow-[0px_2px_8px_rgba(0,0,0,0.02)] rounded-[16px] flex flex-col relative w-full overflow-hidden">
+            <div className="p-6 sm:p-8 border-b border-[#EEF1F6] bg-white flex items-center justify-between">
+              <div className="flex flex-col gap-1">
+                <h3 className="text-[#111827] text-[18px] sm:text-[20px] font-[900] tracking-tight leading-none">Template Purposes</h3>
+                <p className="text-[#64748B] text-[13.5px] font-[500]">
+                  Create and manage template purpose slugs.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-6 sm:p-8 grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div className="flex flex-col gap-2">
+                <label className="text-[12px] font-[800] text-[#111827]">Name</label>
+                <input
+                  type="text"
+                  value={purposeForm.name}
+                  onChange={(e) => setPurposeForm((prev) => ({ ...prev, name: e.target.value }))}
+                  className="h-[46px] w-full px-4 rounded-[8px] border border-[#E2E8F0] bg-white text-[#111827] text-[14px] font-[500] outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/20"
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-[12px] font-[800] text-[#111827]">Slug (lowercase)</label>
+                <input
+                  type="text"
+                  value={purposeForm.slug}
+                  onChange={(e) => setPurposeForm((prev) => ({ ...prev, slug: e.target.value }))}
+                  className="h-[46px] w-full px-4 rounded-[8px] border border-[#E2E8F0] bg-white text-[#111827] text-[14px] font-[500] outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/20"
+                />
+              </div>
+              <div className="flex flex-col gap-2 md:col-span-2">
+                <label className="text-[12px] font-[800] text-[#111827]">Description</label>
+                <textarea
+                  value={purposeForm.description}
+                  onChange={(e) => setPurposeForm((prev) => ({ ...prev, description: e.target.value }))}
+                  rows={3}
+                  className="w-full px-4 py-3 rounded-[8px] border border-[#E2E8F0] bg-white text-[#111827] text-[14px] font-[500] outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/20"
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-[12px] font-[800] text-[#111827]">Active</label>
+                <select
+                  value={purposeForm.isActive ? "true" : "false"}
+                  onChange={(e) => setPurposeForm((prev) => ({ ...prev, isActive: e.target.value === "true" }))}
+                  className="h-[46px] w-full px-4 rounded-[8px] border border-[#E2E8F0] bg-white text-[#111827] text-[14px] font-[500] outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/20"
+                >
+                  <option value="true">Active</option>
+                  <option value="false">Inactive</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="px-6 sm:px-8 pb-6 flex flex-col gap-2">
+              {purposeMessage ? (
+                <p className="text-emerald-600 text-[12.5px] font-[700]">{purposeMessage}</p>
+              ) : null}
+              {purposeError ? (
+                <p className="text-rose-600 text-[12.5px] font-[700]">{purposeError}</p>
+              ) : null}
+              <button
+                onClick={handleCreatePurpose}
+                disabled={purposeSubmitting}
+                className="h-[42px] px-6 rounded-[8px] bg-[#2563EB] text-white text-[13px] font-[800] hover:bg-[#1D4ED8] transition-colors disabled:opacity-70"
+              >
+                {purposeSubmitting ? "Creating..." : "Create Purpose"}
+              </button>
+            </div>
+
+            <div className="px-6 sm:px-8 pb-6">
+              {purposesLoading ? (
+                <div className="text-[13px] text-[#64748B]">Loading purposes...</div>
+              ) : purposesError ? (
+                <div className="text-[13px] text-rose-600 font-[600]">{purposesError}</div>
+              ) : purposes.length === 0 ? (
+                <div className="text-[13px] text-[#64748B]">No purposes found.</div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3">
+                  {purposes.map((p) => (
+                    <div key={p._id} className="border border-[#EEF1F6] rounded-[10px] p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="text-[13px] font-[800] text-[#111827]">{p.name}</div>
+                        <div className={`text-[12px] font-[700] ${p.isActive ? "text-emerald-600" : "text-[#94A3B8]"}`}>
+                          {p.isActive ? "Active" : "Inactive"}
+                        </div>
+                      </div>
+                      <div className="text-[12px] text-[#6B7280]">Slug: {p.slug}</div>
+                      <div className="mt-2 flex items-center gap-3">
+                        <button
+                          onClick={() => handleViewPurpose(p._id)}
+                          className="text-[12px] font-[700] text-[#2563EB] hover:underline"
+                        >
+                          View / Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeletePurpose(p._id)}
+                          disabled={deletingPurposeId === p._id}
+                          className="text-[12px] font-[700] text-rose-600 hover:underline disabled:opacity-60"
+                        >
+                          {deletingPurposeId === p._id ? "Deleting..." : "Delete"}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {purposeDetailsLoading ? (
+              <div className="px-6 sm:px-8 pb-6 text-[#64748B] text-[13px]">Loading purpose details...</div>
+            ) : purposeDetailsError ? (
+              <div className="px-6 sm:px-8 pb-6 text-rose-600 text-[13px] font-[600]">{purposeDetailsError}</div>
+            ) : selectedPurpose ? (
+              <div className="px-6 sm:px-8 pb-6">
+                <div className="text-[13px] font-[800] text-[#111827] mb-3">Edit Purpose</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <input
+                    type="text"
+                    value={purposeEdit.name}
+                    onChange={(e) => setPurposeEdit((prev) => ({ ...prev, name: e.target.value }))}
+                    className="h-[42px] px-3 rounded-[8px] border border-[#E2E8F0] bg-white text-[13px] font-[500]"
+                    placeholder="Name"
+                  />
+                  <input
+                    type="text"
+                    value={purposeEdit.slug}
+                    onChange={(e) => setPurposeEdit((prev) => ({ ...prev, slug: e.target.value }))}
+                    className="h-[42px] px-3 rounded-[8px] border border-[#E2E8F0] bg-white text-[13px] font-[500]"
+                    placeholder="Slug"
+                  />
+                  <textarea
+                    value={purposeEdit.description}
+                    onChange={(e) => setPurposeEdit((prev) => ({ ...prev, description: e.target.value }))}
+                    rows={3}
+                    className="md:col-span-2 px-3 py-2 rounded-[8px] border border-[#E2E8F0] bg-white text-[13px] font-[500]"
+                    placeholder="Description"
+                  />
+                  <select
+                    value={purposeEdit.isActive ? "true" : "false"}
+                    onChange={(e) => setPurposeEdit((prev) => ({ ...prev, isActive: e.target.value === "true" }))}
+                    className="h-[42px] px-3 rounded-[8px] border border-[#E2E8F0] bg-white text-[13px] font-[500]"
+                  >
+                    <option value="true">Active</option>
+                    <option value="false">Inactive</option>
+                  </select>
+                </div>
+                <button
+                  onClick={handleUpdatePurpose}
+                  disabled={updatingPurpose}
+                  className="mt-3 h-[38px] px-4 rounded-[8px] bg-[#2563EB] text-white text-[12.5px] font-[700] hover:bg-[#1D4ED8] disabled:opacity-70"
+                >
+                  {updatingPurpose ? "Updating..." : "Update Purpose"}
+                </button>
+              </div>
+            ) : null}
+          </div>
+          
         </div>
       </main>
     </div>

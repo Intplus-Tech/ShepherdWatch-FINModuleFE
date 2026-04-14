@@ -5,11 +5,11 @@ import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 function getBackendUrl(userId: string) {
   const loginUrl = process.env.BACKEND_LOGIN_URL;
   if (!loginUrl) return null;
-  // Construct the URL dynamically by replacing the path
-  return loginUrl.replace("/api/v1/auth/login", `/api/v1/core/users/reset-password/${userId}/admin`);
+  // Replace auth/login with core/users/:id/reset-password
+  return loginUrl.replace("/auth/login", `/core/users/${userId}/reset-password`);
 }
 
-export async function PUT(
+export async function POST(
   req: NextRequest,
   { params }: { params: { userId: string } }
 ) {
@@ -38,9 +38,8 @@ export async function PUT(
 
   try {
     const backendRes = await fetch(backendUrl, {
-      method: "PUT",
+      method: "POST",
       headers: {
-        "Content-Type": "application/json",
         Accept: "application/json",
         Authorization: `Bearer ${backendToken}`,
       },

@@ -12,7 +12,6 @@ import {
   Building2,
   Users,
   Settings,
-  Building,
   Calendar,
   Download,
   CheckCircle2,
@@ -28,6 +27,7 @@ import {
 } from "lucide-react"
 import { useTransactions } from "@/components/hooks/useTransactions"
 import { useAuth } from "@/components/auth/AuthProvider"
+import BranchesDropdown from "@/components/navigation/BranchesDropdown"
 
 const kpiIcons = [Banknote, CreditCard, BuildingIcon, MapPin]
 const kpiIconStyles = [
@@ -318,11 +318,7 @@ export default function Page() {
             </div>
             
             <div className="flex flex-wrap items-center gap-3">
-              <button className="flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-3.5 py-2 text-[12px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50 flex-1 sm:flex-none justify-center sm:justify-start">
-                <Building className="h-4 w-4 text-[#6B7280]" />
-                All Branches
-                <ChevronDown className="h-3.5 w-3.5 text-[#6B7280] ml-1" />
-              </button>
+              <BranchesDropdown label="All Branches" className="text-[12px]" />
               
               <button className="flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-3.5 py-2 text-[12px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50 flex-1 sm:flex-none justify-center sm:justify-start">
                 <Calendar className="h-4 w-4 text-[#6B7280]" />

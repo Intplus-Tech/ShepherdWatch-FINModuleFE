@@ -25,52 +25,57 @@ const bigText = "text-[22.23px] leading-[26.68px] font-bold tracking-[-0.56px]"
 export default function Page() {
   const [users, setUsers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [searchTerm, setSearchTerm] = useState("")
+
+  const fetchUsers = async (search = "") => {
+    setLoading(true)
+    try {
+      const url = new URL("/api/users", window.location.origin)
+      if (search) url.searchParams.append("search", search)
+
+      const res = await fetch(url.toString())
+      const json = await res.json()
+      
+      if (res.ok && json.data) {
+        const fetchedUsers = Array.isArray(json.data) ? json.data : []
+        
+        const mappedUsers = fetchedUsers.map((u: any) => {
+          const firstName = u.firstName || ""
+          const lastName = u.lastName || ""
+          const name = `${firstName} ${lastName}`.trim() || "Unknown User"
+          
+          const rawStatus = (u.status || "INACTIVE").toUpperCase()
+          const statusTone = rawStatus === "ACTIVE" 
+            ? "bg-emerald-50 text-emerald-600" 
+            : "bg-rose-50 text-rose-600"
+
+          return {
+            id: u.id || u._id,
+            name,
+            email: u.email,
+            role: u.roleName || u.role || "Staff",
+            roleTone: "bg-[#F3F4F6] text-[#6B7280]",
+            roleDot: "bg-[#6B7280]",
+            branch: u.branchId?.name || u.branch || u.address || "HQ",
+            lastActive: u.lastActive || "N/A",
+            rawStatus,
+            statusTone,
+            initials: `${firstName[0] || ""}${lastName[0] || ""}`.toUpperCase() || "?",
+            avatar: null,
+          }
+        })
+        setUsers(mappedUsers)
+      }
+    } catch (error) {
+      console.error("Failed to fetch users:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    async function fetchUsers() {
-      try {
-        const res = await fetch("/api/users")
-        const json = await res.json()
-        
-        if (res.ok && json.data) {
-          const fetchedUsers = Array.isArray(json.data) ? json.data : []
-          
-          const mappedUsers = fetchedUsers.map((u: any) => {
-            const firstName = u.firstName || ""
-            const lastName = u.lastName || ""
-            const name = `${firstName} ${lastName}`.trim() || "Unknown User"
-            
-            const rawStatus = (u.status || "INACTIVE").toUpperCase()
-            const statusTone = rawStatus === "ACTIVE" 
-              ? "bg-emerald-50 text-emerald-600" 
-              : "bg-rose-50 text-rose-600"
-
-            return {
-              id: u.id,
-              name,
-              email: u.email,
-              role: u.roleName || "Staff",
-              roleTone: "bg-[#F3F4F6] text-[#6B7280]",
-              roleDot: "bg-[#6B7280]",
-              branch: u.address || "HQ",
-              lastActive: u.lastActive || "N/A",
-              rawStatus,
-              statusTone,
-              initials: `${firstName[0] || ""}${lastName[0] || ""}`.toUpperCase() || "?",
-              avatar: null,
-            }
-          })
-          setUsers(mappedUsers)
-        }
-      } catch (error) {
-        console.error("Failed to fetch users:", error)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchUsers()
-  }, [])
+    fetchUsers(searchTerm)
+  }, [searchTerm])
 
   const handleToggleStatus = async (user: any) => {
     const newStatus = user.rawStatus === "ACTIVE" ? "INACTIVE" : "ACTIVE"
@@ -102,6 +107,38 @@ export default function Page() {
     }
   }
 
+  const [isExporting, setIsExporting] = useState(false)
+
+  const handleExport = async () => {
+    setIsExporting(true)
+    try {
+      const url = new URL("/api/users/export", window.location.origin)
+      if (searchTerm) url.searchParams.append("search", searchTerm)
+
+      const res = await fetch(url.toString())
+      if (res.ok) {
+        const blob = await res.blob()
+        const contentType = res.headers.get("content-type")
+        const ext = contentType?.includes("csv") ? "csv" : "json"
+        
+        const downloadUrl = window.URL.createObjectURL(blob)
+        const link = document.createElement("a")
+        link.href = downloadUrl
+        link.download = `users_export_${new Date().toISOString().split("T")[0]}.${ext}`
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        window.URL.revokeObjectURL(downloadUrl)
+      } else {
+        console.error("Failed to export users")
+      }
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
       <SidebarNav
@@ -122,8 +159,13 @@ export default function Page() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <Button className="h-8 rounded-md border border-[#E5E7EB] bg-white text-[12px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50" variant="outline">
-                  <Download className="h-4 w-4" /> Export Report
+                <Button 
+                  onClick={handleExport} 
+                  disabled={isExporting}
+                  className="h-8 rounded-md border border-[#E5E7EB] bg-white text-[12px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50" 
+                  variant="outline"
+                >
+                  <Download className="h-4 w-4" /> {isExporting ? "Exporting..." : "Export Report"}
                 </Button>
                 <Button onClick={() => window.location.href = "/director-screen/invite-users"} className="h-8 rounded-md bg-[#3B5BDB] text-[12px] font-medium text-white shadow hover:bg-blue-700">
                   <UserPlus className="h-4 w-4" /> Invite New User
@@ -150,6 +192,8 @@ export default function Page() {
                   <Input
                     className="h-9 w-[260px] rounded-md border-[#E5E7EB] bg-white pl-9 text-[12px] text-[#6B7280]"
                     placeholder="Search users by name, email, or branch"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
                   />
                 </div>
                 <Button
@@ -162,7 +206,7 @@ export default function Page() {
                 </Button>
               </div>
               <div className={`${smallText} text-[#6B7280] flex items-center gap-2`}>
-                <span>Showing 1-8 of 245 users</span>
+                <span>Showing 1-{users.length} of {users.length} users</span>
                 <div className="flex items-center gap-1 rounded-[8px] border border-[#E5E7EB] bg-white px-1">
                   <button className="h-6 w-6 flex items-center justify-center text-[#6B7280]">&lt;</button>
                   <button className="h-6 w-6 flex items-center justify-center text-[#6B7280]">&gt;</button>

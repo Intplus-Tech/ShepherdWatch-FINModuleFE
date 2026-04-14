@@ -37,7 +37,7 @@ export default function Page() {
   const [revokingSessionId, setRevokingSessionId] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch("/api/users/profile")
+    fetch("/api/auth/me")
       .then(res => res.json())
       .then(data => {
         if (data.data) {

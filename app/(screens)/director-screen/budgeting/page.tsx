@@ -14,6 +14,7 @@ import {
   Calendar,
 } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
+import BranchesDropdown from "@/components/navigation/BranchesDropdown"
 
 export default function Page() {
   const { user } = useAuth()
@@ -213,11 +214,7 @@ export default function Page() {
             </div>
             
             <div className="flex flex-wrap items-center gap-3">
-              <button className="flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-3.5 py-2 text-[12px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50">
-                <Building2 className="h-4 w-4 text-[#6B7280]" />
-                All Branches
-                <ChevronDown className="h-3.5 w-3.5 text-[#6B7280] ml-1" />
-              </button>
+              <BranchesDropdown label="All Branches" />
               
               <button className="flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-3.5 py-2 text-[12px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50">
                 <Calendar className="h-4 w-4 text-[#6B7280]" />

@@ -23,11 +23,16 @@ type UseTransactionsOptions = {
   status?: string
   startDate?: string
   endDate?: string
+  page?: number
+  limit?: number
+  search?: string
+  type?: string
 }
 
 export function useTransactions(options: UseTransactionsOptions = {}) {
   const { user } = useAuth()
   const [transactions, setTransactions] = useState<TransactionItem[]>([])
+  const [pagination, setPagination] = useState<{ total: number; page: number; limit: number; pages: number } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [refreshIndex, setRefreshIndex] = useState(0)
@@ -52,6 +57,10 @@ export function useTransactions(options: UseTransactionsOptions = {}) {
         if (options.status) params.set("status", options.status)
         if (options.startDate) params.set("startDate", options.startDate)
         if (options.endDate) params.set("endDate", options.endDate)
+        if (options.page !== undefined) params.set("page", String(options.page))
+        if (options.limit !== undefined) params.set("limit", String(options.limit))
+        if (options.search) params.set("search", options.search)
+        if (options.type) params.set("type", options.type)
         const query = params.toString()
         const url = query
           ? `/api/core/financial/transactions?${query}`
@@ -77,6 +86,8 @@ export function useTransactions(options: UseTransactionsOptions = {}) {
                 ? data
                 : []
 
+        const paginationMeta = data?.pagination || data?.data?.pagination || null;
+
         const mapped = rawItems.map((item: any, index: number) => ({
           id: String(item?.id ?? item?.transactionId ?? `tx-${index}`),
           date:
@@ -100,6 +111,22 @@ export function useTransactions(options: UseTransactionsOptions = {}) {
 
         if (isMounted) {
           setTransactions(mapped)
+          if (paginationMeta) {
+            setPagination({
+              total: paginationMeta.total ?? 0,
+              page: paginationMeta.page ?? 1,
+              limit: paginationMeta.limit ?? 20,
+              pages: paginationMeta.pages ?? 1,
+            })
+          } else {
+            // fallback if no pagination provided by backend
+            setPagination({
+              total: mapped.length,
+              page: 1,
+              limit: Math.max(mapped.length, 20),
+              pages: 1,
+            })
+          }
         }
       } catch (err) {
         if (isMounted) {
@@ -117,7 +144,17 @@ export function useTransactions(options: UseTransactionsOptions = {}) {
     return () => {
       isMounted = false
     }
-  }, [tenantId, options.status, options.startDate, options.endDate, refreshIndex])
+  }, [
+    tenantId, 
+    options.status, 
+    options.startDate, 
+    options.endDate, 
+    options.page,
+    options.limit,
+    options.search,
+    options.type,
+    refreshIndex
+  ])
 
-  return { transactions, loading, error, formatDateOnly, refresh }
+  return { transactions, pagination, loading, error, formatDateOnly, refresh }
 }

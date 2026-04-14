@@ -19,13 +19,19 @@ export async function GET(req: NextRequest) {
     return applyCors(NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 }), req);
   }
 
-  const backendUrl = getBackendUrl();
-  if (!backendUrl) {
+  const backendUrlBase = getBackendUrl();
+  if (!backendUrlBase) {
     return applyCors(NextResponse.json({ success: false, message: "Backend URL not configured" }, { status: 500 }), req);
   }
 
+  const { searchParams } = req.nextUrl;
+  const backendUrl = new URL(backendUrlBase);
+  searchParams.forEach((value, key) => {
+    backendUrl.searchParams.append(key, value);
+  });
+
   try {
-    const backendRes = await fetch(backendUrl, {
+    const backendRes = await fetch(backendUrl.toString(), {
       headers: {
         Accept: "application/json",
         Authorization: `Bearer ${backendToken}`,

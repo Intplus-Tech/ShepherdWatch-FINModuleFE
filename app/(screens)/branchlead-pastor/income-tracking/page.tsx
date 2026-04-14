@@ -21,14 +21,41 @@ import {
   ChevronRight,
   Search,
   Menu,
-  X
+  X,
+  Plus
 } from "lucide-react"
+import { useAuth } from "@/components/auth/AuthProvider"
+import { useTransactions } from "@/components/hooks/useTransactions"
+import { TransactionCreateModal } from "@/components/financial/TransactionCreateModal"
 
 export default function Page() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { user } = useAuth();
+  const tenantId = user?.tenantId ?? user?.tenant?.id ?? "";
+  const [page, setPage] = useState(1);
+  const { transactions: allTransactions, pagination, loading, error, refresh } = useTransactions({ page, limit: 20 });
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const transactions = allTransactions.filter(tx => 
+    (tx.flowType ?? "").toUpperCase() === "INFLOW" || Number(tx.amount) > 0
+  );
+
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat("en-NG", {
+      style: "currency",
+      currency: "NGN",
+      maximumFractionDigits: 2,
+    }).format(value)
 
   return (
     <div className="h-screen w-full bg-white font-sans antialiased text-[#111827] flex overflow-hidden">
+      <TransactionCreateModal
+        open={isModalOpen}
+        onOpenChange={setIsModalOpen}
+        onSuccess={refresh}
+        flowType="income"
+        tenantId={tenantId}
+      />
       {/* Mobile Sidebar Overlay */}
       {isMobileMenuOpen && (
         <div 
@@ -131,6 +158,9 @@ export default function Page() {
               <p className="text-[13px] md:text-[14px] font-medium text-[#6B7280]">Monitor and verify all financial inflows for the branch.</p>
             </div>
             <div className="flex items-center gap-3">
+              <Button onClick={() => setIsModalOpen(true)} className="h-[44px] flex-1 lg:flex-none rounded-[10px] bg-[#2563EB] px-5 text-[14px] font-bold text-white shadow-sm hover:bg-blue-700 flex items-center justify-center gap-2">
+                <Plus className="h-4.5 w-4.5" strokeWidth={2.5} /> Record Income
+              </Button>
               <Button variant="outline" className="h-[44px] flex-1 lg:flex-none rounded-[10px] border-[#E5E7EB] bg-white px-5 text-[14px] font-bold text-[#111827] shadow-sm hover:bg-gray-50 flex items-center justify-center gap-2">
                 <Upload className="h-4.5 w-4.5 text-[#4B5563]" strokeWidth={2.5} /> Import
               </Button>
@@ -244,99 +274,83 @@ export default function Page() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#F3F4F6]">
-                    {/* Row 1 */}
-                    <tr className="hover:bg-[#F9FAFB] transition-colors">
-                      <td className="px-6 py-5 text-[14px] font-semibold text-[#111827]">Jan 22, 2024</td>
-                      <td className="px-5 py-5 text-[14px] font-extrabold text-[#111827]">Oluwaseun Adewale</td>
-                      <td className="px-5 py-5">
-                        <span className="inline-flex items-center rounded-[6px] bg-[#F3F4F6] px-2.5 py-1 text-[12px] font-bold text-[#4B5563]">Tithe</span>
-                      </td>
-                      <td className="px-5 py-5 text-[15px] font-extrabold text-[#111827] tracking-tight">₦150,000</td>
-                      <td className="px-5 py-5">
-                        <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#059669] uppercase tracking-widest">
-                          <CheckCircle2 className="h-[15px] w-[15px]" strokeWidth={2.5} /> VERIFIED
-                        </span>
-                      </td>
-                      <td className="px-6 py-5 text-right">
-                        <div className="flex items-center justify-end gap-3">
-                          <button className="text-[#2563EB] hover:text-[#1D4ED8] transition-colors"><FileText className="h-[18px] w-[18px]" strokeWidth={2} /></button>
-                          <button className="text-[#2563EB] hover:text-[#1D4ED8] transition-colors"><Pencil className="h-[18px] w-[18px]" strokeWidth={2} /></button>
-                        </div>
-                      </td>
-                    </tr>
-                    {/* Row 2 */}
-                    <tr className="hover:bg-[#F9FAFB] transition-colors">
-                      <td className="px-6 py-5 text-[14px] font-semibold text-[#111827]">Jan 21, 2024</td>
-                      <td className="px-5 py-5 text-[14px] font-extrabold text-[#111827]">Chioma Okeke</td>
-                      <td className="px-5 py-5">
-                        <span className="inline-flex items-center rounded-[6px] bg-[#F3F4F6] px-2.5 py-1 text-[12px] font-bold text-[#4B5563]">Offering</span>
-                      </td>
-                      <td className="px-5 py-5 text-[15px] font-extrabold text-[#111827] tracking-tight">₦25,000</td>
-                      <td className="px-5 py-5">
-                        <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-orange-500 uppercase tracking-widest">
-                          <MinusCircle className="h-[15px] w-[15px]" strokeWidth={2.5} /> PENDING
-                        </span>
-                      </td>
-                      <td className="px-6 py-5 text-right">
-                        <div className="flex items-center justify-end gap-3">
-                          <button className="text-[#2563EB] hover:text-[#1D4ED8] transition-colors"><FileText className="h-[18px] w-[18px]" strokeWidth={2} /></button>
-                          <button className="text-[#2563EB] hover:text-[#1D4ED8] transition-colors"><Pencil className="h-[18px] w-[18px]" strokeWidth={2} /></button>
-                        </div>
-                      </td>
-                    </tr>
-                    {/* Row 3 */}
-                    <tr className="hover:bg-[#F9FAFB] transition-colors">
-                      <td className="px-6 py-5 text-[14px] font-semibold text-[#111827]">Jan 21, 2024</td>
-                      <td className="px-5 py-5 text-[14px] font-extrabold text-[#111827]">Ibrahim Musa</td>
-                      <td className="px-5 py-5">
-                        <span className="inline-flex items-center rounded-[6px] bg-[#F3F4F6] px-2.5 py-1 text-[12px] font-bold text-[#4B5563]">Capital</span>
-                      </td>
-                      <td className="px-5 py-5 text-[15px] font-extrabold text-[#111827] tracking-tight">₦500,000</td>
-                      <td className="px-5 py-5">
-                        <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#059669] uppercase tracking-widest">
-                          <CheckCircle2 className="h-[15px] w-[15px]" strokeWidth={2.5} /> VERIFIED
-                        </span>
-                      </td>
-                      <td className="px-6 py-5 text-right">
-                        <div className="flex items-center justify-end gap-3">
-                          <button className="text-[#2563EB] hover:text-[#1D4ED8] transition-colors"><FileText className="h-[18px] w-[18px]" strokeWidth={2} /></button>
-                          <button className="text-[#2563EB] hover:text-[#1D4ED8] transition-colors"><Pencil className="h-[18px] w-[18px]" strokeWidth={2} /></button>
-                        </div>
-                      </td>
-                    </tr>
-                    {/* Row 4 */}
-                    <tr className="hover:bg-[#F9FAFB] transition-colors border-b border-[#E5E7EB]">
-                      <td className="px-6 py-5 text-[14px] font-semibold text-[#111827]">Jan 20, 2024</td>
-                      <td className="px-5 py-5 text-[14px] font-extrabold text-[#111827]">Anthonia Peters</td>
-                      <td className="px-5 py-5">
-                        <span className="inline-flex items-center rounded-[6px] bg-[#EFF6FF] px-2.5 py-1 text-[12px] font-bold text-[#2563EB]">Forex</span>
-                      </td>
-                      <td className="px-5 py-5 text-[15px] font-extrabold text-[#111827] flex items-center gap-1.5 tracking-tight">
-                        $500 <span className="text-[12px] font-bold text-[#6B7280]">(₦400,000)</span>
-                      </td>
-                      <td className="px-5 py-5">
-                        <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#059669] uppercase tracking-widest">
-                          <CheckCircle2 className="h-[15px] w-[15px]" strokeWidth={2.5} /> VERIFIED
-                        </span>
-                      </td>
-                      <td className="px-6 py-5 text-right">
-                        <div className="flex items-center justify-end gap-3">
-                          <button className="text-[#2563EB] hover:text-[#1D4ED8] transition-colors"><FileText className="h-[18px] w-[18px]" strokeWidth={2} /></button>
-                          <button className="text-[#2563EB] hover:text-[#1D4ED8] transition-colors"><Pencil className="h-4.5 w-4.5" strokeWidth={2} /></button>
-                        </div>
-                      </td>
-                    </tr>
+                    {loading ? (
+                      <tr>
+                        <td colSpan={6} className="px-6 py-8 text-center text-[13px] text-[#6B7280]">
+                          Loading transactions...
+                        </td>
+                      </tr>
+                    ) : error ? (
+                      <tr>
+                        <td colSpan={6} className="px-6 py-8 text-center text-[13px] text-rose-500">
+                          {error}
+                        </td>
+                      </tr>
+                    ) : transactions.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-6 py-8 text-center text-[13px] text-[#6B7280]">
+                          No income transactions found.
+                        </td>
+                      </tr>
+                    ) : (
+                      transactions.map((tx) => {
+                        const isVerified = String(tx.status ?? "").toUpperCase().includes("VERIFIED") || String(tx.status ?? "").toUpperCase() === "APPROVED"
+                        return (
+                          <tr key={tx.id} className="hover:bg-[#F9FAFB] transition-colors">
+                            <td className="px-6 py-5 text-[14px] font-semibold text-[#111827]">
+                              {tx.date ? new Date(tx.date).toLocaleDateString() : "—"}
+                            </td>
+                            <td className="px-5 py-5 text-[14px] font-extrabold text-[#111827]">{tx.description || "N/A"}</td>
+                            <td className="px-5 py-5">
+                              <span className="inline-flex items-center rounded-[6px] bg-[#F3F4F6] px-2.5 py-1 text-[12px] font-bold text-[#4B5563]">
+                                {tx.category || tx.coaName || "Uncategorized"}
+                              </span>
+                            </td>
+                            <td className="px-5 py-5 text-[15px] font-extrabold text-[#111827] tracking-tight">{formatCurrency(tx.amount)}</td>
+                            <td className="px-5 py-5">
+                              {isVerified ? (
+                                <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#059669] uppercase tracking-widest">
+                                  <CheckCircle2 className="h-[15px] w-[15px]" strokeWidth={2.5} /> VERIFIED
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-orange-500 uppercase tracking-widest">
+                                  <MinusCircle className="h-[15px] w-[15px]" strokeWidth={2.5} /> PENDING
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-6 py-5 text-right">
+                              <div className="flex items-center justify-end gap-3">
+                                <button className="text-[#2563EB] hover:text-[#1D4ED8] transition-colors"><FileText className="h-[18px] w-[18px]" strokeWidth={2} /></button>
+                                <button className="text-[#2563EB] hover:text-[#1D4ED8] transition-colors"><Pencil className="h-[18px] w-[18px]" strokeWidth={2} /></button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })
+                    )}
                   </tbody>
                 </table>
               </div>
 
               <div className="flex items-center justify-between px-6 py-5 mt-auto">
-                <div className="text-[13px] font-bold text-[#6B7280]">Showing 4 of 124 records</div>
+                <div className="text-[13px] font-bold text-[#6B7280]">
+                  Showing {pagination && pagination.total > 0 
+                      ? `${(pagination.page - 1) * pagination.limit + 1}-${Math.min(pagination.page * Math.max(pagination.limit, 1), pagination.total)}`
+                      : "0"} of {pagination?.total ?? 0} records
+                </div>
                 <div className="flex gap-2">
-                  <button className="h-9.5 w-[38px] rounded-[10px] border border-[#E5E7EB] bg-white flex items-center justify-center text-[#9CA3AF] hover:bg-gray-50 transition-colors">
+                  <button 
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={!pagination || pagination.page <= 1}
+                    className="h-[38px] w-[38px] rounded-[10px] border border-[#E5E7EB] bg-white flex items-center justify-center text-[#9CA3AF] hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  >
                     <ChevronLeft className="h-5 w-5" />
                   </button>
-                  <button className="h-[38px] w-[38px] rounded-[10px] border border-[#E5E7EB] bg-white flex items-center justify-center text-[#111827] hover:bg-gray-50 shadow-sm transition-colors cursor-pointer">
+                  <button 
+                    onClick={() => setPage(p => Math.min(pagination?.pages ?? 1, p + 1))}
+                    disabled={!pagination || pagination.page >= (pagination?.pages ?? 1)}
+                    className="h-[38px] w-[38px] rounded-[10px] border border-[#E5E7EB] bg-white flex items-center justify-center text-[#111827] hover:bg-gray-50 shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  >
                     <ChevronRight className="h-5 w-5" />
                   </button>
                 </div>

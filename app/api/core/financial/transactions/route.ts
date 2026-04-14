@@ -15,8 +15,7 @@ function buildBackendTransactionsUrl(): string {
   const baseUrl = getRequiredEnv("BACKEND_API_URL")
   if (process.env.NODE_ENV === "production" && baseUrl.startsWith("http://")) {
     throw new Error("BACKEND_API_URL must use https in production")
-  }
-  return `${baseUrl.replace(/\/+$/, "")}/api/v1/core/financial/transactions`
+  return `${baseUrl.replace(/\/+$/, "")}/api/v1/transactions`
 }
 
 export async function POST(req: NextRequest) {
@@ -119,7 +118,7 @@ export async function GET(req: NextRequest) {
       throw new Error("BACKEND_API_URL must use https in production")
     }
 
-    const url = new URL(`${baseUrl.replace(/\/+$/, "")}/api/v1/core/financial/transactions`)
+    const url = new URL(`${baseUrl.replace(/\/+$/, "")}/api/v1/transactions`)
     if (req.nextUrl.search) {
       url.search = req.nextUrl.search
     }

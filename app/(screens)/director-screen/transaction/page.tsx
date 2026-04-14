@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import Image from "next/image"
 import Link from "next/link"
@@ -29,6 +29,7 @@ import {
 } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
 import { useTransactions } from "@/components/hooks/useTransactions"
+import BranchesDropdown from "@/components/navigation/BranchesDropdown"
 
 const navItems = [
   { label: "Dashboard", href: "/director-screen/dashboard", icon: LayoutDashboard },
@@ -61,10 +62,21 @@ export default function Page() {
     }
   }, [])
 
-  const { transactions: rawTransactions, loading: txLoading, error: txError, refresh: refreshTransactions } = useTransactions({
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(20)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  useEffect(() => {
+    const handler = setTimeout(() => { setDebouncedSearch(searchQuery); setPage(1) }, 300)
+    return () => clearTimeout(handler)
+  }, [searchQuery])
+  const { transactions: rawTransactions, pagination, loading: txLoading, error: txError, refresh: refreshTransactions } = useTransactions({
     ...(statusFilter === "ALL" ? {} : { status: statusFilter }),
     startDate,
     endDate,
+    page,
+    limit,
+    search: debouncedSearch,
   })
   const [verifying, setVerifying] = useState(false)
   const [verifyError, setVerifyError] = useState<string | null>(null)
@@ -486,11 +498,7 @@ export default function Page() {
             </div>
             
             <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-              <button className="flex w-full sm:w-auto items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-[11px] sm:text-[12px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50">
-                <Building2 className="h-4 w-4 text-[#6B7280]" />
-                All Branches
-                <ChevronDown className="h-3.5 w-3.5 text-[#6B7280] ml-1" />
-              </button>
+              <BranchesDropdown label="All Branches" />
               
               <button className="flex w-full sm:w-auto items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-[11px] sm:text-[12px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50">
                 <Calendar className="h-4 w-4 text-[#6B7280]" />
@@ -687,11 +695,15 @@ export default function Page() {
                     </button>
                   </div>
                   <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full lg:w-auto">
-                    <div className="flex items-center justify-between gap-2 rounded-md border border-[#E5E7EB] bg-white px-3 py-2 w-full sm:w-[320px] shadow-sm">
-                      <div className="flex items-center gap-2 text-[#9CA3AF]">
-                        <Search className="h-4 w-4" />
-                        <span className="text-[12px]">Search by description or amount...</span>
-                      </div>
+                    <div className="relative w-full sm:w-[320px]">
+                      <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
+                      <input
+                        type="search"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Search by description or amount..."
+                        className="flex h-[36px] w-full items-center rounded-md border border-[#E5E7EB] bg-white pl-10 pr-3 py-2 text-[12px] text-[#111827] placeholder:text-[#9CA3AF] focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]/20 shadow-sm transition-all"
+                      />
                     </div>
                     <button className="flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[12px] font-bold text-[#4B5563] shadow-sm w-full sm:w-auto justify-center">
                       <Calendar className="h-4 w-4 text-[#6B7280]" /> {dateLabel}
@@ -861,11 +873,27 @@ export default function Page() {
                 {/* Table Footer */}
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t border-[#EEF1F6] p-5">
                   <span className="text-[12px] sm:text-[13px] font-medium text-[#6B7280]">
-                    Showing {transactions.length ? `1-${transactions.length}` : 0} of {transactions.length} transactions
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <button className="rounded px-4 py-2 text-[12px] font-bold text-[#9CA3AF] border border-[#E5E7EB] hover:bg-gray-50 focus:outline-none transition-colors">Previous</button>
-                    <button className="rounded px-4 py-2 text-[12px] font-bold text-[#4B5563] border border-[#E5E7EB] hover:bg-gray-50 focus:outline-none transition-colors">Next</button>
+                <div>
+                  Showing {pagination && pagination.total > 0 
+                      ? `${(pagination.page - 1) * pagination.limit + 1}-${Math.min(pagination.page * pagination.limit, pagination.total)}`
+                      : "0"} of {pagination?.total ?? 0} transactions
+                </div>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={!pagination || pagination.page <= 1}
+                    className="px-5 py-2 rounded-[6px] border border-[#EEF1F6] bg-white hover:bg-gray-50 transition-colors font-bold text-[#111827] shadow-[0_1px_2px_rgba(0,0,0,0.02)] disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Previous
+                  </button>
+                  <button 
+                    onClick={() => setPage(p => Math.min(pagination?.pages ?? 1, p + 1))}
+                    disabled={!pagination || pagination.page >= (pagination?.pages ?? 1)}
+                    className="px-5 py-2 rounded-[6px] border border-[#EEF1F6] bg-white hover:bg-gray-50 transition-colors font-bold text-[#111827] shadow-[0_1px_2px_rgba(0,0,0,0.02)] disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Next
+                  </button>
+                </div>
                   </div>
                 </div>
 

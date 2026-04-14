@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import { useEffect, useMemo, useState } from "react"
 import SidebarNav from "@/components/navigation/SidebarNav"
@@ -42,12 +42,14 @@ type RegionCard = {
 }
 
 type TenantApiItem = {
+  _id?: string
   id?: string
   tenantId?: string
   branchName?: string
   name?: string
   status?: string
   location?: string
+  branchType?: string
 }
 
 type TenantCard = {
@@ -76,7 +78,7 @@ const normalizeTenant = (tenant: TenantApiItem, index: number): TenantCard => {
   const statusStyle = statusStyles[statusRaw] ?? statusStyles.ACTIVE
 
   return {
-    id: tenant.tenantId ?? tenant.id ?? `${index + 1}`,
+    id: tenant._id ?? tenant.tenantId ?? tenant.id ?? `${index + 1}`,
     name,
     location,
     status: statusRaw,
@@ -88,6 +90,9 @@ const statusStyles: Record<string, { tone: string; dot: string }> = {
   ACTIVE: { tone: "bg-emerald-50 text-emerald-600", dot: "bg-emerald-500" },
   INACTIVE: { tone: "bg-rose-50 text-rose-600", dot: "bg-rose-500" },
   PENDING: { tone: "bg-amber-50 text-amber-600", dot: "bg-amber-500" },
+  REVIEW: { tone: "bg-blue-50 text-blue-600", dot: "bg-blue-500" },
+  SUSPENDED: { tone: "bg-rose-50 text-rose-600", dot: "bg-rose-500" },
+  ONBOARDING: { tone: "bg-amber-50 text-amber-600", dot: "bg-amber-500" },
 }
 
 const normalizeRegion = (region: RegionApiItem, index: number): RegionCard => {
@@ -149,14 +154,13 @@ export default function Page() {
   const [editingBranchId, setEditingBranchId] = useState<string | null>(null)
   const [branchEditName, setBranchEditName] = useState("")
   const [branchEditAddress, setBranchEditAddress] = useState("")
-  const [branchEditCity, setBranchEditCity] = useState("")
-  const [branchEditEmail, setBranchEditEmail] = useState("")
   const [branchEditRegionId, setBranchEditRegionId] = useState("")
+  const [branchEditLeadPastorId, setBranchEditLeadPastorId] = useState("")
+  const [branchEditAccountantId, setBranchEditAccountantId] = useState("")
+  const [branchEditCurrency, setBranchEditCurrency] = useState("")
   const [branchEditTouched, setBranchEditTouched] = useState({
     name: false,
     address: false,
-    city: false,
-    email: false,
     regionId: false,
   })
   const [branchEditStatus, setBranchEditStatus] = useState<"idle" | "saving">("idle")
@@ -166,18 +170,19 @@ export default function Page() {
   const [showCreateBranch, setShowCreateBranch] = useState(false)
   const [branchName, setBranchName] = useState("")
   const [branchAddress, setBranchAddress] = useState("")
-  const [branchCity, setBranchCity] = useState("")
-  const [branchEmail, setBranchEmail] = useState("")
-  const [branchRegionId, setBranchRegionId] = useState("")
+  const [branchRegion, setBranchRegion] = useState("")
+  const [branchType, setBranchType] = useState("")
+  const [branchCurrency, setBranchCurrency] = useState("")
+  const [branchLeadPastorId, setBranchLeadPastorId] = useState("")
+  const [branchAccountantId, setBranchAccountantId] = useState("")
   const [branchRegionOptions, setBranchRegionOptions] = useState<RegionCard[]>([])
   const [regionOptionsLoaded, setRegionOptionsLoaded] = useState(false)
   const [regionOptionsLoading, setRegionOptionsLoading] = useState(false)
   const [branchTouched, setBranchTouched] = useState({
     name: false,
     address: false,
-    city: false,
-    email: false,
-    regionId: false,
+    region: false,
+    branchType: false,
   })
   const [branchStatus, setBranchStatus] = useState<"idle" | "saving">("idle")
   const [branchSummaries, setBranchSummaries] = useState<BranchSummary[]>([])
@@ -369,7 +374,7 @@ export default function Page() {
     setTenantsLoading(true)
     setTenantsError("")
     try {
-      const res = await fetch("/api/core/tenants", { credentials: "include" })
+      const res = await fetch("/api/branches", { credentials: "include" })
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}))
         throw new Error(payload?.message ?? "Unable to fetch branches")
@@ -394,10 +399,11 @@ export default function Page() {
     setEditingBranchId(tenant.id)
     setBranchEditName(tenant.name)
     setBranchEditAddress("")
-    setBranchEditCity("")
-    setBranchEditEmail("")
     setBranchEditRegionId("")
-    setBranchEditTouched({ name: false, address: false, city: false, email: false, regionId: false })
+    setBranchEditLeadPastorId("")
+    setBranchEditAccountantId("")
+    setBranchEditCurrency("")
+    setBranchEditTouched({ name: false, address: false, regionId: false })
     setBranchEditLoading(true)
 
     try {
@@ -407,11 +413,12 @@ export default function Page() {
         throw new Error(payload?.message ?? "Unable to fetch branch details")
       }
       const data = payload?.data ?? payload
-      setBranchEditName(data?.branchName ?? tenant.name)
-      setBranchEditAddress(data?.branchAddress ?? "")
-      setBranchEditCity(data?.branchCity ?? "")
-      setBranchEditEmail(data?.branchEmail ?? "")
-      setBranchEditRegionId(data?.regionId ?? "")
+      setBranchEditName(data?.branchName ?? data?.name ?? tenant.name)
+      setBranchEditAddress(data?.branchAddress ?? data?.address ?? "")
+      setBranchEditRegionId(data?.regionId ?? data?.region ?? "")
+      setBranchEditLeadPastorId(data?.leadPastorId ?? "")
+      setBranchEditAccountantId(data?.assignedAccountantId ?? "")
+      setBranchEditCurrency(data?.currency ?? "")
     } catch (error) {
       // keep existing
       const message = error instanceof Error ? error.message : "Unable to fetch branch details"
@@ -423,32 +430,22 @@ export default function Page() {
 
   const handleBranchEditCancel = () => {
     setEditingBranchId(null)
-    setBranchEditTouched({ name: false, address: false, city: false, email: false, regionId: false })
+    setBranchEditTouched({ name: false, address: false, regionId: false })
   }
 
   const handleBranchEditSave = async () => {
     setBranchEditTouched({
       name: true,
       address: true,
-      city: true,
-      email: true,
       regionId: true,
     })
 
     if (
       !branchEditName.trim() ||
       !branchEditAddress.trim() ||
-      !branchEditCity.trim() ||
-      !branchEditEmail.trim() ||
       !branchEditRegionId.trim()
     ) {
       pushToast("Please fill in all required branch fields.", "error")
-      return
-    }
-
-    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailPattern.test(branchEditEmail.trim())) {
-      pushToast("Please enter a valid branch email address.", "error")
       return
     }
 
@@ -465,26 +462,27 @@ export default function Page() {
               ? {
                   ...item,
                   name: branchEditName.trim(),
-                  location: `${branchEditCity.trim()} · ${branchEditAddress.trim()}`,
+                  location: branchEditAddress.trim(),
                 }
               : item
           )
         )
       }
 
-      const res = await fetch(`/api/core/tenants/${editingBranchId}`, {
-        method: "PUT",
+      const res = await fetch(`/api/branches/${editingBranchId}`, {
+        method: "PATCH",
         headers: {
           "Content-Type": "application/json",
           "X-CSRF-Token": getCsrfToken(),
         },
         credentials: "include",
         body: JSON.stringify({
-          branchName: branchEditName.trim(),
-          branchAddress: branchEditAddress.trim(),
-          branchCity: branchEditCity.trim(),
-          branchEmail: branchEditEmail.trim(),
-          regionId: branchEditRegionId.trim(),
+          name: branchEditName.trim() || undefined,
+          address: branchEditAddress.trim() || undefined,
+          region: branchEditRegionId.trim() || undefined,
+          leadPastorId: branchEditLeadPastorId.trim() || undefined,
+          assignedAccountantId: branchEditAccountantId.trim() || undefined,
+          currency: branchEditCurrency.trim() || undefined,
         }),
       })
 
@@ -511,7 +509,8 @@ export default function Page() {
 
   const handleBranchStatusToggle = async (tenant: TenantCard) => {
     if (branchStatusUpdatingId) return
-    const nextStatus = tenant.status === "ACTIVE" ? "INACTIVE" : "ACTIVE"
+    const currentStatus = tenant.status.toUpperCase()
+    const nextStatus = currentStatus === "ACTIVE" ? "SUSPENDED" : "ACTIVE"
     const optimistic: TenantCard = {
       ...tenant,
       status: nextStatus,
@@ -523,14 +522,14 @@ export default function Page() {
     setTenants((prev) => prev.map((item) => (item.id === tenant.id ? optimistic : item)))
 
     try {
-      const res = await fetch(`/api/core/tenants/${tenant.id}`, {
+      const res = await fetch(`/api/branches/${tenant.id}/status`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
           "X-CSRF-Token": getCsrfToken(),
         },
         credentials: "include",
-        body: JSON.stringify({ status: nextStatus }),
+        body: JSON.stringify({ status: nextStatus.toLowerCase() }),
       })
       const payload = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -554,43 +553,36 @@ export default function Page() {
     setBranchTouched({
       name: true,
       address: true,
-      city: true,
-      email: true,
-      regionId: true,
+      region: true,
+      branchType: true,
     })
 
     if (
       !branchName.trim() ||
       !branchAddress.trim() ||
-      !branchCity.trim() ||
-      !branchEmail.trim() ||
-      !branchRegionId.trim()
+      !branchRegion.trim() ||
+      !branchType.trim()
     ) {
       pushToast("Please fill in all required branch fields.", "error")
       return
     }
 
-    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailPattern.test(branchEmail.trim())) {
-      pushToast("Please enter a valid branch email address.", "error")
-      return
-    }
-
     setBranchStatus("saving")
     try {
-      const res = await fetch("/api/core/tenants", {
+      const res = await fetch("/api/branches", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-CSRF-Token": getCsrfToken(),
         },
         credentials: "include",
         body: JSON.stringify({
-          branchName: branchName.trim(),
-          branchAddress: branchAddress.trim(),
-          branchCity: branchCity.trim(),
-          branchEmail: branchEmail.trim(),
-          regionId: branchRegionId.trim(),
+          name: branchName.trim(),
+          branchType,
+          region: branchRegion.trim(),
+          address: branchAddress.trim(),
+          leadPastorId: branchLeadPastorId.trim() || undefined,
+          assignedAccountantId: branchAccountantId.trim() || undefined,
+          currency: branchCurrency.trim() || undefined,
         }),
       })
 
@@ -606,10 +598,12 @@ export default function Page() {
       setShowCreateBranch(false)
       setBranchName("")
       setBranchAddress("")
-      setBranchCity("")
-      setBranchEmail("")
-      setBranchRegionId("")
-      setBranchTouched({ name: false, address: false, city: false, email: false, regionId: false })
+      setBranchRegion("")
+      setBranchType("")
+      setBranchCurrency("")
+      setBranchLeadPastorId("")
+      setBranchAccountantId("")
+      setBranchTouched({ name: false, address: false, region: false, branchType: false })
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to create branch"
       pushToast(message, "error")
@@ -949,44 +943,44 @@ export default function Page() {
                   />
                   <Input
                     className={`h-10 rounded-md bg-white text-[12px] text-[#6B7280] ${
-                      branchTouched.city && !branchCity.trim()
+                      branchTouched.region && !branchRegion.trim()
                         ? "border-rose-300 focus-visible:ring-rose-200"
                         : "border-[#E5E7EB]"
                     }`}
-                    placeholder="Branch city"
-                    value={branchCity}
-                    onChange={(event) => setBranchCity(event.target.value)}
-                    onBlur={() => setBranchTouched((prev) => ({ ...prev, city: true }))}
+                    placeholder="Region"
+                    value={branchRegion}
+                    onChange={(event) => setBranchRegion(event.target.value)}
+                    onBlur={() => setBranchTouched((prev) => ({ ...prev, region: true }))}
                   />
                   <Input
                     className={`h-10 rounded-md bg-white text-[12px] text-[#6B7280] ${
-                      branchTouched.email && !branchEmail.trim()
+                      branchTouched.branchType && !branchType.trim()
                         ? "border-rose-300 focus-visible:ring-rose-200"
                         : "border-[#E5E7EB]"
                     }`}
-                    placeholder="Branch email"
-                    value={branchEmail}
-                    onChange={(event) => setBranchEmail(event.target.value)}
-                    onBlur={() => setBranchTouched((prev) => ({ ...prev, email: true }))}
+                    placeholder="Branch type"
+                    value={branchType}
+                    onChange={(event) => setBranchType(event.target.value)}
+                    onBlur={() => setBranchTouched((prev) => ({ ...prev, branchType: true }))}
                   />
-                  <select
-                    className={`h-10 rounded-md bg-white px-2 text-[12px] text-[#6B7280] ${
-                      branchTouched.regionId && !branchRegionId.trim()
-                        ? "border-rose-300 focus-visible:ring-rose-200"
-                        : "border-[#E5E7EB]"
-                    }`}
-                    value={branchRegionId}
-                    onChange={(event) => setBranchRegionId(event.target.value)}
-                    onBlur={() => setBranchTouched((prev) => ({ ...prev, regionId: true }))}
-                    onFocus={loadRegionOptions}
-                  >
-                    <option value="">{regionOptionsLoading ? "Loading regions..." : "Select region"}</option>
-                    {branchRegionOptions.map((region) => (
-                      <option key={region.id} value={region.id}>
-                        {region.name}
-                      </option>
-                    ))}
-                  </select>
+                  <Input
+                    className="h-10 rounded-md bg-white text-[12px] text-[#6B7280] border-[#E5E7EB]"
+                    placeholder="Currency (optional)"
+                    value={branchCurrency}
+                    onChange={(event) => setBranchCurrency(event.target.value)}
+                  />
+                  <Input
+                    className="h-10 rounded-md bg-white text-[12px] text-[#6B7280] border-[#E5E7EB]"
+                    placeholder="Lead pastor ID (optional)"
+                    value={branchLeadPastorId}
+                    onChange={(event) => setBranchLeadPastorId(event.target.value)}
+                  />
+                  <Input
+                    className="h-10 rounded-md bg-white text-[12px] text-[#6B7280] border-[#E5E7EB]"
+                    placeholder="Accountant ID (optional)"
+                    value={branchAccountantId}
+                    onChange={(event) => setBranchAccountantId(event.target.value)}
+                  />
                 </div>
                 <div className="mt-4 flex items-center gap-2">
                   <Button
@@ -1405,7 +1399,11 @@ export default function Page() {
                     onClick={() => handleBranchStatusToggle(tenant)}
                     disabled={branchStatusUpdatingId === tenant.id}
                   >
-                    {branchStatusUpdatingId === tenant.id ? "Updating..." : "Toggle Branch Status"}
+                    {branchStatusUpdatingId === tenant.id
+                      ? "Updating..."
+                      : tenant.status === "ACTIVE"
+                        ? "Suspend Branch"
+                        : "Activate Branch"}
                   </Button>
                 </div>
               ))}
@@ -1521,27 +1519,28 @@ export default function Page() {
                     onChange={(event) => setBranchEditAddress(event.target.value)}
                     onBlur={() => setBranchEditTouched((prev) => ({ ...prev, address: true }))}
                   />
+                  <select
+                    className="h-10 rounded-md bg-white px-2 text-[12px] text-[#6B7280] border-[#E5E7EB]"
+                    value={branchEditCurrency}
+                    onChange={(event) => setBranchEditCurrency(event.target.value)}
+                  >
+                    <option value="">Select currency</option>
+                    <option value="NGN">NGN</option>
+                    <option value="USD">USD</option>
+                    <option value="GBP">GBP</option>
+                    <option value="EUR">EUR</option>
+                  </select>
                   <Input
-                    className={`h-10 rounded-md bg-white text-[12px] text-[#6B7280] ${
-                      branchEditTouched.city && !branchEditCity.trim()
-                        ? "border-rose-300 focus-visible:ring-rose-200"
-                        : "border-[#E5E7EB]"
-                    }`}
-                    placeholder="Branch city"
-                    value={branchEditCity}
-                    onChange={(event) => setBranchEditCity(event.target.value)}
-                    onBlur={() => setBranchEditTouched((prev) => ({ ...prev, city: true }))}
+                    className="h-10 rounded-md bg-white text-[12px] text-[#6B7280] border-[#E5E7EB]"
+                    placeholder="Lead Pastor ID (optional)"
+                    value={branchEditLeadPastorId}
+                    onChange={(event) => setBranchEditLeadPastorId(event.target.value)}
                   />
                   <Input
-                    className={`h-10 rounded-md bg-white text-[12px] text-[#6B7280] ${
-                      branchEditTouched.email && !branchEditEmail.trim()
-                        ? "border-rose-300 focus-visible:ring-rose-200"
-                        : "border-[#E5E7EB]"
-                    }`}
-                    placeholder="Branch email"
-                    value={branchEditEmail}
-                    onChange={(event) => setBranchEditEmail(event.target.value)}
-                    onBlur={() => setBranchEditTouched((prev) => ({ ...prev, email: true }))}
+                    className="h-10 rounded-md bg-white text-[12px] text-[#6B7280] border-[#E5E7EB]"
+                    placeholder="Assigned Accountant ID (optional)"
+                    value={branchEditAccountantId}
+                    onChange={(event) => setBranchEditAccountantId(event.target.value)}
                   />
                   <select
                     className={`h-10 rounded-md bg-white px-2 text-[12px] text-[#6B7280] ${

@@ -5,7 +5,7 @@ export default function SidebarProfileWidget({ defaultRole = "User" }: { default
   const [profile, setProfile] = useState<any>(null);
 
   useEffect(() => {
-    fetch("/api/users/profile")
+    fetch("/api/auth/me")
       .then(res => res.json())
       .then(data => {
         if (data.data) {

@@ -21,14 +21,36 @@ export default function Page() {
   const router = useRouter()
   const [fullName, setFullName] = useState("")
   const [email, setEmail] = useState("")
+  const [role, setRole] = useState("")
+  const [branchId, setBranchId] = useState("")
+  const [phone, setPhone] = useState("")
+  
+  const [branches, setBranches] = useState<any[]>([])
+  
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const [sendEmail, setSendEmail] = useState(true)
   const { user } = useAuth()
   const tenantId = useMemo(
     () => user?.tenantId ?? user?.tenant?.id ?? null,
     [user]
   )
+
+  useEffect(() => {
+    async function fetchBranches() {
+      try {
+        const res = await fetch("/api/branches")
+        const json = await res.json()
+        if (res.ok && json.data) {
+          setBranches(Array.isArray(json.data) ? json.data : [])
+        }
+      } catch (err) {
+        console.error("Failed to fetch branches", err)
+      }
+    }
+    fetchBranches()
+  }, [])
 
   const handleClose = () => {
     router.back()
@@ -38,12 +60,8 @@ export default function Page() {
     setError(null)
     setSuccess(false)
 
-    if (!fullName || !email) {
-      setError("Please provide a name and email.")
-      return
-    }
-    if (!tenantId) {
-      setError("Tenant context is missing. Please refresh and try again.")
+    if (!fullName || !email || !role || !branchId) {
+      setError("Please fill out all required fields: name, email, role, branch.")
       return
     }
 
@@ -53,24 +71,23 @@ export default function Page() {
     const lastName = parts.slice(1).join(" ") || "User"
 
     try {
-      const res = await fetch("/api/users", {
+      const res = await fetch("/api/users/invite", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           firstName,
           lastName,
           email,
-          phoneNumber: "+2347065643303",
-          address: "Balogun Ilawe, Ketu Alapere now",
-          roleId: "eb9bb88b-0104-4694-97ad-923f9c1023a0",
-          tenantId
+          role,
+          branchId,
+          ...(phone && { phone }) // Add phone if provided
         })
       })
       
       const data = await res.json().catch(() => ({}))
       
       if (!res.ok) {
-        throw new Error(data.message || "Failed to create user.")
+        throw new Error(data.message || "Failed to invite user.")
       }
 
       setSuccess(true)
@@ -101,14 +118,9 @@ export default function Page() {
             </button>
           </div>
 
-            <div className="space-y-4 px-4 py-4">
-              {!tenantId ? (
-                <div className="rounded-md border border-[#E5E7EB] bg-[#F9FAFB] px-3 py-2 text-[11px] text-[#9CA3AF]">
-                  Loading tenant context...
-                </div>
-              ) : null}
+            <div className="space-y-4 px-4 py-4 max-h-[80vh] overflow-auto">
             <div className="space-y-1">
-              <label className={`${labelText} text-[#6B7280]`}>Full Name</label>
+              <label className={`${labelText} text-[#6B7280]`}>Full Name <span className="text-red-500">*</span></label>
               <div className="relative">
                 <UserRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
                 <Input
@@ -121,7 +133,7 @@ export default function Page() {
             </div>
 
             <div className="space-y-1">
-              <label className={`${labelText} text-[#6B7280]`}>Email Address</label>
+              <label className={`${labelText} text-[#6B7280]`}>Email Address <span className="text-red-500">*</span></label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
                 <Input
@@ -135,21 +147,53 @@ export default function Page() {
             </div>
 
             <div className="space-y-1">
-              <label className={`${labelText} text-[#6B7280]`}>Primary Role</label>
-              <button className="flex h-9 w-full items-center justify-between rounded-md border border-[#E5E7EB] bg-white px-3 text-[10.67px] leading-[16px] font-normal text-[#9CA3AF]">
-                Select a role...
-                <ChevronDown className="h-3.5 w-3.5" />
-              </button>
+              <label className={`${labelText} text-[#6B7280]`}>Phone Number (Optional)</label>
+              <div className="relative">
+                <Input
+                  className={`${inputText} h-9 rounded-md border-[#E5E7EB] bg-white px-3 text-[#111827]`}
+                  placeholder="e.g. +2348012345678"
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                />
+              </div>
             </div>
 
             <div className="space-y-1">
-              <label className={`${labelText} text-[#6B7280]`}>Branch Assignment</label>
+              <label className={`${labelText} text-[#6B7280]`}>Primary Role <span className="text-red-500">*</span></label>
               <div className="relative">
-                <Input
-                  className={`${inputText} h-9 rounded-md border-[#E5E7EB] bg-white pr-10 text-[#111827]`}
-                  defaultValue="London HQ"
-                />
-                <ChevronDown className="absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9CA3AF]" />
+                <select 
+                  className={`flex h-9 w-full items-center justify-between rounded-md border border-[#E5E7EB] bg-white px-3 text-[10.67px] leading-[16px] text-[#111827] appearance-none`}
+                  value={role}
+                  onChange={e => setRole(e.target.value)}
+                >
+                  <option value="" disabled className="text-[#9CA3AF]">Select a role...</option>
+                  <option value="super_admin">Super Admin</option>
+                  <option value="director">Director</option>
+                  <option value="admin">Admin</option>
+                  <option value="pastor">Pastor</option>
+                  <option value="accountant">Accountant</option>
+                </select>
+                <ChevronDown className="absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9CA3AF] pointer-events-none" />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className={`${labelText} text-[#6B7280]`}>Branch Assignment <span className="text-red-500">*</span></label>
+              <div className="relative">
+                <select 
+                  className={`flex h-9 w-full items-center justify-between rounded-md border border-[#E5E7EB] bg-white px-3 text-[10.67px] leading-[16px] text-[#111827] appearance-none`}
+                  value={branchId}
+                  onChange={e => setBranchId(e.target.value)}
+                >
+                  <option value="" disabled className="text-[#9CA3AF]">Select a branch...</option>
+                  {branches.map((b: any) => (
+                    <option key={b.id || b._id} value={b.id || b._id}>
+                      {b.name || b.address || "Unnamed Branch"}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9CA3AF] pointer-events-none" />
               </div>
               <div className="text-[10px] text-[#9CA3AF]">User will access data only from assigned branches.</div>
             </div>
@@ -161,7 +205,7 @@ export default function Page() {
           <div className="border-t border-[#EEF1F6] px-4 py-4 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-[10.63px] leading-[14.17px] text-[#6B7280]">Send invitation Email immediately</span>
-              <Switch defaultChecked className="data-[state=checked]:bg-[#3B5BDB]" />
+              <Switch checked={sendEmail} onCheckedChange={setSendEmail} className="data-[state=checked]:bg-[#3B5BDB]" />
             </div>
 
             <div className="flex items-center justify-end gap-2">

@@ -23,11 +23,11 @@ import {
   Calendar,
   Sparkles,
   CheckCircle,
-  Building2,
   ArrowUp
 } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
 import { useTransactions } from "@/components/hooks/useTransactions"
+import BranchesDropdown from "@/components/navigation/BranchesDropdown"
 
 export default function Page() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
@@ -49,9 +49,25 @@ export default function Page() {
     }
   }, [])
 
-  const { transactions: rawTransactions, loading: txLoading, error: txError, refresh: refreshTransactions } = useTransactions({
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(20)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchQuery)
+      setPage(1)
+    }, 300)
+    return () => clearTimeout(handler)
+  }, [searchQuery])
+
+  const { transactions: rawTransactions, pagination, loading: txLoading, error: txError, refresh: refreshTransactions } = useTransactions({
     startDate,
     endDate,
+    page,
+    limit,
+    search: debouncedSearch,
   })
   const [verifying, setVerifying] = useState(false)
   const [verifyError, setVerifyError] = useState<string | null>(null)
@@ -469,11 +485,7 @@ export default function Page() {
           </div>
           
           <div className="flex items-center flex-wrap gap-3">
-            <button className="flex items-center h-[36px] px-3 rounded-[8px] border border-[#E5E7EB] bg-white text-[12px] text-[#4B5563] font-bold shadow-sm hover:bg-gray-50 transition-all">
-              <Building2 className="mr-2 h-3.5 w-3.5 text-[#9CA3AF]" />
-              All Branches
-              <ChevronDown className="ml-2 h-3.5 w-3.5 text-[#9CA3AF]" />
-            </button>
+            <BranchesDropdown label="All Branches" />
             <button className="flex items-center h-[36px] px-3 rounded-[8px] border border-[#E5E7EB] bg-white text-[12px] text-[#4B5563] font-bold shadow-sm hover:bg-gray-50 transition-all">
               <Calendar className="mr-2 h-3.5 w-3.5 text-[#9CA3AF]" />
               This Month
@@ -686,6 +698,8 @@ export default function Page() {
                     <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
                     <input 
                       type="search" 
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
                       placeholder="Search by description or amount..." 
                       className="h-[40px] w-full rounded-[8px] border border-[#EEF1F6] bg-white pl-10 pr-4 text-[13px] text-[#111827] font-medium placeholder:text-[#9CA3AF] focus-visible:border-[#3B5BDB] focus-visible:ring-1 focus-visible:ring-[#3B5BDB]/20 outline-none transition-all shadow-sm"
                     />
@@ -791,10 +805,26 @@ export default function Page() {
 
                 {/* Table Pagination */}
               <div className="p-5 border-t border-[#EEF1F6] flex items-center justify-between text-[13px] text-[#9CA3AF] font-medium bg-white">
-                <div>Showing {transactions.length ? `1-${transactions.length}` : 0} of {transactions.length} transactions</div>
+                <div>
+                  Showing {pagination && pagination.total > 0 
+                      ? `${(pagination.page - 1) * pagination.limit + 1}-${Math.min(pagination.page * pagination.limit, pagination.total)}`
+                      : "0"} of {pagination?.total ?? 0} transactions
+                </div>
                 <div className="flex gap-2">
-                  <button className="px-5 py-2 rounded-[6px] border border-[#EEF1F6] bg-white hover:bg-gray-50 transition-colors font-bold text-[#111827] shadow-[0_1px_2px_rgba(0,0,0,0.02)]">Previous</button>
-                  <button className="px-5 py-2 rounded-[6px] border border-[#EEF1F6] bg-white hover:bg-gray-50 transition-colors font-bold text-[#111827] shadow-[0_1px_2px_rgba(0,0,0,0.02)]">Next</button>
+                  <button 
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={!pagination || pagination.page <= 1}
+                    className="px-5 py-2 rounded-[6px] border border-[#EEF1F6] bg-white hover:bg-gray-50 transition-colors font-bold text-[#111827] shadow-[0_1px_2px_rgba(0,0,0,0.02)] disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Previous
+                  </button>
+                  <button 
+                    onClick={() => setPage(p => Math.min(pagination?.pages ?? 1, p + 1))}
+                    disabled={!pagination || pagination.page >= (pagination?.pages ?? 1)}
+                    className="px-5 py-2 rounded-[6px] border border-[#EEF1F6] bg-white hover:bg-gray-50 transition-colors font-bold text-[#111827] shadow-[0_1px_2px_rgba(0,0,0,0.02)] disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Next
+                  </button>
                 </div>
               </div>
 

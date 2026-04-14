@@ -16,6 +16,7 @@ import {
   AlertTriangle,
   Clock3,
 } from "lucide-react"
+import BranchesDropdown from "@/components/navigation/BranchesDropdown"
 
 const cards = [
   {
@@ -285,7 +286,7 @@ export default function Page() {
             <div className="mt-6 rounded-xl border border-[#EEF1F6] bg-white shadow-sm overflow-hidden">
               <div className="flex flex-col gap-3 px-6 py-4 md:flex-row md:items-center md:justify-between">
                 <div className="flex items-center gap-2">
-                  <button className="rounded-[8px] border border-[#E5E7EB] bg-white px-3 py-1.5 text-[11px] font-bold text-[#111827]">All Branches</button>
+                  <BranchesDropdown label="All Branches" className="text-[11px]" />
                   <button className="rounded-[8px] bg-[#E9EEFF] px-3 py-1.5 text-[11px] font-bold text-[#3B5BDB]">Compliant</button>
                   <button className="rounded-[8px] bg-[#F3F5F9] px-3 py-1.5 text-[11px] font-bold text-[#6B7280]">Overdue/Non-Compliant</button>
                 </div>

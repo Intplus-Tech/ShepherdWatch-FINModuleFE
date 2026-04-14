@@ -32,8 +32,6 @@ import {
 
   Download,
 
-  Building2,
-
   Calendar,
 
   TrendingUp,
@@ -52,6 +50,7 @@ import {
 
 import { useBudgetEntries } from "@/components/hooks/useBudgetEntries"
 import { useAuth } from "@/components/auth/AuthProvider"
+import BranchesDropdown from "@/components/navigation/BranchesDropdown"
 
 
 
@@ -505,15 +504,7 @@ export default function Page() {
 
           <div className="flex items-center flex-wrap gap-2 sm:gap-3 w-full sm:w-auto overflow-x-auto no-scrollbar pb-1 sm:pb-0">
 
-            <button className="flex justify-center whitespace-nowrap items-center h-[36px] px-3 flex-1 sm:flex-none rounded-[8px] border border-[#E5E7EB] bg-white text-[11px] sm:text-[12px] text-[#4B5563] font-bold shadow-sm hover:bg-gray-50 transition-all">
-
-              <Building2 className="mr-2 h-3.5 w-3.5 text-[#9CA3AF] shrink-0" />
-
-              <span className="truncate">All Branches</span>
-
-              <ChevronDown className="ml-2 h-3.5 w-3.5 text-[#9CA3AF] shrink-0" />
-
-            </button>
+            <BranchesDropdown label="All Branches" className="text-[11px] sm:text-[12px]" />
 
             <button className="flex justify-center whitespace-nowrap items-center h-[36px] px-3 flex-1 sm:flex-none rounded-[8px] border border-[#E5E7EB] bg-white text-[11px] sm:text-[12px] text-[#4B5563] font-bold shadow-sm hover:bg-gray-50 transition-all">
 
