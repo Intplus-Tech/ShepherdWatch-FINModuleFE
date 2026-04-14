@@ -4,6 +4,7 @@ import React from "react";
 import { Inter } from "next/font/google";
 import { X, TriangleAlert, ChevronDown, Camera, Banknote } from "lucide-react";
 import AssetsHubPage from "../asset/page";
+import FileUploadDropzone from "@/components/ui/FileUploadDropzone";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -78,11 +79,13 @@ export default function EmergencyRepairModalPage() {
             {/* Photo Upload Box */}
             <div className="flex flex-col gap-1.5 mt-0.5">
               <label className="text-[#374151] text-[13px] sm:text-[13.5px] font-[700] mb-0.5">Upload Photo of Damage</label>
-              <div className="border border-dashed border-[#CBD5E1] rounded-[10px] flex flex-col items-center justify-center py-7 sm:py-8 bg-white hover:bg-gray-50/50 transition-colors cursor-pointer group">
-                <Camera className="h-7 w-7 sm:h-8 sm:w-8 text-[#9CA3AF] mb-3 group-hover:text-[#6B7280] transition-colors stroke-[2px]" />
-                <div className="text-[#4B5563] text-[14.5px] font-[500]"><span className="text-[#2563EB] font-[700]">Upload a file</span> or drag and drop</div>
-                <div className="text-[#9CA3AF] text-[12px] sm:text-[12.5px] font-[500] mt-1 track-wide">PNG, JPG, GIF up to 5MB</div>
-              </div>
+              <FileUploadDropzone 
+                folder="repairs"
+                maxSizeMB={5}
+                acceptedTypes="image/jpeg,image/png,image/gif"
+                label="Upload a photo"
+                onUploadComplete={(data) => console.log('Repair photo uploaded:', data)}
+              />
             </div>
 
           </div>

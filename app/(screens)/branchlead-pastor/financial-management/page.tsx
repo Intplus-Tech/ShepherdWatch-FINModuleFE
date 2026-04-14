@@ -2,7 +2,6 @@
 
 import Image from "next/image"
 import { useEffect, useMemo, useState } from "react"
-import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useAuth } from "@/components/auth/AuthProvider"
 import {
@@ -27,40 +26,24 @@ import {
   FolderKanban
 } from "lucide-react"
 
-const historyData = [
-  {
-    date: "Jan 20, 2024",
-    asset: "Toyota Coaster Bus (LAG-123)",
-    service: "Engine Service & Oil Change",
-    technician: "Ikeja Auto Care",
-    cost: "45,000.00",
-    status: "Verified",
-  },
-  {
-    date: "Jan 16, 2024",
-    asset: "Sanctuary Sound Mixer",
-    service: "Fader Replacement (Repair)",
-    technician: "Tunde Electronics",
-    cost: "15,000.00",
-    status: "Verified",
-  },
-  {
-    date: "Jan 12, 2024",
-    asset: "Borehole Pump",
-    service: "Seal & Gasket Replacement",
-    technician: "Grace Chapel FM Team",
-    cost: "8,500.00",
-    status: "Verified",
-  },
-  {
-    date: "Jan 05, 2024",
-    asset: "Children's Church AC (x3)",
-    service: "Quarterly Gas Refill",
-    technician: "Cool-Way Services",
-    cost: "32,000.00",
-    status: "Verified",
-  },
-]
+type MaintenanceRecord = {
+  _id?: string
+  id?: string
+  assetId?: string | { _id?: string; name?: string }
+  branchId?: string | { _id?: string; name?: string }
+  serviceType?: string
+  description?: string
+  provider?: string
+  cost?: number
+  currency?: string
+  status?: string
+  scheduledDate?: string
+  completedDate?: string
+  verifiedBy?: { _id?: string; firstName?: string; lastName?: string; email?: string }
+}
+
+type EventColorType = "scheduled" | "completed" | "overdue"
+type CalendarEvent = { title: string; sub?: string; colorType: EventColorType }
 
 export default function MaintenanceManagementPage() {
   const { user } = useAuth()
@@ -71,9 +54,18 @@ export default function MaintenanceManagementPage() {
   const [alertsError, setAlertsError] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [historyRecords, setHistoryRecords] = useState<MaintenanceRecord[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError, setHistoryError] = useState<string | null>(null)
+  const [historySummary, setHistorySummary] = useState<{ totalCost: number; count: number } | null>(null)
+  const [verifyingId, setVerifyingId] = useState<string | null>(null)
+  const [verifyError, setVerifyError] = useState<string | null>(null)
+  const [scheduleRecords, setScheduleRecords] = useState<MaintenanceRecord[]>([])
+  const [scheduleLoading, setScheduleLoading] = useState(false)
+  const [scheduleError, setScheduleError] = useState<string | null>(null)
 
-  const tenantId = useMemo(
-    () => user?.tenantId ?? user?.tenant?.id ?? "",
+  const branchId = useMemo(
+    () => user?.branchId ?? user?.branch?.id ?? "",
     [user]
   )
 
@@ -112,41 +104,111 @@ export default function MaintenanceManagementPage() {
   useEffect(() => {
     let isMounted = true
 
-    const fetchOverdueTasks = async () => {
-      if (!tenantId) {
+    const fetchHistory = async () => {
+      if (!branchId) {
         setUrgentAlerts([])
-        setAlertsError("Tenant is required to load maintenance alerts.")
+        setHistoryRecords([])
+        setAlertsError("Branch is required to load maintenance alerts.")
+        setHistoryError("Branch is required to load maintenance history.")
+        return
+      }
+
+      try {
+        setHistoryLoading(true)
+        setHistoryError(null)
+        const end = new Date()
+        const start = new Date(end)
+        start.setMonth(end.getMonth() - 11)
+        start.setDate(1)
+
+        const params = new URLSearchParams({
+          branchId,
+          startDate: formatDateParam(start),
+          endDate: formatDateParam(end),
+          page: "1",
+          limit: "50",
+        })
+
+        const response = await fetch(`/api/maintenance/history?${params.toString()}`, {
+          method: "GET",
+          credentials: "include",
+        })
+        const payload = await response.json().catch(() => null)
+        if (!response.ok) {
+          throw new Error(payload?.message ?? "Unable to load maintenance history.")
+        }
+
+        const payloadData = payload?.data ?? {}
+        const records = payloadData?.data ?? payloadData?.items ?? payload?.data ?? []
+        const list = Array.isArray(records) ? records : []
+        const summary = payloadData?.summary ?? payload?.summary ?? null
+
+        if (isMounted) {
+          setHistoryRecords(list)
+          setHistorySummary(
+            summary && typeof summary?.totalCost === "number" && typeof summary?.count === "number"
+              ? summary
+              : null
+          )
+        }
+      } catch (error) {
+        if (isMounted) {
+          setHistoryRecords([])
+          setHistorySummary(null)
+          const message = error instanceof Error ? error.message : "Unable to load maintenance history."
+          setHistoryError(message)
+        }
+      } finally {
+        if (isMounted) {
+          setHistoryLoading(false)
+        }
+      }
+    }
+
+    fetchHistory()
+
+    return () => {
+      isMounted = false
+    }
+  }, [branchId])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchAlerts = async () => {
+      if (!branchId) {
+        setUrgentAlerts([])
+        setAlertsError("Branch is required to load maintenance alerts.")
         return
       }
 
       try {
         setAlertsLoading(true)
         setAlertsError(null)
-        const today = new Date()
-        const currentDate = today.toISOString().split("T")[0]
-        const params = new URLSearchParams({
-          scheduledBefore: currentDate,
-          status: "SCHEDULED",
-          tenantId,
-        })
+        const params = new URLSearchParams({ branchId })
 
-        const response = await fetch(`/api/core/financial/maintenance-tasks?${params.toString()}`, {
+        const response = await fetch(`/api/maintenance/alerts?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         })
         const payload = await response.json().catch(() => null)
         if (!response.ok) {
-          throw new Error(payload?.message ?? "Unable to load maintenance tasks.")
+          throw new Error(payload?.message ?? "Unable to load maintenance alerts.")
         }
 
-        const tasks = payload?.data?.content ?? payload?.data ?? payload?.content ?? []
-        const mapped = (Array.isArray(tasks) ? tasks : []).map((task, index) => {
-          const scheduled = task?.scheduledDate ? new Date(task.scheduledDate) : null
-          const diffDays = scheduled ? Math.max(0, Math.floor((today.getTime() - scheduled.getTime()) / 86400000)) : 0
+        const records = payload?.data ?? payload?.items ?? []
+        const list = Array.isArray(records) ? records : []
+        const today = new Date()
+        const mapped = list.map((record: MaintenanceRecord, index: number) => {
+          const scheduled = record?.scheduledDate ? new Date(record.scheduledDate) : null
+          const diffDays = scheduled
+            ? Math.max(0, Math.floor((today.getTime() - scheduled.getTime()) / 86400000))
+            : 0
+          const { assetName, branchName } = getRecordNames(record)
           return {
-            id: String(task?.id ?? task?.maintenanceTaskId ?? task?.taskId ?? task?.assetId ?? `task-${index}`),
-            title: task?.assetName ?? task?.asset?.description ?? task?.description ?? "Maintenance Task",
-            meta: task?.notes ?? "Overdue scheduled maintenance",
+            id: String(record?._id ?? record?.id ?? `alert-${index}`),
+            title: assetName ?? record?.description ?? "Maintenance Alert",
+            meta: branchName ?? record?.serviceType ?? "Overdue maintenance",
             daysOverdue: diffDays,
           }
         })
@@ -157,7 +219,7 @@ export default function MaintenanceManagementPage() {
       } catch (error) {
         if (isMounted) {
           setUrgentAlerts([])
-          setAlertsError(error instanceof Error ? error.message : "Unable to load maintenance tasks.")
+          setAlertsError(error instanceof Error ? error.message : "Unable to load maintenance alerts.")
         }
       } finally {
         if (isMounted) {
@@ -166,12 +228,241 @@ export default function MaintenanceManagementPage() {
       }
     }
 
-    fetchOverdueTasks()
+    fetchAlerts()
 
     return () => {
       isMounted = false
     }
-  }, [tenantId])
+  }, [branchId])
+
+  const formatDateParam = (value: Date) => {
+    const year = value.getFullYear()
+    const month = String(value.getMonth() + 1).padStart(2, "0")
+    const day = String(value.getDate()).padStart(2, "0")
+    return `${year}-${month}-${day}`
+  }
+
+  const getEventStyles = (colorType: EventColorType) => {
+    switch (colorType) {
+      case "completed":
+        return {
+          container: "bg-[#F0FDF4] border border-[#BBF7D0]",
+          title: "text-[#15803D]",
+          sub: "text-[#86EFAC]",
+        }
+      case "overdue":
+        return {
+          container: "bg-[#FEF2F2] border border-[#FECACA]",
+          title: "text-[#DC2626]",
+          sub: "text-[#F87171]",
+        }
+      default:
+        return {
+          container: "bg-[#EFF6FF] border border-[#BFDBFE]",
+          title: "text-[#2563EB]",
+          sub: "text-[#60A5FA]",
+        }
+    }
+  }
+
+  const formatCurrency = (value: number, currency?: string) => {
+    const cur = currency && ["NGN", "USD", "GBP", "EUR"].includes(currency) ? currency : "NGN"
+    return new Intl.NumberFormat("en-NG", {
+      style: "currency",
+      currency: cur,
+      maximumFractionDigits: 0,
+    }).format(value)
+  }
+
+  const getRecordNames = (record: MaintenanceRecord) => {
+    const assetName = typeof record.assetId === "object" ? record.assetId?.name : undefined
+    const branchName = typeof record.branchId === "object" ? record.branchId?.name : undefined
+    return { assetName, branchName }
+  }
+
+  const weekStart = useMemo(() => {
+    const today = new Date()
+    const day = today.getDay()
+    const diff = (day + 6) % 7
+    const start = new Date(today)
+    start.setDate(today.getDate() - diff)
+    start.setHours(0, 0, 0, 0)
+    return start
+  }, [])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchSchedule = async () => {
+      if (!branchId) {
+        setScheduleRecords([])
+        setScheduleError("Branch is required to load maintenance schedule.")
+        return
+      }
+
+      try {
+        setScheduleLoading(true)
+        setScheduleError(null)
+
+        const end = new Date(weekStart)
+        end.setDate(weekStart.getDate() + 6)
+
+        const params = new URLSearchParams({
+          branchId,
+          startDate: formatDateParam(weekStart),
+          endDate: formatDateParam(end),
+        })
+
+        const response = await fetch(`/api/maintenance/schedule?${params.toString()}`, {
+          method: "GET",
+          credentials: "include",
+        })
+        const payload = await response.json().catch(() => null)
+        if (!response.ok) {
+          throw new Error(payload?.message ?? "Unable to load maintenance schedule.")
+        }
+
+        const records = payload?.data ?? payload?.items ?? []
+        const list = Array.isArray(records) ? records : []
+
+        if (isMounted) {
+          setScheduleRecords(list)
+        }
+      } catch (error) {
+        if (isMounted) {
+          setScheduleRecords([])
+          setScheduleError(error instanceof Error ? error.message : "Unable to load maintenance schedule.")
+        }
+      } finally {
+        if (isMounted) {
+          setScheduleLoading(false)
+        }
+      }
+    }
+
+    fetchSchedule()
+
+    return () => {
+      isMounted = false
+    }
+  }, [branchId, weekStart])
+
+  const calendarDays = useMemo(() => {
+    const days = Array.from({ length: 7 }).map((_, index) => {
+      const date = new Date(weekStart)
+      date.setDate(weekStart.getDate() + index)
+      const label = date
+        .toLocaleDateString("en-GB", { weekday: "short", day: "2-digit" })
+        .toUpperCase()
+      const isToday = new Date().toDateString() === date.toDateString()
+      const events: CalendarEvent[] = scheduleRecords
+        .filter((record) => {
+          if (!record?.scheduledDate) return false
+          const recordDate = new Date(record.scheduledDate)
+          return recordDate.toDateString() === date.toDateString()
+        })
+        .map((record) => {
+          const status = String(record?.status ?? "").toLowerCase()
+          const colorType: EventColorType =
+            status === "completed" ? "completed" : status === "overdue" ? "overdue" : "scheduled"
+          const { assetName, branchName } = getRecordNames(record)
+          return {
+            title: assetName ?? record?.description ?? "Maintenance Task",
+            sub: branchName ?? record?.provider ?? record?.serviceType,
+            colorType,
+          }
+        })
+
+      return { label, isToday, events }
+    })
+
+    return days
+  }, [scheduleRecords, weekStart])
+
+  const weekRangeLabel = useMemo(() => {
+    const end = new Date(weekStart)
+    end.setDate(weekStart.getDate() + 6)
+    return `Week ${weekStart.toLocaleDateString("en-GB", { month: "short", day: "2-digit" })} - ${end.toLocaleDateString("en-GB", { month: "short", day: "2-digit" })}`
+  }, [weekStart])
+
+  const scheduleHeaderLabel = useMemo(() => {
+    const current = weekStart.toLocaleDateString("en-GB", { month: "long", year: "numeric" })
+    return `${current} Schedule`
+  }, [weekStart])
+
+  const completedMaintenance = useMemo(() => {
+    return historyRecords.map((record) => ({
+      id: String(record?._id ?? record?.id ?? ""),
+      date: record?.completedDate
+        ? new Date(record.completedDate).toLocaleDateString("en-GB", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+          })
+        : "N/A",
+      asset: record?.description ?? "Maintenance Task",
+      service: record?.serviceType ?? "Service",
+      technician: record?.provider ?? "N/A",
+      cost:
+        record?.cost !== undefined && record?.cost !== null
+          ? formatCurrency(record.cost, record.currency)
+          : "N/A",
+      status: record?.status ? String(record.status).toUpperCase() : "COMPLETED",
+      verified: Boolean(record?.verifiedBy),
+    }))
+  }, [historyRecords])
+
+  const completedTotal = useMemo(() => {
+    if (historySummary?.totalCost) {
+      return historySummary.totalCost
+    }
+    return historyRecords.reduce((sum, record) => sum + (Number(record?.cost) || 0), 0)
+  }, [historyRecords, historySummary])
+
+  const completedTitle = useMemo(() => {
+    const completed = historyRecords
+      .map((record) => (record?.completedDate ? new Date(record.completedDate) : null))
+      .filter((date): date is Date => !!date && !Number.isNaN(date.getTime()))
+
+    if (completed.length === 0) {
+      return "Completed Maintenance"
+    }
+
+    const sorted = [...completed].sort((a, b) => a.getTime() - b.getTime())
+    const start = sorted[0]
+    const end = sorted[sorted.length - 1]
+    const format = (date: Date) =>
+      date.toLocaleDateString("en-GB", { month: "short", day: "2-digit" })
+    return `Completed Maintenance (${format(start)} - ${format(end)})`
+  }, [historyRecords])
+
+  const handleVerify = async (recordId: string) => {
+    if (!recordId) return
+    setVerifyError(null)
+    setVerifyingId(recordId)
+    try {
+      const response = await fetch(`/api/maintenance/${recordId}/verify`, {
+        method: "POST",
+        credentials: "include",
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Unable to verify maintenance record.")
+      }
+      const verifiedBy = payload?.data?.verifiedBy ?? payload?.verifiedBy ?? null
+      setHistoryRecords((prev) =>
+        prev.map((record) =>
+          String(record?._id ?? record?.id ?? "") === recordId
+            ? { ...record, verifiedBy }
+            : record
+        )
+      )
+    } catch (error) {
+      setVerifyError(error instanceof Error ? error.message : "Unable to verify maintenance record.")
+    } finally {
+      setVerifyingId(null)
+    }
+  }
 
   return (
     <div 
@@ -362,13 +653,13 @@ export default function MaintenanceManagementPage() {
                 <div className="p-7 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-5 border-b border-[#EEF1F6]">
                   <div className="flex items-center gap-2.5">
                     <CalendarDays className="text-[#3B5BDB] h-[24px] w-[24px] stroke-[2]" />
-                    <h2 className="text-[20px] font-extrabold text-[#111827] tracking-tight leading-none">January 2024 Schedule</h2>
+                    <h2 className="text-[20px] font-extrabold text-[#111827] tracking-tight leading-none">{scheduleHeaderLabel}</h2>
                   </div>
                   <div className="flex items-center border border-[#E2E8F0] rounded-[10px] bg-white shadow-sm overflow-hidden text-[13px] font-extrabold text-[#111827]">
                     <button className="px-3.5 py-2.5 hover:bg-gray-50 text-[#94A3B8] hover:text-[#111827] transition-colors border-r border-[#E2E8F0]">
                       <ChevronLeft className="h-[18px] w-[18px] stroke-[2.5]" />
                     </button>
-                    <span className="px-5 py-2.5 tracking-tight">Week 3 (Jan 15 - Jan 21)</span>
+                    <span className="px-5 py-2.5 tracking-tight">{weekRangeLabel}</span>
                     <button className="px-3.5 py-2.5 hover:bg-gray-50 text-[#94A3B8] hover:text-[#111827] transition-colors border-l border-[#E2E8F0]">
                       <ChevronRight className="h-[18px] w-[18px] stroke-[2.5]" />
                     </button>
@@ -378,84 +669,57 @@ export default function MaintenanceManagementPage() {
                 {/* Calendar Grid Container */}
                 <div className="flex-1 p-8 overflow-x-auto">
                   <div className="flex gap-4 min-w-[750px] h-full items-stretch">
-                    
-                    {/* MON 15 */}
-                    <div className="flex-1 flex flex-col">
-                      <div className="text-center mb-5 border-b border-[#EEF1F6] pb-3">
-                        <span className="text-[11.5px] font-extrabold text-[#94A3B8] tracking-widest uppercase">MON 15</span>
-                      </div>
-                      <div className="bg-[#EFF6FF] border border-[#BFDBFE] rounded-[10px] p-3 text-left">
-                        <div className="text-[12.5px] font-extrabold text-[#2563EB] mb-1">Sound Console</div>
-                        <div className="text-[11px] font-bold text-[#60A5FA]">Firmware Update</div>
-                      </div>
-                    </div>
-
-                    {/* TUE 16 */}
-                    <div className="flex-1 flex flex-col">
-                      <div className="text-center mb-5 border-b border-[#EEF1F6] pb-3">
-                        <span className="text-[11.5px] font-extrabold text-[#94A3B8] tracking-widest uppercase">TUE 16</span>
-                      </div>
-                    </div>
-
-                    {/* WED 17 */}
-                    <div className="flex-1 flex flex-col">
-                      <div className="text-center mb-5 border-b border-[#EEF1F6] pb-3">
-                        <span className="text-[11.5px] font-extrabold text-[#94A3B8] tracking-widest uppercase">WED 17</span>
-                      </div>
-                      <div className="bg-[#2563EB] rounded-[10px] p-3 text-left shadow-sm">
-                        <div className="text-[12.5px] font-extrabold text-white mb-1">HVAC Unit B</div>
-                        <div className="text-[11px] font-medium text-blue-100 tracking-wide">Routine Cleaning</div>
-                      </div>
-                    </div>
-
-                    {/* THU 18 */}
-                    <div className="flex-1 flex flex-col">
-                      <div className="text-center mb-5 border-b border-[#EEF1F6] pb-3">
-                        <span className="text-[11.5px] font-extrabold text-[#94A3B8] tracking-widest uppercase">THU 18</span>
-                      </div>
-                      <div className="bg-white border-2 border-[#E2E8F0] rounded-[10px] p-3 text-left">
-                        <div className="text-[12.5px] font-extrabold text-[#475569] mb-1">Projector Bulb</div>
-                        <div className="text-[11px] font-bold text-[#94A3B8]">Scheduled Replace</div>
-                      </div>
-                    </div>
-
-                    {/* FRI 19 (TODAY) - Highlighted Column */}
-                    <div className="flex-1 flex flex-col bg-[#EEF2FF] rounded-[12px] p-2 -my-2 -mx-2 border-2 border-[#A5B4FC]">
-                      <div className="text-center mb-4 border-b border-[#C7D2FE] pb-2 mt-2">
-                        <span className="text-[11.5px] font-extrabold text-[#3B5BDB] tracking-widest uppercase">FRI 19 (TODAY)</span>
-                      </div>
-                      <div className="bg-[#1D4ED8] rounded-[10px] p-3 text-left shadow-sm">
-                        <div className="text-[12.5px] font-extrabold text-white mb-1">Piano Tuning</div>
-                        <div className="text-[11px] font-medium text-blue-100 tracking-wide mb-3">Pre-Service Check</div>
-                        <div className="text-[10px] font-extrabold text-blue-100 flex items-center gap-1.5 opacity-90">
-                          <Clock className="w-3.5 h-3.5" />
-                          14:00
+                    {calendarDays.map((day, index) => (
+                      <div
+                        key={index}
+                        className={`flex-1 flex flex-col ${
+                          day.isToday
+                            ? "bg-[#EEF2FF] rounded-[12px] p-2 -my-2 -mx-2 border-2 border-[#A5B4FC]"
+                            : ""
+                        }`}
+                      >
+                        <div
+                          className={`text-center mb-5 border-b pb-3 ${
+                            day.isToday ? "border-[#C7D2FE]" : "border-[#EEF1F6]"
+                          } ${day.isToday ? "mt-2" : ""}`}
+                        >
+                          <span
+                            className={`text-[11.5px] font-extrabold tracking-widest uppercase ${
+                              day.isToday ? "text-[#3B5BDB]" : "text-[#94A3B8]"
+                            }`}
+                          >
+                            {day.label} {day.isToday && <span>(TODAY)</span>}
+                          </span>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                          {scheduleLoading && (
+                            <div className="text-[11px] font-bold text-[#CBD5F5] text-center">Loading schedule...</div>
+                          )}
+                          {!scheduleLoading && scheduleError && (
+                            <div className="text-[11px] font-bold text-[#EF4444] text-center">{scheduleError}</div>
+                          )}
+                          {!scheduleLoading && !scheduleError && day.events.length === 0 && (
+                            <div className="text-[11px] font-bold text-[#CBD5F5] text-center">No tasks</div>
+                          )}
+                          {day.events.map((event, eventIndex) => {
+                            const styles = getEventStyles(event.colorType)
+                            return (
+                              <div
+                                key={eventIndex}
+                                className={`${styles.container} rounded-[10px] p-3 text-left`}
+                              >
+                                <div className={`text-[12.5px] font-extrabold ${styles.title} mb-1`}>
+                                  {event.title}
+                                </div>
+                                {event.sub && (
+                                  <div className={`text-[11px] font-bold ${styles.sub}`}>{event.sub}</div>
+                                )}
+                              </div>
+                            )
+                          })}
                         </div>
                       </div>
-                    </div>
-
-                    {/* SAT 20 */}
-                    <div className="flex-1 flex flex-col">
-                      <div className="text-center mb-5 border-b border-[#EEF1F6] pb-3">
-                        <span className="text-[11.5px] font-extrabold text-[#94A3B8] tracking-widest uppercase">SAT 20</span>
-                      </div>
-                      <div className="bg-[#FFF7ED] border border-[#FED7AA] rounded-[10px] p-3 text-left">
-                        <div className="text-[12.5px] font-extrabold text-[#C2410C] mb-1">Landscape Prep</div>
-                        <div className="text-[11px] font-bold text-[#FDBA74]">Post-Rain Clearing</div>
-                      </div>
-                    </div>
-
-                    {/* SUN 21 */}
-                    <div className="flex-1 flex flex-col">
-                      <div className="text-center mb-5 border-b border-[#EEF1F6] pb-3">
-                        <span className="text-[11.5px] font-extrabold text-[#94A3B8] tracking-widest uppercase">SUN 21</span>
-                      </div>
-                      <div className="bg-[#F0FDF4] border border-[#BBF7D0] rounded-[10px] p-3 text-left">
-                        <div className="text-[12.5px] font-extrabold text-[#15803D] mb-1">Audio System</div>
-                        <div className="text-[11px] font-bold text-[#86EFAC]">Sunday Soundcheck</div>
-                      </div>
-                    </div>
-
+                    ))}
                   </div>
                 </div>
 
@@ -468,7 +732,7 @@ export default function MaintenanceManagementPage() {
               <div className="px-8 py-7 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#EEF1F6]">
                 <div className="flex items-center gap-2.5">
                   <CheckCircle2 className="text-[#10B981] h-[24px] w-[24px] stroke-[2.5]" />
-                  <h2 className="text-[20px] font-extrabold text-[#111827] tracking-tight leading-none">Completed Maintenance (Jan 5 - 20)</h2>
+                  <h2 className="text-[20px] font-extrabold text-[#111827] tracking-tight leading-none">{completedTitle}</h2>
                 </div>
                 <button className="text-[13px] font-extrabold text-[#3B5BDB] hover:text-[#2e4ac0] transition-colors tracking-tight">
                   View All History
@@ -488,7 +752,35 @@ export default function MaintenanceManagementPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {historyData.map((row, i) => (
+                    {historyLoading && (
+                      <tr>
+                        <td colSpan={6} className="py-6 px-8 text-[12px] font-medium text-[#64748B]">
+                          Loading maintenance history...
+                        </td>
+                      </tr>
+                    )}
+                    {!historyLoading && historyError && (
+                      <tr>
+                        <td colSpan={6} className="py-6 px-8 text-[12px] font-medium text-[#EF4444]">
+                          {historyError}
+                        </td>
+                      </tr>
+                    )}
+                    {!historyLoading && !historyError && verifyError && (
+                      <tr>
+                        <td colSpan={6} className="py-3 px-8 text-[12px] font-medium text-[#EF4444]">
+                          {verifyError}
+                        </td>
+                      </tr>
+                    )}
+                    {!historyLoading && !historyError && completedMaintenance.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="py-6 px-8 text-[12px] font-medium text-[#64748B]">
+                          No completed maintenance yet.
+                        </td>
+                      </tr>
+                    )}
+                    {completedMaintenance.map((row, i) => (
                       <tr key={i} className="border-b border-[#F8FAFC] last:border-0 hover:bg-[#F8FAFC]/60 transition-colors bg-[#FFFFFF]">
                         <td className="py-5 px-8 align-middle">
                           <span className="font-bold text-[#64748B] text-[13.5px]">{row.date}</span>
@@ -506,9 +798,24 @@ export default function MaintenanceManagementPage() {
                           <span className="font-extrabold text-[#111827] text-[14px]">{row.cost}</span>
                         </td>
                         <td className="py-5 px-8 align-middle text-center">
-                          <span className="inline-block bg-[#F0FDF4] border border-[#BBF7D0] text-[#15803D] font-extrabold text-[10.5px] tracking-wide px-3.5 py-1.5 rounded-full">
-                            {row.status}
-                          </span>
+                          <div className="flex items-center justify-center gap-2">
+                            <span className="inline-block bg-[#F0FDF4] border border-[#BBF7D0] text-[#15803D] font-extrabold text-[10.5px] tracking-wide px-3.5 py-1.5 rounded-full">
+                              {row.status}
+                            </span>
+                            {row.verified ? (
+                              <span className="inline-block bg-[#EFF6FF] border border-[#BFDBFE] text-[#2563EB] font-extrabold text-[10px] tracking-wide px-2.5 py-1 rounded-full">
+                                Verified
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => handleVerify(row.id)}
+                                disabled={verifyingId === row.id}
+                                className="text-[10px] font-[800] uppercase tracking-wider px-2.5 py-1 rounded-full bg-[#ECFDF5] text-[#16A34A] border border-[#BBF7D0] disabled:opacity-60 disabled:cursor-not-allowed"
+                              >
+                                {verifyingId === row.id ? "Verifying..." : "Verify"}
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -520,7 +827,9 @@ export default function MaintenanceManagementPage() {
                         <span className="font-extrabold text-[#111827] text-[14px] tracking-tight">Total Maintenance Cost:</span>
                       </td>
                       <td className="py-7 px-4 align-middle text-right">
-                        <span className="font-extrabold text-[#3B5BDB] text-[16px] tracking-tight">₦ 100,500.00</span>
+                        <span className="font-extrabold text-[#3B5BDB] text-[16px] tracking-tight">
+                          {formatCurrency(completedTotal, "NGN")}
+                        </span>
                       </td>
                       <td className="py-7 px-8"></td>
                     </tr>
@@ -536,3 +845,4 @@ export default function MaintenanceManagementPage() {
     </div>
   )
 }
+

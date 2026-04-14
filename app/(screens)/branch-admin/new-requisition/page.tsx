@@ -17,12 +17,17 @@ import {
   ChevronDown,
   FileText,
   Paperclip,
-  CloudUpload,
   Send,
 } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
+import FileUploadDropzone from "@/components/ui/FileUploadDropzone"
 
 const inter = Inter({ subsets: ["latin"] })
+type BranchIdentity = {
+  branchId?: string | { _id?: string; id?: string }
+  tenantId?: string
+  tenant?: { id?: string }
+}
 
 export default function NewRequisitionPage() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
@@ -31,6 +36,7 @@ export default function NewRequisitionPage() {
   const [coaId, setCoaId] = useState("")
   const [amount, setAmount] = useState("")
   const [justification, setJustification] = useState("")
+  const [requiredDate, setRequiredDate] = useState("")
   const [coaOptions, setCoaOptions] = useState<Array<{ id: string; label: string }>>([])
   const [coaLoading, setCoaLoading] = useState(true)
   const [coaError, setCoaError] = useState<string | null>(null)
@@ -40,6 +46,23 @@ export default function NewRequisitionPage() {
 
   const tenantId = useMemo(
     () => user?.tenantId ?? user?.tenant?.id ?? "",
+    [user]
+  )
+  const branchId = useMemo(
+    () =>
+      String(
+        (user as unknown as BranchIdentity)?.branchId &&
+          typeof (user as unknown as BranchIdentity).branchId === "object"
+          ? (user as unknown as BranchIdentity).branchId?._id ??
+            (user as unknown as BranchIdentity).branchId?.id ??
+            (user as unknown as BranchIdentity).tenantId ??
+            (user as unknown as BranchIdentity).tenant?.id ??
+            ""
+          : (user as unknown as BranchIdentity)?.branchId ??
+            (user as unknown as BranchIdentity)?.tenantId ??
+            (user as unknown as BranchIdentity)?.tenant?.id ??
+          ""
+      ),
     [user]
   )
 
@@ -73,9 +96,10 @@ export default function NewRequisitionPage() {
                 ? payload
                 : []
 
-        const mapped = rawItems.map((item: any) => ({
+        const mapped = rawItems.map((item: Record<string, unknown>) => ({
           id: String(item?.id ?? item?._id ?? ""),
-          label: item?.name ?? item?.accountName ?? item?.coaName ?? "Budget Category",
+          label:
+            String(item?.name ?? item?.accountName ?? item?.coaName ?? "Budget Category"),
         }))
 
         if (isMounted) {
@@ -107,13 +131,13 @@ export default function NewRequisitionPage() {
     return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
   }
 
-  const handleSubmit = async () => {
+  const handleSaveDraft = async () => {
     setSubmitError(null)
     setSubmitSuccess(null)
 
     const amountValue = Number(String(amount).replace(/,/g, "").trim())
-    if (!tenantId) {
-      setSubmitError("Tenant is required to create a requisition.")
+    if (!branchId) {
+      setSubmitError("Branch is required to create a requisition.")
       return
     }
     if (!coaId) {
@@ -128,13 +152,17 @@ export default function NewRequisitionPage() {
       setSubmitError("Please enter a valid amount.")
       return
     }
+    if (!requiredDate) {
+      setSubmitError("Please select the required date.")
+      return
+    }
 
     setSubmitting(true)
 
     try {
       const csrfToken = getCsrfToken()
       const justificationText = title.trim()
-        ? `${title.trim()} — ${justification.trim()}`
+        ? `${title.trim()} - ${justification.trim()}`
         : justification.trim()
 
       const response = await fetch("/api/core/financial/requisitions", {
@@ -145,15 +173,107 @@ export default function NewRequisitionPage() {
         },
         credentials: "include",
         body: JSON.stringify({
-          tenantId,
-          coaId,
+          branchId,
+          budgetHeadId: coaId,
           amount: amountValue,
+          currency: "NGN",
           justification: justificationText,
+          requiredDate,
         }),
       })
       const payload = await response.json().catch(() => null)
       if (!response.ok) {
-        throw new Error(payload?.message ?? "Unable to submit requisition.")
+        throw new Error(payload?.message ?? "Unable to save draft requisition.")
+      }
+
+      setSubmitSuccess("Requisition draft saved successfully.")
+      setTitle("")
+      setCoaId("")
+      setAmount("")
+      setJustification("")
+      setRequiredDate("")
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "Unable to save draft requisition.")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleSubmit = async () => {
+    setSubmitError(null)
+    setSubmitSuccess(null)
+
+    const amountValue = Number(String(amount).replace(/,/g, "").trim())
+    if (!branchId) {
+      setSubmitError("Branch is required to create a requisition.")
+      return
+    }
+    if (!coaId) {
+      setSubmitError("Please select a budget category.")
+      return
+    }
+    if (!justification.trim()) {
+      setSubmitError("Please provide a justification for this request.")
+      return
+    }
+    if (!Number.isFinite(amountValue) || amountValue <= 0) {
+      setSubmitError("Please enter a valid amount.")
+      return
+    }
+    if (!requiredDate) {
+      setSubmitError("Please select the required date.")
+      return
+    }
+
+    setSubmitting(true)
+
+    try {
+      const csrfToken = getCsrfToken()
+      const justificationText = title.trim()
+        ? `${title.trim()} - ${justification.trim()}`
+        : justification.trim()
+
+      const response = await fetch("/api/core/financial/requisitions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": csrfToken,
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          branchId,
+          budgetHeadId: coaId,
+          amount: amountValue,
+          currency: "NGN",
+          justification: justificationText,
+          requiredDate,
+        }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Unable to create draft requisition.")
+      }
+
+      const requisitionId =
+        payload?.data?._id ??
+        payload?.data?.id ??
+        payload?._id ??
+        payload?.id ??
+        null
+      if (!requisitionId) {
+        throw new Error("Draft created but requisition ID was not returned.")
+      }
+
+      const submitResponse = await fetch(`/api/core/financial/requisitions/${requisitionId}/submit`, {
+        method: "PATCH",
+        headers: {
+          "x-csrf-token": csrfToken,
+        },
+        credentials: "include",
+      })
+      const submitPayload = await submitResponse.json().catch(() => null)
+      if (!submitResponse.ok) {
+        throw new Error(submitPayload?.message ?? "Unable to submit requisition for approval.")
       }
 
       setSubmitSuccess("Requisition submitted successfully.")
@@ -161,8 +281,9 @@ export default function NewRequisitionPage() {
       setCoaId("")
       setAmount("")
       setJustification("")
+      setRequiredDate("")
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : "Unable to submit requisition.")
+      setSubmitError(err instanceof Error ? err.message : "Unable to submit requisition for approval.")
     } finally {
       setSubmitting(false)
     }
@@ -380,6 +501,18 @@ export default function NewRequisitionPage() {
                           <span className="text-[12px] font-[800] text-[#9CA3AF] ml-2 shrink-0 tracking-wide">NGN</span>
                         </div>
                       </div>
+
+                      <div className="flex flex-col gap-2">
+                        <label className="text-[13px] font-[700] text-[#4B5563]">
+                          Required Date <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="date"
+                          value={requiredDate}
+                          onChange={(event) => setRequiredDate(event.target.value)}
+                          className="h-[46px] w-full rounded-[8px] border border-[#E5E7EB] bg-white px-4 text-[14px] font-[500] text-[#111827] focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20 outline-none transition-all shadow-sm"
+                        />
+                      </div>
                     </div>
 
                     {/* Justification */}
@@ -410,7 +543,11 @@ export default function NewRequisitionPage() {
                     {submitting ? "Submitting..." : "Submit Requisition"}
                     <Send className="h-4 w-4" strokeWidth={2.5} />
                   </button>
-                  <button className="h-[42px] sm:h-[46px] px-5 sm:px-6 md:px-8 rounded-[8px] bg-white border border-[#E5E7EB] flex items-center justify-center text-[13px] sm:text-[14px] font-[800] text-[#4B5563] hover:bg-gray-50 transition-colors shadow-sm w-full sm:w-auto shrink-0">
+                  <button
+                    onClick={handleSaveDraft}
+                    disabled={submitting}
+                    className="h-[42px] sm:h-[46px] px-5 sm:px-6 md:px-8 rounded-[8px] bg-white border border-[#E5E7EB] flex items-center justify-center text-[13px] sm:text-[14px] font-[800] text-[#4B5563] hover:bg-gray-50 transition-colors shadow-sm w-full sm:w-auto shrink-0 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
                     Save as Draft
                   </button>
                 </div>
@@ -439,33 +576,15 @@ export default function NewRequisitionPage() {
                   </div>
 
                   {/* Upload Dropzone */}
-                  <div className="w-full rounded-[12px] border-2 border-dashed border-[#D1D5DB] bg-[#F9FAFB] hover:bg-[#F3F4F6] transition-colors flex flex-col items-center justify-center p-5 sm:p-8 md:p-10 mb-4 cursor-pointer">
-                    <CloudUpload className="h-10 w-10 text-[#9CA3AF] mb-3" strokeWidth={1.5} />
-                    <div className="text-[14px] font-[600] text-[#4B5563] text-center mb-1">
-                      <span className="text-[#2563EB] hover:underline cursor-pointer">Upload a file</span> or drag and drop
-                    </div>
-                    <div className="text-[12px] font-[500] text-[#9CA3AF] text-center">
-                      PNG, JPG, PDF up to 10MB
-                    </div>
-                  </div>
-
-                  {/* Uploaded File List */}
-                  <div className="flex flex-col w-full">
-                    <div className="flex items-center gap-3 p-3.5 rounded-[8px] bg-[#F8FAFC] border border-[#EEF1F6]">
-                      <div className="h-10 w-10 shrink-0 bg-[#FEE2E2] rounded-[6px] flex items-center justify-center">
-                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                          <polyline points="14 2 14 8 20 8"/>
-                          <line x1="16" y1="13" x2="8" y2="13"/>
-                          <line x1="16" y1="17" x2="8" y2="17"/>
-                          <polyline points="10 9 9 9 8 9"/>
-                        </svg>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[13px] font-[800] text-[#111827] truncate">quote_supplier_ABC.pdf</div>
-                        <div className="text-[11.5px] font-[500] text-[#9CA3AF] mt-0.5">1.2 MB</div>
-                      </div>
-                    </div>
+                  <div className="w-full mb-4">
+                    <FileUploadDropzone 
+                      folder="requisitions"
+                      branchId={branchId}
+                      maxSizeMB={10}
+                      acceptedTypes="image/jpeg,image/png,application/pdf"
+                      label="Upload a file"
+                      onUploadComplete={(data) => console.log('Requisition attachment uploaded:', data)}
+                    />
                   </div>
 
                 </div>
@@ -478,3 +597,4 @@ export default function NewRequisitionPage() {
     </div>
   )
 }
+

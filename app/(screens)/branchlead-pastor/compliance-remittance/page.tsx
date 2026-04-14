@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useMemo, useState } from "react"
+import React, { useEffect, useMemo } from "react"
 import Image from "next/image"
 import { 
   Search, Bell, LayoutDashboard, BarChart3, Building2, Wallet, 
@@ -8,34 +8,45 @@ import {
   ArrowDownRight, CheckCircle2, Calculator, Info, Menu, X 
 } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
+import { useComplianceDashboard } from "@/components/hooks/useComplianceDashboard"
+import { useStatutoryDeductions } from "@/components/hooks/useStatutoryDeductions"
+import { useComplianceSummary } from "@/components/hooks/useComplianceSummary"
 
 type ComplianceRow = {
+  id: string
   requirement: string
   rate: string
   dueDate: string
   amount: string
   status: string
   statusColor: string
-  complianceId?: string
 }
-
-const rows: ComplianceRow[] = [
-  // Intentionally empty until compliance records endpoint is wired.
-]
 
 export default function ComplianceRemittancePage() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false)
   const { user } = useAuth()
-  const [summary, setSummary] = useState<{ totalDue: number; totalPaid: number; complianceScore: number } | null>(null)
-  const [summaryError, setSummaryError] = useState<string | null>(null)
-  const [markingId, setMarkingId] = useState<string | null>(null)
-  const [markError, setMarkError] = useState<string | null>(null)
-  const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [deleteError, setDeleteError] = useState<string | null>(null)
-  const [complianceScore, setComplianceScore] = useState<number | null>(null)
-  const [scoreError, setScoreError] = useState<string | null>(null)
-  const [statutory, setStatutory] = useState<{ totalTitheInflow: number; hqRemittanceAmount: number } | null>(null)
-  const [statutoryError, setStatutoryError] = useState<string | null>(null)
+  const {
+    data: complianceDashboard,
+    loading: complianceLoading,
+    error: complianceError,
+    fetchDashboard,
+  } = useComplianceDashboard()
+  const {
+    deductions,
+    fetchDeductions,
+    getDeductionById,
+    selectedDeduction,
+    detailLoading,
+    detailError,
+    loading: deductionsLoading,
+    listError: deductionsError,
+  } = useStatutoryDeductions()
+  const {
+    complianceData: complianceSummary,
+    loading: summaryLoading,
+    error: summaryError,
+    fetchSummary,
+  } = useComplianceSummary()
 
   const tenantId = useMemo(
     () => user?.tenantId ?? user?.tenant?.id ?? "",
@@ -43,143 +54,12 @@ export default function ComplianceRemittancePage() {
   )
 
   useEffect(() => {
-    let isMounted = true
-
-    const fetchSummary = async () => {
-      if (!tenantId) {
-        setSummaryError("Tenant is required to load compliance summary.")
-        return
-      }
-
-      try {
-        setSummaryError(null)
-        const year = new Date().getFullYear()
-        const params = new URLSearchParams({
-          tenantId,
-          periodStart: `${year}-01-01`,
-          periodEnd: `${year}-12-31`,
-        })
-        const response = await fetch(`/api/core/financial/compliance/summary?${params.toString()}`, {
-          method: "GET",
-          credentials: "include",
-        })
-        const payload = await response.json().catch(() => null)
-        if (!response.ok) {
-          throw new Error(payload?.message ?? "Unable to load compliance summary.")
-        }
-
-        const data = payload?.data ?? payload
-        if (isMounted && data) {
-          setSummary({
-            totalDue: Number(data.totalDue ?? 0),
-            totalPaid: Number(data.totalPaid ?? 0),
-            complianceScore: Number(data.complianceScore ?? 0),
-          })
-        }
-      } catch (error) {
-        if (isMounted) {
-          setSummaryError(error instanceof Error ? error.message : "Unable to load compliance summary.")
-        }
-      }
-    }
-
-    fetchSummary()
-
-    return () => {
-      isMounted = false
-    }
-  }, [tenantId])
-
-  useEffect(() => {
-    let isMounted = true
-
-    const fetchStatutory = async () => {
-      if (!tenantId) {
-        setStatutoryError("Tenant is required to load statutory report.")
-        return
-      }
-      try {
-        setStatutoryError(null)
-        const now = new Date()
-        const periodStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0]
-        const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0]
-        const params = new URLSearchParams({
-          tenantId,
-          periodStart,
-          periodEnd,
-          deductionRate: "10",
-        })
-        const response = await fetch(`/api/core/financial/reports/statutory?${params.toString()}`, {
-          method: "GET",
-          credentials: "include",
-        })
-        const payload = await response.json().catch(() => null)
-        if (!response.ok) {
-          throw new Error(payload?.message ?? "Unable to load statutory report.")
-        }
-        const data = payload?.data ?? payload
-        if (isMounted) {
-          setStatutory({
-            totalTitheInflow: Number(data?.totalTitheInflow ?? 0),
-            hqRemittanceAmount: Number(data?.hqRemittanceAmount ?? 0),
-          })
-        }
-      } catch (error) {
-        if (isMounted) {
-          setStatutory(null)
-          setStatutoryError(error instanceof Error ? error.message : "Unable to load statutory report.")
-        }
-      }
-    }
-
-    fetchStatutory()
-
-    return () => {
-      isMounted = false
-    }
-  }, [tenantId])
-
-  useEffect(() => {
-    let isMounted = true
-
-    const fetchScore = async () => {
-      if (!tenantId) {
-        setScoreError("Tenant is required to load compliance score.")
-        return
-      }
-      try {
-        setScoreError(null)
-        const year = new Date().getFullYear()
-        const params = new URLSearchParams({
-          tenantId,
-          periodStart: `${year}-01-01`,
-          periodEnd: `${year}-12-31`,
-        })
-        const response = await fetch(`/api/core/financial/compliance/score?${params.toString()}`, {
-          method: "GET",
-          credentials: "include",
-        })
-        const payload = await response.json().catch(() => null)
-        if (!response.ok) {
-          throw new Error(payload?.message ?? "Unable to load compliance score.")
-        }
-        const data = payload?.data ?? payload
-        if (isMounted) {
-          setComplianceScore(Number(data?.complianceScore ?? 0))
-        }
-      } catch (error) {
-        if (isMounted) {
-          setScoreError(error instanceof Error ? error.message : "Unable to load compliance score.")
-        }
-      }
-    }
-
-    fetchScore()
-
-    return () => {
-      isMounted = false
-    }
-  }, [tenantId])
+    if (!tenantId) return
+    fetchDashboard({ branchId: tenantId, fiscalYear: new Date().getFullYear() }).catch(() => undefined)
+    fetchDeductions({ branchId: tenantId, page: 1, limit: 20 }).catch(() => undefined)
+    const year = new Date().getFullYear()
+    fetchSummary({ branchId: tenantId, startDate: `${year}-01-01`, endDate: `${year}-12-31` }).catch(() => undefined)
+  }, [tenantId, fetchDashboard, fetchDeductions, fetchSummary])
 
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat("en-NG", {
@@ -188,70 +68,27 @@ export default function ComplianceRemittancePage() {
       maximumFractionDigits: 0,
     }).format(amount)
 
-  const getCsrfToken = () => {
-    if (typeof document === "undefined") return ""
-    const match = document.cookie
-      .split("; " )
-      .find((cookie) => cookie.startsWith("csrf_token="))
-    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
-  }
-
-  const handleMarkPaid = async (recordId: string, amount: string) => {
-    if (!recordId) return
-    setMarkingId(recordId)
-    setMarkError(null)
-
-    try {
-      const numericAmount = Number(amount.replace(/[^\d.]/g, "")) || 0
-      const csrfToken = getCsrfToken()
-      const response = await fetch(`/api/core/financial/compliance/records/${recordId}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "x-csrf-token": csrfToken,
-        },
-        credentials: "include",
-        body: JSON.stringify({
-          amountPaid: numericAmount,
-          paymentDate: new Date().toISOString(),
-          status: "PAID",
-        }),
-      })
-      const payload = await response.json().catch(() => null)
-      if (!response.ok) {
-        throw new Error(payload?.message ?? "Unable to update compliance record.")
+  const rows: ComplianceRow[] = useMemo(() => {
+    return deductions.slice(0, 12).map((item) => {
+      const dueDate = item.period ? `${item.period}-25` : "—"
+      return {
+        id: item.id,
+        requirement: item.type.toUpperCase(),
+        rate: item.type === "paye" ? "PAYE" : item.type === "pension" ? "PENSION" : "NHF",
+        dueDate,
+        amount: formatCurrency(item.amount),
+        status: item.remitted ? "REMITTED" : "PENDING",
+        statusColor: item.remitted
+          ? "bg-emerald-50 text-emerald-600 ring-emerald-200"
+          : "bg-amber-50 text-amber-600 ring-amber-200",
       }
-    } catch (error) {
-      setMarkError(error instanceof Error ? error.message : "Unable to update compliance record.")
-    } finally {
-      setMarkingId(null)
-    }
-  }
+    })
+  }, [deductions])
 
-  const handleDeleteRecord = async (recordId: string) => {
-    if (!recordId) return
-    setDeletingId(recordId)
-    setDeleteError(null)
-
-    try {
-      const csrfToken = getCsrfToken()
-      const response = await fetch(`/api/core/financial/compliance/records/${recordId}`, {
-        method: "DELETE",
-        headers: {
-          "x-csrf-token": csrfToken,
-        },
-        credentials: "include",
-      })
-      const payload = await response.json().catch(() => null)
-      if (!response.ok) {
-        throw new Error(payload?.message ?? "Unable to delete compliance record.")
-      }
-    } catch (error) {
-      setDeleteError(error instanceof Error ? error.message : "Unable to delete compliance record.")
-    } finally {
-      setDeletingId(null)
-    }
-  }
+  const nextSchedule = useMemo(() => {
+    const future = (complianceDashboard?.monthlySchedule ?? []).find((item) => item.total > 0)
+    return future?.month
+  }, [complianceDashboard])
 
   return (
     <div className="flex flex-col xl:flex-row min-h-screen overflow-hidden bg-[#F8FAFC] relative w-full font-sans" style={{ fontFamily: '"Public Sans", sans-serif' }}>
@@ -321,7 +158,13 @@ export default function ComplianceRemittancePage() {
 
             <div className="mt-8 flex items-center gap-3.5 px-3.5 pb-2 cursor-pointer hover:opacity-80 transition-opacity">
               <div className="h-10 w-10 rounded-full overflow-hidden bg-gray-200 shrink-0 ring-2 ring-white shadow-sm">
-                <img src="/images/Beared%20Guy02-min%201.jpg" alt="Profile avatar" className="h-full w-full object-cover" />
+                <Image
+                  src="/images/Beared%20Guy02-min%201.jpg"
+                  alt="Profile avatar"
+                  width={40}
+                  height={40}
+                  className="h-full w-full object-cover"
+                />
               </div>
               <div>
                 <div className="text-[14px] font-bold text-[#111827]">Alex Morgan</div>
@@ -384,7 +227,7 @@ export default function ComplianceRemittancePage() {
               STATUTORY COMPLIANCE
             </h1>
             <p className="text-[12px] sm:text-[13px] text-[#6B7280] mt-2 font-medium">
-              Manage your monthly obligations and branch financial health for <span className="font-bold text-[#111827]">January 2024</span>
+              Manage your monthly obligations and branch financial health for <span className="font-bold text-[#111827]">FY {complianceDashboard?.fiscalYear ?? new Date().getFullYear()}</span>
             </p>
           </div>
 
@@ -392,9 +235,9 @@ export default function ComplianceRemittancePage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 xl:gap-5 mb-6 sm:mb-8">
             {/* Liability Card */}
             <div className="rounded-[16px] border border-[#E2E8F0] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
-              <div className="text-[10px] font-bold text-[#64748B] uppercase tracking-wider">TOTAL JANUARY LIABILITY</div>
+              <div className="text-[10px] font-bold text-[#64748B] uppercase tracking-wider">TOTAL LIABILITY</div>
               <div className="mt-3 text-[24px] font-bold text-[#111827]">
-                {statutory ? formatCurrency(statutory.hqRemittanceAmount) : summary ? formatCurrency(summary.totalDue) : "—"}
+                {complianceDashboard ? formatCurrency(complianceDashboard.totalLiability) : "—"}
               </div>
               <div className="mt-2.5 flex items-center gap-1.5 text-[11.5px] font-semibold text-emerald-600">
                 <ArrowUpRight className="h-3.5 w-3.5 stroke-[3]" />
@@ -406,7 +249,7 @@ export default function ComplianceRemittancePage() {
             <div className="rounded-[16px] border border-[#E2E8F0] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
               <div className="text-[10px] font-bold text-[#64748B] uppercase tracking-wider">AVAILABLE FUNDS</div>
               <div className="mt-3 text-[24px] font-bold text-[#111827]">
-                {summary ? formatCurrency(summary.totalPaid) : "—"}
+                {complianceDashboard ? formatCurrency(complianceDashboard.availableFunds) : "—"}
               </div>
               <div className="mt-2.5 flex items-center gap-1.5 text-[11.5px] font-semibold text-rose-500">
                 <ArrowDownRight className="h-3.5 w-3.5 stroke-[3]" />
@@ -418,7 +261,7 @@ export default function ComplianceRemittancePage() {
             <div className="rounded-[16px] border border-[#E2E8F0] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.02)] sm:col-span-2 lg:col-span-1">
               <div className="text-[10px] font-bold text-[#64748B] uppercase tracking-wider">COVERAGE RATIO</div>
               <div className="mt-3 text-[24px] font-bold text-[#111827]">
-                {complianceScore !== null ? `${complianceScore.toFixed(1)}x` : "—"}
+                {complianceDashboard ? `${complianceDashboard.coverageRatio.toFixed(2)}x` : "—"}
               </div>
               <div className="mt-2.5 flex items-center gap-1.5 text-[11.5px] font-semibold text-emerald-600">
                 <CheckCircle2 className="h-3.5 w-3.5 stroke-[2.5]" />
@@ -426,20 +269,20 @@ export default function ComplianceRemittancePage() {
               </div>
             </div>
           </div>
+          {complianceLoading && (
+            <div className="mb-6 text-[12px] font-medium text-[#6B7280]">Loading compliance dashboard...</div>
+          )}
+          {complianceError && (
+            <div className="mb-6 text-[12px] font-medium text-[#EF4444]">{complianceError}</div>
+          )}
+          {deductionsError && (
+            <div className="mb-6 text-[12px] font-medium text-[#EF4444]">{deductionsError}</div>
+          )}
+          {summaryLoading && (
+            <div className="mb-6 text-[12px] font-medium text-[#6B7280]">Loading compliance summary...</div>
+          )}
           {summaryError && (
             <div className="mb-6 text-[12px] font-medium text-[#EF4444]">{summaryError}</div>
-          )}
-          {scoreError && (
-            <div className="mb-6 text-[12px] font-medium text-[#EF4444]">{scoreError}</div>
-          )}
-          {statutoryError && (
-            <div className="mb-6 text-[12px] font-medium text-[#EF4444]">{statutoryError}</div>
-          )}
-          {markError && (
-            <div className="mb-6 text-[12px] font-medium text-[#EF4444]">{markError}</div>
-          )}
-          {deleteError && (
-            <div className="mb-6 text-[12px] font-medium text-[#EF4444]">{deleteError}</div>
           )}
 
           <div className="flex flex-col xl:flex-row gap-6 items-start">
@@ -447,7 +290,7 @@ export default function ComplianceRemittancePage() {
             <div className="flex-1 w-full bg-white border border-[#E2E8F0] rounded-[16px] shadow-[0_1px_3px_rgba(0,0,0,0.02)] overflow-hidden flex flex-col items-center">
               <div className="w-full flex items-center justify-between p-4 sm:p-5 border-b border-[#E2E8F0] gap-4">
                 <h2 className="text-[13px] sm:text-[14px] font-bold text-[#111827]">Remittance Schedule</h2>
-                <span className="text-[10px] sm:text-[11.5px] font-semibold text-[#3B5BDB] whitespace-nowrap">Next Due: Jan 25, 2024</span>
+                <span className="text-[10px] sm:text-[11.5px] font-semibold text-[#3B5BDB] whitespace-nowrap">Next Due: {nextSchedule ? `Month ${nextSchedule}` : "N/A"}</span>
               </div>
               
               <div className="w-full overflow-x-auto hide-scrollbar">
@@ -462,15 +305,28 @@ export default function ComplianceRemittancePage() {
                     </tr>
                   </thead>
                   <tbody className="text-[13px] font-semibold text-[#111827]">
-                    {rows.length === 0 && (
+                    {deductionsLoading && (
+                      <tr>
+                        <td colSpan={5} className="px-6 py-6 text-center text-[12px] text-[#6B7280]">
+                          Loading compliance records...
+                        </td>
+                      </tr>
+                    )}
+                    {!deductionsLoading && rows.length === 0 && (
                       <tr>
                         <td colSpan={5} className="px-6 py-6 text-center text-[12px] text-[#6B7280]">
                           No compliance records available for this period.
                         </td>
                       </tr>
                     )}
-                    {rows.map((row, idx) => (
-                      <tr key={idx} className="border-b border-[#F1F5F9] hover:bg-[#F8FAFC] transition-colors">
+                    {rows.map((row) => (
+                      <tr
+                        key={row.id}
+                        onClick={() => {
+                          getDeductionById(row.id).catch(() => undefined)
+                        }}
+                        className="cursor-pointer border-b border-[#F1F5F9] hover:bg-[#F8FAFC] transition-colors"
+                      >
                         <td className="px-6 py-4.5">{row.requirement}</td>
                         <td className="px-6 py-4.5 text-[#3B5BDB] text-center font-bold tracking-wide">{row.rate}</td>
                         <td className="px-6 py-4.5 text-[#475569] font-medium">{row.dueDate}</td>
@@ -479,37 +335,33 @@ export default function ComplianceRemittancePage() {
                           <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[9px] font-black uppercase tracking-widest ring-1 ring-inset ${row.statusColor}`}>
                             {row.status}
                           </span>
-                          {row.complianceId && (
-                            <div className="mt-2 flex items-center justify-end gap-3">
-                              <button
-                                onClick={() => handleMarkPaid(row.complianceId as string, row.amount)}
-                                disabled={markingId === row.complianceId}
-                                className="text-[10px] font-extrabold text-[#3B5BDB] hover:text-[#1D4ED8] disabled:opacity-60 disabled:cursor-not-allowed"
-                              >
-                                {markingId === row.complianceId ? "Updating..." : "Mark Paid"}
-                              </button>
-                              <button
-                                onClick={() => handleDeleteRecord(row.complianceId as string)}
-                                disabled={deletingId === row.complianceId}
-                                className="text-[10px] font-extrabold text-rose-500 hover:text-rose-600 disabled:opacity-60 disabled:cursor-not-allowed"
-                              >
-                                {deletingId === row.complianceId ? "Deleting..." : "Delete"}
-                              </button>
-                            </div>
-                          )}
+                          
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+              {(detailLoading || detailError || selectedDeduction) && (
+                <div className="w-full border-t border-[#E2E8F0] bg-[#FAFBFF] px-6 py-4 text-[12px]">
+                  {detailLoading && <div className="text-[#6B7280]">Loading selected deduction...</div>}
+                  {!detailLoading && detailError && <div className="text-[#DC2626]">{detailError}</div>}
+                  {!detailLoading && !detailError && selectedDeduction && (
+                    <div className="text-[#475569]">
+                      <span className="font-bold text-[#111827]">Selected:</span>{" "}
+                      {selectedDeduction.type.toUpperCase()} • {formatCurrency(selectedDeduction.amount)} •{" "}
+                      {selectedDeduction.remitted ? "REMITTED" : "PENDING"} • {selectedDeduction.period || "No period"}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="w-full flex justify-between sm:justify-end p-4 sm:p-5 tracking-wide items-center relative overflow-hidden bg-[#FAFBFF]">
                 {/* Subtle gradient matching the top border */}
                 <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#E2E8F0] to-[#E2E8F0]"></div>
                 <span className="text-[10px] sm:text-[11px] font-black text-[#64748B] tracking-[0.1em] sm:mr-8">TOTAL PAYABLE</span>
                 <span className="text-[15px] sm:text-[16px] font-black text-[#2563EB] sm:mr-4">
-                  {statutory ? formatCurrency(statutory.hqRemittanceAmount) : summary ? formatCurrency(summary.totalDue) : "—"}
+                  {complianceDashboard ? formatCurrency(complianceDashboard.totalLiability) : "—"}
                 </span>
               </div>
             </div>
@@ -529,10 +381,10 @@ export default function ComplianceRemittancePage() {
                  {/* Input Simulation Area */}
                  <div className="relative z-10 mb-6">
                    <label className="block text-[10px] font-bold text-blue-200 uppercase tracking-wider mb-2">
-                     BRANCH TOTAL INCOME (JAN)
+                     BRANCH TOTAL REMITTED
                    </label>
                    <div className="bg-[#1E40AF] border border-[#2563EB]/50 rounded-[10px] py-3.5 px-4 font-bold text-[15px] shadow-inner text-white flex items-center justify-between">
-                     {statutory ? formatCurrency(statutory.totalTitheInflow) : "—"}
+                     {complianceDashboard ? formatCurrency(complianceDashboard.totalRemitted) : "—"}
                    </div>
                  </div>
 
@@ -541,14 +393,15 @@ export default function ComplianceRemittancePage() {
                    <h4 className="text-[10px] font-bold text-blue-200 uppercase tracking-wider mb-4">BREAKDOWN</h4>
                    
                    <div className="space-y-4 text-[12px] font-medium text-blue-50">
-                     <div className="flex justify-between items-center">
-                       <span>HQ Remittance (10%)</span>
-                       <span className="font-bold text-white">
-                         {statutory ? formatCurrency(statutory.hqRemittanceAmount) : "—"}
-                       </span>
-                     </div>
-                     {!statutory && (
-                       <div className="text-[11px] text-blue-100">Breakdown available once statutory report loads.</div>
+                     {complianceSummary?.byType &&
+                       Object.entries(complianceSummary.byType).slice(0, 3).map(([key, item]) => (
+                         <div key={key} className="flex justify-between items-center">
+                           <span>{key.toUpperCase()}</span>
+                           <span className="font-bold text-white">{formatCurrency(item.total)}</span>
+                         </div>
+                       ))}
+                     {!complianceSummary?.byType && (
+                       <div className="text-[11px] text-blue-100">Breakdown available once compliance dashboard loads.</div>
                      )}
                    </div>
                  </div>
@@ -557,7 +410,7 @@ export default function ComplianceRemittancePage() {
                  <div className="relative z-10 mt-6 pt-5 border-t border-white/20 flex justify-between items-center">
                    <span className="text-[13px] font-semibold text-blue-100">Total Remittance</span>
                    <span className="text-[18px] font-black text-white tracking-tight">
-                     {statutory ? formatCurrency(statutory.hqRemittanceAmount) : "—"}
+                     {complianceDashboard ? formatCurrency(complianceDashboard.totalLiability) : "—"}
                    </span>
                  </div>
                  

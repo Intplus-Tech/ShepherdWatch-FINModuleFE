@@ -32,53 +32,23 @@ type UrgentAlert = {
   daysOverdue: number
 }
 
-type EventColorType = "blue-light" | "blue-solid" | "yellow" | "green"
+type EventColorType = "blue-light" | "blue-solid" | "yellow" | "green" | "red"
 type CalendarEvent = { title: string; sub?: string; colorType: EventColorType }
 
-const calendarDays: { label: string; isToday?: boolean; events: CalendarEvent[] }[] = [
-  { label: "Mon 15", events: [{ title: "Sound System", sub: "Check (2 Hours)", colorType: "blue-light" }] },
-  { label: "Tue 16", events: [{ title: "Backup Test", sub: "Facility Server", colorType: "blue-light" }] },
-  { label: "Wed 17", events: [{ title: "HVAC Service", sub: "Tunde Electronics", colorType: "blue-solid" }] },
-  { label: "Thu 18", events: [{ title: "Projector Swap", sub: "Main Hall", colorType: "blue-light" }] },
-  { label: "Fri 19", isToday: true, events: [{ title: "Filter Replace", sub: "AC 1 (Hall A)", colorType: "blue-solid" }] },
-  { label: "Sat 20", events: [{ title: "Landscape Trim", sub: "Front Yard", colorType: "yellow" }] },
-  { label: "Sun 21", events: [{ title: "Auto Doors", sub: "Test Sensors", colorType: "green" }] },
-]
-
-const completedMaintenance = [
-  {
-    date: "Jan 10, 2024",
-    asset: "Toyota Coaster Bus (LAG-012)",
-    type: "Engine Service & Oil Change",
-    technician: "Bob Afolayan",
-    cost: "₦150,000",
-    status: "Verified",
-  },
-  {
-    date: "Jan 11, 2024",
-    asset: "Sanctuary Sound Mixer",
-    type: "Fader Replacement (Fader 4)",
-    technician: "Tunde Electronics",
-    cost: "₦50,000",
-    status: "Verified",
-  },
-  {
-    date: "Jan 12, 2024",
-    asset: "Broadcast Camera",
-    type: "Seal & Gasket Replacement",
-    technician: "Grace Chapel AV Team",
-    cost: "₦25,000",
-    status: "Verified",
-  },
-  {
-    date: "Jan 13, 2024",
-    asset: "Auditorium AC (Unit 2A)",
-    type: "Freon Refill & Coil Wash",
-    technician: "Kool Masters Ltd",
-    cost: "₦85,000",
-    status: "Verified",
-  },
-]
+type MaintenanceRecord = {
+  _id?: string
+  id?: string
+  assetId?: string | { _id?: string; name?: string }
+  branchId?: string | { _id?: string; name?: string }
+  serviceType?: string
+  description?: string
+  provider?: string
+  cost?: number
+  currency?: string
+  status?: string
+  scheduledDate?: string
+  completedDate?: string
+}
 
 export default function Page() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
@@ -88,19 +58,18 @@ export default function Page() {
   const [alertsError, setAlertsError] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [historyRecords, setHistoryRecords] = useState<MaintenanceRecord[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError, setHistoryError] = useState<string | null>(null)
+  const [historySummary, setHistorySummary] = useState<{ totalCost: number; count: number } | null>(null)
+  const [scheduleRecords, setScheduleRecords] = useState<MaintenanceRecord[]>([])
+  const [scheduleLoading, setScheduleLoading] = useState(false)
+  const [scheduleError, setScheduleError] = useState<string | null>(null)
 
-  const tenantId = useMemo(
-    () => user?.tenantId ?? user?.tenant?.id ?? "",
+  const branchId = useMemo(
+    () => user?.branchId ?? user?.branch?.id ?? "",
     [user]
   )
-
-  const getCsrfToken = () => {
-    if (typeof document === "undefined") return ""
-    const match = document.cookie
-      .split("; ")
-      .find((cookie) => cookie.startsWith("csrf_token="))
-    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
-  }
 
   const handleDeleteTask = async (taskId: string) => {
     if (!taskId) return
@@ -108,10 +77,8 @@ export default function Page() {
     setDeleteError(null)
 
     try {
-      const csrfToken = getCsrfToken()
       const response = await fetch(`/api/core/financial/maintenance-tasks/${taskId}`, {
         method: "DELETE",
-        headers: { "x-csrf-token": csrfToken },
         credentials: "include",
       })
       const payload = await response.json().catch(() => null)
@@ -129,41 +96,108 @@ export default function Page() {
   useEffect(() => {
     let isMounted = true
 
-    const fetchOverdueTasks = async () => {
-      if (!tenantId) {
+    const fetchHistory = async () => {
+      if (!branchId) {
+        setHistoryRecords([])
+        setHistoryError("Branch is required to load maintenance history.")
+        return
+      }
+
+      try {
+        setHistoryLoading(true)
+        setHistoryError(null)
+        const end = new Date()
+        const start = new Date(end)
+        start.setMonth(end.getMonth() - 11)
+        start.setDate(1)
+
+        const params = new URLSearchParams({
+          branchId,
+          startDate: formatDateParam(start),
+          endDate: formatDateParam(end),
+          page: "1",
+          limit: "50",
+        })
+
+        const response = await fetch(`/api/maintenance/history?${params.toString()}`, {
+          method: "GET",
+          credentials: "include",
+        })
+        const payload = await response.json().catch(() => null)
+        if (!response.ok) {
+          throw new Error(payload?.message ?? "Unable to load maintenance history.")
+        }
+
+        const payloadData = payload?.data ?? {}
+        const records = payloadData?.data ?? payloadData?.items ?? payload?.data ?? []
+        const list = Array.isArray(records) ? records : []
+        const summary = payloadData?.summary ?? payload?.summary ?? null
+
+        if (isMounted) {
+          setHistoryRecords(list)
+          setHistorySummary(
+            summary && typeof summary?.totalCost === "number" && typeof summary?.count === "number"
+              ? summary
+              : null
+          )
+        }
+      } catch (error) {
+        if (isMounted) {
+          setHistoryRecords([])
+          setHistorySummary(null)
+          setHistoryError(error instanceof Error ? error.message : "Unable to load maintenance history.")
+        }
+      } finally {
+        if (isMounted) {
+          setHistoryLoading(false)
+        }
+      }
+    }
+
+    fetchHistory()
+
+    return () => {
+      isMounted = false
+    }
+  }, [branchId])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchAlerts = async () => {
+      if (!branchId) {
         setUrgentAlerts([])
-        setAlertsError("Tenant is required to load maintenance alerts.")
+        setAlertsError("Branch is required to load maintenance alerts.")
         return
       }
 
       try {
         setAlertsLoading(true)
         setAlertsError(null)
-        const today = new Date()
-        const currentDate = today.toISOString().split("T")[0]
-        const params = new URLSearchParams({
-          scheduledBefore: currentDate,
-          status: "SCHEDULED",
-          tenantId,
-        })
+        const params = new URLSearchParams({ branchId })
 
-        const response = await fetch(`/api/core/financial/maintenance-tasks?${params.toString()}`, {
+        const response = await fetch(`/api/maintenance/alerts?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         })
         const payload = await response.json().catch(() => null)
         if (!response.ok) {
-          throw new Error(payload?.message ?? "Unable to load maintenance tasks.")
+          throw new Error(payload?.message ?? "Unable to load maintenance alerts.")
         }
 
-        const tasks = payload?.data?.content ?? payload?.data ?? payload?.content ?? []
-        const mapped = (Array.isArray(tasks) ? tasks : []).map((task, index) => {
-          const scheduled = task?.scheduledDate ? new Date(task.scheduledDate) : null
-          const diffDays = scheduled ? Math.max(0, Math.floor((today.getTime() - scheduled.getTime()) / 86400000)) : 0
+        const records = payload?.data ?? payload?.items ?? []
+        const list = Array.isArray(records) ? records : []
+        const today = new Date()
+        const mapped = list.map((record: MaintenanceRecord, index: number) => {
+          const scheduled = record?.scheduledDate ? new Date(record.scheduledDate) : null
+          const diffDays = scheduled
+            ? Math.max(0, Math.floor((today.getTime() - scheduled.getTime()) / 86400000))
+            : 0
+          const { assetName, branchName } = getRecordNames(record)
           return {
-            id: String(task?.id ?? task?.maintenanceTaskId ?? task?.taskId ?? task?.assetId ?? `task-${index}`),
-            title: task?.assetName ?? task?.asset?.description ?? task?.description ?? "Maintenance Task",
-            meta: task?.notes ?? "Overdue scheduled maintenance",
+            id: String(record?._id ?? record?.id ?? `alert-${index}`),
+            title: assetName ?? record?.description ?? "Maintenance Alert",
+            meta: branchName ?? record?.serviceType ?? "Overdue maintenance",
             daysOverdue: diffDays,
           } as UrgentAlert
         })
@@ -174,7 +208,7 @@ export default function Page() {
       } catch (error) {
         if (isMounted) {
           setUrgentAlerts([])
-          setAlertsError(error instanceof Error ? error.message : "Unable to load maintenance tasks.")
+          setAlertsError(error instanceof Error ? error.message : "Unable to load maintenance alerts.")
         }
       } finally {
         if (isMounted) {
@@ -183,12 +217,19 @@ export default function Page() {
       }
     }
 
-    fetchOverdueTasks()
+    fetchAlerts()
 
     return () => {
       isMounted = false
     }
-  }, [tenantId])
+  }, [branchId])
+
+  const formatDateParam = (value: Date) => {
+    const year = value.getFullYear()
+    const month = String(value.getMonth() + 1).padStart(2, "0")
+    const day = String(value.getDate()).padStart(2, "0")
+    return `${year}-${month}-${day}`
+  }
 
   const getEventStyles = (colorType: EventColorType) => {
     switch (colorType) {
@@ -200,10 +241,169 @@ export default function Page() {
         return "bg-[#FEF9C3] border border-[#FEF08A] text-[#D97706]"
       case "green":
         return "bg-[#F0FDF4] border border-[#BBF7D0] text-[#16A34A]"
+      case "red":
+        return "bg-[#FEF2F2] border border-[#FECACA] text-[#DC2626]"
       default:
         return "bg-gray-100 text-gray-800"
     }
   }
+
+  const formatCurrency = (value: number, currency?: string) => {
+    const cur = currency && ["NGN", "USD", "GBP", "EUR"].includes(currency) ? currency : "NGN"
+    return new Intl.NumberFormat("en-NG", {
+      style: "currency",
+      currency: cur,
+      maximumFractionDigits: 0,
+    }).format(value)
+  }
+
+  const getRecordNames = (record: MaintenanceRecord) => {
+    const assetName = typeof record.assetId === "object" ? record.assetId?.name : undefined
+    const branchName = typeof record.branchId === "object" ? record.branchId?.name : undefined
+    return { assetName, branchName }
+  }
+
+  const weekStart = useMemo(() => {
+    const today = new Date()
+    const day = today.getDay()
+    const diff = (day + 6) % 7
+    const start = new Date(today)
+    start.setDate(today.getDate() - diff)
+    start.setHours(0, 0, 0, 0)
+    return start
+  }, [])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchSchedule = async () => {
+      if (!branchId) {
+        setScheduleRecords([])
+        setScheduleError("Branch is required to load maintenance schedule.")
+        return
+      }
+
+      try {
+        setScheduleLoading(true)
+        setScheduleError(null)
+
+        const end = new Date(weekStart)
+        end.setDate(weekStart.getDate() + 6)
+
+        const params = new URLSearchParams({
+          branchId,
+          startDate: formatDateParam(weekStart),
+          endDate: formatDateParam(end),
+        })
+
+        const response = await fetch(`/api/maintenance/schedule?${params.toString()}`, {
+          method: "GET",
+          credentials: "include",
+        })
+        const payload = await response.json().catch(() => null)
+        if (!response.ok) {
+          throw new Error(payload?.message ?? "Unable to load maintenance schedule.")
+        }
+
+        const records = payload?.data ?? payload?.items ?? []
+        const list = Array.isArray(records) ? records : []
+
+        if (isMounted) {
+          setScheduleRecords(list)
+        }
+      } catch (error) {
+        if (isMounted) {
+          setScheduleRecords([])
+          setScheduleError(error instanceof Error ? error.message : "Unable to load maintenance schedule.")
+        }
+      } finally {
+        if (isMounted) {
+          setScheduleLoading(false)
+        }
+      }
+    }
+
+    fetchSchedule()
+
+    return () => {
+      isMounted = false
+    }
+  }, [branchId, weekStart])
+
+  const calendarDays = useMemo(() => {
+    const days = Array.from({ length: 7 }).map((_, index) => {
+      const date = new Date(weekStart)
+      date.setDate(weekStart.getDate() + index)
+      const label = date.toLocaleDateString("en-GB", {
+        weekday: "short",
+        day: "2-digit",
+      })
+      const isToday = new Date().toDateString() === date.toDateString()
+      const events: CalendarEvent[] = scheduleRecords
+        .filter((record) => {
+          if (!record?.scheduledDate) return false
+          const recordDate = new Date(record.scheduledDate)
+          return recordDate.toDateString() === date.toDateString()
+        })
+        .map((record) => {
+          const status = String(record?.status ?? "").toLowerCase()
+          const colorType: EventColorType =
+            status === "completed"
+              ? "green"
+              : status === "overdue"
+                ? "red"
+                : status === "in_progress"
+                  ? "blue-solid"
+                  : "blue-light"
+          const { assetName, branchName } = getRecordNames(record)
+          return {
+            title: assetName ?? record?.description ?? "Maintenance Task",
+            sub: branchName ?? record?.provider ?? record?.serviceType,
+            colorType,
+          }
+        })
+      return { label, isToday, events }
+    })
+    return days
+  }, [scheduleRecords, weekStart])
+
+  const weekRangeLabel = useMemo(() => {
+    const end = new Date(weekStart)
+    end.setDate(weekStart.getDate() + 6)
+    return `Week ${weekStart.toLocaleDateString("en-GB", { month: "short", day: "2-digit" })} - ${end.toLocaleDateString("en-GB", { month: "short", day: "2-digit" })}`
+  }, [weekStart])
+
+  const scheduleHeaderLabel = useMemo(() => {
+    const current = weekStart.toLocaleDateString("en-GB", { month: "long", year: "numeric" })
+    return `${current} Schedule`
+  }, [weekStart])
+
+  const completedMaintenance = useMemo(() => {
+    return historyRecords.map((record) => ({
+      date: record?.completedDate
+        ? new Date(record.completedDate).toLocaleDateString("en-GB", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+          })
+        : "N/A",
+      asset: record?.description ?? "Maintenance Task",
+      type: record?.serviceType ?? "Service",
+      technician: record?.provider ?? "N/A",
+      cost:
+        record?.cost !== undefined && record?.cost !== null
+          ? formatCurrency(record.cost, record.currency)
+          : "N/A",
+      status: record?.status ? String(record.status).toUpperCase() : "COMPLETED",
+    }))
+  }, [historyRecords])
+
+  const completedTotal = useMemo(() => {
+    if (historySummary?.totalCost) {
+      return historySummary.totalCost
+    }
+    return historyRecords.reduce((sum, record) => sum + (Number(record?.cost) || 0), 0)
+  }, [historyRecords, historySummary])
 
   return (
     <div className={`flex flex-col xl:flex-row min-h-screen bg-[#F8FAFC] relative w-full ${inter.className} antialiased`}>
@@ -405,7 +605,7 @@ export default function Page() {
                     <div className="h-[18px] w-[18px] rounded-[4px] border-[1.5px] border-[#3B5BDB] flex items-center justify-center shrink-0">
                       <div className="h-2 w-2 rounded-sm bg-[#3B5BDB]"></div>
                     </div>
-                    <h2 className="text-[16px] font-[800] text-[#111827] tracking-tight">January 2024 Schedule</h2>
+                    <h2 className="text-[16px] font-[800] text-[#111827] tracking-tight">{scheduleHeaderLabel}</h2>
                   </div>
                   
                   <div className="flex items-center gap-3.5 sm:gap-5 flex-wrap">
@@ -429,7 +629,7 @@ export default function Page() {
                   <button className="h-8 w-8 rounded-full flex items-center justify-center text-[#6B7280] hover:bg-gray-100 transition-colors">
                     <ChevronLeft className="h-5 w-5" />
                   </button>
-                  <div className="text-[13.5px] font-[800] text-[#111827] tracking-tight">Week 3 (Jan 15 - Jan 21)</div>
+                  <div className="text-[13.5px] font-[800] text-[#111827] tracking-tight">{weekRangeLabel}</div>
                   <button className="h-8 w-8 rounded-full flex items-center justify-center text-[#6B7280] hover:bg-gray-100 transition-colors">
                     <ChevronRight className="h-5 w-5" />
                   </button>
@@ -448,7 +648,13 @@ export default function Page() {
                         {day.label} {day.isToday && <span className="ml-1">(Today)</span>}
                       </div>
                       <div className="mt-3 space-y-2">
-                        {day.events.length === 0 && (
+                        {scheduleLoading && (
+                          <div className="text-[12px] text-[#9CA3AF] font-medium">Loading schedule...</div>
+                        )}
+                        {!scheduleLoading && scheduleError && (
+                          <div className="text-[12px] text-[#EF4444] font-medium">{scheduleError}</div>
+                        )}
+                        {!scheduleLoading && !scheduleError && day.events.length === 0 && (
                           <div className="text-[12px] text-[#9CA3AF] font-medium">No scheduled task</div>
                         )}
                         {day.events.map((ev, eIdx) => {
@@ -506,7 +712,7 @@ export default function Page() {
             {/* Bottom Table Section */}
             <div className="rounded-[16px] bg-white border border-[#EEF1F6] shadow-[0_2px_10px_rgba(0,0,0,0.02)] overflow-hidden">
               <div className="p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#EEF1F6]">
-                <h2 className="text-[17px] font-[800] text-[#111827] tracking-tight">Completed Maintenance (Jan 5 - 20)</h2>
+                <h2 className="text-[17px] font-[800] text-[#111827] tracking-tight">Completed Maintenance</h2>
                 <button className="text-[13px] font-bold text-[#2563EB] hover:text-[#1D4ED8] transition-colors leading-none tracking-tight">
                   View All History
                 </button>
@@ -514,6 +720,15 @@ export default function Page() {
 
               {/* Mobile Cards */}
               <div className="lg:hidden divide-y divide-[#EEF1F6]/70">
+                {historyLoading && (
+                  <div className="p-5 sm:p-6 text-[12px] font-medium text-[#6B7280]">Loading maintenance history...</div>
+                )}
+                {!historyLoading && historyError && (
+                  <div className="p-5 sm:p-6 text-[12px] font-medium text-[#EF4444]">{historyError}</div>
+                )}
+                {!historyLoading && !historyError && completedMaintenance.length === 0 && (
+                  <div className="p-5 sm:p-6 text-[12px] font-medium text-[#6B7280]">No completed maintenance yet.</div>
+                )}
                 {completedMaintenance.map((row, idx) => (
                   <div key={idx} className="p-5 sm:p-6">
                     <div className="flex items-start justify-between gap-3">
@@ -535,7 +750,9 @@ export default function Page() {
 
                 <div className="p-5 sm:p-6 bg-[#F8FAFC]">
                   <div className="text-[12px] font-[800] text-[#111827] tracking-tight">Total Maintenance Cost</div>
-                  <div className="mt-2 text-[15px] font-[900] text-[#2563EB]">â‚¦ 305,000.00</div>
+                  <div className="mt-2 text-[15px] font-[900] text-[#2563EB]">
+                    {formatCurrency(completedTotal, "NGN")}
+                  </div>
                 </div>
               </div>
 
@@ -548,11 +765,32 @@ export default function Page() {
                       <th className="py-5 px-6 sm:px-8 text-[11px] font-[800] text-[#9CA3AF] uppercase tracking-widest w-[25%]">ASSET</th>
                       <th className="py-5 px-6 sm:px-8 text-[11px] font-[800] text-[#9CA3AF] uppercase tracking-widest">SERVICE TYPE</th>
                       <th className="py-5 px-6 sm:px-8 text-[11px] font-[800] text-[#9CA3AF] uppercase tracking-widest">TECHNICIAN / PROVIDER</th>
-                      <th className="py-5 px-6 sm:px-8 text-[11px] font-[800] text-[#9CA3AF] uppercase tracking-widest text-right">COST (₦)</th>
+                      <th className="py-5 px-6 sm:px-8 text-[11px] font-[800] text-[#9CA3AF] uppercase tracking-widest text-right">COST</th>
                       <th className="py-5 px-6 sm:px-8 text-[11px] font-[800] text-[#9CA3AF] uppercase tracking-widest w-[12%] text-center">STATUS</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#EEF1F6]/70">
+                    {historyLoading && (
+                      <tr>
+                        <td colSpan={6} className="py-6 px-6 sm:px-8 text-[12px] font-medium text-[#6B7280]">
+                          Loading maintenance history...
+                        </td>
+                      </tr>
+                    )}
+                    {!historyLoading && historyError && (
+                      <tr>
+                        <td colSpan={6} className="py-6 px-6 sm:px-8 text-[12px] font-medium text-[#EF4444]">
+                          {historyError}
+                        </td>
+                      </tr>
+                    )}
+                    {!historyLoading && !historyError && completedMaintenance.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="py-6 px-6 sm:px-8 text-[12px] font-medium text-[#6B7280]">
+                          No completed maintenance yet.
+                        </td>
+                      </tr>
+                    )}
                     {completedMaintenance.map((row, idx) => (
                       <tr key={idx} className="hover:bg-[#F8FAFC] transition-colors">
                         <td className="py-5 px-6 sm:px-8">
@@ -584,7 +822,9 @@ export default function Page() {
                         <span className="text-[13px] font-[800] text-[#111827] tracking-tight">Total Maintenance Cost:</span>
                       </td>
                       <td colSpan={2} className="py-6 px-6 sm:px-8">
-                        <span className="text-[15px] font-[900] text-[#2563EB]">₦ 305,000.00</span>
+                        <span className="text-[15px] font-[900] text-[#2563EB]">
+                          {formatCurrency(completedTotal, "NGN")}
+                        </span>
                       </td>
                     </tr>
                   </tbody>
@@ -598,3 +838,5 @@ export default function Page() {
     </div>
   )
 }
+
+

@@ -16,7 +16,34 @@ function buildBackendRequisitionsUrl(): string {
   if (process.env.NODE_ENV === "production" && baseUrl.startsWith("http://")) {
     throw new Error("BACKEND_API_URL must use https in production")
   }
-  return `${baseUrl.replace(/\/+$/, "")}/api/v1/core/financial/requisitions`
+  return `${baseUrl.replace(/\/+$/, "")}/api/v1/requisitions`
+}
+
+function resolveIsoDate(value: unknown): string {
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
+    return value.trim()
+  }
+  return new Date().toISOString().slice(0, 10)
+}
+
+function normalizeStatus(value: string | null): string | null {
+  if (!value) return null
+  const normalized = value.trim().toLowerCase()
+  const map: Record<string, string> = {
+    draft: "draft",
+    pending_pastor: "pending_pastor",
+    pending_accountant: "pending_pastor",
+    pending_director: "pending_director",
+    approved: "approved",
+    declined: "declined",
+    paid: "paid",
+    pendingpastor: "pending_pastor",
+    pendingaccountant: "pending_pastor",
+    pendingdirector: "pending_director",
+    pending_branch_pastor: "pending_pastor",
+    pendingbranchpastor: "pending_pastor",
+  }
+  return map[normalized] ?? null
 }
 
 export async function POST(req: NextRequest) {
@@ -52,6 +79,30 @@ export async function POST(req: NextRequest) {
     const backendUrl = buildBackendRequisitionsUrl()
     const body = await req.json().catch(() => null)
 
+    const branchId = String(body?.branchId ?? body?.tenantId ?? "").trim()
+    const budgetHeadId = String(body?.budgetHeadId ?? body?.coaId ?? "").trim()
+    const justification = String(body?.justification ?? "").trim()
+    const amount = Number(body?.amount ?? 0)
+    const currency =
+      typeof body?.currency === "string" && ["NGN", "USD", "GBP", "EUR"].includes(body.currency)
+        ? body.currency
+        : "NGN"
+    const requiredDate = resolveIsoDate(body?.requiredDate)
+
+    if (!branchId || !budgetHeadId || !justification || !Number.isFinite(amount) || amount <= 0) {
+      return applyCors(
+        NextResponse.json(
+          {
+            success: false,
+            message:
+              "Validation failed: branchId, budgetHeadId, amount, justification, and requiredDate are required.",
+          },
+          { status: 400 }
+        ),
+        req
+      )
+    }
+
     const backendResponse = await fetch(backendUrl, {
       method: "POST",
       headers: {
@@ -59,7 +110,14 @@ export async function POST(req: NextRequest) {
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: JSON.stringify(body ?? {}),
+      body: JSON.stringify({
+        branchId,
+        budgetHeadId,
+        amount,
+        currency,
+        justification,
+        requiredDate,
+      }),
       cache: "no-store",
     })
 
@@ -119,10 +177,32 @@ export async function GET(req: NextRequest) {
       throw new Error("BACKEND_API_URL must use https in production")
     }
 
-    const url = new URL(`${baseUrl.replace(/\/+$/, "")}/api/v1/core/financial/requisitions`)
-    if (req.nextUrl.search) {
-      url.search = req.nextUrl.search
-    }
+    const url = new URL(`${baseUrl.replace(/\/+$/, "")}/api/v1/requisitions`)
+    const query = req.nextUrl.searchParams
+
+    const page = query.get("page")
+    const limit = query.get("limit")
+    const branchId = query.get("branchId") ?? query.get("tenantId")
+    const status = normalizeStatus(query.get("status") ?? query.get("currentStatus"))
+    const budgetHeadId = query.get("budgetHeadId") ?? query.get("coaId")
+    const requestedBy = query.get("requestedBy")
+    const startDate = query.get("startDate")
+    const endDate = query.get("endDate")
+    const search = query.get("search")
+    const sort = query.get("sort")
+    const order = query.get("order")
+
+    if (page) url.searchParams.set("page", page)
+    if (limit) url.searchParams.set("limit", limit)
+    if (branchId) url.searchParams.set("branchId", branchId)
+    if (status) url.searchParams.set("status", status)
+    if (budgetHeadId) url.searchParams.set("budgetHeadId", budgetHeadId)
+    if (requestedBy) url.searchParams.set("requestedBy", requestedBy)
+    if (startDate) url.searchParams.set("startDate", startDate)
+    if (endDate) url.searchParams.set("endDate", endDate)
+    if (search) url.searchParams.set("search", search)
+    if (sort) url.searchParams.set("sort", sort)
+    if (order) url.searchParams.set("order", order)
 
     const backendResponse = await fetch(url.toString(), {
       method: "GET",

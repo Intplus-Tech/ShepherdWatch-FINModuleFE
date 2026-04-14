@@ -15,7 +15,7 @@ function buildBackendUrl(search: string): string {
   if (process.env.NODE_ENV === "production" && baseUrl.startsWith("http://")) {
     throw new Error("BACKEND_API_URL must use https in production")
   }
-  const url = new URL(`${baseUrl.replace(/\\/+$/, "")}/api/v1/core/financial/compliance/summary`)
+  const url = new URL(`${baseUrl.replace(/\/+$/, "")}/api/v1/compliance/summary`)
   if (search) {
     url.search = search
   }

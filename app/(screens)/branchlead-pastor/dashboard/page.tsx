@@ -6,30 +6,30 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
   BadgeCheck,
-  Banknote,
   Bell,
   Building2,
   Calendar,
   ChevronDown,
-  Dot,
   FileText,
   FolderKanban,
   HelpCircle,
   LayoutDashboard,
-  Package,
-  PieChart,
   PiggyBank,
   Search,
   Settings,
   ShieldAlert,
   ShieldCheck,
   TrendingUp,
-  TrendingDown,
   TriangleAlert,
   Wallet,
   Zap,
 } from "lucide-react"
-import { useTransactions } from "@/components/hooks/useTransactions"
+import { useAuth } from "@/components/auth/AuthProvider"
+import { useDashboardOverview } from "@/components/hooks/useDashboardOverview"
+import { useEffect } from "react"
+import { useExpenseDistribution } from "@/components/hooks/useExpenseDistribution"
+import { useFinancialCalendar } from "@/components/hooks/useFinancialCalendar"
+import { useRecentDashboardTransactions } from "@/components/hooks/useRecentDashboardTransactions"
 
 const approvals = [
   {
@@ -64,7 +64,20 @@ const approvals = [
 ]
 
 export default function Page() {
-  const { transactions: rawTransactions, loading: txLoading, error: txError } = useTransactions()
+  const { user } = useAuth()
+  const branchId = user?.tenantId ?? user?.tenant?.id ?? ""
+  
+  const { transactions: rawTransactions, loading: txLoading, error: txError } = useRecentDashboardTransactions({
+    branchId,
+    limit: 10,
+  })
+  const { overview, fetchOverview, loading: overviewLoading } = useDashboardOverview()
+  const { items: expenseItems, loading: expenseLoading } = useExpenseDistribution({ branchId })
+  const { events: financialEvents, loading: calendarLoading, error: calendarError } = useFinancialCalendar({ branchId })
+
+  useEffect(() => {
+    if (branchId) fetchOverview({ branchId })
+  }, [branchId, fetchOverview])
 
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat("en-NG", {
@@ -84,10 +97,25 @@ export default function Page() {
     })
   }
 
+  const formatCalendarBadge = (value?: string) => {
+    if (!value) return { month: "--", day: "--" }
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return { month: "--", day: "--" }
+    return {
+      month: date.toLocaleDateString("en-GB", { month: "short" }).toUpperCase(),
+      day: date.toLocaleDateString("en-GB", { day: "2-digit" }),
+    }
+  }
+
+  const formatCalendarMeta = (amount: number, status?: string) => {
+    const state = (status ?? "pending").replace(/_/g, " ")
+    return `${formatCurrency(amount || 0)} • ${state}`
+  }
+
   const transactions = useMemo(() => {
     return rawTransactions.map((tx, idx) => {
-      const flowType = (tx.flowType ?? "").toUpperCase()
-      const isPositive = flowType === "INFLOW" || tx.amount >= 0
+      const flowType = (tx.flowType ?? tx.transactionType ?? "").toUpperCase()
+      const isPositive = flowType === "INFLOW" || flowType === "INCOME" || tx.amount >= 0
       const status = (tx.status ?? "UNVERIFIED").toUpperCase()
       const statusTone = status.includes("VERIFIED")
         ? "bg-emerald-50 text-emerald-600"
@@ -98,9 +126,12 @@ export default function Page() {
 
       return {
         id: tx.id ?? `tx-${idx}`,
-        date: formatDateLabel(tx.date),
+        date: formatDateLabel(tx.transactionDate),
         desc: tx.description || "Transaction",
-        category: tx.category || tx.coaName || "General",
+        category:
+          tx.accountName ||
+          `${tx.accountCode ? `${tx.accountCode} ` : ""}${tx.transactionType || ""}`.trim() ||
+          "General",
         amount: `${isPositive ? "+" : "-"}${formatCurrency(Math.abs(tx.amount))}`,
         status,
         statusTone,
@@ -108,6 +139,65 @@ export default function Page() {
       }
     })
   }, [rawTransactions])
+
+  const expenseChart = useMemo(() => {
+    const grouped = new Map<string, number>()
+    for (const item of expenseItems) {
+      const key = String(item.category || "other").toLowerCase()
+      grouped.set(key, (grouped.get(key) ?? 0) + Number(item.percentage || 0))
+    }
+    const sorted = Array.from(grouped.entries())
+      .map(([category, percentage]) => ({ category, percentage }))
+      .sort((a, b) => b.percentage - a.percentage)
+      .slice(0, 3)
+
+    const colorMap: Record<string, string> = {
+      operational: "#3B5BDB",
+      programs: "#60A5FA",
+      capital: "#CBD5E1",
+      other: "#94A3B8",
+    }
+    const defaultNames: Record<string, string> = {
+      operational: "Operational",
+      programs: "Programs",
+      capital: "Capital",
+      other: "Other",
+    }
+
+    const segments = sorted.map((item) => ({
+      label: defaultNames[item.category] ?? item.category,
+      color: colorMap[item.category] ?? colorMap.other,
+      percentage: Math.max(0, item.percentage),
+    }))
+
+    if (segments.length === 0) {
+      segments.push(
+        { label: "Operational", color: colorMap.operational, percentage: 0 },
+        { label: "Programs", color: colorMap.programs, percentage: 0 },
+        { label: "Capital", color: colorMap.capital, percentage: 0 }
+      )
+    }
+
+    const conicResult = segments.reduce(
+      (acc, segment) => {
+        const end = Math.min(100, acc.cursor + segment.percentage)
+        return {
+          cursor: end,
+          stops: [...acc.stops, `${segment.color} ${acc.cursor}% ${end}%`],
+        }
+      },
+      { cursor: 0, stops: [] as string[] }
+    )
+    const conicStops =
+      conicResult.cursor < 100
+        ? [...conicResult.stops, `#E5E7EB ${conicResult.cursor}% 100%`]
+        : conicResult.stops
+
+    return {
+      segments,
+      background: `conic-gradient(${conicStops.join(",")})`,
+    }
+  }, [expenseItems])
   return (
     <div className="flex min-h-screen bg-[#F7F8FC] font-sans">
       <aside
@@ -218,10 +308,12 @@ export default function Page() {
                 +12% vs LM
               </div>
             </div>
-            <div className="text-[12px] text-[#6B7280]">Monthly Income</div>
+            <div className="text-[12px] text-[#6B7280]">Total Monthly Income</div>
             <div className="mt-1 flex items-baseline gap-2">
-              <span className="text-[20px] font-bold text-[#111827]">₦2.45M</span>
-              <span className="text-[11px] font-medium text-[#9CA3AF]">/ ₦3M Target</span>
+              <span className="text-[20px] font-bold text-[#111827]">
+                {overviewLoading ? "Loading..." : formatCurrency(overview?.totalIncome ?? 0)}
+              </span>
+              <span className="text-[11px] font-medium text-[#9CA3AF]">/ Dynamic Target</span>
             </div>
 
             <div className="mt-auto pt-4 space-y-2">
@@ -250,7 +342,10 @@ export default function Page() {
                 Caution
               </div>
             </div>
-            <div className="text-[12px] text-[#6B7280]">Budget Utilization</div>
+            <div className="text-[12px] text-[#6B7280]">Active Budgets</div>
+            <div className="mt-1 text-[20px] font-bold text-[#111827] text-amber-600">
+               {overviewLoading ? "Loading..." : overview?.activeBudgets ?? 0}
+            </div>
 
             <div className="mt-auto pt-3 space-y-3">
               <div>
@@ -297,10 +392,11 @@ export default function Page() {
                 3 High Priority
               </div>
             </div>
-            <div className="text-[12px] text-[#6B7280]">Approval Queue</div>
+            <div className="text-[12px] text-[#6B7280]">Pending Transactions</div>
             <div className="mt-1 flex items-baseline gap-2">
-              <span className="text-[20px] font-bold text-[#111827]">₦320k</span>
-              <span className="text-[11px] font-medium text-[#9CA3AF]">6 Total</span>
+              <span className="text-[20px] font-bold text-[#111827]">
+                 {overviewLoading ? "..." : overview?.pendingTransactions ?? 0} Action Items
+              </span>
             </div>
             <div className="mt-2 text-[11px] text-[#6B7280]">
               Items for 2nd Approval/Review
@@ -327,8 +423,10 @@ export default function Page() {
                 </div>
               </div>
             </div>
-            <div className="text-[12px] text-[#6B7280]">Main (Z-Bank)</div>
-            <div className="mt-1 text-[20px] font-bold text-[#111827]">₦4.25M</div>
+            <div className="text-[12px] text-[#6B7280]">Net Position</div>
+            <div className="mt-1 text-[20px] font-bold text-[#111827]">
+               {overviewLoading ? "Loading..." : formatCurrency(overview?.netPosition ?? 0)}
+            </div>
 
             <div className="mt-auto pt-2 space-y-3">
               <div className="flex items-center justify-between text-[11px]">
@@ -384,33 +482,40 @@ export default function Page() {
             <div className="text-[14px] font-semibold text-[#111827]">Expense Distribution</div>
             <div className="mt-4 flex items-center justify-center flex-1">
               <div className="relative h-[160px] w-[160px] rounded-full">
-                <div className="absolute inset-0 rounded-full rotate-[-210deg] bg-[conic-gradient(#3B5BDB_0_78%,#60A5FA_78%_100%)]" />
+                <div
+                  className="absolute inset-0 rounded-full rotate-[-210deg]"
+                  style={{ background: expenseChart.background }}
+                />
                 <div className="absolute inset-[18px] rounded-full bg-white" />
                 <div className="absolute inset-x-0 inset-y-0 flex flex-col items-center justify-center">
-                  <div className="text-[20px] font-bold text-[#111827]">₦1.8M</div>
-                  <div className="text-[10px] font-medium text-[#9CA3AF] mt-0.5">SPENT</div>
+                  <div className="text-[16px] font-bold text-[#111827]">
+                    {overviewLoading ? "Loading..." : formatCurrency(overview?.totalExpenses ?? 0)}
+                  </div>
+                  <div className="text-[10px] font-medium text-[#9CA3AF] mt-0.5">
+                    {expenseLoading ? "Updating..." : "TOTAL EXPENSES"}
+                  </div>
                 </div>
               </div>
             </div>
             <div className="mt-5 space-y-2.5 text-[12px] text-[#6B7280]">
-              <div className="flex items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <span className="shrink-0 bg-[#3B5BDB]" style={{ width: "7.51px", height: "7.51px", borderRadius: "9382.81px", opacity: 1 }} /> Operational
-                </span>
-                <span className="font-medium text-[#111827]">78%</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <span className="shrink-0 bg-[#60A5FA]" style={{ width: "7.51px", height: "7.51px", borderRadius: "9382.81px", opacity: 1 }} /> Programs
-                </span>
-                <span className="font-medium text-[#111827]">15%</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <span className="shrink-0 bg-[#CBD5E1]" style={{ width: "7.51px", height: "7.51px", borderRadius: "9382.81px", opacity: 1 }} /> Capital
-                </span>
-                <span className="font-medium text-[#111827]">7%</span>
-              </div>
+              {expenseChart.segments.map((segment) => (
+                <div key={segment.label} className="flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <span
+                      className="shrink-0"
+                      style={{
+                        backgroundColor: segment.color,
+                        width: "7.51px",
+                        height: "7.51px",
+                        borderRadius: "9382.81px",
+                        opacity: 1,
+                      }}
+                    />
+                    {segment.label}
+                  </span>
+                  <span className="font-medium text-[#111827]">{segment.percentage.toFixed(2)}%</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -464,34 +569,41 @@ export default function Page() {
               <Calendar className="h-4 w-4 text-[#6B7280]" />
             </div>
             <div className="mt-4 space-y-3">
-              {[
-                { month: "JAN", day: "25", title: "Monthly Staff Payroll", meta: "Estimated ₦1.2M", active: true },
-                { month: "JAN", day: "28", title: "Facility Rent Renewal", meta: "Budgeted (Rent)" },
-                { month: "FEB", day: "05", title: "Annual Audit Review", meta: "Pre-Audit Meeting" },
-              ].map((item, idx, arr) => (
-                <div key={item.title} className={`flex items-start gap-3 ${idx < arr.length - 1 ? "border-b border-[#F3F4F6] pb-3" : ""}`}>
-                  <div
-                    className={`h-[45.04px] w-[45.04px] rounded-[7.51px] flex flex-col items-center justify-center text-[10px] font-semibold leading-tight ${item.active
-                      ? "bg-[rgba(23,84,207,1)] text-white"
-                      : "bg-[#F3F4F6] text-[#6B7280]"
-                      }`}
-                  >
-                    <span>{item.month}</span>
-                    <span className={item.active ? "text-[14px]" : "text-[14px] text-[#111827]"}>{item.day}</span>
-                  </div>
-                  <div>
-                    <div className="text-[#111827] font-bold text-[13.14px] leading-[18.77px]">
-                      {item.title}
+              {calendarLoading && <div className="text-[12px] text-[#6B7280]">Loading financial events...</div>}
+              {!calendarLoading && calendarError && <div className="text-[12px] text-rose-500">{calendarError}</div>}
+              {!calendarLoading && !calendarError && financialEvents.length === 0 && (
+                <div className="text-[12px] text-[#6B7280]">No upcoming financial events.</div>
+              )}
+              {!calendarLoading &&
+                !calendarError &&
+                financialEvents.slice(0, 3).map((item, idx, arr) => {
+                  const badge = formatCalendarBadge(item.date)
+                  const isPrimary = idx === 0
+                  return (
+                    <div
+                      key={`${item.resourceId || item.title}-${item.date}`}
+                      className={`flex items-start gap-3 ${idx < arr.length - 1 ? "border-b border-[#F3F4F6] pb-3" : ""}`}
+                    >
+                      <div
+                        className={`h-[45.04px] w-[45.04px] rounded-[7.51px] flex flex-col items-center justify-center text-[10px] font-semibold leading-tight ${
+                          isPrimary ? "bg-[rgba(23,84,207,1)] text-white" : "bg-[#F3F4F6] text-[#6B7280]"
+                        }`}
+                      >
+                        <span>{badge.month}</span>
+                        <span className={isPrimary ? "text-[14px]" : "text-[14px] text-[#111827]"}>{badge.day}</span>
+                      </div>
+                      <div>
+                        <div className="text-[#111827] font-bold text-[13.14px] leading-[18.77px]">{item.title}</div>
+                        <div className="text-[11.26px] leading-[15.01px] font-normal text-[#9CA3AF]">
+                          {formatCalendarMeta(item.amount, item.status)}
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-[11.26px] leading-[15.01px] font-normal text-[#9CA3AF]">
-                      {item.meta}
-                    </div>
-                  </div>
-                </div>
-              ))}
+                  )
+                })}
+            </div>
             </div>
           </div>
-        </div>
 
         <div className="mt-6 rounded-[14px] border border-[#EEF1F6] bg-white p-5 shadow-[0px_4px_10px_rgba(0,0,0,0.02)]">
           <div className="flex items-center justify-between">

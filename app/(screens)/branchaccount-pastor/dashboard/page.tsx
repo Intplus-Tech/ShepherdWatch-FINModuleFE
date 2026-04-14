@@ -1,270 +1,215 @@
 "use client"
 
-import React, { useMemo, useState } from "react"
-import Image from "next/image"
-import {
-  Building2,
-  Clock,
-  FileText,
-  Activity,
-  TrendingUp,
-  ArrowDownToLine,
-  ArrowUpFromLine,
-  Wrench,
-  Package,
-  Receipt,
-  Landmark,
-  LayoutDashboard,
-  Wallet,
-  ShieldCheck,
-  Settings,
-  HelpCircle,
-  Menu,
-  X,
-"use client"
-
-import React, { useMemo, useState } from "react"
-import Image from "next/image"
-import {
-  Building2,
-  Clock,
-  FileText,
-  Activity,
-  TrendingUp,
-  ArrowDownToLine,
-  ArrowUpFromLine,
-  Wrench,
-  Package,
-  Receipt,
-  Landmark,
-  LayoutDashboard,
-  Wallet,
-  ShieldCheck,
-  Settings,
-  HelpCircle,
-  Menu,
-  X,
-  Search,
-  Bell,
-  ArrowRightLeft,
-  Database,
-  Sprout,
-  Gift,
-  Lightbulb,
-} from "lucide-react"
+import { useMemo, useState } from "react"
+import { AlertCircle, CheckCircle2, Clock, FileText, Search, Bell, Landmark, Activity } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
 import { useTransactions } from "@/components/hooks/useTransactions"
-import { useRequisitions } from "@/components/hooks/useRequisitions"
+import { useRequisitionInbox } from "@/components/hooks/useRequisitionInbox"
 
-const bankAccounts = [
-  { 
-    name: "Zenith Bank", 
-    initials: "ZB", 
-    initialsBg: "bg-blue-100 text-blue-600", 
-    type: "Main Operations", 
-    balance: "₦2,500,000", 
-    lastRecon: "2 days ago", 
-    reconColor: "bg-emerald-50 text-emerald-600" 
-  },
-  { 
-    name: "Access Bank", 
-    initials: "AB", 
-    initialsBg: "bg-orange-100 text-orange-600", 
-    type: "Savings", 
-    balance: "₦1,250,000", 
-    lastRecon: "5 days ago", 
-    reconColor: "bg-amber-50 text-amber-600" 
-  },
-  { 
-    name: "Enubis MfB", 
-    initials: "EF", 
-    initialsBg: "bg-indigo-100 text-indigo-600", 
-    type: "Domiciliary (£)", 
-    balance: "₦500,000", 
-    lastRecon: "Today", 
-    reconColor: "bg-emerald-50 text-emerald-600" 
-  },
-]
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("en-NG", {
+    style: "currency",
+    currency: "NGN",
+    maximumFractionDigits: 2,
+  }).format(Number.isFinite(value) ? value : 0)
+}
 
-const incomeFeeds = [
-  { 
-    title: "Sunday Offering", 
-    sub: "Main Hall - 1st Service", 
-    amount: "+₦45,000", 
-    icon: Receipt,
-    iconBg: "bg-gray-100 text-gray-500"
-  },
-  {
-    title: "Building Fund",
-    sub: "Main Hall - 2nd Service",
-    amount: "+₦25,000",
-    icon: Sprout,
-    iconBg: "bg-gray-100 text-gray-500",
-  },
-  {
-    title: "Special Donation",
-    sub: "Anonymous - For Admin",
-    amount: "+₦14,000",
-    icon: Gift,
-    iconBg: "bg-blue-50 text-blue-500",
-  },
-]
+function formatDate(value?: string) {
+  if (!value) return "--"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+}
 
 export default function Page() {
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const { user } = useAuth()
+  const branchId = user?.tenantId ?? user?.tenant?.id ?? ""
   const { transactions: unverifiedTransactions } = useTransactions({ status: "UNVERIFIED" })
-  const { requisitions, refresh, loading: reqLoading } = useRequisitions({
-    currentStatus: "PENDING_ACCOUNTANT",
-    tenantId: user?.tenantId ?? user?.tenant?.id ?? "",
-  })
+  const {
+    requisitions,
+    loading: inboxLoading,
+    error: inboxError,
+    refresh,
+  } = useRequisitionInbox({ branchId })
 
-  const [isApproving, setIsApproving] = useState<string | null>(null)
-  const [approveError, setApproveError] = useState<string | null>(null)
-  const [approveSuccess, setApproveSuccess] = useState<string | null>(null)
+  const [isPaying, setIsPaying] = useState<string | null>(null)
+  const [paymentError, setPaymentError] = useState<string | null>(null)
+  const [paymentSuccess, setPaymentSuccess] = useState<string | null>(null)
+
+  const pendingTotal = useMemo(
+    () => requisitions.reduce((sum, item) => sum + Number(item.amount || 0), 0),
+    [requisitions]
+  )
+
+  const approvalRows = useMemo(
+    () =>
+      requisitions.map((req) => ({
+        id: req.id,
+        title: req.justification || "Requisition",
+        requestedBy: req.requestedBy || "Branch user",
+        amount: formatCurrency(req.amount || 0),
+        date: formatDate(req.createdAt),
+      })),
+    [requisitions]
+  )
 
   const getCsrfToken = () => {
     if (typeof document === "undefined") return ""
-    const match = document.cookie
-      .split("; ")
-      .find((cookie) => cookie.startsWith("csrf_token="))
+    const match = document.cookie.split("; ").find((cookie) => cookie.startsWith("csrf_token="))
     return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
   }
 
-  const handleApprove = async (id: string) => {
-    setIsApproving(id)
-    setApproveError(null)
-    setApproveSuccess(null)
+  const handleMarkPaid = async (id: string) => {
+    setIsPaying(id)
+    setPaymentError(null)
+    setPaymentSuccess(null)
+
     try {
-      const res = await fetch(`/api/core/financial/requisitions/${id}/approve-accountant`, {
-        method: "POST",
+      const response = await fetch(`/api/core/financial/requisitions/${id}/pay`, {
+        method: "PATCH",
         headers: {
           "x-csrf-token": getCsrfToken(),
         },
         credentials: "include",
       })
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => null)
-        throw new Error(errorData?.message || "Failed to approve requisition")
+
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Failed to mark requisition as paid")
       }
-      setApproveSuccess("Requisition sent for override review.")
+
+      setPaymentSuccess("Requisition marked as paid successfully.")
       refresh()
-    } catch (err: any) {
-      setApproveError(err.message ?? "Failed to approve requisition")
+    } catch (error) {
+      setPaymentError(error instanceof Error ? error.message : "Failed to mark requisition as paid")
     } finally {
-      setIsApproving(null)
+      setIsPaying(null)
     }
   }
 
-  const pendingExpensesList = useMemo(() => {
-    return requisitions.map((req) => ({
-      id: req.id,
-      title: req.justification || "Requisition",
-      sub: req.requestedBy ? `Requested by ${req.requestedBy}` : "Pending Approval",
-      subColor: "text-gray-500",
-      amount: new Intl.NumberFormat("en-NG", {
-        style: "currency",
-        currency: "NGN",
-        maximumFractionDigits: 2,
-      }).format(req.amount || 0),
-      action: "Approve",
-      actionColor: "text-blue-600",
-      icon: FileText,
-      iconBg: "bg-blue-50 text-blue-500",
-      rawId: req.id
-    }))
-  }, [requisitions])
-
-  const pendingExpenses = pendingExpensesList
-
-  const statCards = useMemo(() => [
-    { 
-      title: "Cash in Bank", 
-      value: "₦4.25M", 
-      meta: "+2.4% vs last month", 
-      metaColor: "text-emerald-500", 
-      icon: Building2, 
-      iconBg: "bg-blue-50", 
-      iconColor: "text-blue-600",
-      hasArrowUp: true 
-    },
-    { 
-      title: "Unverified Transactions", 
-      value: `${unverifiedTransactions.length} items`, 
-      meta: "Requires action shortly", 
-      metaColor: "text-gray-500", 
-      icon: Clock, 
-      iconBg: "bg-amber-50", 
-      iconColor: "text-amber-500" 
-    },
-    { 
-      title: "Pending Requisitions", 
-      value: `${requisitions.length} requests`, 
-      meta: "Awaiting Approval", 
-      metaColor: "text-amber-500", 
-      icon: FileText, 
-      iconBg: "bg-blue-50", 
-      iconColor: "text-blue-600" 
-    },
-    { 
-      title: "Budget Health", 
-      value: "78%", 
-      meta: "Healthy Utilization", 
-      metaColor: "text-gray-500", 
-      icon: Activity, 
-      iconBg: "bg-emerald-50", 
-      iconColor: "text-emerald-500" 
-    },
-              <div className="rounded-xl border border-gray-200 bg-white shadow-sm flex flex-col">
-                <div className="flex items-center justify-between border-b border-gray-100 p-4 sm:p-5">
-                  <div className="flex items-center gap-2">
-                    <ArrowUpFromLine className="h-4 w-4 text-rose-500" />
-                    <h3 className="text-[13px] sm:text-[14px] font-semibold text-gray-900">Pending Expenses</h3>
-                  </div>
-                  <div className="text-[12px] sm:text-[13px] font-medium text-rose-500">
-                    Total: ₦135,000
-                  </div>
-                </div>
-                <div className="p-4 sm:p-5 flex-1 space-y-5">
-                  {(approveError || approveSuccess) && (
-                    <div className={`rounded-[8px] border px-3 py-2 text-[12px] font-medium ${approveError ? "border-rose-200 bg-rose-50 text-rose-600" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>
-                      {approveError ?? approveSuccess}
-                    </div>
-                  )}
-                  {pendingExpenses.map((expense, idx) => (
-                    <div key={idx} className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className={`flex h-9 w-9 items-center justify-center rounded-md ${expense.iconBg}`}>
-                          <expense.icon className="h-4 w-4" />
-                        </div>
-                        <div>
-                          <p className="text-[13px] font-semibold text-gray-900">{expense.title}</p>
-                          <p className={`text-[12px] font-medium ${expense.subColor}`}>{expense.sub}</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-[13px] font-bold text-gray-900">{expense.amount}</p>
-                        <button
-                          onClick={() => handleApprove(expense.rawId)}
-                          disabled={isApproving === expense.rawId}
-                          className={`text-[12px] font-medium hover:opacity-80 ${expense.actionColor} disabled:opacity-60 disabled:cursor-not-allowed`}
-                        >
-                          {isApproving === expense.rawId ? "Approving..." : expense.action}
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div className="border-t border-gray-100 p-4 text-center">
-                  <button className="text-[12px] sm:text-[13px] font-medium text-blue-600 hover:text-blue-700">
-                    Batch Approve (3)
-                  </button>
-                </div>
-              </div>
-
+  return (
+    <div className="min-h-screen bg-[#F8FAFC] p-6 md:p-8">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
+        <header className="flex flex-col gap-3 rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-sm md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-[#111827]">Accountant Dashboard</h1>
+            <p className="text-sm text-[#6B7280]">Requisition inbox and finance actions</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="relative hidden md:block">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
+              <input
+                className="h-10 w-64 rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] pl-9 pr-3 text-sm"
+                placeholder="Search requisitions..."
+              />
             </div>
-          </main>
-        </div>
+            <button className="flex h-10 w-10 items-center justify-center rounded-lg border border-[#E5E7EB] text-[#6B7280]">
+              <Bell className="h-4 w-4" />
+            </button>
+          </div>
+        </header>
+
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-sm">
+            <div className="mb-3 inline-flex rounded-full bg-blue-50 p-2 text-blue-600">
+              <Landmark className="h-4 w-4" />
+            </div>
+            <div className="text-sm text-[#6B7280]">Pending Requisitions</div>
+            <div className="text-2xl font-bold text-[#111827]">{approvalRows.length}</div>
+          </div>
+
+          <div className="rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-sm">
+            <div className="mb-3 inline-flex rounded-full bg-amber-50 p-2 text-amber-600">
+              <Clock className="h-4 w-4" />
+            </div>
+            <div className="text-sm text-[#6B7280]">Unverified Transactions</div>
+            <div className="text-2xl font-bold text-[#111827]">{unverifiedTransactions.length}</div>
+          </div>
+
+          <div className="rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-sm">
+            <div className="mb-3 inline-flex rounded-full bg-rose-50 p-2 text-rose-600">
+              <FileText className="h-4 w-4" />
+            </div>
+            <div className="text-sm text-[#6B7280]">Awaiting Payment Total</div>
+            <div className="text-2xl font-bold text-[#111827]">{formatCurrency(pendingTotal)}</div>
+          </div>
+
+          <div className="rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-sm">
+            <div className="mb-3 inline-flex rounded-full bg-emerald-50 p-2 text-emerald-600">
+              <Activity className="h-4 w-4" />
+            </div>
+            <div className="text-sm text-[#6B7280]">Inbox Status</div>
+            <div className="text-sm font-semibold text-[#111827]">
+              {inboxLoading ? "Loading..." : inboxError ? "Needs attention" : "Up to date"}
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-[#E5E7EB] bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-[#E5E7EB] px-5 py-4">
+            <h2 className="text-base font-semibold text-[#111827]">Requisition Payment Queue</h2>
+            <div className="text-sm font-medium text-[#6B7280]">Total: {formatCurrency(pendingTotal)}</div>
+          </div>
+
+          <div className="space-y-3 p-5">
+            {(paymentError || paymentSuccess) && (
+              <div
+                className={`rounded-lg border px-3 py-2 text-sm ${
+                  paymentError
+                    ? "border-rose-200 bg-rose-50 text-rose-600"
+                    : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                }`}
+              >
+                {paymentError ?? paymentSuccess}
+              </div>
+            )}
+
+            {inboxLoading && <div className="text-sm text-[#6B7280]">Loading requisitions...</div>}
+            {!inboxLoading && inboxError && <div className="text-sm text-rose-600">{inboxError}</div>}
+            {!inboxLoading && !inboxError && approvalRows.length === 0 && (
+              <div className="text-sm text-[#6B7280]">No requisitions are awaiting accountant action.</div>
+            )}
+
+            {!inboxLoading &&
+              !inboxError &&
+              approvalRows.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex flex-col gap-2 rounded-xl border border-[#EEF1F6] bg-[#FCFCFD] p-4 md:flex-row md:items-center md:justify-between"
+                >
+                  <div>
+                    <div className="text-sm font-semibold text-[#111827]">{item.title}</div>
+                    <div className="text-xs text-[#6B7280]">Requested by {item.requestedBy}</div>
+                    <div className="text-xs text-[#9CA3AF]">{item.date}</div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <div className="text-sm font-bold text-[#111827]">{item.amount}</div>
+                    <button
+                      onClick={() => handleMarkPaid(item.id)}
+                      disabled={isPaying === item.id}
+                      className="inline-flex items-center gap-1 rounded-lg bg-[#2563EB] px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      {isPaying === item.id ? "Processing..." : "Mark Paid"}
+                    </button>
+                  </div>
+                </div>
+              ))}
+          </div>
+        </section>
+
+        {!inboxLoading && !inboxError && approvalRows.length > 0 && (
+          <div className="flex items-center gap-2 text-xs text-[#6B7280]">
+            <AlertCircle className="h-4 w-4" />
+            Requisitions shown here are sourced from `/api/v1/requisitions/inbox` based on your role.
+          </div>
+        )}
       </div>
     </div>
   )

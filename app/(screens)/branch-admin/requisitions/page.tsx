@@ -24,10 +24,10 @@ import {
   Download,
   Eye,
   Send,
-  Calendar
+  Calendar,
+  Pencil,
 } from "lucide-react"
 
-import BranchAdminHeader from "@/components/navigation/BranchAdminHeader"
 import { useRequisitions } from "@/components/hooks/useRequisitions"
 
 const inter = Inter({ subsets: ["latin"] })
@@ -46,10 +46,18 @@ export default function RequisitionsHub() {
   const [auditLoading, setAuditLoading] = useState(true)
   const [auditError, setAuditError] = useState<string | null>(null)
   const [deletingReqId, setDeletingReqId] = useState<string | null>(null)
+  const [editingReqId, setEditingReqId] = useState<string | null>(null)
+  const [editAmount, setEditAmount] = useState("")
+  const [editJustification, setEditJustification] = useState("")
+  const [editRequiredDate, setEditRequiredDate] = useState("")
+  const [editSubmitting, setEditSubmitting] = useState(false)
+  const [editError, setEditError] = useState<string | null>(null)
+  const [editSuccess, setEditSuccess] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
-  const { requisitions, loading: reqLoading, error: reqError } = useRequisitions({
-    currentStatus: "PENDING_ACCOUNTANT",
-  })
+  const [submittingReqId, setSubmittingReqId] = useState<string | null>(null)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null)
+  const { requisitions, loading: reqLoading, error: reqError, refresh } = useRequisitions()
   const [selectedReqId, setSelectedReqId] = useState<string>("")
 
   useEffect(() => {
@@ -84,7 +92,7 @@ export default function RequisitionsHub() {
                 : []
 
         const mapped: AuditTimelineItem[] = rawItems.map(
-          (item: any, index: number) => {
+          (item: Record<string, unknown>, index: number) => {
             const action =
               item?.action ??
               item?.event ??
@@ -210,10 +218,11 @@ export default function RequisitionsHub() {
       const dateParts = formatDateParts(req.createdAt)
       const status = (req.currentStatus ?? "PENDING").toUpperCase()
       const statusMap: Record<string, string> = {
-        PENDING_ACCOUNTANT: "blue",
+        PENDING_PASTOR: "blue",
+        PENDING_DIRECTOR: "blue",
         APPROVED: "green",
         PAID: "purple",
-        REJECTED: "red",
+        DECLINED: "red",
         DRAFT: "gray",
       }
 
@@ -226,11 +235,28 @@ export default function RequisitionsHub() {
         amount: formatCurrency(req.amount || 0),
         statusLabel: status.replace(/_/g, " "),
         statusColor: statusMap[status] ?? "blue",
+        statusRaw: status.toLowerCase(),
+        canEditDraft: status === "DRAFT",
+        justification: req.justification || "",
+        requiredDate: req.requiredDate || "",
         selected: req.id === selectedReqId || (!selectedReqId && index === 0),
         rawId: req.id,
       }
     })
   }, [requisitions, selectedReqId])
+
+  const requisitionStats = useMemo(() => {
+    const total = requisitions.length
+    const totalOutstanding = requisitions.reduce((sum, item) => sum + Number(item.amount || 0), 0)
+    const pendingApproval = requisitions.filter((item) =>
+      String(item.currentStatus ?? "").toLowerCase().includes("pending")
+    ).length
+    const recentlyPaidAmount = requisitions.reduce((sum, item) => {
+      const status = String(item.currentStatus ?? "").toLowerCase()
+      return status === "paid" ? sum + Number(item.amount || 0) : sum
+    }, 0)
+    return { total, totalOutstanding, pendingApproval, recentlyPaidAmount }
+  }, [requisitions])
 
   const getCsrfToken = () => {
     if (typeof document === "undefined") return ""
@@ -256,10 +282,108 @@ export default function RequisitionsHub() {
       if (!response.ok) {
         throw new Error(payload?.message ?? "Unable to delete requisition.")
       }
+      refresh()
     } catch (error) {
       setDeleteError(error instanceof Error ? error.message : "Unable to delete requisition.")
     } finally {
       setDeletingReqId(null)
+    }
+  }
+
+  const handleSubmitRequisition = async (reqId: string) => {
+    if (!reqId) return
+    setSubmittingReqId(reqId)
+    setSubmitError(null)
+    setSubmitSuccess(null)
+
+    try {
+      const csrfToken = getCsrfToken()
+      const response = await fetch(`/api/core/financial/requisitions/${reqId}/submit`, {
+        method: "PATCH",
+        headers: {
+          "x-csrf-token": csrfToken,
+        },
+        credentials: "include",
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Unable to submit requisition.")
+      }
+
+      setSubmitSuccess("Requisition submitted successfully.")
+      refresh()
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "Unable to submit requisition.")
+    } finally {
+      setSubmittingReqId(null)
+    }
+  }
+
+  const openEditDraft = (reqId: string) => {
+    const item = requisitionRows.find((row) => row.rawId === reqId)
+    if (!item || !item.canEditDraft) return
+    setEditError(null)
+    setEditSuccess(null)
+    setEditingReqId(reqId)
+    setEditAmount(String(requisitions.find((req) => req.id === reqId)?.amount ?? ""))
+    setEditJustification(item.justification)
+    setEditRequiredDate(item.requiredDate ? String(item.requiredDate).slice(0, 10) : "")
+  }
+
+  const closeEditDraft = () => {
+    setEditingReqId(null)
+    setEditAmount("")
+    setEditJustification("")
+    setEditRequiredDate("")
+    setEditError(null)
+  }
+
+  const handleUpdateDraft = async () => {
+    if (!editingReqId) return
+
+    const amountValue = Number(String(editAmount).replace(/,/g, "").trim())
+    if (!Number.isFinite(amountValue) || amountValue <= 0) {
+      setEditError("Please enter a valid amount greater than 0.")
+      return
+    }
+    if (!editJustification.trim()) {
+      setEditError("Please provide an updated justification.")
+      return
+    }
+    if (!editRequiredDate) {
+      setEditError("Please choose a required date.")
+      return
+    }
+
+    setEditSubmitting(true)
+    setEditError(null)
+    setEditSuccess(null)
+    try {
+      const csrfToken = getCsrfToken()
+      const response = await fetch(`/api/core/financial/requisitions/${editingReqId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": csrfToken,
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          amount: amountValue,
+          justification: editJustification.trim(),
+          requiredDate: editRequiredDate,
+        }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Unable to update requisition.")
+      }
+      setEditSuccess("Requisition updated successfully.")
+      setEditingReqId(null)
+      refresh()
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : "Unable to update requisition.")
+    } finally {
+      setEditSubmitting(false)
     }
   }
 
@@ -462,7 +586,7 @@ export default function RequisitionsHub() {
                     verticalAlign: "middle"
                   }}
                 >
-                  128
+                  {requisitionStats.total}
                 </div>
                 <div className="text-[12px] font-[700] text-[#10B981] flex items-center gap-1">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
@@ -487,9 +611,9 @@ export default function RequisitionsHub() {
                     verticalAlign: "middle"
                   }}
                 >
-                  ₦ 450,000
+                  {formatCurrency(requisitionStats.totalOutstanding)}
                 </div>
-                <div className="text-[12px] font-[600] text-[#9CA3AF]">Across 5 requests</div>
+                <div className="text-[12px] font-[600] text-[#9CA3AF]">Across {requisitionStats.total} requests</div>
               </div>
 
               {/* Card 3 */}
@@ -509,7 +633,7 @@ export default function RequisitionsHub() {
                     verticalAlign: "middle"
                   }}
                 >
-                  3
+                  {requisitionStats.pendingApproval}
                 </div>
                 <div className="text-[12px] font-[700] text-[#F97316]">Needs attention</div>
               </div>
@@ -531,7 +655,7 @@ export default function RequisitionsHub() {
                     verticalAlign: "middle"
                   }}
                 >
-                  ₦ 150,000
+                  {formatCurrency(requisitionStats.recentlyPaidAmount)}
                 </div>
                 <div className="text-[12px] font-[600] text-[#9CA3AF]">Last 7 days</div>
               </div>
@@ -612,10 +736,24 @@ export default function RequisitionsHub() {
                         </td>
                       </tr>
                     )}
+                    {!reqLoading && !reqError && submitError && (
+                      <tr>
+                        <td colSpan={6} className="py-6 text-center text-[13px] font-medium text-red-500">
+                          {submitError}
+                        </td>
+                      </tr>
+                    )}
+                    {!reqLoading && !reqError && submitSuccess && (
+                      <tr>
+                        <td colSpan={6} className="py-6 text-center text-[13px] font-medium text-emerald-600">
+                          {submitSuccess}
+                        </td>
+                      </tr>
+                    )}
                     {!reqLoading && !reqError && requisitionRows.length === 0 && (
                       <tr>
                         <td colSpan={6} className="py-8 text-center text-[13px] font-medium text-[#6B7280]">
-                          No pending requisitions found.
+                          No requisitions found.
                         </td>
                       </tr>
                     )}
@@ -662,6 +800,40 @@ export default function RequisitionsHub() {
                               <button
                                 onClick={(event) => {
                                   event.stopPropagation()
+                                  openEditDraft(req.rawId)
+                                }}
+                                disabled={!req.canEditDraft}
+                                className={`h-8 w-8 rounded-[8px] flex items-center justify-center transition-colors ${
+                                  req.canEditDraft
+                                    ? "text-[#2563EB] hover:bg-[#EFF6FF]"
+                                    : "text-[#D1D5DB] cursor-not-allowed"
+                                }`}
+                                title={req.canEditDraft ? "Edit draft requisition" : "Only draft requisitions can be edited"}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  handleSubmitRequisition(req.rawId)
+                                }}
+                                disabled={!req.canEditDraft || submittingReqId === req.rawId}
+                                className={`h-8 w-8 rounded-[8px] flex items-center justify-center transition-colors ${
+                                  req.canEditDraft
+                                    ? "text-emerald-600 hover:bg-emerald-50"
+                                    : "text-[#D1D5DB] cursor-not-allowed"
+                                } disabled:opacity-60 disabled:cursor-not-allowed`}
+                                title={req.canEditDraft ? "Submit draft for approval" : "Only draft requisitions can be submitted"}
+                              >
+                                {submittingReqId === req.rawId ? (
+                                  <span className="text-[10px] font-[800]">...</span>
+                                ) : (
+                                  <Send className="h-4 w-4" />
+                                )}
+                              </button>
+                              <button
+                                onClick={(event) => {
+                                  event.stopPropagation()
                                   handleDeleteRequisition(req.rawId)
                                 }}
                                 disabled={deletingReqId === req.rawId}
@@ -700,6 +872,82 @@ export default function RequisitionsHub() {
               </div>
 
             </div>
+
+            {editingReqId && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+                <div className="w-full max-w-[560px] rounded-[16px] border border-[#E5E7EB] bg-white shadow-xl">
+                  <div className="flex items-center justify-between border-b border-[#EEF1F6] px-5 py-4">
+                    <h3 className="text-[16px] font-[900] text-[#111827]">Edit Draft Requisition</h3>
+                    <button
+                      onClick={closeEditDraft}
+                      className="h-8 w-8 rounded-[8px] text-[#6B7280] hover:bg-gray-100"
+                    >
+                      <X className="h-4 w-4 mx-auto" />
+                    </button>
+                  </div>
+
+                  <div className="space-y-4 px-5 py-5">
+                    <div>
+                      <label className="mb-1.5 block text-[12px] font-[800] text-[#4B5563]">Amount</label>
+                      <input
+                        type="text"
+                        value={editAmount}
+                        onChange={(event) => setEditAmount(event.target.value)}
+                        className="h-[42px] w-full rounded-[8px] border border-[#E5E7EB] px-3 text-[14px] focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20 outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block text-[12px] font-[800] text-[#4B5563]">Required Date</label>
+                      <input
+                        type="date"
+                        value={editRequiredDate}
+                        onChange={(event) => setEditRequiredDate(event.target.value)}
+                        className="h-[42px] w-full rounded-[8px] border border-[#E5E7EB] px-3 text-[14px] focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20 outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block text-[12px] font-[800] text-[#4B5563]">Justification</label>
+                      <textarea
+                        value={editJustification}
+                        onChange={(event) => setEditJustification(event.target.value)}
+                        className="min-h-[120px] w-full rounded-[8px] border border-[#E5E7EB] p-3 text-[14px] focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20 outline-none"
+                      />
+                    </div>
+
+                    {(editError || editSuccess) && (
+                      <div
+                        className={`rounded-[8px] border px-3 py-2 text-[13px] font-medium ${
+                          editError
+                            ? "border-red-200 bg-red-50 text-red-600"
+                            : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                        }`}
+                      >
+                        {editError ?? editSuccess}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-end gap-3 border-t border-[#EEF1F6] px-5 py-4">
+                    <button
+                      onClick={closeEditDraft}
+                      disabled={editSubmitting}
+                      className="h-[40px] rounded-[8px] border border-[#E5E7EB] px-4 text-[13px] font-[800] text-[#4B5563] hover:bg-gray-50 disabled:opacity-60"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleUpdateDraft}
+                      disabled={editSubmitting}
+                      className="h-[40px] rounded-[8px] bg-[#2563EB] px-4 text-[13px] font-[800] text-white hover:bg-[#1D4ED8] disabled:opacity-60"
+                    >
+                      {editSubmitting ? "Updating..." : "Update Draft"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Audit Log Section */}
             <div className="bg-[#EFF6FF]/40 rounded-[16px] border border-[#DBEAFE] p-6 sm:p-8 mt-2 shadow-sm">

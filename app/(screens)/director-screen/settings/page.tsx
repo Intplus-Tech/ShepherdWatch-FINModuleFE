@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import SidebarNav from "@/components/navigation/SidebarNav"
 import { useBudgetConfig } from "@/components/hooks/useBudgetConfig"
+import { useExchangeRates } from "@/components/hooks/useExchangeRates"
 import ScreenHeader from "@/components/navigation/ScreenHeader"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,6 +15,8 @@ import {
   Settings,
   ShieldCheck,
   SlidersHorizontal,
+  RefreshCw,
+  TrendingUp,
 } from "lucide-react"
 
 const monthNames = [
@@ -34,10 +37,210 @@ const monthNames = [
 const sideItems = [
   { label: "Budget", active: true },
   { label: "Overview" },
+  { label: "Exchange Rates" },
   { label: "Departmental" },
   { label: "Audit Logs" },
+  { label: "App Logs" },
+  { label: "HTTP Logs" },
   { label: "Permissions" },
 ]
+
+function ExchangeRatesSection() {
+  const { createRate, getLatestRate, listRates, loading } = useExchangeRates()
+  const [rates, setRates] = useState<any>({
+    USD: null,
+    GBP: null,
+    EUR: null,
+  })
+  const [form, setForm] = useState({
+    fromCurrency: "USD",
+    toCurrency: "NGN",
+    rate: "",
+    effectiveDate: new Date().toISOString().split("T")[0],
+  })
+  const [msg, setMsg] = useState("")
+
+  const [history, setHistory] = useState<any[]>([])
+  const [historyPagination, setHistoryPagination] = useState({ page: 1, limit: 10, total: 0, pages: 1 })
+  const [historyLoading, setHistoryLoading] = useState(false)
+
+  const loadHistory = async (page = 1) => {
+    setHistoryLoading(true)
+    try {
+      const res = await listRates({ page, limit: 10 })
+      if (res?.data) {
+        setHistory(res.data)
+        if (res.pagination) setHistoryPagination(res.pagination)
+      }
+    } catch (err) {}
+    setHistoryLoading(false)
+  }
+
+  const loadRates = async () => {
+    try {
+      const [u, g, e] = await Promise.all([
+        getLatestRate("USD", "NGN").catch(() => null),
+        getLatestRate("GBP", "NGN").catch(() => null),
+        getLatestRate("EUR", "NGN").catch(() => null),
+      ])
+      setRates({ USD: u, GBP: g, EUR: e })
+    } catch (err) {}
+  }
+
+  useEffect(() => {
+    loadRates()
+    loadHistory(1)
+  }, [])
+
+  const handleCreate = async () => {
+    if (!form.rate) return
+    try {
+      await createRate({
+        fromCurrency: form.fromCurrency,
+        toCurrency: form.toCurrency,
+        rate: Number(form.rate),
+        effectiveDate: new Date(form.effectiveDate).toISOString(),
+      })
+      setMsg("Exchange rate created successfully.")
+      setTimeout(() => setMsg(""), 3000)
+      loadRates()
+      loadHistory(1)
+    } catch (err: any) {
+      setMsg(err.message || "Failed to create rate.")
+    }
+  }
+
+  return (
+    <div className="mt-8 rounded-[12px] border border-[#EEF1F6] bg-white">
+      <div className="flex items-center justify-between border-b border-[#EEF1F6] px-4 py-3">
+        <div className="flex items-center gap-2 text-[16.98px] leading-[25.48px] font-bold text-[#111827]">
+          <TrendingUp className="h-4 w-4 text-[#3B5BDB]" />
+          Exchange Rates
+        </div>
+      </div>
+      <div className="p-4 md:p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div>
+          <h3 className="text-[14px] font-[700] text-[#111827] mb-3">Live Conversions against NGN</h3>
+          <div className="space-y-3">
+            {["USD", "GBP", "EUR"].map((curr) => (
+              <div key={curr} className="flex items-center justify-between p-3 bg-[#F8FAFC] rounded-[8px] border border-[#EEF1F6]">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-full bg-[#E9EEFF] text-[#3B5BDB] flex items-center justify-center font-bold text-[12px]">
+                    {curr}
+                  </div>
+                  <div>
+                    <div className="text-[13px] font-[600] text-[#111827]">To Naira (NGN)</div>
+                    <div className="text-[11px] font-[500] text-[#9CA3AF]">
+                      Updated {rates[curr]?.effectiveDate ? new Date(rates[curr].effectiveDate).toLocaleDateString() : "Never"}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-[15px] font-[800] text-[#111827]">
+                  {rates[curr]?.rate ? `₦${rates[curr].rate.toLocaleString()}` : "—"}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <h3 className="text-[14px] font-[700] text-[#111827] mb-3">Deploy New Rate</h3>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[12px] font-[600] text-[#6B7280]">From</label>
+                <select value={form.fromCurrency} onChange={(e) => setForm({...form, fromCurrency: e.target.value})} className="mt-1 w-full h-[36px] px-2 text-[13px] rounded-[6px] border border-[#E5E7EB]">
+                  <option value="USD">USD</option>
+                  <option value="GBP">GBP</option>
+                  <option value="EUR">EUR</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-[12px] font-[600] text-[#6B7280]">To</label>
+                <select value={form.toCurrency} onChange={(e) => setForm({...form, toCurrency: e.target.value})} className="mt-1 w-full h-[36px] px-2 text-[13px] rounded-[6px] border border-[#E5E7EB]">
+                  <option value="NGN">NGN</option>
+                  <option value="USD">USD</option>
+                </select>
+              </div>
+            </div>
+            
+            <div>
+              <label className="text-[12px] font-[600] text-[#6B7280]">Base Rate</label>
+              <Input type="number" placeholder="e.g. 1550.50" value={form.rate} onChange={(e) => setForm({...form, rate: e.target.value})} className="mt-1 h-[36px] text-[13px]" />
+            </div>
+
+            <div>
+              <label className="text-[12px] font-[600] text-[#6B7280]">Effective Date</label>
+              <Input type="date" value={form.effectiveDate} onChange={(e) => setForm({...form, effectiveDate: e.target.value})} className="mt-1 h-[36px] text-[13px]" />
+            </div>
+
+            <Button disabled={loading} onClick={handleCreate} className="w-full mt-2 bg-[#3B5BDB] hover:bg-[#2A43A7] h-[36px] text-[13px]">
+              {loading ? "Deploying..." : "Update Rate"}
+            </Button>
+            {msg && <div className="text-[12px] font-[600] text-[#2563EB] text-center mt-2">{msg}</div>}
+          </div>
+        </div>
+      </div>
+
+      <div className="border-t border-[#EEF1F6] px-4 md:px-6 py-6">
+        <h3 className="text-[14px] font-[700] text-[#111827] mb-4">Historical Log</h3>
+        
+        <div className="border border-[#EEF1F6] rounded-[8px] overflow-hidden">
+          <table className="w-full text-left text-[12px] text-[#6B7280]">
+            <thead className="bg-[#F8FAFC] text-[11px] font-[600] uppercase text-[#9CA3AF]">
+              <tr>
+                <th className="px-4 py-3 border-b border-[#EEF1F6]">Pairing</th>
+                <th className="px-4 py-3 border-b border-[#EEF1F6]">Rate Value</th>
+                <th className="px-4 py-3 border-b border-[#EEF1F6]">Effective Timestamp</th>
+              </tr>
+            </thead>
+            <tbody>
+              {historyLoading ? (
+                <tr>
+                  <td colSpan={3} className="px-4 py-6 text-center text-[#9CA3AF]">Loading archive...</td>
+                </tr>
+              ) : history.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="px-4 py-6 text-center text-[#9CA3AF]">No historical logs identified.</td>
+                </tr>
+              ) : (
+                history.map((record: any) => (
+                  <tr key={record._id} className="border-b border-[#EEF1F6] hover:bg-[#F9FAFB]">
+                    <td className="px-4 py-3 font-[600] text-[#111827]">{record.fromCurrency} — {record.toCurrency}</td>
+                    <td className="px-4 py-3 text-[13px] font-[800] text-[#111827]">₦{Number(record.rate).toLocaleString()}</td>
+                    <td className="px-4 py-3 font-[500]">{new Date(record.effectiveDate).toLocaleString()}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {historyPagination.total > 0 && !historyLoading && (
+          <div className="mt-4 flex items-center justify-between text-[11px] text-[#9CA3AF]">
+            <span>Showing page {historyPagination.page} of {historyPagination.pages} • {historyPagination.total} total logs</span>
+            <div className="flex items-center gap-2">
+              <button 
+                disabled={historyPagination.page <= 1}
+                onClick={() => loadHistory(historyPagination.page - 1)}
+                className="px-3 py-1.5 border border-[#E5E7EB] rounded-[6px] disabled:opacity-50 hover:bg-[#F3F4F6] text-[#111827] font-[600]"
+              >
+                Previous
+              </button>
+              <button 
+                disabled={historyPagination.page >= historyPagination.pages}
+                onClick={() => loadHistory(historyPagination.page + 1)}
+                className="px-3 py-1.5 border border-[#E5E7EB] rounded-[6px] disabled:opacity-50 hover:bg-[#F3F4F6] text-[#111827] font-[600]"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
 
 export default function Page() {
   const [sessions, setSessions] = useState<any[]>([])
@@ -96,6 +299,39 @@ export default function Page() {
     startDate: "",
     endDate: "",
     search: "",
+  })
+  const [appLogs, setAppLogs] = useState<any[]>([])
+  const [appLogsLoading, setAppLogsLoading] = useState(true)
+  const [appLogsError, setAppLogsError] = useState<string | null>(null)
+  const [appLogPagination, setAppLogPagination] = useState({
+    total: 0,
+    page: 1,
+    limit: 20,
+    pages: 1,
+  })
+  const [appLogFilters, setAppLogFilters] = useState({
+    level: "",
+    startDate: "",
+    endDate: "",
+    page: "1",
+    limit: "20",
+  })
+  const [httpLogs, setHttpLogs] = useState<any[]>([])
+  const [httpLogsLoading, setHttpLogsLoading] = useState(true)
+  const [httpLogsError, setHttpLogsError] = useState<string | null>(null)
+  const [httpLogPagination, setHttpLogPagination] = useState({
+    total: 0,
+    page: 1,
+    limit: 20,
+    pages: 1,
+  })
+  const [httpLogFilters, setHttpLogFilters] = useState({
+    method: "",
+    status: "",
+    startDate: "",
+    endDate: "",
+    page: "1",
+    limit: "20",
   })
   const [headerFooterForm, setHeaderFooterForm] = useState({
     type: "header",
@@ -602,6 +838,71 @@ export default function Page() {
     }
   }
 
+  const fetchAppLogs = async () => {
+    setAppLogsLoading(true)
+    setAppLogsError(null)
+    const params = new URLSearchParams()
+    params.set("page", appLogFilters.page || "1")
+    params.set("limit", appLogFilters.limit || "20")
+    if (appLogFilters.level) params.set("level", appLogFilters.level)
+    if (appLogFilters.startDate) {
+      const isoStart = new Date(appLogFilters.startDate).toISOString()
+      params.set("startDate", isoStart)
+    }
+    if (appLogFilters.endDate) {
+      const isoEnd = new Date(appLogFilters.endDate).toISOString()
+      params.set("endDate", isoEnd)
+    }
+    try {
+      const res = await fetch(`/api/logs/app?${params.toString()}`)
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        throw new Error(data?.message || "Unable to load application logs")
+      }
+      setAppLogs(data?.data ?? [])
+      setAppLogPagination(
+        data?.pagination ?? { total: 0, page: Number(appLogFilters.page || 1), limit: Number(appLogFilters.limit || 20), pages: 1 }
+      )
+    } catch (err: any) {
+      setAppLogsError(err.message || "Unable to load application logs")
+    } finally {
+      setAppLogsLoading(false)
+    }
+  }
+
+  const fetchHttpLogs = async () => {
+    setHttpLogsLoading(true)
+    setHttpLogsError(null)
+    const params = new URLSearchParams()
+    params.set("page", httpLogFilters.page || "1")
+    params.set("limit", httpLogFilters.limit || "20")
+    if (httpLogFilters.method) params.set("method", httpLogFilters.method)
+    if (httpLogFilters.status) params.set("status", httpLogFilters.status)
+    if (httpLogFilters.startDate) {
+      const isoStart = new Date(httpLogFilters.startDate).toISOString()
+      params.set("startDate", isoStart)
+    }
+    if (httpLogFilters.endDate) {
+      const isoEnd = new Date(httpLogFilters.endDate).toISOString()
+      params.set("endDate", isoEnd)
+    }
+    try {
+      const res = await fetch(`/api/core/logs/http?${params.toString()}`)
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        throw new Error(data?.message || "Unable to load http logs")
+      }
+      setHttpLogs(data?.data ?? [])
+      setHttpLogPagination(
+        data?.pagination ?? { total: 0, page: Number(httpLogFilters.page || 1), limit: Number(httpLogFilters.limit || 20), pages: 1 }
+      )
+    } catch (err: any) {
+      setHttpLogsError(err.message || "Unable to load http logs")
+    } finally {
+      setHttpLogsLoading(false)
+    }
+  }
+
   const handleBudgetSave = async () => {
     setBudgetSaveMessage(null)
     setBudgetSaveError(null)
@@ -689,6 +990,8 @@ export default function Page() {
     fetchActiveHeaderFooter("footer")
     fetchPurposes()
     fetchAuditLogs()
+    fetchAppLogs()
+    fetchHttpLogs()
   }, [])
 
   return (
@@ -1051,13 +1354,6 @@ export default function Page() {
                   </div>
                 </div>
               </div>
-
-              {/* Active Sessions */}
-              <div className="mt-8 rounded-[12px] border border-[#EEF1F6] bg-white">
-                <div className="flex items-center justify-between border-b border-[#EEF1F6] px-4 py-3 gap-4">
-                  <div className="flex items-center gap-2 text-[16.98px] leading-[25.48px] font-bold text-[#111827]">
-                    Active Sessions
-                  </div>
                   <button
                     onClick={handleRevokeAllSessions}
                     disabled={revokingSessions}
@@ -1675,6 +1971,242 @@ export default function Page() {
                           </div>
                         </div>
                       ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Application Logs */}
+              <div className="mt-8 rounded-[12px] border border-[#EEF1F6] bg-white">
+                <div className="flex items-center justify-between border-b border-[#EEF1F6] px-4 py-3">
+                  <div className="flex items-center gap-2 text-[16.98px] leading-[25.48px] font-bold text-[#111827]">
+                    Application Logs
+                  </div>
+                </div>
+
+                <div className="p-6 grid grid-cols-1 md:grid-cols-6 gap-3">
+                  <select
+                    value={appLogFilters.level}
+                    onChange={(e) => setAppLogFilters((prev) => ({ ...prev, level: e.target.value }))}
+                    className="h-[38px] px-3 rounded-[8px] border border-[#E5E7EB] bg-white text-[12px] font-[500]"
+                  >
+                    <option value="">All levels</option>
+                    <option value="info">Info</option>
+                    <option value="warn">Warn</option>
+                    <option value="error">Error</option>
+                    <option value="debug">Debug</option>
+                  </select>
+                  <input
+                    type="datetime-local"
+                    value={appLogFilters.startDate}
+                    onChange={(e) => setAppLogFilters((prev) => ({ ...prev, startDate: e.target.value }))}
+                    className="h-[38px] px-3 rounded-[8px] border border-[#E5E7EB] bg-white text-[12px] font-[500]"
+                  />
+                  <input
+                    type="datetime-local"
+                    value={appLogFilters.endDate}
+                    onChange={(e) => setAppLogFilters((prev) => ({ ...prev, endDate: e.target.value }))}
+                    className="h-[38px] px-3 rounded-[8px] border border-[#E5E7EB] bg-white text-[12px] font-[500]"
+                  />
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={appLogFilters.limit}
+                    onChange={(e) => setAppLogFilters((prev) => ({ ...prev, limit: e.target.value }))}
+                    className="h-[38px] px-3 rounded-[8px] border border-[#E5E7EB] bg-white text-[12px] font-[500]"
+                    placeholder="Limit"
+                  />
+                  <input
+                    type="number"
+                    min={1}
+                    value={appLogFilters.page}
+                    onChange={(e) => setAppLogFilters((prev) => ({ ...prev, page: e.target.value }))}
+                    className="h-[38px] px-3 rounded-[8px] border border-[#E5E7EB] bg-white text-[12px] font-[500]"
+                    placeholder="Page"
+                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={fetchAppLogs}
+                      className="h-[34px] px-4 rounded-[8px] bg-[#3B5BDB] text-white text-[12px] font-[700] hover:bg-[#2f4cc2]"
+                    >
+                      Apply Filters
+                    </button>
+                  </div>
+                </div>
+
+                <div className="px-6 pb-6">
+                  {appLogsLoading ? (
+                    <div className="text-[12px] text-[#64748B]">Loading application logs...</div>
+                  ) : appLogsError ? (
+                    <div className="text-[12px] text-rose-600 font-[600]">{appLogsError}</div>
+                  ) : appLogs.length === 0 ? (
+                    <div className="text-[12px] text-[#64748B]">No application logs found.</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {appLogs.map((log) => {
+                        const level = String(log?.level ?? "info").toLowerCase()
+                        const levelTone =
+                          level === "error"
+                            ? "bg-[#FEF2F2] text-[#DC2626]"
+                            : level === "warn"
+                              ? "bg-[#FFF7ED] text-[#F97316]"
+                              : level === "debug"
+                                ? "bg-[#F3F4F6] text-[#6B7280]"
+                                : "bg-[#ECFDF5] text-[#16A34A]"
+                        return (
+                          <div key={log?._id ?? `${log?.message}-${log?.createdAt}`} className="border border-[#EEF1F6] rounded-[10px] p-4">
+                            <div className="flex items-center justify-between">
+                              <div className="text-[12px] font-[800] text-[#111827]">{log?.message ?? "Log entry"}</div>
+                              <div className="text-[11px] text-[#9CA3AF]">
+                                {log?.createdAt ? new Date(log.createdAt).toLocaleString() : "N/A"}
+                              </div>
+                            </div>
+                            <div className="mt-2 flex items-center gap-2">
+                              <span className={`rounded-full px-2 py-1 text-[10px] font-[800] uppercase tracking-wide ${levelTone}`}>
+                                {level}
+                              </span>
+                              {log?.context && (
+                                <span className="text-[11px] text-[#6B7280]">{log.context}</span>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                  {!appLogsLoading && !appLogsError && appLogPagination.total > 0 && (
+                    <div className="mt-3 text-[11px] text-[#9CA3AF]">
+                      Showing page {appLogPagination.page} of {appLogPagination.pages} • {appLogPagination.total} total logs
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* HTTP Logs */}
+              <div className="mt-8 rounded-[12px] border border-[#EEF1F6] bg-white">
+                <div className="flex items-center justify-between border-b border-[#EEF1F6] px-4 py-3">
+                  <div className="flex items-center gap-2 text-[16.98px] leading-[25.48px] font-bold text-[#111827]">
+                    HTTP Logs
+                  </div>
+                </div>
+
+                <div className="p-6 grid grid-cols-1 md:grid-cols-6 gap-3">
+                  <select
+                    value={httpLogFilters.method}
+                    onChange={(e) => setHttpLogFilters((prev) => ({ ...prev, method: e.target.value }))}
+                    className="h-[38px] px-3 rounded-[8px] border border-[#E5E7EB] bg-white text-[12px] font-[500]"
+                  >
+                    <option value="">All Methods</option>
+                    <option value="GET">GET</option>
+                    <option value="POST">POST</option>
+                    <option value="PUT">PUT</option>
+                    <option value="PATCH">PATCH</option>
+                    <option value="DELETE">DELETE</option>
+                  </select>
+                  <input
+                    type="number"
+                    value={httpLogFilters.status}
+                    onChange={(e) => setHttpLogFilters((prev) => ({ ...prev, status: e.target.value }))}
+                    className="h-[38px] px-3 rounded-[8px] border border-[#E5E7EB] bg-white text-[12px] font-[500]"
+                    placeholder="Status Code (e.g. 200)"
+                  />
+                  <input
+                    type="datetime-local"
+                    value={httpLogFilters.startDate}
+                    onChange={(e) => setHttpLogFilters((prev) => ({ ...prev, startDate: e.target.value }))}
+                    className="h-[38px] px-3 rounded-[8px] border border-[#E5E7EB] bg-white text-[12px] font-[500]"
+                  />
+                  <input
+                    type="datetime-local"
+                    value={httpLogFilters.endDate}
+                    onChange={(e) => setHttpLogFilters((prev) => ({ ...prev, endDate: e.target.value }))}
+                    className="h-[38px] px-3 rounded-[8px] border border-[#E5E7EB] bg-white text-[12px] font-[500]"
+                  />
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={httpLogFilters.limit}
+                    onChange={(e) => setHttpLogFilters((prev) => ({ ...prev, limit: e.target.value }))}
+                    className="h-[38px] px-3 rounded-[8px] border border-[#E5E7EB] bg-white text-[12px] font-[500]"
+                    placeholder="Limit"
+                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={fetchHttpLogs}
+                      className="h-[34px] px-4 rounded-[8px] bg-[#3B5BDB] text-white text-[12px] font-[700] hover:bg-[#2f4cc2]"
+                    >
+                      Apply Filters
+                    </button>
+                  </div>
+                </div>
+
+                <div className="px-6 pb-6">
+                  {httpLogsLoading ? (
+                    <div className="text-[12px] text-[#64748B]">Loading HTTP logs...</div>
+                  ) : httpLogsError ? (
+                    <div className="text-[12px] text-rose-600 font-[600]">{httpLogsError}</div>
+                  ) : httpLogs.length === 0 ? (
+                    <div className="text-[12px] text-[#64748B]">No HTTP logs found.</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {httpLogs.map((log) => {
+                        const status = Number(log?.status) || 200
+                        const statusTone =
+                          status >= 500
+                            ? "bg-[#FEF2F2] text-[#DC2626]"
+                            : status >= 400
+                              ? "bg-[#FFF7ED] text-[#F97316]"
+                              : status >= 300
+                                ? "bg-[#F3F4F6] text-[#6B7280]"
+                                : "bg-[#ECFDF5] text-[#16A34A]"
+                        
+                        return (
+                          <div key={log?._id ?? `${log?.url}-${log?.createdAt}`} className="border border-[#EEF1F6] rounded-[10px] p-4">
+                            <div className="flex items-center justify-between">
+                              <div className="flex gap-2 items-center">
+                                <span className={`rounded-full px-2 py-1 text-[10px] font-[800] uppercase tracking-wide bg-[#F3F5F9] text-[#111827]`}>
+                                  {log?.method ?? "GET"}
+                                </span>
+                                <div className="text-[12px] font-[800] text-[#111827]">{log?.url ?? "/"}</div>
+                              </div>
+                              <div className="text-[11px] text-[#9CA3AF]">
+                                {log?.createdAt ? new Date(log.createdAt).toLocaleString() : "N/A"}
+                              </div>
+                            </div>
+                            <div className="mt-2 flex items-center gap-3 text-[11px] text-[#6B7280]">
+                              <span className={`rounded-[4px] px-1.5 py-0.5 font-[800] ${statusTone}`}>
+                                {status}
+                              </span>
+                              <span>{log?.responseTime ?? 0}ms</span>
+                              {log?.ipAddress && <span>• {log.ipAddress}</span>}
+                              {log?.userAgent && <span className="truncate max-w-[200px]" title={log.userAgent}>• {log.userAgent}</span>}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                  {!httpLogsLoading && !httpLogsError && httpLogPagination.total > 0 && (
+                    <div className="mt-3 flex justify-between items-center text-[11px] text-[#9CA3AF]">
+                      <span>Showing page {httpLogPagination.page} of {httpLogPagination.pages} • {httpLogPagination.total} total logs</span>
+                      <div className="flex gap-2">
+                         <button 
+                             disabled={httpLogPagination.page <= 1}
+                             onClick={() => setHttpLogFilters(prev => ({...prev, page: String(httpLogPagination.page - 1)}))}
+                             className="px-2 py-1 border border-[#E5E7EB] rounded disabled:opacity-50"
+                         >
+                            Prev
+                         </button>
+                         <button 
+                             disabled={httpLogPagination.page >= httpLogPagination.pages}
+                             onClick={() => setHttpLogFilters(prev => ({...prev, page: String(httpLogPagination.page + 1)}))}
+                             className="px-2 py-1 border border-[#E5E7EB] rounded disabled:opacity-50"
+                         >
+                            Next
+                         </button>
+                      </div>
                     </div>
                   )}
                 </div>

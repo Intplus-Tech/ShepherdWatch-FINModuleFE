@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { Inter } from "next/font/google";
 import { X, Printer, CloudUpload, ChevronDown, Check } from "lucide-react";
 import AssetsHubPage from "../asset/page";
+import FileUploadDropzone from "@/components/ui/FileUploadDropzone";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -89,11 +90,13 @@ export default function UpdateStockModalPage() {
             {/* File Upload Area */}
             <div className="flex flex-col gap-1.5 mt-1 sm:mt-0">
               <label className="text-[#374151] text-[13px] font-[700] mb-0.5">Attach Invoice/Receipt</label>
-              <div className="border border-dashed border-[#CBD5E1] rounded-[8px] flex flex-col items-center justify-center py-7 sm:py-8 bg-white hover:bg-gray-50/50 transition-colors cursor-pointer group">
-                <CloudUpload className="h-7 w-7 text-[#94A3B8] mb-3 group-hover:text-[#64748B] transition-colors stroke-[1.5px]" />
-                <div className="text-[#475569] text-[14px] font-[500]"><span className="text-[#2563EB] font-[600]">Upload a file</span> or drag and drop</div>
-                <div className="text-[#94A3B8] text-[12px] font-[500] mt-1">PNG, JPG, PDF up to 10MB</div>
-              </div>
+              <FileUploadDropzone 
+                folder="receipts"
+                maxSizeMB={10}
+                acceptedTypes="image/jpeg,image/png,application/pdf"
+                label="Upload an invoice"
+                onUploadComplete={(data) => console.log('Invoice uploaded:', data)}
+              />
             </div>
 
             {/* Financial Requisition Card */}

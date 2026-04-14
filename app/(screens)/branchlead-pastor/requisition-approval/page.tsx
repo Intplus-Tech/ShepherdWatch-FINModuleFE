@@ -1,214 +1,94 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
-import Image from "next/image"
+import { useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import {
  BadgeCheck,
  Banknote,
  ChevronRight,
  FileText,
- Info,
  ShieldAlert,
  ShieldCheck,
  Upload,
  X,
 } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
-import { useRequisitions } from "@/components/hooks/useRequisitions"
+import { useRequisitionInbox } from "@/components/hooks/useRequisitionInbox"
+import { useRequisitionBudgetContext } from "@/components/hooks/useRequisitionBudgetContext"
 
 export default function Page() {
- const { user } = useAuth()
- const { requisitions } = useRequisitions({
- currentStatus: "PENDING_ACCOUNTANT",
- tenantId: user-.tenantId -- user-.tenant-.id -- "",
- })
- const [overrideReason, setOverrideReason] = useState("")
- const [coaId, setCoaId] = useState("")
- const [coaLoading, setCoaLoading] = useState(true)
- const [coaError, setCoaError] = useState<string | null>(null)
- const [submitError, setSubmitError] = useState<string | null>(null)
- const [submitSuccess, setSubmitSuccess] = useState<string | null>(null)
- const [submitting, setSubmitting] = useState(false)
+  const { user } = useAuth()
+  const { requisitions } = useRequisitionInbox({
+    branchId: user?.tenantId ?? user?.tenant?.id ?? "",
+  })
+  const [overrideReason, setOverrideReason] = useState("")
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
 
- const tenantId = useMemo(
- () => user-.tenantId -- user-.tenant-.id -- "",
- [user]
- )
+  const selectedRequisition = useMemo(() => requisitions[0], [requisitions])
+  const {
+    data: budgetContext,
+    loading: budgetContextLoading,
+    error: budgetContextError,
+  } = useRequisitionBudgetContext(selectedRequisition?.id)
 
- const selectedRequisition = useMemo(() => requisitions[0], [requisitions])
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat("en-NG", {
+      style: "currency",
+      currency: "NGN",
+      maximumFractionDigits: 2,
+    }).format(Number(value ?? 0))
 
- const formatCurrency = (value-: number) =>
- new Intl.NumberFormat("en-NG", {
- style: "currency",
- currency: "NGN",
- maximumFractionDigits: 2,
- }).format(Number(value -- 0))
+  const getCsrfToken = () => {
+    if (typeof document === "undefined") return ""
+    const match = document.cookie
+      .split("; ")
+      .find((cookie) => cookie.startsWith("csrf_token="))
+    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
+  }
 
- useEffect(() => {
- let isMounted = true
+  const handleAuthorizeOverride = async () => {
+    setSubmitError(null)
+    setSubmitSuccess(null)
 
- const loadCoaOptions = async () => {
- setCoaLoading(true)
- setCoaError(null)
-
- try {
- const url = tenantId
- - `/api/core/financial/coa-type=EXPENSE&tenantId=${encodeURIComponent(tenantId)}`
- : "/api/core/financial/coa-type=EXPENSE"
- const response = await fetch(url, { method: "GET", credentials: "include" })
- const payload = await response.json().catch(() => null)
- if (!response.ok) {
- throw new Error(payload?.message ?? "Unable to fetch budget categories.")
- }
-
- const rawItems = Array.isArray(payload?.data?.content)
- - payload.data.content
- : Array.isArray(payload?.data)
- - payload.data
- : Array.isArray(payload?.items)
- - payload.items
- : Array.isArray(payload)
- - payload
- : []
-
- const matched = rawItems.find((item: any) => {
- const name = String(item-.name -- item-.accountName -- "").toLowerCase()
- return name.includes("equipment") || name.includes("maintenance")
- })
-
- if (isMounted) {
- setCoaId(String(matched-.id -- matched-._id -- ""))
- if (!matched && rawItems.length > 0) {
- setCoaId(String(rawItems[0]-.id -- rawItems[0]-._id -- ""))
- }
- }
- } catch (err) {
- if (isMounted) {
- setCoaError(err instanceof Error - err.message : "Unable to fetch budget categories.")
- }
- } finally {
- if (isMounted) {
- setCoaLoading(false)
- }
- }
- }
-
- loadCoaOptions()
-
- return () => {
- isMounted = false
- }
- }, [tenantId])
-
- const getCsrfToken = () => {
- if (typeof document === "undefined") return ""
- const match = document.cookie
- .split("; ")
- .find((cookie) => cookie.startsWith("csrf_token="))
- return match - decodeURIComponent(match.split("=")[1] -- "") : ""
- }
-
- const handleAuthorizeOverride = async () => {
- setSubmitError(null)
- setSubmitSuccess(null)
-
- if (!tenantId) {
- setSubmitError("Tenant is required to authorize override.")
- return
- }
- if (!coaId) {
- setSubmitError("Unable to resolve a budget category for this requisition.")
- return
- }
- if (!overrideReason.trim()) {
- setSubmitError("Please provide a justification for this override.")
- return
- }
+    if (!overrideReason.trim()) {
+      setSubmitError("Please provide a justification for this override.")
+      return
+    }
+    const requisitionId = selectedRequisition?.id
+    if (!requisitionId) {
+      setSubmitError("Unable to resolve requisition for override.")
+      return
+    }
 
     setSubmitting(true)
 
     try {
       const csrfToken = getCsrfToken()
-      const now = new Date()
-      const period = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1)).toISOString()
-
-      const response = await fetch("/api/core/financial/budget-entries", {
-        method: "POST",
+      const response = await fetch(`/api/core/financial/requisitions/${requisitionId}/override`, {
+        method: "PATCH",
         headers: {
           "Content-Type": "application/json",
           "x-csrf-token": csrfToken,
         },
         credentials: "include",
         body: JSON.stringify({
-          tenantId,
-          coaId,
-          period,
-          amount: 5000,
+          overrideJustification: overrideReason.trim(),
         }),
       })
       const payload = await response.json().catch(() => null)
       if (!response.ok) {
-        throw new Error(payload?.message ?? "Unable to authorize override.")
+        throw new Error(payload?.message ?? "Unable to authorize requisition override.")
       }
 
-      const requisitionResponse = await fetch("/api/core/financial/requisitions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-csrf-token": csrfToken,
-        },
-        credentials: "include",
-        body: JSON.stringify({
-          tenantId,
-          coaId,
-          amount: 8000,
-          justification: overrideReason.trim() || "Emergency generator repair",
-        }),
-      })
-      const requisitionPayload = await requisitionResponse.json().catch(() => null)
-      if (!requisitionResponse.ok) {
-        throw new Error(
-          requisitionPayload?.message ?? "Unable to create override requisition."
-        )
-      }
-
-      const requisitionId =
-        requisitionPayload?.data?.id ?? requisitionPayload?.id ?? null
-      if (!requisitionId) {
-        throw new Error("Unable to resolve override requisition.")
-      }
-
-      const approveResponse = await fetch(
-        `/api/core/financial/requisitions/${requisitionId}/approve-lead-pastor`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-csrf-token": csrfToken,
-          },
-          credentials: "include",
-          body: JSON.stringify({
-            overrideReason: overrideReason.trim() || "Emergency repair essential",
-          }),
-        }
-      )
-      const approvePayload = await approveResponse.json().catch(() => null)
-      if (!approveResponse.ok) {
-        throw new Error(
-          approvePayload?.message ?? "Unable to approve override requisition."
-        )
-      }
-
-      setSubmitSuccess("Override approved successfully.")
+      setSubmitSuccess("Requisition override authorized successfully.")
     } catch (err) {
-      setSubmitError(
-        err instanceof Error ? err.message : "Unable to authorize override."
-      )
+      setSubmitError(err instanceof Error ? err.message : "Unable to authorize override.")
     } finally {
       setSubmitting(false)
     }
- }
+  }
 
  return (
  <div className="min-h-screen bg-[#1f1f1f] p-6">
@@ -227,7 +107,9 @@ export default function Page() {
  <h2 className="text-[14px] font-semibold text-[#111827]">
  Requisition Approval: {selectedRequisition?.reference ? `#${selectedRequisition.reference}` : selectedRequisition?.id ? `#${selectedRequisition.id.slice(0, 8).toUpperCase()}` : "N/A"}
  </h2>
- <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[8px] text-rose-600">OVER-BUDGET</span>
+ <span className={`rounded-full px-2 py-0.5 text-[8px] ${budgetContext?.isOverBudget ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-600"}`}>
+ {budgetContext?.isOverBudget ? "OVER-BUDGET" : "WITHIN BUDGET"}
+ </span>
  </div>
  <p className="text-[9px] text-[#9CA3AF]">{selectedRequisition?.justification ?? "Requisition"} - {selectedRequisition?.requestedBy ? `Requested by ${selectedRequisition.requestedBy}` : "Branch"}</p>
  </div>
@@ -261,9 +143,9 @@ export default function Page() {
 
  <div className="mt-4 text-[9px] text-[#6B7280]">
  <div className="font-semibold text-[#111827]">Accountant&apos;s Justification</div>
- <p className="mt-1">
- Current outdoor-led sound system no longer meets the required standards for services and special events.
- </p>
+ <p className="mt-1">{selectedRequisition?.justification ?? "No justification provided."}</p>
+
+
  </div>
  </div>
 
@@ -276,22 +158,24 @@ export default function Page() {
  <div className="mt-4 space-y-3 text-[9px] text-[#6B7280]">
  <div className="flex items-center justify-between">
  <span>Monthly Allocation</span>
- <span className="font-semibold text-[#111827]">N/A</span>
+ <span className="font-semibold text-[#111827]">{budgetContextLoading ? "Loading..." : formatCurrency(budgetContext?.allocatedAmount ?? 0)}</span>
  </div>
  <div className="flex items-center justify-between">
  <span>Remaining Budget</span>
- <span className="font-semibold text-[#3B5BDB]">N/A</span>
+ <span className="font-semibold text-[#3B5BDB]">{budgetContextLoading ? "Loading..." : formatCurrency(budgetContext?.remainingBudget ?? 0)}</span>
  </div>
  <div className="flex items-center justify-between">
  <span>Requested Amount</span>
  <span className="font-semibold text-[#111827]">{formatCurrency(selectedRequisition?.amount)}</span>
  </div>
- <div className="rounded-[10px] border border-[#FDE68A] bg-[#FFFBEB] px-3 py-2 text-[9px] text-[#B45309]">
+ <div className={`rounded-[10px] border px-3 py-2 text-[9px] ${budgetContext?.isOverBudget ? "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>
  <div className="font-semibold">OVERAGE AMOUNT</div>
- <div className="text-[12px] font-semibold text-[#B91C1C]">N/A</div>
+ <div className={`text-[12px] font-semibold ${budgetContext?.isOverBudget ? "text-[#B91C1C]" : "text-emerald-700"}`}>
+ {budgetContextLoading ? "Loading..." : formatCurrency(budgetContext?.overageAmount ?? 0)}
+ </div>
  </div>
  <div className="rounded-[10px] border border-[#DBEAFE] bg-[#EFF6FF] px-3 py-2 text-[8px] text-[#1E3A8A]">
- Note: Requisition will not be approved if budget balance is below required minimum.
+ Note: Use this budget context to determine whether override authorization is required.
  </div>
  </div>
  </div>
@@ -313,7 +197,7 @@ export default function Page() {
  <Button
  size="sm"
  onClick={handleAuthorizeOverride}
- disabled={submitting || coaLoading}
+ disabled={submitting || budgetContextLoading || !budgetContext?.isOverBudget}
  className="h-8 w-full rounded-[8px] bg-[#3B5BDB] text-[9px] text-white disabled:opacity-60 disabled:cursor-not-allowed"
  >
  <ShieldCheck className="h-3.5 w-3.5" />
@@ -328,9 +212,9 @@ export default function Page() {
  </Button>
  </div>
 
- {(submitError || submitSuccess || coaError) && (
+ {(submitError || submitSuccess || budgetContextError) && (
  <div className="mt-3 rounded-[10px] border border-[#EEF1F6] bg-[#F9FAFB] px-3 py-2 text-[8px] font-semibold">
- {coaError && <div className="text-rose-600">{coaError}</div>}
+ {budgetContextError && <div className="text-rose-600">{budgetContextError}</div>}
  {submitError && <div className="text-rose-600">{submitError}</div>}
  {submitSuccess && <div className="text-emerald-600">{submitSuccess}</div>}
  </div>

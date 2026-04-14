@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
 import { Inter } from "next/font/google"
 import {
@@ -23,54 +23,201 @@ import {
   CreditCard,
   Check,
 } from "lucide-react"
+import { useAuth } from "@/components/auth/AuthProvider"
 
 const inter = Inter({ subsets: ["latin"] })
 
-const tableData = [
-  {
-    id: 1,
-    taskTitle: "Generator Facility",
-    subtitle: "REQ-2023-085 (30% paid)",
-    category: "Utilities",
-    priority: "High",
-    cost: "₦85,000.00",
-    status: "- Pending",
-    selected: true,
-  },
-  {
-    id: 2,
-    taskTitle: "Office AC Repair",
-    subtitle: "AC-23-442 (Not paid)",
-    category: "Repairs",
-    priority: "Medium",
-    cost: "₦35,500.00",
-    status: "- Pending",
-    selected: true,
-  },
-  {
-    id: 3,
-    taskTitle: "Printer Toner Restock",
-    subtitle: "PR-2023-102 (Paid)",
-    category: "Supplies",
-    priority: "Low",
-    cost: "₦25,400.00",
-    status: "- Pending",
-    selected: true,
-  },
-  {
-    id: 4,
-    taskTitle: "Vehicle Servicing (Toyota Hilux)",
-    subtitle: "VH-2023-094 (Not paid)",
-    category: "Transport",
-    priority: "Medium",
-    cost: "₦150,000.00",
-    status: "Authorizing",
-    selected: false,
-  }
-]
+type MaintenanceRecord = {
+  _id?: string
+  id?: string
+  assetId?: string | { _id?: string; name?: string }
+  branchId?: string | { _id?: string; name?: string }
+  serviceType?: string
+  description?: string
+  provider?: string
+  cost?: number
+  currency?: string
+  status?: string
+  scheduledDate?: string
+  notes?: string
+}
 
 export default function LogisticsRepairsPage() {
+  const { user } = useAuth()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [maintenanceTasks, setMaintenanceTasks] = useState<MaintenanceRecord[]>([])
+  const [tasksLoading, setTasksLoading] = useState(false)
+  const [tasksError, setTasksError] = useState<string | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [editingRecord, setEditingRecord] = useState<MaintenanceRecord | null>(null)
+  const [scheduleRecords, setScheduleRecords] = useState<MaintenanceRecord[]>([])
+  const [scheduleLoading, setScheduleLoading] = useState(false)
+  const [scheduleError, setScheduleError] = useState<string | null>(null)
+  const [completingRecord, setCompletingRecord] = useState<MaintenanceRecord | null>(null)
+  const [completeForm, setCompleteForm] = useState({ cost: "", notes: "" })
+  const [completeError, setCompleteError] = useState<string | null>(null)
+  const [completeSaving, setCompleteSaving] = useState(false)
+  const [editForm, setEditForm] = useState({
+    serviceType: "",
+    description: "",
+    provider: "",
+    cost: "",
+    scheduledDate: "",
+    notes: "",
+  })
+  const [editError, setEditError] = useState<string | null>(null)
+  const [editSaving, setEditSaving] = useState(false)
+
+  const branchId = useMemo(
+    () => user?.branchId ?? user?.branch?.id ?? "",
+    [user]
+  )
+
+  const formatCurrency = (value: number, currency?: string) => {
+    const cur = currency && ["NGN", "USD", "GBP", "EUR"].includes(currency) ? currency : "NGN"
+    return new Intl.NumberFormat("en-NG", {
+      style: "currency",
+      currency: cur,
+      maximumFractionDigits: 0,
+    }).format(value)
+  }
+
+  const getAssetName = (record: MaintenanceRecord) => {
+    if (record?.assetId && typeof record.assetId === "object") {
+      return record.assetId?.name
+    }
+    return undefined
+  }
+
+  const formatDateParam = (value: Date) => {
+    const year = value.getFullYear()
+    const month = String(value.getMonth() + 1).padStart(2, "0")
+    const day = String(value.getDate()).padStart(2, "0")
+    return `${year}-${month}-${day}`
+  }
+
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchTasks = async () => {
+      if (!branchId) {
+        setMaintenanceTasks([])
+        setTasksError("Branch is required to load maintenance tasks.")
+        return
+      }
+
+      try {
+        setTasksLoading(true)
+        setTasksError(null)
+        const params = new URLSearchParams({
+          branchId,
+          page: "1",
+          limit: "100",
+          sort: "scheduledDate",
+          order: "asc",
+        })
+
+        const response = await fetch(`/api/maintenance?${params.toString()}`, {
+          method: "GET",
+          credentials: "include",
+        })
+        const payload = await response.json().catch(() => null)
+        if (!response.ok) {
+          throw new Error(payload?.message ?? "Unable to load maintenance tasks.")
+        }
+
+        const records = payload?.data ?? payload?.items ?? []
+        const list = Array.isArray(records) ? records : []
+        const filtered = list.filter((record: MaintenanceRecord) => {
+          const status = String(record?.status ?? "").toLowerCase()
+          return status === "scheduled" || status === "in_progress" || status === "overdue"
+        })
+
+        if (isMounted) {
+          setMaintenanceTasks(filtered)
+          setSelectedIds(new Set())
+        }
+      } catch (error) {
+        if (isMounted) {
+          setMaintenanceTasks([])
+          setTasksError(error instanceof Error ? error.message : "Unable to load maintenance tasks.")
+        }
+      } finally {
+        if (isMounted) {
+          setTasksLoading(false)
+        }
+      }
+    }
+
+    fetchTasks()
+
+    return () => {
+      isMounted = false
+    }
+  }, [branchId])
+
+  const currentMonthStart = useMemo(() => {
+    const now = new Date()
+    return new Date(now.getFullYear(), now.getMonth(), 1)
+  }, [])
+
+  const currentMonthEnd = useMemo(() => {
+    const now = new Date()
+    return new Date(now.getFullYear(), now.getMonth() + 1, 0)
+  }, [])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchSchedule = async () => {
+      if (!branchId) {
+        setScheduleRecords([])
+        setScheduleError("Branch is required to load maintenance schedule.")
+        return
+      }
+
+      try {
+        setScheduleLoading(true)
+        setScheduleError(null)
+        const params = new URLSearchParams({
+          branchId,
+          startDate: formatDateParam(currentMonthStart),
+          endDate: formatDateParam(currentMonthEnd),
+        })
+
+        const response = await fetch(`/api/maintenance/schedule?${params.toString()}`, {
+          method: "GET",
+          credentials: "include",
+        })
+        const payload = await response.json().catch(() => null)
+        if (!response.ok) {
+          throw new Error(payload?.message ?? "Unable to load maintenance schedule.")
+        }
+
+        const records = payload?.data ?? payload?.items ?? []
+        const list = Array.isArray(records) ? records : []
+
+        if (isMounted) {
+          setScheduleRecords(list)
+        }
+      } catch (error) {
+        if (isMounted) {
+          setScheduleRecords([])
+          setScheduleError(error instanceof Error ? error.message : "Unable to load maintenance schedule.")
+        }
+      } finally {
+        if (isMounted) {
+          setScheduleLoading(false)
+        }
+      }
+    }
+
+    fetchSchedule()
+
+    return () => {
+      isMounted = false
+    }
+  }, [branchId, currentMonthStart, currentMonthEnd])
 
   // Sub-component for priority badges
   const PriorityBadge = ({ priority }: { priority: string }) => {
@@ -95,9 +242,251 @@ export default function LogisticsRepairsPage() {
     )
   }
 
-  // Determine selection status
-  const selectedCount = tableData.filter(item => item.selected).length
-  const totalSelectedCost = tableData.filter(item => item.selected).reduce((acc, curr) => acc + parseFloat(curr.cost.replace(/[₦,]/g, "")), 0)
+  const selectedCount = selectedIds.size
+  const totalSelectedCost = maintenanceTasks
+    .filter((task) => selectedIds.has(String(task?._id ?? task?.id ?? "")))
+    .reduce((acc, curr) => acc + (Number(curr?.cost) || 0), 0)
+
+  const tasksForDisplay = maintenanceTasks.map((task) => {
+    const status = String(task?.status ?? "scheduled").toLowerCase()
+    const priority = status === "overdue" ? "High" : status === "in_progress" ? "Medium" : "Low"
+    const subtitleParts = []
+    if (task?.serviceType) subtitleParts.push(task.serviceType)
+    if (task?.scheduledDate) {
+      subtitleParts.push(
+        new Date(task.scheduledDate).toLocaleDateString("en-GB", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        })
+      )
+    }
+    return {
+      id: String(task?._id ?? task?.id ?? ""),
+      taskTitle: getAssetName(task) ?? task?.description ?? "Maintenance Task",
+      subtitle: subtitleParts.join(" • ") || "Scheduled Maintenance",
+      category: task?.serviceType ? task.serviceType.replace("_", " ") : "Maintenance",
+      priority,
+      cost: task?.cost !== undefined && task?.cost !== null ? formatCurrency(task.cost, task.currency) : "N/A",
+      status: status === "in_progress" ? "Authorizing" : "- Pending",
+      rawStatus: status,
+    }
+  })
+
+  const pendingCount = maintenanceTasks.length
+  const totalEstimatedCost = maintenanceTasks.reduce(
+    (acc, task) => acc + (Number(task?.cost) || 0),
+    0
+  )
+
+  const upcomingCount = maintenanceTasks.filter((task) => {
+    if (!task?.scheduledDate) return false
+    const date = new Date(task.scheduledDate)
+    if (Number.isNaN(date.getTime())) return false
+    const diff = date.getTime() - new Date().setHours(0, 0, 0, 0)
+    return diff >= 0 && diff <= 30 * 24 * 60 * 60 * 1000
+  }).length
+
+  const monthLabel = useMemo(() => {
+    return currentMonthStart.toLocaleDateString("en-GB", { month: "long", year: "numeric" })
+  }, [currentMonthStart])
+
+  const calendarDays = useMemo(() => {
+    const daysInMonth = currentMonthEnd.getDate()
+    const startDay = (currentMonthStart.getDay() + 6) % 7
+    const scheduledSet = new Set<number>()
+    scheduleRecords.forEach((record) => {
+      if (!record?.scheduledDate) return
+      const date = new Date(record.scheduledDate)
+      if (date.getMonth() !== currentMonthStart.getMonth() || date.getFullYear() !== currentMonthStart.getFullYear()) {
+        return
+      }
+      scheduledSet.add(date.getDate())
+    })
+
+    return {
+      startDay,
+      days: Array.from({ length: daysInMonth }).map((_, index) => {
+        const day = index + 1
+        return {
+          day,
+          isToday: (() => {
+            const now = new Date()
+            return (
+              now.getDate() === day &&
+              now.getMonth() === currentMonthStart.getMonth() &&
+              now.getFullYear() === currentMonthStart.getFullYear()
+            )
+          })(),
+          hasDot: scheduledSet.has(day),
+        }
+      }),
+    }
+  }, [currentMonthStart, currentMonthEnd, scheduleRecords])
+
+  const upcomingThisWeek = useMemo(() => {
+    const today = new Date()
+    const start = new Date(today)
+    start.setHours(0, 0, 0, 0)
+    const end = new Date(start)
+    end.setDate(start.getDate() + 7)
+    return scheduleRecords
+      .filter((record) => {
+        if (!record?.scheduledDate) return false
+        const date = new Date(record.scheduledDate)
+        return date >= start && date <= end
+      })
+      .sort((a, b) => {
+        const aDate = a.scheduledDate ? new Date(a.scheduledDate).getTime() : 0
+        const bDate = b.scheduledDate ? new Date(b.scheduledDate).getTime() : 0
+        return aDate - bDate
+      })
+      .slice(0, 3)
+  }, [scheduleRecords])
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
+
+  const openEdit = (recordId: string) => {
+    const record = maintenanceTasks.find(
+      (task) => String(task?._id ?? task?.id ?? "") === recordId
+    )
+    if (!record) return
+    setEditingRecord(record)
+    setEditError(null)
+    setEditForm({
+      serviceType: record?.serviceType ?? "",
+      description: record?.description ?? "",
+      provider: record?.provider ?? "",
+      cost: record?.cost !== undefined && record?.cost !== null ? String(record.cost) : "",
+      scheduledDate: record?.scheduledDate ? record.scheduledDate.slice(0, 10) : "",
+      notes: record?.notes ?? "",
+    })
+  }
+
+  const closeEdit = () => {
+    setEditingRecord(null)
+    setEditError(null)
+    setEditForm({
+      serviceType: "",
+      description: "",
+      provider: "",
+      cost: "",
+      scheduledDate: "",
+      notes: "",
+    })
+  }
+
+  const openComplete = (recordId: string) => {
+    const record = maintenanceTasks.find(
+      (task) => String(task?._id ?? task?.id ?? "") === recordId
+    )
+    if (!record) return
+    setCompletingRecord(record)
+    setCompleteError(null)
+    setCompleteForm({
+      cost: record?.cost !== undefined && record?.cost !== null ? String(record.cost) : "",
+      notes: record?.notes ?? "",
+    })
+  }
+
+  const closeComplete = () => {
+    setCompletingRecord(null)
+    setCompleteError(null)
+    setCompleteForm({ cost: "", notes: "" })
+  }
+
+  const handleCompleteSave = async () => {
+    if (!completingRecord) return
+    setCompleteError(null)
+    setCompleteSaving(true)
+
+    try {
+      const recordId = String(completingRecord?._id ?? completingRecord?.id ?? "")
+      if (!recordId) {
+        throw new Error("Maintenance record ID is missing.")
+      }
+
+      const payload: Record<string, unknown> = {}
+      if (completeForm.cost) payload.cost = Number(completeForm.cost)
+      if (completeForm.notes) payload.notes = completeForm.notes
+
+      const response = await fetch(`/api/maintenance/${recordId}/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      })
+      const result = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(result?.message ?? "Unable to complete maintenance record.")
+      }
+
+      setMaintenanceTasks((prev) =>
+        prev.filter((task) => String(task?._id ?? task?.id ?? "") !== recordId)
+      )
+      closeComplete()
+    } catch (error) {
+      setCompleteError(error instanceof Error ? error.message : "Unable to complete maintenance record.")
+    } finally {
+      setCompleteSaving(false)
+    }
+  }
+
+  const handleEditSave = async () => {
+    if (!editingRecord) return
+    setEditError(null)
+    setEditSaving(true)
+
+    try {
+      const payload: Record<string, unknown> = {}
+      if (editForm.serviceType) payload.serviceType = editForm.serviceType
+      if (editForm.description) payload.description = editForm.description
+      if (editForm.provider) payload.provider = editForm.provider
+      if (editForm.cost) payload.cost = Number(editForm.cost)
+      if (editForm.scheduledDate) payload.scheduledDate = editForm.scheduledDate
+      if (editForm.notes) payload.notes = editForm.notes
+
+      const recordId = String(editingRecord?._id ?? editingRecord?.id ?? "")
+      if (!recordId) {
+        throw new Error("Maintenance record ID is missing.")
+      }
+
+      const response = await fetch(`/api/maintenance/${recordId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      })
+      const result = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(result?.message ?? "Unable to update maintenance record.")
+      }
+
+      const updated = result?.data ?? {}
+      setMaintenanceTasks((prev) =>
+        prev.map((task) => {
+          if (String(task?._id ?? task?.id ?? "") !== recordId) return task
+          return { ...task, ...payload, ...updated }
+        })
+      )
+
+      closeEdit()
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : "Unable to update maintenance record.")
+    } finally {
+      setEditSaving(false)
+    }
+  }
 
   return (
     <div className={`flex flex-col xl:flex-row min-h-[100dvh] bg-[#F8FAFC] relative w-full ${inter.className} antialiased`}>
@@ -265,11 +654,10 @@ export default function LogisticsRepairsPage() {
                     verticalAlign: "middle"
                   }}
                 >
-                  12
+                  {pendingCount}
                 </div>
-                <div className="text-[12px] font-[700] text-[#EF4444] flex items-center gap-1 mt-1">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/><polyline points="16 17 22 17 22 11"/></svg>
-                  +2% for this week
+                <div className="text-[12px] font-[600] text-[#9CA3AF] mt-1">
+                  Active scheduled and in-progress tasks
                 </div>
               </div>
 
@@ -292,9 +680,11 @@ export default function LogisticsRepairsPage() {
                     verticalAlign: "middle"
                   }}
                 >
-                  ₦25,550,000.00
+                  {formatCurrency(totalEstimatedCost, "NGN")}
                 </div>
-                <div className="text-[12px] font-[600] text-[#9CA3AF] mt-1">Across 18 pending tasks</div>
+                <div className="text-[12px] font-[600] text-[#9CA3AF] mt-1">
+                  Across {pendingCount} pending tasks
+                </div>
               </div>
 
               {/* Card 3 */}
@@ -316,7 +706,7 @@ export default function LogisticsRepairsPage() {
                     verticalAlign: "middle"
                   }}
                 >
-                  5
+                  {upcomingCount}
                 </div>
                 <div className="text-[12px] font-[600] text-[#9CA3AF] mt-1">Due in next 30 days</div>
               </div>
@@ -350,7 +740,16 @@ export default function LogisticsRepairsPage() {
 
                   {/* Mobile Cards (xs only) */}
                   <div className="sm:hidden divide-y divide-[#EEF1F6]">
-                    {tableData.map((task) => (
+                    {tasksLoading && (
+                      <div className="p-4 sm:p-5 text-[12px] font-[600] text-[#6B7280]">Loading maintenance tasks...</div>
+                    )}
+                    {!tasksLoading && tasksError && (
+                      <div className="p-4 sm:p-5 text-[12px] font-[600] text-[#EF4444]">{tasksError}</div>
+                    )}
+                    {!tasksLoading && !tasksError && tasksForDisplay.length === 0 && (
+                      <div className="p-4 sm:p-5 text-[12px] font-[600] text-[#6B7280]">No pending maintenance tasks.</div>
+                    )}
+                    {tasksForDisplay.map((task) => (
                       <div key={task.id} className="p-4 sm:p-5">
                         <div className="flex items-start justify-between gap-3">
                           <div>
@@ -371,9 +770,20 @@ export default function LogisticsRepairsPage() {
                           ) : (
                             <div className="text-[12px] font-[600] text-[#9CA3AF]">{task.status}</div>
                           )}
-                          <button className="text-[#9CA3AF] hover:text-[#4B5563] transition-colors p-1 rounded-md hover:bg-gray-100">
-                            <MoreVertical className="h-4.5 w-4.5" />
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => openComplete(task.id)}
+                              className="text-[10px] font-[800] uppercase tracking-wider px-2 py-1 rounded-[6px] bg-[#ECFDF5] text-[#16A34A] border border-[#BBF7D0]"
+                            >
+                              Complete
+                            </button>
+                            <button
+                              onClick={() => openEdit(task.id)}
+                              className="text-[#9CA3AF] hover:text-[#4B5563] transition-colors p-1 rounded-md hover:bg-gray-100"
+                            >
+                              <MoreVertical className="h-4.5 w-4.5" />
+                            </button>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -397,11 +807,37 @@ export default function LogisticsRepairsPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#EEF1F6]">
-                        {tableData.map((task) => (
-                          <tr key={task.id} className={`group transition-colors ${task.selected ? 'bg-[#EFF6FF]/40' : 'hover:bg-[#F8FAFC]'}`}>
+                        {tasksLoading && (
+                          <tr>
+                            <td colSpan={7} className="py-6 px-6 text-[12px] font-[600] text-[#6B7280]">
+                              Loading maintenance tasks...
+                            </td>
+                          </tr>
+                        )}
+                        {!tasksLoading && tasksError && (
+                          <tr>
+                            <td colSpan={7} className="py-6 px-6 text-[12px] font-[600] text-[#EF4444]">
+                              {tasksError}
+                            </td>
+                          </tr>
+                        )}
+                        {!tasksLoading && !tasksError && tasksForDisplay.length === 0 && (
+                          <tr>
+                            <td colSpan={7} className="py-6 px-6 text-[12px] font-[600] text-[#6B7280]">
+                              No pending maintenance tasks.
+                            </td>
+                          </tr>
+                        )}
+                        {tasksForDisplay.map((task) => (
+                          <tr key={task.id} className={`group transition-colors ${selectedIds.has(task.id) ? 'bg-[#EFF6FF]/40' : 'hover:bg-[#F8FAFC]'}`}>
                             <td className="py-4 px-6">
-                              <div className={`h-4 w-4 rounded-[4px] border-2 flex items-center justify-center cursor-pointer transition-colors ${task.selected ? 'bg-[#2563EB] border-[#2563EB]' : 'border-[#D1D5DB] bg-white'}`}>
-                                {task.selected && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
+                              <div
+                                onClick={() => toggleSelected(task.id)}
+                                className={`h-4 w-4 rounded-[4px] border-2 flex items-center justify-center cursor-pointer transition-colors ${
+                                  selectedIds.has(task.id) ? 'bg-[#2563EB] border-[#2563EB]' : 'border-[#D1D5DB] bg-white'
+                                }`}
+                              >
+                                {selectedIds.has(task.id) && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
                               </div>
                             </td>
                             <td className="py-4 px-2">
@@ -429,9 +865,20 @@ export default function LogisticsRepairsPage() {
                               )}
                             </td>
                             <td className="py-4 px-6 text-right">
-                              <button className="text-[#9CA3AF] hover:text-[#4B5563] transition-colors p-1 rounded-md hover:bg-gray-100">
-                                <MoreVertical className="h-4.5 w-4.5" />
-                              </button>
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  onClick={() => openComplete(task.id)}
+                                  className="text-[10px] font-[800] uppercase tracking-wider px-2 py-1 rounded-[6px] bg-[#ECFDF5] text-[#16A34A] border border-[#BBF7D0]"
+                                >
+                                  Complete
+                                </button>
+                                <button
+                                  onClick={() => openEdit(task.id)}
+                                  className="text-[#9CA3AF] hover:text-[#4B5563] transition-colors p-1 rounded-md hover:bg-gray-100"
+                                >
+                                  <MoreVertical className="h-4.5 w-4.5" />
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -446,7 +893,7 @@ export default function LogisticsRepairsPage() {
                         {selectedCount}
                       </div>
                       <div className="text-[13px] font-[600] text-[#4B5563]">
-                        Items Selected <span className="mx-1 text-[#D1D5DB]">|</span> Total: <span className="font-[900] text-[#111827]">₦{totalSelectedCost.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                        Items Selected <span className="mx-1 text-[#D1D5DB]">|</span> Total: <span className="font-[900] text-[#111827]">{formatCurrency(totalSelectedCost, "NGN")}</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
@@ -472,7 +919,7 @@ export default function LogisticsRepairsPage() {
                     <h2 className="text-[15px] font-[900] text-[#111827]">Recurring Expenses</h2>
                     <div className="flex items-center gap-3 text-[13px] font-[700] text-[#4B5563]">
                       <ChevronLeft className="h-4 w-4 text-[#9CA3AF] cursor-pointer hover:text-[#4B5563]" strokeWidth={2.5} />
-                      October 2023
+                      {monthLabel}
                       <ChevronRight className="h-4 w-4 text-[#9CA3AF] cursor-pointer hover:text-[#4B5563]" strokeWidth={2.5} />
                     </div>
                   </div>
@@ -490,66 +937,63 @@ export default function LogisticsRepairsPage() {
                     
                     {/* Dates */}
                     <div className="grid grid-cols-7 gap-y-2">
-                      {/* Empty spaces for start of month */}
-                      <div className="aspect-square flex flex-col items-center justify-center relative"></div>
-                      
-                      {/* Generative Dates Array (simplistic representation for UI) */}
-                      {[...Array(31)].map((_, i) => {
-                        const date = i + 1;
-                        const isSelected = date === 18;
-                        const hasDot = date === 13 || date === 20;
-
-                        return (
-                          <div key={date} className="aspect-square flex flex-col items-center justify-center relative p-0.5">
-                            <div className={`h-full w-full rounded-[8px] flex items-center justify-center text-[12px] font-[700] cursor-pointer transition-colors ${isSelected ? 'bg-[#2563EB] text-white shadow-md' : 'text-[#4B5563] hover:bg-gray-50'}`}>
-                              {date}
-                            </div>
-                            {hasDot && !isSelected && (
-                              <div className="absolute bottom-1 h-1 w-1 rounded-full bg-[#10B981]"></div>
-                            )}
+                      {Array.from({ length: calendarDays.startDay }).map((_, idx) => (
+                        <div key={`empty-${idx}`} className="aspect-square flex flex-col items-center justify-center relative"></div>
+                      ))}
+                      {calendarDays.days.map((item) => (
+                        <div key={item.day} className="aspect-square flex flex-col items-center justify-center relative p-0.5">
+                          <div
+                            className={`h-full w-full rounded-[8px] flex items-center justify-center text-[12px] font-[700] cursor-pointer transition-colors ${
+                              item.isToday ? "bg-[#2563EB] text-white shadow-md" : "text-[#4B5563] hover:bg-gray-50"
+                            }`}
+                          >
+                            {item.day}
                           </div>
-                        )
-                      })}
+                          {item.hasDot && !item.isToday && (
+                            <div className="absolute bottom-1 h-1 w-1 rounded-full bg-[#10B981]"></div>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   </div>
 
                   <div className="h-[1px] w-full bg-[#EEF1F6] my-6"></div>
 
                   <h3 className="text-[11px] font-[800] uppercase text-[#9CA3AF] tracking-wider mb-4">Upcoming This Week</h3>
-                  
-                  {/* Upcoming Item 1 */}
-                  <div className="flex justify-between items-start mb-5 pb-5 border-b border-[#F3F4F6]">
-                    <div className="flex gap-4">
-                      <div className="flex flex-col items-center justify-center h-10 w-10 rounded-[8px] bg-[#FEF2F2] border border-[#FCA5A5] shrink-0">
-                        <span className="text-[10px] font-[800] uppercase text-[#EF4444] leading-none mb-0.5">Oct</span>
-                        <span className="text-[14px] font-[900] text-[#EF4444] leading-none">24</span>
+                  {scheduleLoading && (
+                    <div className="text-[12px] font-[600] text-[#6B7280]">Loading schedule...</div>
+                  )}
+                  {!scheduleLoading && scheduleError && (
+                    <div className="text-[12px] font-[600] text-[#EF4444]">{scheduleError}</div>
+                  )}
+                  {!scheduleLoading && !scheduleError && upcomingThisWeek.length === 0 && (
+                    <div className="text-[12px] font-[600] text-[#6B7280]">No upcoming maintenance this week.</div>
+                  )}
+                  {!scheduleLoading && !scheduleError && upcomingThisWeek.map((item, index) => {
+                    const date = item?.scheduledDate ? new Date(item.scheduledDate) : null
+                    const month = date ? date.toLocaleDateString("en-GB", { month: "short" }) : "--"
+                    const day = date ? date.toLocaleDateString("en-GB", { day: "2-digit" }) : "--"
+                    const dueSoon = date ? date.getTime() <= new Date().getTime() + 2 * 24 * 60 * 60 * 1000 : false
+                    return (
+                      <div key={item?._id ?? item?.id ?? `upcoming-${index}`} className={`flex justify-between items-start ${index < upcomingThisWeek.length - 1 ? "mb-5 pb-5 border-b border-[#F3F4F6]" : ""}`}>
+                        <div className="flex gap-4">
+                          <div className={`flex flex-col items-center justify-center h-10 w-10 rounded-[8px] border shrink-0 ${dueSoon ? "bg-[#FEF2F2] border-[#FCA5A5] text-[#EF4444]" : "bg-[#F8FAFC] border-[#E5E7EB] text-[#6B7280]"}`}>
+                            <span className="text-[10px] font-[800] uppercase leading-none mb-0.5">{month}</span>
+                            <span className="text-[14px] font-[900] leading-none">{day}</span>
+                          </div>
+                          <div className="flex flex-col gap-0.5">
+                            <div className="text-[13.5px] font-[800] text-[#111827]">{getAssetName(item) ?? item?.description ?? "Maintenance Task"}</div>
+                            <div className="text-[12px] font-[600] text-[#6B7280]">
+                              {item?.cost !== undefined && item?.cost !== null ? formatCurrency(item.cost, item.currency) : "Cost unavailable"}
+                            </div>
+                          </div>
+                        </div>
+                        <span className={`text-[9px] font-[800] uppercase tracking-wider px-2 py-0.5 rounded-[4px] mt-1 shrink-0 ${dueSoon ? "text-[#EF4444] bg-[#FEF2F2]" : "text-[#2563EB] bg-[#EFF6FF]"}`}>
+                          {dueSoon ? "Due" : "Upcoming"}
+                        </span>
                       </div>
-                      <div className="flex flex-col gap-0.5">
-                        <div className="text-[13.5px] font-[800] text-[#111827]">Office Leases</div>
-                        <div className="text-[12px] font-[600] text-[#6B7280]">₦1,200,000 / Mo</div>
-                      </div>
-                    </div>
-                    <span className="text-[9px] font-[800] uppercase tracking-wider text-[#EF4444] px-2 py-0.5 rounded-[4px] bg-[#FEF2F2] mt-1 shrink-0">
-                      Due
-                    </span>
-                  </div>
-
-                  {/* Upcoming Item 2 */}
-                  <div className="flex justify-between items-start">
-                    <div className="flex gap-4">
-                      <div className="flex flex-col items-center justify-center h-10 w-10 rounded-[8px] bg-[#F8FAFC] border border-[#E5E7EB] shrink-0 text-[#6B7280]">
-                        <span className="text-[10px] font-[800] uppercase leading-none mb-0.5">Oct</span>
-                        <span className="text-[14px] font-[900] leading-none">28</span>
-                      </div>
-                      <div className="flex flex-col gap-0.5">
-                        <div className="text-[13.5px] font-[800] text-[#111827]">Internet Bill</div>
-                        <div className="text-[12px] font-[600] text-[#6B7280]">₦85,000 / Mo</div>
-                      </div>
-                    </div>
-                    <span className="text-[9px] font-[800] uppercase tracking-wider text-[#2563EB] px-2 py-0.5 rounded-[4px] bg-[#EFF6FF] mt-1 shrink-0">
-                      Upcoming
-                    </span>
-                  </div>
+                    )
+                  })}
 
                 </div>
               </div>
@@ -558,6 +1002,180 @@ export default function LogisticsRepairsPage() {
           </div>
         </main>
       </div>
+
+      {editingRecord && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[1px] flex items-center justify-center p-4">
+          <div className="w-full max-w-[520px] bg-white rounded-[16px] shadow-2xl border border-[#EEF1F6] p-6">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <div className="text-[15px] font-[900] text-[#111827]">Update Maintenance Record</div>
+                <div className="text-[12px] text-[#6B7280] font-[600]">
+                  {getAssetName(editingRecord) ?? editingRecord.description ?? "Maintenance Task"}
+                </div>
+              </div>
+              <button
+                onClick={closeEdit}
+                className="h-8 w-8 rounded-full flex items-center justify-center text-[#9CA3AF] hover:text-[#4B5563] hover:bg-gray-100"
+              >
+                <X className="h-4.5 w-4.5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[11px] font-[700] text-[#6B7280] uppercase tracking-wide">Service Type</label>
+                <select
+                  value={editForm.serviceType}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, serviceType: e.target.value }))}
+                  className="h-[40px] rounded-[8px] border border-[#E5E7EB] bg-white px-3 text-[13px] font-[600] text-[#111827]"
+                >
+                  <option value="">Select type</option>
+                  <option value="routine">Routine</option>
+                  <option value="repair">Repair</option>
+                  <option value="inspection">Inspection</option>
+                  <option value="replacement">Replacement</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[11px] font-[700] text-[#6B7280] uppercase tracking-wide">Scheduled Date</label>
+                <input
+                  type="date"
+                  value={editForm.scheduledDate}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, scheduledDate: e.target.value }))}
+                  className="h-[40px] rounded-[8px] border border-[#E5E7EB] bg-white px-3 text-[13px] font-[600] text-[#111827]"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[11px] font-[700] text-[#6B7280] uppercase tracking-wide">Provider</label>
+                <input
+                  value={editForm.provider}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, provider: e.target.value }))}
+                  className="h-[40px] rounded-[8px] border border-[#E5E7EB] bg-white px-3 text-[13px] font-[600] text-[#111827]"
+                  placeholder="Service provider"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[11px] font-[700] text-[#6B7280] uppercase tracking-wide">Estimated Cost</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={editForm.cost}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, cost: e.target.value }))}
+                  className="h-[40px] rounded-[8px] border border-[#E5E7EB] bg-white px-3 text-[13px] font-[600] text-[#111827]"
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-col gap-1.5">
+              <label className="text-[11px] font-[700] text-[#6B7280] uppercase tracking-wide">Description</label>
+              <input
+                value={editForm.description}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, description: e.target.value }))}
+                className="h-[40px] rounded-[8px] border border-[#E5E7EB] bg-white px-3 text-[13px] font-[600] text-[#111827]"
+                placeholder="Maintenance description"
+              />
+            </div>
+
+            <div className="mt-4 flex flex-col gap-1.5">
+              <label className="text-[11px] font-[700] text-[#6B7280] uppercase tracking-wide">Notes</label>
+              <textarea
+                value={editForm.notes}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, notes: e.target.value }))}
+                className="min-h-[80px] rounded-[8px] border border-[#E5E7EB] bg-white px-3 py-2 text-[13px] font-[600] text-[#111827]"
+                placeholder="Add any notes for this update"
+              />
+            </div>
+
+            {editError && <div className="mt-3 text-[12px] font-[600] text-[#EF4444]">{editError}</div>}
+
+            <div className="mt-5 flex items-center justify-end gap-3">
+              <button
+                onClick={closeEdit}
+                className="h-[38px] px-4 rounded-[8px] border border-[#E5E7EB] bg-white text-[#4B5563] text-[13px] font-[700] hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleEditSave}
+                disabled={editSaving}
+                className="h-[38px] px-5 rounded-[8px] bg-[#2563EB] text-white text-[13px] font-[800] hover:bg-[#1D4ED8] disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {editSaving ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {completingRecord && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[1px] flex items-center justify-center p-4">
+          <div className="w-full max-w-[520px] bg-white rounded-[16px] shadow-2xl border border-[#EEF1F6] p-6">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <div className="text-[15px] font-[900] text-[#111827]">Complete Maintenance</div>
+                <div className="text-[12px] text-[#6B7280] font-[600]">
+                  {getAssetName(completingRecord) ?? completingRecord.description ?? "Maintenance Task"}
+                </div>
+              </div>
+              <button
+                onClick={closeComplete}
+                className="h-8 w-8 rounded-full flex items-center justify-center text-[#9CA3AF] hover:text-[#4B5563] hover:bg-gray-100"
+              >
+                <X className="h-4.5 w-4.5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[11px] font-[700] text-[#6B7280] uppercase tracking-wide">Final Cost</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={completeForm.cost}
+                  onChange={(e) => setCompleteForm((prev) => ({ ...prev, cost: e.target.value }))}
+                  className="h-[40px] rounded-[8px] border border-[#E5E7EB] bg-white px-3 text-[13px] font-[600] text-[#111827]"
+                  placeholder="0.00"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[11px] font-[700] text-[#6B7280] uppercase tracking-wide">Status</label>
+                <div className="h-[40px] rounded-[8px] border border-[#E5E7EB] bg-[#F8FAFC] px-3 text-[13px] font-[700] text-[#16A34A] flex items-center">
+                  COMPLETED
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-col gap-1.5">
+              <label className="text-[11px] font-[700] text-[#6B7280] uppercase tracking-wide">Completion Notes</label>
+              <textarea
+                value={completeForm.notes}
+                onChange={(e) => setCompleteForm((prev) => ({ ...prev, notes: e.target.value }))}
+                className="min-h-[90px] rounded-[8px] border border-[#E5E7EB] bg-white px-3 py-2 text-[13px] font-[600] text-[#111827]"
+                placeholder="Add completion notes"
+              />
+            </div>
+
+            {completeError && <div className="mt-3 text-[12px] font-[600] text-[#EF4444]">{completeError}</div>}
+
+            <div className="mt-5 flex items-center justify-end gap-3">
+              <button
+                onClick={closeComplete}
+                className="h-[38px] px-4 rounded-[8px] border border-[#E5E7EB] bg-white text-[#4B5563] text-[13px] font-[700] hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCompleteSave}
+                disabled={completeSaving}
+                className="h-[38px] px-5 rounded-[8px] bg-[#16A34A] text-white text-[13px] font-[800] hover:bg-[#15803D] disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {completeSaving ? "Completing..." : "Mark Completed"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

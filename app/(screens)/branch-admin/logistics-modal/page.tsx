@@ -18,8 +18,9 @@ const inter = Inter({ subsets: ["latin"] })
 export default function LogisticsModalPage() {
   const { user } = useAuth()
   const [assetId, setAssetId] = useState("")
+  const [branchId, setBranchId] = useState("")
   const [assetLabel, setAssetLabel] = useState("Asset")
-  const [maintenanceType, setMaintenanceType] = useState("PREVENTIVE")
+  const [maintenanceType, setMaintenanceType] = useState("routine")
   const [scheduleInterval, setScheduleInterval] = useState("30")
   const [vendor, setVendor] = useState("")
   const [cost, setCost] = useState("")
@@ -31,15 +32,10 @@ export default function LogisticsModalPage() {
     () => user?.tenantId ?? user?.tenant?.id ?? "",
     [user]
   )
-  const userId = user?.id ?? ""
-
-  const getCsrfToken = () => {
-    if (typeof document === "undefined") return ""
-    const match = document.cookie
-      .split("; ")
-      .find((cookie) => cookie.startsWith("csrf_token="))
-    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
-  }
+  const defaultBranchId = useMemo(
+    () => user?.branchId ?? user?.branch?.id ?? "",
+    [user]
+  )
 
   useEffect(() => {
     let isMounted = true
@@ -65,6 +61,9 @@ export default function LogisticsModalPage() {
         if (firstAsset && isMounted) {
           setAssetId(firstAsset?.id ?? firstAsset?.assetId ?? "")
           setAssetLabel(firstAsset?.description ?? firstAsset?.name ?? "Asset")
+          setBranchId(firstAsset?.branchId ?? firstAsset?.branch?.id ?? defaultBranchId)
+        } else if (isMounted) {
+          setBranchId(defaultBranchId)
         }
       } catch (error) {
         if (isMounted) {
@@ -78,15 +77,19 @@ export default function LogisticsModalPage() {
     return () => {
       isMounted = false
     }
-  }, [tenantId])
+  }, [tenantId, defaultBranchId])
 
   const handleSubmit = async () => {
-    if (!tenantId) {
-      setSubmitError("Tenant is required to schedule maintenance.")
-      return
-    }
     if (!assetId) {
       setSubmitError("Asset is required to schedule maintenance.")
+      return
+    }
+    if (!branchId) {
+      setSubmitError("Branch is required to schedule maintenance.")
+      return
+    }
+    if (!vendor.trim()) {
+      setSubmitError("Service provider is required to schedule maintenance.")
       return
     }
 
@@ -99,24 +102,22 @@ export default function LogisticsModalPage() {
       const scheduledDate = new Date()
       scheduledDate.setDate(scheduledDate.getDate() + intervalDays)
 
-      const csrfToken = getCsrfToken()
-      const response = await fetch("/api/core/financial/maintenance-tasks", {
+      const response = await fetch("/api/maintenance", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-csrf-token": csrfToken,
         },
         credentials: "include",
         body: JSON.stringify({
           assetId,
-          description: `${maintenanceType === "PREVENTIVE" ? "Routine check" : "Repair"} - ${assetLabel}`,
-          type: maintenanceType,
-          status: "SCHEDULED",
-          scheduledDate: scheduledDate.toISOString(),
+          branchId,
+          serviceType: maintenanceType,
+          description: `${maintenanceType === "routine" ? "Routine check" : "Repair"} - ${assetLabel}`,
+          provider: vendor.trim(),
           cost: cost ? Number(cost.replace(/[^\d.]/g, "")) : 0,
-          performedBy: userId,
+          currency: "NGN",
+          scheduledDate: scheduledDate.toISOString().slice(0, 10),
           notes: vendor ? `Service Provider: ${vendor}` : undefined,
-          tenantId,
         }),
       })
       const payload = await response.json().catch(() => null)
@@ -181,7 +182,7 @@ export default function LogisticsModalPage() {
               </div>
               <div className="flex flex-col gap-0.5">
                 <div className="text-[12px] sm:text-[13.5px] font-[800] text-[#1E3A8A] leading-tight">
-                  Asset: {assetLabel} - Maint Due: {new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                  Asset: {assetLabel} - Scheduled: {new Date(new Date().setDate(new Date().getDate() + (Number(scheduleInterval) || 30))).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
                 </div>
                 <div className="text-[10.5px] sm:text-[12px] font-[500] text-[#3B82F6] leading-snug">
                   Regular maintenance helps extend asset lifespan.
@@ -199,8 +200,8 @@ export default function LogisticsModalPage() {
                     onChange={(event) => setMaintenanceType(event.target.value)}
                     className="h-[38px] sm:h-[44px] w-full rounded-[8px] border border-[#E5E7EB] bg-white px-2.5 sm:px-3.5 pr-8 sm:pr-10 text-[12px] sm:text-[14px] font-[500] text-[#111827] focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20 outline-none transition-all shadow-sm appearance-none cursor-pointer"
                   >
-                    <option value="PREVENTIVE">Routine Check</option>
-                    <option value="REPAIR">Emergency Repair</option>
+                    <option value="routine">Routine Check</option>
+                    <option value="repair">Emergency Repair</option>
                   </select>
                   <ChevronDown className="absolute right-2.5 sm:right-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 sm:h-4 sm:w-4 text-[#6B7280] pointer-events-none" />
                 </div>
@@ -299,4 +300,3 @@ export default function LogisticsModalPage() {
     </div>
   )
 }
-

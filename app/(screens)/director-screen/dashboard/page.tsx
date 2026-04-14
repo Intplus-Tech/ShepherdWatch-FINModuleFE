@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import React, { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
@@ -25,9 +25,12 @@ import {
   Menu,
   X
 } from "lucide-react"
-import { useTransactions } from "@/components/hooks/useTransactions"
 import { useAuth } from "@/components/auth/AuthProvider"
 import BranchesDropdown from "@/components/navigation/BranchesDropdown"
+import { useDashboardOverview } from "@/components/hooks/useDashboardOverview"
+import { useIncomeExpenseTrend } from "@/components/hooks/useIncomeExpenseTrend"
+import { useExpenseDistribution } from "@/components/hooks/useExpenseDistribution"
+import { useRecentDashboardTransactions } from "@/components/hooks/useRecentDashboardTransactions"
 
 const kpiIcons = [Banknote, CreditCard, BuildingIcon, MapPin]
 const kpiIconStyles = [
@@ -50,18 +53,21 @@ const navItems = [
 
 export default function Page() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const { transactions: rawTransactions, loading: txLoading, error: txError } = useTransactions({ status: "UNVERIFIED" })
   const { user } = useAuth()
-  const [kpis, setKpis] = useState<Array<Record<string, any>>>([])
-  const [analyticsError, setAnalyticsError] = useState<string | null>(null)
-  const [analyticsLoading, setAnalyticsLoading] = useState(false)
-  const [trendData, setTrendData] = useState<{ series: Array<any>; trendDirection?: string } | null>(null)
-  const [trendsError, setTrendsError] = useState<string | null>(null)
 
   const tenantId = useMemo(
     () => user?.tenantId ?? user?.tenant?.id ?? "",
     [user]
   )
+
+  const { overview, loading: analyticsLoading, error: analyticsError, fetchOverview } = useDashboardOverview()
+  const { trendData, error: trendsError, fetchTrend } = useIncomeExpenseTrend()
+  const { items: expenseItems, loading: expenseLoading } = useExpenseDistribution({ branchId: tenantId })
+  const {
+    transactions: rawTransactions,
+    loading: txLoading,
+    error: txError,
+  } = useRecentDashboardTransactions({ branchId: tenantId, limit: 10 })
 
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat("en-NG", {
@@ -74,91 +80,12 @@ export default function Page() {
     new Intl.NumberFormat("en-NG", { maximumFractionDigits: 0 }).format(value)
 
   useEffect(() => {
-    let isMounted = true
-
-    const fetchAnalytics = async () => {
-      if (!tenantId) {
-        setAnalyticsError("Tenant is required to load analytics.")
-        return
-      }
-
-      try {
-        setAnalyticsLoading(true)
-        setAnalyticsError(null)
-        const response = await fetch(`/api/core/financial/analytics/dashboard?tenantId=${tenantId}&period=monthly`, {
-          method: "GET",
-          credentials: "include",
-        })
-        const payload = await response.json().catch(() => null)
-        if (!response.ok) {
-          throw new Error(payload?.message ?? "Unable to load analytics dashboard.")
-        }
-
-        const data = payload?.data ?? payload
-        const nextKpis = Array.isArray(data?.kpis) ? data.kpis : []
-        if (isMounted) {
-          setKpis(nextKpis)
-        }
-      } catch (error) {
-        if (isMounted) {
-          setKpis([])
-          setAnalyticsError(error instanceof Error ? error.message : "Unable to load analytics dashboard.")
-        }
-      } finally {
-        if (isMounted) {
-          setAnalyticsLoading(false)
-        }
-      }
-    }
-
-    fetchAnalytics()
-
-    return () => {
-      isMounted = false
-    }
-  }, [tenantId])
+    if (tenantId) fetchOverview({ branchId: tenantId })
+  }, [tenantId, fetchOverview])
 
   useEffect(() => {
-    let isMounted = true
-
-    const fetchTrends = async () => {
-      if (!tenantId) {
-        setTrendsError("Tenant is required to load trends.")
-        return
-      }
-
-      try {
-        setTrendsError(null)
-        const response = await fetch(`/api/core/financial/analytics/trends?tenantId=${tenantId}&period=monthly`, {
-          method: "GET",
-          credentials: "include",
-        })
-        const payload = await response.json().catch(() => null)
-        if (!response.ok) {
-          throw new Error(payload?.message ?? "Unable to load financial trends.")
-        }
-
-        const data = payload?.data ?? payload
-        if (isMounted) {
-          setTrendData({
-            series: Array.isArray(data?.series) ? data.series : [],
-            trendDirection: data?.trendDirection,
-          })
-        }
-      } catch (error) {
-        if (isMounted) {
-          setTrendData(null)
-          setTrendsError(error instanceof Error ? error.message : "Unable to load financial trends.")
-        }
-      }
-    }
-
-    fetchTrends()
-
-    return () => {
-      isMounted = false
-    }
-  }, [tenantId])
+    if (tenantId) fetchTrend({ branchId: tenantId })
+  }, [tenantId, fetchTrend])
 
   const formatDateLabel = (value?: string) => {
     if (!value) return "—"
@@ -173,15 +100,15 @@ export default function Page() {
 
   const transactions = React.useMemo(() => {
     return rawTransactions.map((tx, idx) => {
-      const flowType = (tx.flowType ?? "").toUpperCase()
-      const isPositive = flowType === "INFLOW" || tx.amount >= 0
+      const flowType = (tx.flowType ?? tx.transactionType ?? "").toUpperCase()
+      const isPositive = flowType === "INFLOW" || flowType === "INCOME" || tx.amount >= 0
       const status = (tx.status ?? "PENDING").toUpperCase()
       const isFlagged = status.includes("FLAG")
       return {
         id: tx.id ?? `tx-${idx}`,
-        date: formatDateLabel(tx.date),
-        branch: tx.description || "Branch Transaction",
-        type: tx.coaName || tx.category || "General",
+        date: formatDateLabel(tx.transactionDate),
+        branch: tx.branchName || "Branch Transaction",
+        type: tx.accountName || tx.transactionType || "General",
         typeBg: isPositive ? "bg-blue-50" : "bg-emerald-50",
         typeColor: isPositive ? "text-blue-600" : "text-emerald-600",
         amount: formatCurrency(tx.amount),
@@ -195,31 +122,101 @@ export default function Page() {
   }, [rawTransactions])
 
   const statCards = useMemo(() => {
-    if (!kpis.length) return []
-    return kpis.map((kpi, index) => {
-      const Icon = kpiIcons[index % kpiIcons.length]
-      const iconStyle = kpiIconStyles[index % kpiIconStyles.length]
-      const value = typeof kpi.value === "number"
-        ? kpi.valueType === "COUNT"
-          ? formatNumber(kpi.value)
-          : formatCurrency(kpi.value)
-        : kpi.value ?? "—"
-      const trend = kpi.trend ?? ""
-      const trendText = kpi.trendText ?? kpi.subtitle ?? ""
-      const trendColor = kpi.trendColor ?? (kpi.isPositive ? "text-emerald-500" : kpi.isPositive === false ? "text-rose-500" : "text-gray-400")
+    if (!overview) return []
+    return [
+      {
+        title: "Total Income",
+        value: formatCurrency(overview.totalIncome ?? 0),
+        trend: "", trendText: "Global Overview", trendColor: "text-gray-400", isPositive: null,
+        icon: kpiIcons[0], iconBg: kpiIconStyles[0].iconBg, iconColor: kpiIconStyles[0].iconColor
+      },
+      {
+        title: "Total Expenses",
+        value: formatCurrency(overview.totalExpenses ?? 0),
+        trend: "", trendText: "Global Overview", trendColor: "text-gray-400", isPositive: null,
+        icon: kpiIcons[1], iconBg: kpiIconStyles[1].iconBg, iconColor: kpiIconStyles[1].iconColor
+      },
+      {
+        title: "Net Position",
+        value: formatCurrency(overview.netPosition ?? 0),
+        trend: "", trendText: "Global Overview", trendColor: "text-gray-400", isPositive: null,
+        icon: kpiIcons[2], iconBg: kpiIconStyles[2].iconBg, iconColor: kpiIconStyles[2].iconColor
+      },
+      {
+        title: "Pending Transactions",
+        value: formatNumber(overview.pendingTransactions ?? 0),
+        trend: "", trendText: "Action Required", trendColor: "text-[#F59E0B]", isPositive: null,
+        icon: kpiIcons[3], iconBg: kpiIconStyles[3].iconBg, iconColor: kpiIconStyles[3].iconColor
+      },
+      {
+        title: "Active Budgets",
+        value: formatNumber(overview.activeBudgets ?? 0),
+        trend: "", trendText: "Active Tracking", trendColor: "text-emerald-500", isPositive: null,
+        icon: kpiIcons[0], iconBg: "bg-purple-50", iconColor: "text-purple-500"
+      }
+    ]
+  }, [overview])
+
+  const expenseChart = useMemo(() => {
+    const sorted = [...expenseItems]
+      .sort((a, b) => b.percentage - a.percentage)
+      .slice(0, 3)
+
+    const colorMap: Record<string, string> = {
+      operational: "#3B5BDB",
+      programs: "#8B5CF6",
+      capital: "#10B981",
+      other: "#94A3B8",
+    }
+    const labelMap: Record<string, string> = {
+      operational: "Operational",
+      programs: "Programs",
+      capital: "Capital",
+      other: "Other",
+    }
+
+    const segments = sorted.map((item) => {
+      const categoryKey = String(item.category || "other").toLowerCase()
       return {
-        title: kpi.title ?? kpi.name ?? "KPI",
-        value,
-        trend,
-        trendText,
-        trendColor,
-        isPositive: kpi.isPositive ?? null,
-        icon: Icon,
-        iconBg: iconStyle.iconBg,
-        iconColor: iconStyle.iconColor,
+        label: item.accountName || labelMap[categoryKey] || "Other",
+        percentage: Math.max(0, Number(item.percentage || 0)),
+        amount: Math.max(0, Number(item.totalAmount || 0)),
+        color: colorMap[categoryKey] || colorMap.other,
       }
     })
-  }, [kpis])
+
+    if (segments.length === 0) {
+      segments.push(
+        { label: "Operational", percentage: 0, amount: 0, color: colorMap.operational },
+        { label: "Programs", percentage: 0, amount: 0, color: colorMap.programs },
+        { label: "Capital", percentage: 0, amount: 0, color: colorMap.capital }
+      )
+    }
+
+    const conicResult = segments.reduce(
+      (acc, segment) => {
+        const end = Math.min(100, acc.cursor + segment.percentage)
+        return {
+          cursor: end,
+          stops: [...acc.stops, `${segment.color} ${acc.cursor}% ${end}%`],
+        }
+      },
+      { cursor: 0, stops: [] as string[] }
+    )
+
+    const stops =
+      conicResult.cursor < 100
+        ? [...conicResult.stops, `#E5E7EB ${conicResult.cursor}% 100%`]
+        : conicResult.stops
+
+    const totalAmount = segments.reduce((sum, segment) => sum + segment.amount, 0)
+
+    return {
+      segments,
+      totalAmount,
+      background: `conic-gradient(${stops.join(",")})`,
+    }
+  }, [expenseItems])
 
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
@@ -414,8 +411,12 @@ export default function Page() {
                 )}
                 {!trendsError && trendData?.series?.length ? (
                   <div className="flex items-end justify-between h-full gap-2">
-                    {trendData.series.slice(0, 12).map((point: any, index: number) => {
-                      const label = point?.label ?? point?.period ?? point?.month ?? `P${index + 1}`
+                    {trendData.series.slice(0, 12).map((point: Record<string, unknown>, index: number) => {
+                      const label =
+                        (typeof point?.label === "string" && point.label) ||
+                        (typeof point?.period === "string" && point.period) ||
+                        (typeof point?.month === "string" && point.month) ||
+                        `P${index + 1}`
                       return (
                         <div key={label} className="flex flex-col items-center gap-2 flex-1">
                           <div className="h-[80px] w-[6px] rounded-full bg-[#E5E7EB]" />
@@ -436,43 +437,36 @@ export default function Page() {
               </div>
             </div>
 
-            {/* Doughnut Chart placeholder */}
+            {/* Doughnut Chart */}
             <div className="col-span-1 flex flex-col items-center sm:items-start rounded-xl border border-[#EEF1F6] bg-white p-6 shadow-sm">
               <div className="w-full text-center sm:text-left">
-                <h3 className="text-[16px] font-bold text-[#111827]">Income Distribution</h3>
-                <p className="text-[13px] text-[#3B5BDB] mt-1 mb-8">Breakdown by category</p>
+                <h3 className="text-[16px] font-bold text-[#111827]">Expense Distribution</h3>
+                <p className="text-[13px] text-[#3B5BDB] mt-1 mb-8">Verified spend by category</p>
               </div>
               
               <div className="relative mx-auto h-[160px] w-[160px] sm:h-[180px] sm:w-[180px] mb-8 shrink-0">
-                <div className="h-full w-full rounded-full border-[12px] border-[#3B5BDB] border-b-[#8B5CF6] border-l-[#10B981] border-r-[#8B5CF6]"></div>
+                <div className="h-full w-full rounded-full rotate-[-210deg]" style={{ background: expenseChart.background }} />
+                <div className="absolute inset-[12px] rounded-full bg-white" />
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
                   <span className="text-[12px] text-[#6B7280] font-medium mb-1">Total</span>
-                  <span className="text-[18px] font-bold text-[#3B5BDB]">$1.25M</span>
+                  <span className="text-[18px] font-bold text-[#3B5BDB]">
+                    {expenseLoading ? "Loading..." : formatCurrency(expenseChart.totalAmount || overview?.totalExpenses || 0)}
+                  </span>
                 </div>
               </div>
 
               <div className="flex flex-col gap-3 w-full">
-                <div className="flex items-center justify-between text-[13px]">
-                  <div className="flex items-center gap-2.5">
-                    <span className="h-2.5 w-2.5 rounded-full bg-[#3B5BDB]"></span>
-                    <span className="text-[#4B5563] font-medium">Tithes (60%)</span>
+                {expenseChart.segments.map((segment) => (
+                  <div key={segment.label} className="flex items-center justify-between text-[13px]">
+                    <div className="flex items-center gap-2.5">
+                      <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: segment.color }} />
+                      <span className="text-[#4B5563] font-medium">
+                        {segment.label} ({segment.percentage.toFixed(2)}%)
+                      </span>
+                    </div>
+                    <span className="font-bold text-[#111827]">{formatCurrency(segment.amount)}</span>
                   </div>
-                  <span className="font-bold text-[#111827]">$750k</span>
-                </div>
-                <div className="flex items-center justify-between text-[13px]">
-                  <div className="flex items-center gap-2.5">
-                    <span className="h-2.5 w-2.5 rounded-full bg-[#8B5CF6]"></span>
-                    <span className="text-[#4B5563] font-medium">Offerings (25%)</span>
-                  </div>
-                  <span className="font-bold text-[#111827]">$312k</span>
-                </div>
-                <div className="flex items-center justify-between text-[13px]">
-                  <div className="flex items-center gap-2.5">
-                    <span className="h-2.5 w-2.5 rounded-full bg-[#10B981]"></span>
-                    <span className="text-[#4B5563] font-medium">Projects (15%)</span>
-                  </div>
-                  <span className="font-bold text-[#111827]">$188k</span>
-                </div>
+                ))}
               </div>
             </div>
           </div>

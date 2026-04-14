@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useMemo, useState } from "react"
 import Image from "next/image"
 import { Inter } from "next/font/google"
 import {
@@ -20,65 +20,70 @@ import {
 } from "lucide-react"
 
 import BranchAdminHeader from "@/components/navigation/BranchAdminHeader"
+import { useAuth } from "@/components/auth/AuthProvider"
+import { useRequisitionInbox } from "@/components/hooks/useRequisitionInbox"
 
 const inter = Inter({ subsets: ["latin"] })
 
-const requestData = [
-  {
-    id: "#REQ-2023-089",
-    date: "Oct 24, 2023",
-    purpose: "Monthly Utility Bill",
-    category: "Recurring • Electricity",
-    amount: "₦18,425.00",
-    progress: 2,
-    progressLabel: "In Progress",
-    progressColor: "blue",
-  },
-  {
-    id: "#REQ-2023-085",
-    date: "Oct 20, 2023",
-    purpose: "Sunday School Supplies",
-    category: "Inventory • Education",
-    amount: "₦45,320.50",
-    progress: 4,
-    progressLabel: "Completed",
-    progressColor: "green",
-  },
-  {
-    id: "#REQ-2023-080",
-    date: "Oct 18, 2023",
-    purpose: "Sound Equipment Repair",
-    category: "Unbudgeted • Maintenance",
-    amount: "₦45,320.50",
-    progress: 2,
-    rejected: true,
-    progressLabel: "Rejected",
-    progressColor: "red",
-  },
-  {
-    id: "#REQ-2023-095",
-    date: "Oct 15, 2023",
-    purpose: "Office Stationery",
-    category: "Restock • Admin",
-    amount: "₦50,000.00",
-    progress: 2,
-    progressLabel: "Document Review",
-    progressColor: "blue",
-  },
-  {
-    id: "#REQ-2023-094",
-    date: "Oct 13, 2023",
-    purpose: "New PA System for Maternal Expansion Project",
-    category: "Capital Expenditure • Sound",
-    amount: "₦850,000.00",
-    progress: 4,
-    progressLabel: "Disbursed",
-    progressColor: "green",
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("en-NG", {
+    style: "currency",
+    currency: "NGN",
+    maximumFractionDigits: 2,
+  }).format(Number.isFinite(value) ? value : 0)
+}
+
+function formatDate(value?: string) {
+  if (!value) return "--"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  })
+}
+
+function toTracker(status: string) {
+  const normalized = status.toLowerCase()
+  if (normalized.includes("paid")) {
+    return { progress: 4, progressLabel: "Disbursed", progressColor: "green", rejected: false }
   }
-]
+  if (normalized.includes("approved")) {
+    return { progress: 4, progressLabel: "Completed", progressColor: "green", rejected: false }
+  }
+  if (normalized.includes("declined")) {
+    return { progress: 2, progressLabel: "Rejected", progressColor: "red", rejected: true }
+  }
+  if (normalized.includes("draft")) {
+    return { progress: 1, progressLabel: "Draft", progressColor: "blue", rejected: false }
+  }
+  return { progress: 2, progressLabel: "In Progress", progressColor: "blue", rejected: false }
+}
 
 export default function TrackRequests() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const { user } = useAuth()
+  const { requisitions, loading: inboxLoading } = useRequisitionInbox({
+    branchId: user?.tenantId ?? user?.tenant?.id ?? "",
+    limit: 20,
+  })
+  const requestData = useMemo(
+    () =>
+      requisitions.map((item) => {
+        const status = String(item.currentStatus ?? "pending")
+        const tracker = toTracker(status)
+        return {
+          id: item.reference ? `#${item.reference}` : `#${item.id.slice(0, 8).toUpperCase()}`,
+          date: formatDate(item.createdAt),
+          purpose: item.justification || "Expense requisition",
+          category: item.coaName ? `Budget Head • ${item.coaName}` : "Budget Head • General",
+          amount: formatCurrency(item.amount || 0),
+          ...tracker,
+        }
+      }),
+    [requisitions]
+  )
 
   // Tracker UI component builder
   const renderTracker = (step: number, colorMode: string, rejected: boolean = false, compact: boolean = false) => {
@@ -88,14 +93,7 @@ export default function TrackRequests() {
       green: "bg-[#10B981]",
       red: "bg-[#EF4444]",
     }
-    const textMap: Record<string, string> = {
-      blue: "text-[#2563EB]",
-      green: "text-[#10B981]",
-      red: "text-[#EF4444]",
-    }
-    
     const activeBg = bgMap[colorMode] || "bg-[#2563EB]"
-    const activeText = textMap[colorMode] || "text-[#2563EB]"
     
     const trackWidth = compact ? "w-[160px]" : "w-[220px]"
     const nodeSize = compact ? "w-4 h-4" : "w-5 h-5"
@@ -335,9 +333,24 @@ export default function TrackRequests() {
                       <th className="py-3 px-4 text-[10px] uppercase tracking-wider font-[800] text-[#6B7280] w-[8%] text-center">Action</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-[#EEF1F6]">
-                    {requestData.map((req, idx) => (
-                      <tr key={idx} className="hover:bg-[#F8FAFC] transition-colors bg-white group">
+	                  <tbody className="divide-y divide-[#EEF1F6]">
+                    {inboxLoading && (
+                      <tr>
+                        <td colSpan={6} className="py-8 px-4 text-center text-[12px] font-semibold text-[#6B7280]">
+                          Loading requisitions...
+                        </td>
+                      </tr>
+                    )}
+                    {!inboxLoading && requestData.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="py-8 px-4 text-center text-[12px] font-semibold text-[#6B7280]">
+                          No requisitions found.
+                        </td>
+                      </tr>
+                    )}
+                    {!inboxLoading &&
+                      requestData.map((req, idx) => (
+                        <tr key={idx} className="hover:bg-[#F8FAFC] transition-colors bg-white group">
                         <td className="py-4 px-4">
                           <div className="text-[12px] font-[800] text-[#2563EB]">{req.id}</div>
                         </td>
@@ -368,9 +381,9 @@ export default function TrackRequests() {
                             </button>
                           </div>
                         </td>
-                      </tr>
-                    ))}
-                  </tbody>
+                        </tr>
+                      ))}
+	                  </tbody>
                 </table>
               </div>
               <div className="lg:hidden px-4 py-2 text-[11px] font-medium text-[#9CA3AF] border-t border-[#EEF1F6]">
@@ -401,9 +414,23 @@ export default function TrackRequests() {
                       <th className="py-4 px-6 text-[11px] uppercase tracking-wider font-[800] text-[#6B7280] w-[8%] text-center">Action</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-[#EEF1F6]">
-                    {requestData.map((req, idx) => (
-                      <tr key={idx} className="hover:bg-[#F8FAFC] transition-colors bg-white group">
+	                  <tbody className="divide-y divide-[#EEF1F6]">
+                      {inboxLoading && (
+                        <tr>
+                          <td colSpan={6} className="py-10 px-6 text-center text-[13px] font-semibold text-[#6B7280]">
+                            Loading requisitions...
+                          </td>
+                        </tr>
+                      )}
+                      {!inboxLoading && requestData.length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="py-10 px-6 text-center text-[13px] font-semibold text-[#6B7280]">
+                            No requisitions found.
+                          </td>
+                        </tr>
+                      )}
+                      {!inboxLoading && requestData.map((req, idx) => (
+	                      <tr key={idx} className="hover:bg-[#F8FAFC] transition-colors bg-white group">
                         <td className="py-5 px-6">
                           <div className="text-[13.5px] font-[800] text-[#2563EB]">{req.id}</div>
                         </td>
@@ -434,16 +461,16 @@ export default function TrackRequests() {
                             </button>
                           </div>
                         </td>
-                      </tr>
-                    ))}
-                  </tbody>
+	                      </tr>
+	                    ))}
+	                  </tbody>
                 </table>
               </div>
               
               {/* Pagination Footer */}
               <div className="border-t border-[#EEF1F6] py-4 px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#F8FAFC]/50">
                 <div className="text-[13px] font-medium text-[#6B7280]">
-                  Showing <span className="font-[800]">1 to 5</span> of <span className="font-[800]">42</span> results
+	                  Showing <span className="font-[800]">1 to {requestData.length}</span> of <span className="font-[800]">{requestData.length}</span> results
                 </div>
                 <div className="flex items-center gap-2">
                   <button className="h-8 px-3 rounded-[6px] text-[13px] font-[700] text-[#9CA3AF] hover:text-[#4B5563] transition-colors">
@@ -466,3 +493,4 @@ export default function TrackRequests() {
     </div>
   )
 }
+

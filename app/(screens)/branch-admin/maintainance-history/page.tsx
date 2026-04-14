@@ -1,13 +1,178 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Inter } from "next/font/google";
 import { X, Plus, Trash2, Zap, CalendarDays, Wrench, RotateCw, CheckCircle2 } from "lucide-react";
+import { useAuth } from "@/components/auth/AuthProvider";
 import AssetsHubPage from "../asset/page";
 
 const inter = Inter({ subsets: ["latin"] });
 
+type MaintenanceRecord = {
+  _id?: string;
+  id?: string;
+  serviceType?: string;
+  description?: string;
+  provider?: string;
+  cost?: number;
+  currency?: string;
+  status?: string;
+  completedDate?: string;
+  verifiedBy?: { _id?: string; firstName?: string; lastName?: string; email?: string };
+};
+
 export default function MaintenanceHistoryModalPage() {
+  const { user } = useAuth();
+  const [historyRecords, setHistoryRecords] = useState<MaintenanceRecord[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historySummary, setHistorySummary] = useState<{ totalCost: number; count: number } | null>(null);
+  const [verifyingId, setVerifyingId] = useState<string | null>(null);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
+
+  const branchId = useMemo(
+    () => user?.branchId ?? user?.branch?.id ?? "",
+    [user]
+  );
+
+  const formatDateParam = (value: Date) => {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const formatCurrency = (value: number, currency?: string) => {
+    const cur = currency && ["NGN", "USD", "GBP", "EUR"].includes(currency) ? currency : "NGN";
+    return new Intl.NumberFormat("en-NG", {
+      style: "currency",
+      currency: cur,
+      maximumFractionDigits: 0,
+    }).format(value);
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchHistory = async () => {
+      if (!branchId) {
+        setHistoryRecords([]);
+        setHistoryError("Branch is required to load maintenance history.");
+        return;
+      }
+
+      try {
+        setHistoryLoading(true);
+        setHistoryError(null);
+        const end = new Date();
+        const start = new Date(end);
+        start.setMonth(end.getMonth() - 11);
+        start.setDate(1);
+
+        const params = new URLSearchParams({
+          branchId,
+          startDate: formatDateParam(start),
+          endDate: formatDateParam(end),
+          page: "1",
+          limit: "50",
+        });
+
+        const response = await fetch(`/api/maintenance/history?${params.toString()}`, {
+          method: "GET",
+          credentials: "include",
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(payload?.message ?? "Unable to load maintenance history.");
+        }
+
+        const payloadData = payload?.data ?? {};
+        const records = payloadData?.data ?? payloadData?.items ?? payload?.data ?? [];
+        const list = Array.isArray(records) ? records : [];
+        const summary = payloadData?.summary ?? payload?.summary ?? null;
+
+        if (isMounted) {
+          setHistoryRecords(list);
+          setHistorySummary(
+            summary && typeof summary?.totalCost === "number" && typeof summary?.count === "number"
+              ? summary
+              : null
+          );
+        }
+      } catch (error) {
+        if (isMounted) {
+          setHistoryRecords([]);
+          setHistorySummary(null);
+          setHistoryError(error instanceof Error ? error.message : "Unable to load maintenance history.");
+        }
+      } finally {
+        if (isMounted) {
+          setHistoryLoading(false);
+        }
+      }
+    };
+
+    fetchHistory();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [branchId]);
+
+  const historyTotal = useMemo(() => {
+    if (historySummary?.totalCost) {
+      return historySummary.totalCost;
+    }
+    return historyRecords.reduce((sum, record) => sum + (Number(record?.cost) || 0), 0);
+  }, [historyRecords, historySummary]);
+
+  const historyCount = useMemo(() => {
+    if (historySummary?.count) {
+      return historySummary.count;
+    }
+    return historyRecords.length;
+  }, [historyRecords, historySummary]);
+
+  const averageCost = useMemo(() => {
+    if (!historyCount) return 0;
+    return Math.round(historyTotal / historyCount);
+  }, [historyTotal, historyCount]);
+
+  const lastCompleted = useMemo(() => {
+    const dates = historyRecords
+      .map((record) => (record?.completedDate ? new Date(record.completedDate) : null))
+      .filter((date): date is Date => !!date && !Number.isNaN(date.getTime()))
+      .sort((a, b) => b.getTime() - a.getTime());
+    return dates[0] ?? null;
+  }, [historyRecords]);
+
+  const handleVerify = async (recordId: string) => {
+    if (!recordId) return;
+    setVerifyError(null);
+    setVerifyingId(recordId);
+    try {
+      const response = await fetch(`/api/maintenance/${recordId}/verify`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Unable to verify maintenance record.");
+      }
+      const verifiedBy = payload?.data?.verifiedBy ?? payload?.verifiedBy ?? null;
+      setHistoryRecords((prev) =>
+        prev.map((record) =>
+          String(record?._id ?? record?.id ?? "") === recordId
+            ? { ...record, verifiedBy }
+            : record
+        )
+      );
+    } catch (error) {
+      setVerifyError(error instanceof Error ? error.message : "Unable to verify maintenance record.");
+    } finally {
+      setVerifyingId(null);
+    }
+  };
   return (
     <div className={`relative min-h-[100dvh] w-full ${inter.className} antialiased`}>
       {/* Blurred Background Page */}
@@ -28,18 +193,18 @@ export default function MaintenanceHistoryModalPage() {
           <div className="px-6 sm:px-8 py-5 flex items-start justify-between">
             <div className="flex flex-col gap-2">
               <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                <h2 className="text-[#111827] text-[20px] sm:text-[22px] font-[900] leading-tight tracking-tight">Dell OptiPlex 7090</h2>
+                <h2 className="text-[#111827] text-[20px] sm:text-[22px] font-[900] leading-tight tracking-tight">Asset Maintenance History</h2>
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="px-2.5 py-1 bg-[#EFF6FF] text-[#2563EB] text-[11px] font-[800] uppercase tracking-wider rounded-[6px]">
-                    IT Equipment
+                    Category Unavailable
                   </div>
                   <div className="px-2.5 py-1 bg-[#FEF9C3] text-[#CA8A04] text-[11px] font-[800] uppercase tracking-wider rounded-[6px]">
-                    Fair Condition
+                    Condition Unavailable
                   </div>
                 </div>
               </div>
               <p className="text-[#64748B] text-[13.5px] font-[500] tracking-wide">
-                Asset ID: <span className="font-[700] text-[#475569]">#EQ-2041</span> • Main Office - Desk 4
+                Asset ID: <span className="font-[700] text-[#475569]">Unavailable</span> • Branch Unavailable
               </p>
             </div>
             <button className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors shrink-0 text-[#9CA3AF]">
@@ -83,126 +248,115 @@ export default function MaintenanceHistoryModalPage() {
                 {/* Continuous Line */}
                 <div className="absolute left-[36px] sm:left-[46px] top-6 bottom-12 w-[1.5px] bg-[#EEF1F6] -z-10"></div>
 
-                {/* Event 1 : Emergency */}
-                <div className="relative flex gap-4 sm:gap-6 w-full mb-6 group">
-                  <div className="absolute -left-[19px] sm:-left-[19px] top-1">
-                    <div className="w-[38px] h-[38px] rounded-full flex items-center justify-center shrink-0 bg-white ring-[10px] ring-white z-10 border-[1.5px] border-[#EF4444] text-[#EF4444] bg-white group-hover:bg-[#FEF2F2] transition-colors">
-                      <Zap className="w-[17px] h-[17px] stroke-[2.5px]" />
-                    </div>
-                  </div>
+                {historyLoading && (
+                  <div className="text-[12.5px] font-[600] text-[#64748B] ml-8">Loading maintenance history...</div>
+                )}
+                {!historyLoading && historyError && (
+                  <div className="text-[12.5px] font-[600] text-[#EF4444] ml-8">{historyError}</div>
+                )}
+                {!historyLoading && !historyError && verifyError && (
+                  <div className="text-[12.5px] font-[600] text-[#EF4444] ml-8">{verifyError}</div>
+                )}
+                {!historyLoading && !historyError && historyRecords.length === 0 && (
+                  <div className="text-[12.5px] font-[600] text-[#64748B] ml-8">No completed maintenance records found.</div>
+                )}
+                {historyRecords.map((record, index) => {
+                  const type = String(record?.serviceType ?? "service").toLowerCase();
+                  const isRepair = type === "repair";
+                  const isRoutine = type === "routine";
+                  const isInspection = type === "inspection";
+                  const isReplacement = type === "replacement";
 
-                  <div className="flex-1 bg-white border border-[#EEF1F6] shadow-sm rounded-[12px] p-5 pt-4 flex flex-col gap-4 ml-8">
-                    <div className="flex justify-between items-start w-full">
-                      <div className="flex flex-col gap-0.5">
-                        <div className="flex flex-wrap items-center gap-2 mb-0.5">
-                          <h4 className="text-[#111827] text-[14.5px] sm:text-[15px] font-[800]">Emergency PSU Replacement</h4>
-                          <div className="px-2 py-[2px] bg-[#FEF2F2] text-[#EF4444] text-[9.5px] font-[800] uppercase tracking-wider rounded-[4px]">EMERGENCY</div>
-                        </div>
-                        <p className="text-[#94A3B8] text-[12.5px] font-[500]">Jan 12, 2024 • 02:45 PM</p>
-                      </div>
-                      <div className="flex flex-col items-end gap-1">
-                        <span className="text-[#111827] text-[14.5px] font-[800] tracking-tight">₦ 45,000.00</span>
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-[6px] h-[6px] rounded-full bg-[#F97316]"></div>
-                          <span className="text-[#F97316] text-[11.5px] font-[700]">Pending</span>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-[#64748B] text-[12px] font-[500]">Service Provider</span>
-                        <span className="text-[#334155] text-[13px] font-[600]">FastFix Tech Hub</span>
-                      </div>
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-[#64748B] text-[12px] font-[500]">Reported By</span>
-                        <span className="text-[#334155] text-[13px] font-[600]">M. Bello (Front Desk)</span>
-                      </div>
-                    </div>
+                  const Icon = isRepair ? Wrench : isInspection ? Zap : isReplacement ? RotateCw : CalendarDays;
+                  const borderClass = isRepair
+                    ? "border-[#F97316] text-[#F97316] group-hover:bg-[#FFF7ED]"
+                    : isInspection
+                      ? "border-[#EF4444] text-[#EF4444] group-hover:bg-[#FEF2F2]"
+                      : isReplacement
+                        ? "border-[#0EA5E9] text-[#0EA5E9] group-hover:bg-[#E0F2FE]"
+                        : "border-[#3B82F6] text-[#3B82F6] group-hover:bg-[#EFF6FF]";
+                  const badgeClass = isRepair
+                    ? "bg-[#FEF9C3] text-[#CA8A04]"
+                    : isInspection
+                      ? "bg-[#FEF2F2] text-[#EF4444]"
+                      : isReplacement
+                        ? "bg-[#E0F2FE] text-[#0284C7]"
+                        : "bg-[#EFF6FF] text-[#2563EB]";
 
-                    <p className="text-[#64748B] text-[13px] font-[400] italic mt-1 leading-snug">
-                      "System experienced sudden power loss. Technician diagnosed a blown power supply unit. Replacement ordered."
-                    </p>
-                  </div>
-                </div>
+                  const completedAt = record?.completedDate ? new Date(record.completedDate) : null;
+                  const dateLabel = completedAt
+                    ? completedAt.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
+                    : "N/A";
+                  const timeLabel = completedAt
+                    ? completedAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
+                    : "--:--";
+                  const status = record?.status ? String(record.status).toUpperCase() : "COMPLETED";
 
-                {/* Event 2 : Routine */}
-                <div className="relative flex gap-4 sm:gap-6 w-full mb-6 group">
-                  <div className="absolute -left-[19px] sm:-left-[19px] top-1">
-                    <div className="w-[38px] h-[38px] rounded-full flex items-center justify-center shrink-0 bg-white ring-[10px] ring-white z-10 border-[1.5px] border-[#3B82F6] text-[#3B82F6] bg-white group-hover:bg-[#EFF6FF] transition-colors">
-                      <CalendarDays className="w-[17px] h-[17px] stroke-[2.5px]" />
-                    </div>
-                  </div>
-
-                  <div className="flex-1 bg-white border border-[#EEF1F6] shadow-sm rounded-[12px] p-5 pt-4 flex flex-col gap-4 ml-8">
-                    <div className="flex justify-between items-start w-full">
-                      <div className="flex flex-col gap-0.5">
-                        <div className="flex flex-wrap items-center gap-2 mb-0.5">
-                          <h4 className="text-[#111827] text-[14.5px] sm:text-[15px] font-[800]">Quarterly Cleaning & Optimization</h4>
-                          <div className="px-2 py-[2px] bg-[#EFF6FF] text-[#2563EB] text-[9.5px] font-[800] uppercase tracking-wider rounded-[4px]">ROUTINE</div>
-                        </div>
-                        <p className="text-[#94A3B8] text-[12.5px] font-[500]">Oct 05, 2023 • 10:00 AM</p>
-                      </div>
-                      <div className="flex flex-col items-end gap-1">
-                        <span className="text-[#111827] text-[14.5px] font-[800] tracking-tight">₦ 8,500.00</span>
-                        <div className="flex items-center gap-1.5">
-                          <CheckCircle2 className="w-[13px] h-[13px] text-[#22C55E] stroke-[3px]" />
-                          <span className="text-[#22C55E] text-[11.5px] font-[700]">Completed</span>
+                  return (
+                    <div key={record?._id ?? record?.id ?? `history-${index}`} className="relative flex gap-4 sm:gap-6 w-full mb-6 group">
+                      <div className="absolute -left-[19px] sm:-left-[19px] top-1">
+                        <div className={`w-[38px] h-[38px] rounded-full flex items-center justify-center shrink-0 bg-white ring-[10px] ring-white z-10 border-[1.5px] ${borderClass} transition-colors`}>
+                          <Icon className="w-[17px] h-[17px] stroke-[2.5px]" />
                         </div>
                       </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-[#64748B] text-[12px] font-[500]">Service Provider</span>
-                        <span className="text-[#334155] text-[13px] font-[600]">Internal IT Team</span>
-                      </div>
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-[#64748B] text-[12px] font-[500]">Approved By</span>
-                        <span className="text-[#334155] text-[13px] font-[600]">Admin Jane</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
 
-                {/* Event 3 : Repair */}
-                <div className="relative flex gap-4 sm:gap-6 w-full mb-2 group">
-                  <div className="absolute -left-[19px] sm:-left-[19px] top-1">
-                    <div className="w-[38px] h-[38px] rounded-full flex items-center justify-center shrink-0 bg-white ring-[10px] ring-white z-10 border-[1.5px] border-[#F97316] text-[#F97316] bg-white group-hover:bg-[#FFF7ED] transition-colors">
-                      <Wrench className="w-[17px] h-[17px] stroke-[2.5px]" />
-                    </div>
-                  </div>
+                      <div className="flex-1 bg-white border border-[#EEF1F6] shadow-sm rounded-[12px] p-5 pt-4 flex flex-col gap-4 ml-8">
+                        <div className="flex justify-between items-start w-full">
+                          <div className="flex flex-col gap-0.5">
+                            <div className="flex flex-wrap items-center gap-2 mb-0.5">
+                              <h4 className="text-[#111827] text-[14.5px] sm:text-[15px] font-[800]">
+                                {record?.description ?? "Maintenance Service"}
+                              </h4>
+                              <div className={`px-2 py-[2px] text-[9.5px] font-[800] uppercase tracking-wider rounded-[4px] ${badgeClass}`}>
+                                {type.toUpperCase()}
+                              </div>
+                            </div>
+                            <p className="text-[#94A3B8] text-[12.5px] font-[500]">{dateLabel} • {timeLabel}</p>
+                          </div>
+                          <div className="flex flex-col items-end gap-1">
+                            <span className="text-[#111827] text-[14.5px] font-[800] tracking-tight">
+                              {record?.cost !== undefined && record?.cost !== null
+                                ? formatCurrency(record.cost, record.currency)
+                                : "N/A"}
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <CheckCircle2 className="w-[13px] h-[13px] text-[#22C55E] stroke-[3px]" />
+                              <span className="text-[#22C55E] text-[11.5px] font-[700]">{status}</span>
+                            </div>
+                          </div>
+                        </div>
 
-                  <div className="flex-1 bg-white border border-[#EEF1F6] shadow-sm rounded-[12px] p-5 pt-4 flex flex-col gap-4 ml-8">
-                    <div className="flex justify-between items-start w-full">
-                      <div className="flex flex-col gap-0.5">
-                        <div className="flex flex-wrap items-center gap-2 mb-0.5">
-                          <h4 className="text-[#111827] text-[14.5px] sm:text-[15px] font-[800]">RAM Upgrade (8GB to 16GB)</h4>
-                          <div className="px-2 py-[2px] bg-[#FEF9C3] text-[#CA8A04] text-[9.5px] font-[800] uppercase tracking-wider rounded-[4px]">REPAIR</div>
-                        </div>
-                        <p className="text-[#94A3B8] text-[12.5px] font-[500]">Jun 18, 2023 • 11:30 AM</p>
-                      </div>
-                      <div className="flex flex-col items-end gap-1">
-                        <span className="text-[#111827] text-[14.5px] font-[800] tracking-tight">₦ 32,000.00</span>
-                        <div className="flex items-center gap-1.5">
-                          <CheckCircle2 className="w-[13px] h-[13px] text-[#22C55E] stroke-[3px]" />
-                          <span className="text-[#22C55E] text-[11.5px] font-[700]">Completed</span>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-[#64748B] text-[12px] font-[500]">Service Provider</span>
+                            <span className="text-[#334155] text-[13px] font-[600]">{record?.provider ?? "Unavailable"}</span>
+                          </div>
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-[#64748B] text-[12px] font-[500]">Status</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[#334155] text-[13px] font-[600]">{status}</span>
+                              {record?.verifiedBy ? (
+                                <span className="text-[10px] font-[800] uppercase tracking-wider px-2 py-1 rounded-[6px] bg-[#EFF6FF] text-[#2563EB] border border-[#BFDBFE]">
+                                  Verified
+                                </span>
+                              ) : (
+                                <button
+                                  onClick={() => handleVerify(String(record?._id ?? record?.id ?? ""))}
+                                  disabled={verifyingId === String(record?._id ?? record?.id ?? "")}
+                                  className="text-[10px] font-[800] uppercase tracking-wider px-2 py-1 rounded-[6px] bg-[#ECFDF5] text-[#16A34A] border border-[#BBF7D0] disabled:opacity-60 disabled:cursor-not-allowed"
+                                >
+                                  {verifyingId === String(record?._id ?? record?.id ?? "")
+                                    ? "Verifying..."
+                                    : "Verify"}
+                                </button>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
-                    
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-[#64748B] text-[12px] font-[500]">Service Provider</span>
-                        <span className="text-[#334155] text-[13px] font-[600]">Compusolve Ltd.</span>
-                      </div>
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-[#64748B] text-[12px] font-[500]">Ticket Ref</span>
-                        <span className="text-[#334155] text-[13px] font-[600]">#TK-90821</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                  );
+                })}
 
               </div>
 
@@ -214,34 +368,41 @@ export default function MaintenanceHistoryModalPage() {
               {/* Financial Snapshot Vertical Card */}
               <div className="bg-white border text-left border-[#EEF1F6] shadow-[0px_2px_8px_rgba(0,0,0,0.03)] rounded-[12px] p-5 pt-6 flex flex-col relative w-full">
                 <h3 className="text-[#111827] text-[10.5px] font-[800] uppercase tracking-widest leading-snug mb-5 w-[60%]">
-                  Financial<br className="xl:block hidden" /> Snapshot
+                  Maintenance<br className="xl:block hidden" /> Summary
                 </h3>
                 
                 <div className="flex flex-col gap-4">
                   
                   <div className="flex items-center justify-between">
-                    <span className="text-[#94A3B8] text-[12.5px] font-[500]">Original Purchase</span>
-                    <span className="text-[#111827] text-[14px] font-[800] tracking-tight">₦ 450,000.00</span>
+                    <span className="text-[#94A3B8] text-[12.5px] font-[500]">Completed Services</span>
+                    <span className="text-[#111827] text-[14px] font-[800] tracking-tight">{historyCount}</span>
                   </div>
                   
                   <div className="flex items-center justify-between">
                     <span className="text-[#94A3B8] text-[12.5px] font-[500]">Total Service Cost</span>
-                    <span className="text-[#EF4444] text-[14px] font-[800] tracking-tight">₦ 85,500.00</span>
+                    <span className="text-[#EF4444] text-[14px] font-[800] tracking-tight">
+                      {formatCurrency(historyTotal, "NGN")}
+                    </span>
                   </div>
                   
                   <div className="flex items-center justify-between">
-                    <span className="text-[#94A3B8] text-[12.5px] font-[500]">Current Net Value</span>
-                    <span className="text-[#111827] text-[14px] font-[800] tracking-tight">₦ 285,500.00</span>
+                    <span className="text-[#94A3B8] text-[12.5px] font-[500]">Average Service Cost</span>
+                    <span className="text-[#111827] text-[14px] font-[800] tracking-tight">
+                      {formatCurrency(averageCost, "NGN")}
+                    </span>
                   </div>
                   
                   {/* Progress Bar Container */}
                   <div className="flex flex-col gap-2.5 mt-2">
                     <div className="w-full h-[6px] bg-[#E2E8F0] rounded-full overflow-hidden">
-                      <div className="h-full bg-[#2563EB] rounded-full" style={{ width: "63%" }}></div>
+                      <div
+                        className="h-full bg-[#2563EB] rounded-full"
+                        style={{ width: historyCount > 0 ? "100%" : "0%" }}
+                      ></div>
                     </div>
                     <div className="flex items-center justify-between text-[#94A3B8] text-[10.5px] font-[700] tracking-wide">
-                      <span>Residual Value</span>
-                      <span>63% Remaining</span>
+                      <span>Records Tracked</span>
+                      <span>{historyCount} Total</span>
                     </div>
                   </div>
 
@@ -262,8 +423,8 @@ export default function MaintenanceHistoryModalPage() {
                       <RotateCw className="w-[15px] h-[15px] stroke-[2.5px] rotate-180" />
                     </div>
                     <div className="flex flex-col">
-                      <span className="text-[#64748B] text-[12px] font-[600]">MTBF (Approx.)</span>
-                      <span className="text-[#111827] text-[13.5px] font-[800]">142 Days</span>
+                      <span className="text-[#64748B] text-[12px] font-[600]">Services in Period</span>
+                      <span className="text-[#111827] text-[13.5px] font-[800]">{historyCount}</span>
                     </div>
                   </div>
 
@@ -273,8 +434,12 @@ export default function MaintenanceHistoryModalPage() {
                       <CheckCircle2 className="w-[15px] h-[15px] stroke-[3px]" />
                     </div>
                     <div className="flex flex-col">
-                      <span className="text-[#64748B] text-[12px] font-[600]">Next Routine Check</span>
-                      <span className="text-[#111827] text-[13.5px] font-[800]">Mar 15, 2024</span>
+                      <span className="text-[#64748B] text-[12px] font-[600]">Most Recent Service</span>
+                      <span className="text-[#111827] text-[13.5px] font-[800]">
+                        {lastCompleted
+                          ? lastCompleted.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
+                          : "Unavailable"}
+                      </span>
                     </div>
                   </div>
 

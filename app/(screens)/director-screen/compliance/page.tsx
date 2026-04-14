@@ -3,7 +3,7 @@
 import SidebarNav from "@/components/navigation/SidebarNav"
 import ScreenHeader from "@/components/navigation/ScreenHeader"
 import { useAuth } from "@/components/auth/AuthProvider"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type FormEvent } from "react"
 import {
   CalendarDays,
   ChevronDown,
@@ -17,43 +17,53 @@ import {
   Clock3,
 } from "lucide-react"
 import BranchesDropdown from "@/components/navigation/BranchesDropdown"
-
-const cards = [
-  {
-    title: "Total 10% Tithe Collected",
-    value: "$1,240,500",
-    meta: "+95%",
-    icon: WalletMinimal,
-    bar: "bg-[#3B5BDB]",
-  },
-  {
-    title: "Total 20% Capital Savings",
-    value: "$2,481,000",
-    meta: "+92%",
-    icon: PiggyBank,
-    bar: "bg-[#7C3AED]",
-  },
-  {
-    title: "Total 1% General Savings",
-    value: "$124,050",
-    meta: "-88%",
-    icon: Landmark,
-    bar: "bg-[#F97316]",
-  },
-]
-
-const rows = [
-  // Intentionally empty until compliance records endpoint is wired.
-]
+import { useStatutoryDeductions, type DeductionType } from "@/components/hooks/useStatutoryDeductions"
+import { useComplianceDashboard } from "@/components/hooks/useComplianceDashboard"
+import { useComplianceSummary } from "@/components/hooks/useComplianceSummary"
 
 export default function Page() {
   const { user } = useAuth()
-  const [summary, setSummary] = useState<{ totalDue: number; totalPaid: number; complianceScore: number } | null>(null)
-  const [summaryError, setSummaryError] = useState<string | null>(null)
-  const [complianceScore, setComplianceScore] = useState<number | null>(null)
-  const [scoreError, setScoreError] = useState<string | null>(null)
-  const [statutory, setStatutory] = useState<{ totalTitheInflow: number; hqRemittanceAmount: number } | null>(null)
-  const [statutoryError, setStatutoryError] = useState<string | null>(null)
+  const {
+    createDeduction,
+    fetchDeductions,
+    getDeductionById,
+    deductions,
+    selectedDeduction,
+    pagination,
+    creating,
+    loading: deductionsLoading,
+    detailLoading,
+    error: createError,
+    listError,
+    detailError,
+    setError: setCreateError,
+  } = useStatutoryDeductions()
+  const {
+    data: complianceDashboard,
+    loading: complianceLoading,
+    error: complianceError,
+    fetchDashboard,
+  } = useComplianceDashboard()
+  const {
+    complianceData: complianceSummary,
+    loading: summaryLoading,
+    error: summaryError,
+    fetchSummary,
+  } = useComplianceSummary()
+  const [createSuccess, setCreateSuccess] = useState<string | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [remittedFilter, setRemittedFilter] = useState<"all" | "pending" | "compliant">("all")
+  const [deductionForm, setDeductionForm] = useState<{
+    type: DeductionType
+    employeeProfileId: string
+    amount: string
+    period: string
+  }>({
+    type: "paye",
+    employeeProfileId: "",
+    amount: "",
+    period: "",
+  })
 
   const tenantId = useMemo(
     () => user?.tenantId ?? user?.tenant?.id ?? "",
@@ -61,143 +71,34 @@ export default function Page() {
   )
 
   useEffect(() => {
-    let isMounted = true
-
-    const fetchSummary = async () => {
-      if (!tenantId) {
-        setSummaryError("Tenant is required to load compliance summary.")
-        return
-      }
-
-      try {
-        setSummaryError(null)
-        const year = new Date().getFullYear()
-        const params = new URLSearchParams({
-          tenantId,
-          periodStart: `${year}-01-01`,
-          periodEnd: `${year}-12-31`,
-        })
-        const response = await fetch(`/api/core/financial/compliance/summary?${params.toString()}`, {
-          method: "GET",
-          credentials: "include",
-        })
-        const payload = await response.json().catch(() => null)
-        if (!response.ok) {
-          throw new Error(payload?.message ?? "Unable to load compliance summary.")
-        }
-
-        const data = payload?.data ?? payload
-        if (isMounted && data) {
-          setSummary({
-            totalDue: Number(data.totalDue ?? 0),
-            totalPaid: Number(data.totalPaid ?? 0),
-            complianceScore: Number(data.complianceScore ?? 0),
-          })
-        }
-      } catch (error) {
-        if (isMounted) {
-          setSummaryError(error instanceof Error ? error.message : "Unable to load compliance summary.")
-        }
-      }
-    }
-
-    fetchSummary()
-
-    return () => {
-      isMounted = false
-    }
-  }, [tenantId])
+    if (!tenantId) return
+    fetchDashboard({ branchId: tenantId, fiscalYear: new Date().getFullYear() }).catch(() => undefined)
+  }, [tenantId, fetchDashboard])
 
   useEffect(() => {
-    let isMounted = true
-
-    const fetchStatutory = async () => {
-      if (!tenantId) {
-        setStatutoryError("Tenant is required to load statutory report.")
-        return
-      }
-      try {
-        setStatutoryError(null)
-        const now = new Date()
-        const periodStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0]
-        const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0]
-        const params = new URLSearchParams({
-          tenantId,
-          periodStart,
-          periodEnd,
-          deductionRate: "10",
-        })
-        const response = await fetch(`/api/core/financial/reports/statutory?${params.toString()}`, {
-          method: "GET",
-          credentials: "include",
-        })
-        const payload = await response.json().catch(() => null)
-        if (!response.ok) {
-          throw new Error(payload?.message ?? "Unable to load statutory report.")
-        }
-        const data = payload?.data ?? payload
-        if (isMounted) {
-          setStatutory({
-            totalTitheInflow: Number(data?.totalTitheInflow ?? 0),
-            hqRemittanceAmount: Number(data?.hqRemittanceAmount ?? 0),
-          })
-        }
-      } catch (error) {
-        if (isMounted) {
-          setStatutory(null)
-          setStatutoryError(error instanceof Error ? error.message : "Unable to load statutory report.")
-        }
-      }
-    }
-
-    fetchStatutory()
-
-    return () => {
-      isMounted = false
-    }
-  }, [tenantId])
+    if (!tenantId) return
+    const year = new Date().getFullYear()
+    fetchSummary({
+      branchId: tenantId,
+      startDate: `${year}-01-01`,
+      endDate: `${year}-12-31`,
+    }).catch(() => undefined)
+  }, [tenantId, fetchSummary])
 
   useEffect(() => {
-    let isMounted = true
+    if (!tenantId) return
+    const remitted =
+      remittedFilter === "all"
+        ? undefined
+        : remittedFilter === "compliant"
+    fetchDeductions({
+      page: currentPage,
+      limit: 20,
+      branchId: tenantId,
+      remitted,
+    }).catch(() => undefined)
+  }, [tenantId, remittedFilter, currentPage, fetchDeductions])
 
-    const fetchScore = async () => {
-      if (!tenantId) {
-        setScoreError("Tenant is required to load compliance score.")
-        return
-      }
-      try {
-        setScoreError(null)
-        const year = new Date().getFullYear()
-        const params = new URLSearchParams({
-          tenantId,
-          periodStart: `${year}-01-01`,
-          periodEnd: `${year}-12-31`,
-        })
-        const response = await fetch(`/api/core/financial/compliance/score?${params.toString()}`, {
-          method: "GET",
-          credentials: "include",
-        })
-        const payload = await response.json().catch(() => null)
-        if (!response.ok) {
-          throw new Error(payload?.message ?? "Unable to load compliance score.")
-        }
-        const data = payload?.data ?? payload
-        if (isMounted) {
-          setComplianceScore(Number(data?.complianceScore ?? 0))
-        }
-      } catch (error) {
-        if (isMounted) {
-          setScoreError(error instanceof Error ? error.message : "Unable to load compliance score.")
-        }
-      }
-    }
-
-    fetchScore()
-
-    return () => {
-      isMounted = false
-    }
-  }, [tenantId])
 
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat("en-NG", {
@@ -206,21 +107,81 @@ export default function Page() {
       maximumFractionDigits: 0,
     }).format(amount)
 
-  const cardData = cards.map((card, index) => {
-    if (!summary) return card
-    if (index === 0) {
-      const value = statutory?.totalTitheInflow ?? summary.totalPaid
-      return { ...card, value: formatCurrency(value) }
+  const cardData = [
+    {
+      title: "Total Liability",
+      value: complianceDashboard ? formatCurrency(complianceDashboard.totalLiability) : "—",
+      meta: complianceDashboard ? `${complianceDashboard.fiscalYear} fiscal year` : "Loading...",
+      icon: WalletMinimal,
+      bar: "bg-[#3B5BDB]",
+    },
+    {
+      title: "Total Remitted",
+      value: complianceSummary ? formatCurrency(complianceSummary.totalRemitted) : "—",
+      meta: complianceDashboard ? `${complianceDashboard.complianceRate.toFixed(1)}% compliance rate` : "Loading...",
+      icon: PiggyBank,
+      bar: "bg-[#7C3AED]",
+    },
+    {
+      title: "Available Funds",
+      value: complianceDashboard ? formatCurrency(complianceDashboard.availableFunds) : "—",
+      meta: complianceSummary ? `${formatCurrency(complianceSummary.outstanding)} outstanding` : "Loading...",
+      icon: Landmark,
+      bar: "bg-[#F97316]",
+    },
+  ]
+
+  const rows = deductions.map((item) => ({
+    rawId: item.id,
+    name: item.branchId ? "Branch Deduction" : "Compliance Deduction",
+    id: item.id.slice(0, 8).toUpperCase(),
+    total: formatCurrency(item.amount),
+    outstanding: item.remitted ? formatCurrency(0) : formatCurrency(item.amount),
+    isOutstanding: !item.remitted,
+    last: item.period,
+    status: item.remitted ? "Compliant" : "Pending",
+  }))
+
+  const handleCreateDeduction = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setCreateError(null)
+    setCreateSuccess(null)
+
+    const amount = Number(deductionForm.amount)
+    if (!deductionForm.employeeProfileId.trim()) {
+      setCreateError("Employee profile ID is required.")
+      return
     }
-    if (index === 1) {
-      const value = statutory?.hqRemittanceAmount ?? summary.totalDue
-      return { ...card, value: formatCurrency(value) }
+    if (!deductionForm.period.trim()) {
+      setCreateError("Period is required. Use format YYYY-MM.")
+      return
     }
-    if (complianceScore !== null) {
-      return { ...card, value: `${complianceScore.toFixed(1)}%` }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setCreateError("Amount must be greater than 0.")
+      return
     }
-    return { ...card, value: `${summary.complianceScore.toFixed(1)}%` }
-  })
+
+    try {
+      await createDeduction({
+        type: deductionForm.type,
+        employeeProfileId: deductionForm.employeeProfileId.trim(),
+        amount,
+        period: deductionForm.period.trim(),
+        branchId: tenantId || undefined,
+      })
+      setCreateSuccess("Statutory deduction created successfully.")
+      setDeductionForm((prev) => ({ ...prev, employeeProfileId: "", amount: "" }))
+      await fetchDeductions({
+        page: 1,
+        limit: 20,
+        branchId: tenantId,
+        remitted: remittedFilter === "all" ? undefined : remittedFilter === "compliant",
+      })
+      setCurrentPage(1)
+    } catch {
+      // handled in hook state
+    }
+  }
 
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
@@ -237,7 +198,9 @@ export default function Page() {
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <h2 className="text-[16px] font-bold text-[#111827]">Statutory Compliance & Remittance</h2>
-                <p className="text-[13px] text-[#6B7280] mt-1">Consolidated view of HQ remittances across all branches for FY 2023-2024</p>
+                <p className="text-[13px] text-[#6B7280] mt-1">
+                  Consolidated view of liabilities and remittances for FY {complianceDashboard?.fiscalYear ?? new Date().getFullYear()}
+                </p>
               </div>
               <div className="flex items-center gap-2">
                 <button className="flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-3.5 py-2 text-[12px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50">
@@ -265,7 +228,7 @@ export default function Page() {
                         <Icon className="h-4 w-4 text-[#3B5BDB]" />
                       </div>
                     </div>
-                    <div className="mt-3 text-[11px] font-semibold text-emerald-600">{card.meta} of target collected</div>
+                    <div className="mt-3 text-[11px] font-semibold text-emerald-600">{card.meta}</div>
                     <div className="mt-2 h-1.5 rounded-full bg-[#EEF1F6]">
                       <div className={`h-1.5 w-3/5 rounded-full ${card.bar}`} />
                     </div>
@@ -273,22 +236,107 @@ export default function Page() {
                 )}
               )}
             </div>
+            {complianceLoading && (
+              <div className="mt-4 text-[12px] font-medium text-[#6B7280]">Loading compliance dashboard...</div>
+            )}
+            {complianceError && (
+              <div className="mt-2 text-[12px] font-medium text-[#EF4444]">{complianceError}</div>
+            )}
+            {summaryLoading && (
+              <div className="mt-2 text-[12px] font-medium text-[#6B7280]">Loading compliance summary...</div>
+            )}
             {summaryError && (
-              <div className="mt-4 text-[12px] font-medium text-[#EF4444]">{summaryError}</div>
-            )}
-            {scoreError && (
-              <div className="mt-2 text-[12px] font-medium text-[#EF4444]">{scoreError}</div>
-            )}
-            {statutoryError && (
-              <div className="mt-2 text-[12px] font-medium text-[#EF4444]">{statutoryError}</div>
+              <div className="mt-2 text-[12px] font-medium text-[#EF4444]">{summaryError}</div>
             )}
 
             <div className="mt-6 rounded-xl border border-[#EEF1F6] bg-white shadow-sm overflow-hidden">
+              <div className="border-b border-[#EEF1F6] px-6 py-4">
+                <form onSubmit={handleCreateDeduction} className="grid grid-cols-1 gap-2 md:grid-cols-[120px_1fr_140px_130px_auto]">
+                  <select
+                    value={deductionForm.type}
+                    onChange={(e) => setDeductionForm((prev) => ({ ...prev, type: e.target.value as DeductionType }))}
+                    className="h-9 rounded-[8px] border border-[#E5E7EB] bg-white px-3 text-[12px]"
+                  >
+                    <option value="paye">PAYE</option>
+                    <option value="pension">Pension</option>
+                    <option value="nhf">NHF</option>
+                  </select>
+                  <input
+                    type="text"
+                    value={deductionForm.employeeProfileId}
+                    onChange={(e) => setDeductionForm((prev) => ({ ...prev, employeeProfileId: e.target.value }))}
+                    placeholder="Employee Profile ID"
+                    className="h-9 rounded-[8px] border border-[#E5E7EB] bg-white px-3 text-[12px]"
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={deductionForm.amount}
+                    onChange={(e) => setDeductionForm((prev) => ({ ...prev, amount: e.target.value }))}
+                    placeholder="Amount"
+                    className="h-9 rounded-[8px] border border-[#E5E7EB] bg-white px-3 text-[12px]"
+                  />
+                  <input
+                    type="month"
+                    value={deductionForm.period}
+                    onChange={(e) => setDeductionForm((prev) => ({ ...prev, period: e.target.value }))}
+                    className="h-9 rounded-[8px] border border-[#E5E7EB] bg-white px-3 text-[12px]"
+                  />
+                  <button
+                    type="submit"
+                    disabled={creating}
+                    className="h-9 rounded-[8px] bg-[#3B5BDB] px-4 text-[12px] font-semibold text-white disabled:opacity-60"
+                  >
+                    {creating ? "Creating..." : "Create Deduction"}
+                  </button>
+                </form>
+                {createError && <div className="mt-2 text-[12px] text-rose-600">{createError}</div>}
+                {createSuccess && <div className="mt-2 text-[12px] text-emerald-600">{createSuccess}</div>}
+              </div>
+
               <div className="flex flex-col gap-3 px-6 py-4 md:flex-row md:items-center md:justify-between">
                 <div className="flex items-center gap-2">
                   <BranchesDropdown label="All Branches" className="text-[11px]" />
-                  <button className="rounded-[8px] bg-[#E9EEFF] px-3 py-1.5 text-[11px] font-bold text-[#3B5BDB]">Compliant</button>
-                  <button className="rounded-[8px] bg-[#F3F5F9] px-3 py-1.5 text-[11px] font-bold text-[#6B7280]">Overdue/Non-Compliant</button>
+                  <button
+                    onClick={() => {
+                      setRemittedFilter("compliant")
+                      setCurrentPage(1)
+                    }}
+                    className={`rounded-[8px] px-3 py-1.5 text-[11px] font-bold ${
+                      remittedFilter === "compliant"
+                        ? "bg-[#E9EEFF] text-[#3B5BDB]"
+                        : "bg-[#F3F5F9] text-[#6B7280]"
+                    }`}
+                  >
+                    Compliant
+                  </button>
+                  <button
+                    onClick={() => {
+                      setRemittedFilter("pending")
+                      setCurrentPage(1)
+                    }}
+                    className={`rounded-[8px] px-3 py-1.5 text-[11px] font-bold ${
+                      remittedFilter === "pending"
+                        ? "bg-[#FEE2E2] text-[#B91C1C]"
+                        : "bg-[#F3F5F9] text-[#6B7280]"
+                    }`}
+                  >
+                    Overdue/Non-Compliant
+                  </button>
+                  <button
+                    onClick={() => {
+                      setRemittedFilter("all")
+                      setCurrentPage(1)
+                    }}
+                    className={`rounded-[8px] px-3 py-1.5 text-[11px] font-bold ${
+                      remittedFilter === "all"
+                        ? "bg-[#EFF6FF] text-[#1D4ED8]"
+                        : "bg-[#F3F5F9] text-[#6B7280]"
+                    }`}
+                  >
+                    All
+                  </button>
                 </div>
                 <div className="flex items-center gap-2 text-[#9CA3AF]">
                   <Filter className="h-4 w-4" />
@@ -309,19 +357,35 @@ export default function Page() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#EEF1F6]">
-                    {rows.length === 0 && (
+                    {deductionsLoading && (
+                      <tr>
+                        <td colSpan={7} className="px-6 py-6 text-center text-[12px] text-[#6B7280]">
+                          Loading compliance records...
+                        </td>
+                      </tr>
+                    )}
+                    {!deductionsLoading && listError && (
+                      <tr>
+                        <td colSpan={7} className="px-6 py-6 text-center text-[12px] text-rose-600">
+                          {listError}
+                        </td>
+                      </tr>
+                    )}
+                    {!deductionsLoading && !listError && rows.length === 0 && (
                       <tr>
                         <td colSpan={7} className="px-6 py-6 text-center text-[12px] text-[#6B7280]">
                           No compliance records available for this period.
                         </td>
                       </tr>
                     )}
-                    {rows.map((row) => (
-                      <tr key={row.name} className="hover:bg-gray-50/50 font-semibold text-[#111827] transition-colors">
+                    {!deductionsLoading &&
+                      !listError &&
+                      rows.map((row) => (
+                      <tr key={row.rawId} className="hover:bg-gray-50/50 font-semibold text-[#111827] transition-colors">
                         <td className="px-6 py-5">{row.name}</td>
                         <td className="px-6 py-5 text-[#6B7280]">{row.id}</td>
                         <td className="px-6 py-5">{row.total}</td>
-                        <td className={`px-6 py-5 ${row.outstanding !== "$0.00" ? "text-rose-600" : "text-[#6B7280]"}`}>
+                        <td className={`px-6 py-5 ${row.isOutstanding ? "text-rose-600" : "text-[#6B7280]"}`}>
                           {row.outstanding}
                         </td>
                         <td className="px-6 py-5 text-[#6B7280]">{row.last}</td>
@@ -345,20 +409,59 @@ export default function Page() {
                             {row.status}
                           </span>
                         </td>
-                        <td className="px-6 py-5 text-right text-[#9CA3AF]">...</td>
+                        <td className="px-6 py-5 text-right">
+                          <button
+                            onClick={() => {
+                              getDeductionById(row.rawId).catch(() => undefined)
+                            }}
+                            className="rounded border border-[#E5E7EB] px-3 py-1.5 text-[11px] font-semibold text-[#4B5563] hover:bg-gray-50"
+                          >
+                            View
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+              {(detailLoading || detailError || selectedDeduction) && (
+                <div className="border-t border-[#EEF1F6] px-6 py-4">
+                  {detailLoading && (
+                    <div className="text-[12px] text-[#6B7280]">Loading deduction details...</div>
+                  )}
+                  {!detailLoading && detailError && (
+                    <div className="text-[12px] text-rose-600">{detailError}</div>
+                  )}
+                  {!detailLoading && !detailError && selectedDeduction && (
+                    <div className="rounded-[10px] border border-[#EEF1F6] bg-[#F9FAFB] px-4 py-3 text-[12px] text-[#4B5563]">
+                      <span className="font-semibold text-[#111827]">Selected Deduction:</span>{" "}
+                      ID {selectedDeduction.id.slice(0, 8).toUpperCase()} • {selectedDeduction.type.toUpperCase()} •{" "}
+                      {formatCurrency(selectedDeduction.amount)} • {selectedDeduction.remitted ? "Remitted" : "Pending"} •{" "}
+                      {selectedDeduction.period || "No period"}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="flex items-center justify-between border-t border-[#EEF1F6] p-4 px-6">
                 <span className="text-[13px] font-medium text-[#6B7280]">
-                  Showing <span className="text-[#111827] font-bold">1-5</span> of <span className="font-bold text-[#111827]">45</span> branches
+                  Showing <span className="text-[#111827] font-bold">{rows.length ? `${(currentPage - 1) * (pagination?.limit ?? 20) + 1}-${(currentPage - 1) * (pagination?.limit ?? 20) + rows.length}` : 0}</span> of <span className="font-bold text-[#111827]">{pagination?.total ?? rows.length}</span> records
                 </span>
                 <div className="flex items-center gap-2">
-                  <button className="rounded px-4 py-2 text-[12px] font-semibold text-[#6B7280] border border-[#E5E7EB] hover:bg-gray-50">Previous</button>
-                  <button className="rounded px-4 py-2 text-[12px] font-semibold text-[#111827] border border-[#E5E7EB] hover:bg-gray-50">Next</button>
+                  <button
+                    onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                    disabled={currentPage <= 1}
+                    className="rounded px-4 py-2 text-[12px] font-semibold text-[#6B7280] border border-[#E5E7EB] hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage((prev) => (pagination && prev < pagination.pages ? prev + 1 : prev))}
+                    disabled={!pagination || currentPage >= pagination.pages}
+                    className="rounded px-4 py-2 text-[12px] font-semibold text-[#111827] border border-[#E5E7EB] hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    Next
+                  </button>
                 </div>
               </div>
             </div>

@@ -1,0 +1,60 @@
+import { useState, useCallback } from "react"
+
+export interface BudgetItem {
+  budgetId: string
+  title: string
+  approved: number
+  spent: number
+  variance: number
+}
+
+export interface BudgetPerformanceData {
+  totalApproved: number
+  totalSpent: number
+  utilizationRate: number
+  budgets: BudgetItem[]
+}
+
+interface UseBudgetPerformanceProps {
+  branchId?: string
+  startDate?: string
+  endDate?: string
+}
+
+export function useBudgetPerformance(initialProps?: UseBudgetPerformanceProps) {
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [performanceData, setPerformanceData] = useState<BudgetPerformanceData | null>(null)
+
+  const fetchPerformance = useCallback(
+    async (props: UseBudgetPerformanceProps = {}) => {
+      setLoading(true)
+      setError(null)
+      try {
+        const mergedProps = { ...initialProps, ...props }
+        const qs = new URLSearchParams()
+        if (mergedProps.branchId) qs.set("branchId", mergedProps.branchId)
+        if (mergedProps.startDate) qs.set("startDate", mergedProps.startDate)
+        if (mergedProps.endDate) qs.set("endDate", mergedProps.endDate)
+
+        const res = await fetch(`/api/core/dashboard/budget-performance?${qs.toString()}`)
+        const data = await res.json().catch(() => null)
+        
+        if (!res.ok) {
+          throw new Error(data?.message || "Failed to fetch budget performance data")
+        }
+        
+        setPerformanceData(data?.data || null)
+        return data?.data as BudgetPerformanceData
+      } catch (err: any) {
+        setError(err.message || "An error occurred fetching budget performance data")
+        throw err
+      } finally {
+        setLoading(false)
+      }
+    },
+    [initialProps]
+  )
+
+  return { loading, error, performanceData, fetchPerformance }
+}

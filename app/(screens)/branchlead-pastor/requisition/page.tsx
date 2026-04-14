@@ -8,18 +8,9 @@ import {
   Bell,
   ChevronDown,
   LayoutDashboard,
-  Printer,
   ShieldCheck,
-  TrendingUp,
-  Upload,
   Wallet,
   CheckCircle2,
-  MinusCircle,
-  FileText,
-  Pencil,
-  Lightbulb,
-  ChevronLeft,
-  ChevronRight,
   Info,
   Search,
   Menu,
@@ -29,15 +20,17 @@ import {
   LockKeyhole
 } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
-import { useRequisitions } from "@/components/hooks/useRequisitions"
+import { useRequisitionInbox } from "@/components/hooks/useRequisitionInbox"
+import { useExpenseDistribution } from "@/components/hooks/useExpenseDistribution"
 
 export default function Page() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { user } = useAuth()
-  const { requisitions, loading: reqLoading, error: reqError, refresh } = useRequisitions({
-    currentStatus: "PENDING_ACCOUNTANT",
-    tenantId: user?.tenantId ?? user?.tenant?.id ?? "",
+  const branchId = user?.tenantId ?? user?.tenant?.id ?? ""
+  const { requisitions, loading: reqLoading, error: reqError, refresh } = useRequisitionInbox({
+    branchId,
   })
+  const { items: expenseItems, loading: expenseLoading } = useExpenseDistribution({ branchId })
 
   const [isApproving, setIsApproving] = useState<string | null>(null)
   const [approveError, setApproveError] = useState<string | null>(null)
@@ -58,14 +51,14 @@ export default function Page() {
     setApproveSuccess(null)
     try {
       const csrfToken = getCsrfToken()
-      const res = await fetch(`/api/core/financial/requisitions/${id}/approve-lead-pastor`, {
-        method: "POST",
+      const res = await fetch(`/api/core/financial/requisitions/${id}/approve`, {
+        method: "PATCH",
         headers: {
           "Content-Type": "application/json",
           "x-csrf-token": csrfToken,
         },
         credentials: "include",
-        body: JSON.stringify({ overrideReason: "Approved within budget" }),
+        body: JSON.stringify({ action: "approved", comment: "Approved within budget" }),
       })
       const payload = await res.json().catch(() => null)
       if (!res.ok) {
@@ -73,8 +66,8 @@ export default function Page() {
       }
       setApproveSuccess("Requisition approved successfully.")
       refresh()
-    } catch (err: any) {
-      setApproveError(err?.message ?? "Failed to approve requisition")
+    } catch (err: unknown) {
+      setApproveError(err instanceof Error ? err.message : "Failed to approve requisition")
     } finally {
       setIsApproving(null)
     }
@@ -115,6 +108,65 @@ export default function Page() {
 
   const priorityCards = pendingRows.slice(0, 2)
   const recentActivity = pendingRows.slice(2, 5)
+  const expenseChart = useMemo(() => {
+    const grouped = new Map<string, number>()
+    for (const item of expenseItems) {
+      const key = String(item.category || "other").toLowerCase()
+      grouped.set(key, (grouped.get(key) ?? 0) + Number(item.percentage || 0))
+    }
+
+    const sorted = Array.from(grouped.entries())
+      .map(([category, percentage]) => ({ category, percentage }))
+      .sort((a, b) => b.percentage - a.percentage)
+      .slice(0, 3)
+
+    const colorMap: Record<string, string> = {
+      operational: "#F97316",
+      programs: "#0EA5E9",
+      capital: "#22C55E",
+      other: "#94A3B8",
+    }
+    const defaultNames: Record<string, string> = {
+      operational: "Operational",
+      programs: "Programs",
+      capital: "Capital",
+      other: "Other",
+    }
+
+    const segments = sorted.map((item) => ({
+      label: defaultNames[item.category] ?? item.category,
+      percentage: Math.max(0, item.percentage),
+      color: colorMap[item.category] ?? colorMap.other,
+    }))
+
+    if (segments.length === 0) {
+      segments.push(
+        { label: "Operational", percentage: 0, color: colorMap.operational },
+        { label: "Programs", percentage: 0, color: colorMap.programs },
+        { label: "Capital", percentage: 0, color: colorMap.capital }
+      )
+    }
+
+    const conicResult = segments.reduce(
+      (acc, segment) => {
+        const end = Math.min(100, acc.cursor + segment.percentage)
+        return {
+          cursor: end,
+          stops: [...acc.stops, `${segment.color} ${acc.cursor}% ${end}%`],
+        }
+      },
+      { cursor: 0, stops: [] as string[] }
+    )
+    const stops =
+      conicResult.cursor < 100
+        ? [...conicResult.stops, `#E5E7EB ${conicResult.cursor}% 100%`]
+        : conicResult.stops
+
+    return {
+      segments,
+      background: `conic-gradient(${stops.join(",")})`,
+    }
+  }, [expenseItems])
 
   return (
     <div className="h-screen w-full bg-[#F9FAFB] font-sans antialiased text-[#111827] flex overflow-hidden">
@@ -413,56 +465,32 @@ export default function Page() {
               {/* Expense Distribution */}
               <div className="rounded-[16px] border border-[#E5E7EB] bg-white p-6 shadow-sm">
                 <h3 className="text-[15px] font-extrabold text-[#111827] tracking-tight mb-8">Expense Distribution</h3>
-                
-                {/* Visual Chart Area (SVG Rounded Donut) */}
                 <div className="relative flex justify-center items-center mb-10 w-full py-4">
-                  
-                  <svg className="transform -rotate-90 w-[180px] h-[180px] sm:w-[200px] sm:h-[200px]" viewBox="0 0 100 100">
-                    {/* Green (Capital 7%) */}
-                    <circle cx="50" cy="50" r="38" fill="none" stroke="#22C55E" strokeWidth="14" strokeLinecap="round" strokeDasharray="12 250" strokeDashoffset="0" className="drop-shadow-sm" />
-                    {/* Orange (Operational 76%) */}
-                    <circle cx="50" cy="50" r="38" fill="none" stroke="#F97316" strokeWidth="14" strokeLinecap="round" strokeDasharray="172 250" strokeDashoffset="-18" className="drop-shadow-sm" />
-                    {/* Blue (Programs 18%) */}
-                    <circle cx="50" cy="50" r="38" fill="none" stroke="#0EA5E9" strokeWidth="14" strokeLinecap="round" strokeDasharray="36 250" strokeDashoffset="-196" className="drop-shadow-sm" />
-                  </svg>
-
-                  {/* Floating Labels */}
-                  <div className="absolute top-0 right-0 sm:right-4 xl:right-0 2xl:right-4 flex flex-col items-center">
-                     <span className="text-[11px] font-black text-[#F97316] mb-0.5">76%</span>
-                     <span className="text-[9px] font-bold text-[#6B7280]">Operational</span>
-                  </div>
-                  
-                  <div className="absolute bottom-0 right-2 sm:right-6 xl:right-2 2xl:right-6 flex flex-col items-center">
-                     <span className="text-[11px] font-black text-[#0EA5E9] mb-0.5">18%</span>
-                     <span className="text-[9px] font-bold text-[#6B7280]">Programs</span>
-                  </div>
-
-                  <div className="absolute top-6 left-0 sm:left-4 xl:left-0 2xl:left-4 flex flex-col items-center">
-                     <span className="text-[11px] font-black text-[#22C55E] mb-0.5">7%</span>
-                     <span className="text-[9px] font-bold text-[#6B7280]">Capital</span>
+                  <div className="relative h-[180px] w-[180px] sm:h-[200px] sm:w-[200px]">
+                    <div
+                      className="absolute inset-0 rounded-full rotate-[-210deg]"
+                      style={{ background: expenseChart.background }}
+                    />
+                    <div className="absolute inset-[22px] rounded-full bg-white" />
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <span className="text-[12px] font-extrabold text-[#111827]">
+                        {expenseLoading ? "Updating..." : "Expense Mix"}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
                 {/* Legend */}
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-[13px] font-bold text-[#111827]">
-                      <div className="h-2 w-2 rounded-full bg-orange-500"></div> Operational
+                  {expenseChart.segments.map((segment) => (
+                    <div key={segment.label} className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-[13px] font-bold text-[#111827]">
+                        <div className="h-2 w-2 rounded-full" style={{ backgroundColor: segment.color }} />
+                        {segment.label}
+                      </div>
+                      <div className="text-[13px] font-bold text-[#6B7280]">{segment.percentage.toFixed(2)}%</div>
                     </div>
-                    <div className="text-[13px] font-bold text-[#6B7280]">76%</div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-[13px] font-bold text-[#111827]">
-                      <div className="h-2 w-2 rounded-full bg-sky-400"></div> Programs
-                    </div>
-                    <div className="text-[13px] font-bold text-[#6B7280]">18%</div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-[13px] font-bold text-[#111827]">
-                      <div className="h-2 w-2 rounded-full bg-green-500"></div> Capital
-                    </div>
-                    <div className="text-[13px] font-bold text-[#6B7280]">7%</div>
-                  </div>
+                  ))}
                 </div>
               </div>
 

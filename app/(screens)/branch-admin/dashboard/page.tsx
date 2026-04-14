@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useMemo, useState } from "react"
 import Image from "next/image"
 import { Inter } from "next/font/google"
 import {
@@ -9,9 +9,6 @@ import {
   Wrench,
   Database,
   Settings,
-  Search,
-  Bell,
-  Menu,
   X,
   Plus,
   ArrowRight,
@@ -23,76 +20,73 @@ import {
   Download,
   UploadCloud,
   ChevronDown,
-  MoreVertical,
   FileBox,
-  MonitorCheck
 } from "lucide-react"
 
 import BranchAdminHeader from "@/components/navigation/BranchAdminHeader"
+import { useAuth } from "@/components/auth/AuthProvider"
+import { useRequisitionInbox } from "@/components/hooks/useRequisitionInbox"
 
 const inter = Inter({ subsets: ["latin"] })
 
-const recentRequisitions = [
-  {
-    id: "#REQ-2049",
-    iconColor: "text-blue-500",
-    iconBg: "bg-blue-50",
-    desc: "Office Printer Toner",
-    date: "Oct 24, 2023",
-    amount: "₦18,425.00",
-    status: "Draft",
-    statusColors: "bg-gray-100 text-gray-700",
-    action: "edit"
-  },
-  {
-    id: "#REQ-2048",
-    iconColor: "text-orange-500",
-    iconBg: "bg-orange-50",
-    desc: "Client Meeting Refreshments",
-    date: "Oct 22, 2023",
-    amount: "₦45,320.50",
-    status: "Submitted",
-    statusColors: "bg-blue-50 text-blue-600",
-    action: "view"
-  },
-  {
-    id: "#REQ-2045",
-    iconColor: "text-green-500",
-    iconBg: "bg-green-50",
-    desc: "Monthly Logistics",
-    date: "Oct 18, 2023",
-    amount: "₦45,320.50",
-    status: "Approved",
-    statusColors: "bg-green-50 text-green-600",
-    action: "sign"
-  },
-  {
-    id: "#REQ-2042",
-    iconColor: "text-purple-500",
-    iconBg: "bg-purple-50",
-    desc: "Facility Repairs (AC Unit)",
-    date: "Oct 15, 2023",
-    amount: "₦850,000.00",
-    status: "Paid",
-    statusColors: "bg-purple-50 text-purple-600",
-    action: "download-menu",
-    showMenu: true
-  },
-  {
-    id: "#REQ-2042",
-    iconColor: "text-purple-500",
-    iconBg: "bg-purple-50",
-    desc: "Head, Pastoral Welfare",
-    date: "Oct 15, 2023",
-    amount: "₦50,000.00",
-    status: "Paid",
-    statusColors: "bg-purple-50 text-purple-600",
-    action: "download"
-  }
-]
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("en-NG", {
+    style: "currency",
+    currency: "NGN",
+    maximumFractionDigits: 2,
+  }).format(Number.isFinite(value) ? value : 0)
+}
+
+function formatDate(value?: string) {
+  if (!value) return "--"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  })
+}
+
+function mapStatusTone(status: string) {
+  const normalized = status.toLowerCase()
+  if (normalized.includes("approved")) return "bg-green-50 text-green-600"
+  if (normalized.includes("paid")) return "bg-purple-50 text-purple-600"
+  if (normalized.includes("declined")) return "bg-rose-50 text-rose-600"
+  if (normalized.includes("draft")) return "bg-gray-100 text-gray-700"
+  return "bg-blue-50 text-blue-600"
+}
 
 export default function Dashboard() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const { user } = useAuth()
+  const { requisitions, loading: inboxLoading } = useRequisitionInbox({
+    branchId: user?.tenantId ?? user?.tenant?.id ?? "",
+    limit: 8,
+  })
+  const pendingCount = useMemo(
+    () =>
+      requisitions.filter((item) => String(item.currentStatus ?? "").toLowerCase().includes("pending")).length,
+    [requisitions]
+  )
+  const recentRequisitions = useMemo(
+    () =>
+      requisitions.map((item, index) => {
+        const status = (item.currentStatus ?? "pending").replace(/_/g, " ")
+        return {
+          id: item.reference ? `#${item.reference}` : `#${item.id.slice(0, 8).toUpperCase()}`,
+          iconColor: index % 2 === 0 ? "text-blue-500" : "text-orange-500",
+          iconBg: index % 2 === 0 ? "bg-blue-50" : "bg-orange-50",
+          desc: item.justification || "Requisition",
+          date: formatDate(item.createdAt),
+          amount: formatCurrency(item.amount || 0),
+          status: status.replace(/\b\w/g, (value) => value.toUpperCase()),
+          statusColors: mapStatusTone(status),
+          action: "view",
+        }
+      }),
+    [requisitions]
+  )
 
   return (
     <div className={`flex flex-col xl:flex-row min-h-screen bg-[#F8FAFC] relative w-full ${inter.className} antialiased`}>
@@ -232,7 +226,7 @@ export default function Dashboard() {
                     <History className="h-5 w-5 text-[#2563EB]" strokeWidth={2} />
                   </div>
                   <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-[800] bg-indigo-50 text-indigo-600 border border-indigo-100">
-                    3 Pending
+                    {inboxLoading ? "Loading..." : `${pendingCount} Pending`}
                   </span>
                 </div>
                 <div>
@@ -267,7 +261,14 @@ export default function Dashboard() {
             <div className="rounded-[16px] bg-white border border-[#EEF1F6] shadow-sm w-full overflow-hidden">
               {/* Mobile Card View (Hidden on Tablet/Desktop) */}
               <div className="w-full sm:hidden flex flex-col divide-y divide-[#EEF1F6]">
-                {recentRequisitions.map((req, idx) => (
+                {inboxLoading && (
+                  <div className="p-4 text-[13px] font-semibold text-[#6B7280]">Loading requisitions...</div>
+                )}
+                {!inboxLoading && recentRequisitions.length === 0 && (
+                  <div className="p-4 text-[13px] font-semibold text-[#6B7280]">No requisitions found.</div>
+                )}
+                {!inboxLoading &&
+                  recentRequisitions.map((req, idx) => (
                   <div key={idx} className="flex flex-col p-4 bg-white hover:bg-[#F8FAFC] transition-colors relative group">
                     <div className="flex justify-between items-start mb-3">
                       <div className="flex flex-col gap-1">
@@ -303,7 +304,7 @@ export default function Dashboard() {
                       </button>
                     </div>
                   </div>
-                ))}
+                  ))}
               </div>
 
               {/* Desktop Table View (Hidden on Mobile) */}
@@ -320,7 +321,22 @@ export default function Dashboard() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#EEF1F6]">
-                    {recentRequisitions.map((req, idx) => (
+                    {inboxLoading && (
+                      <tr>
+                        <td colSpan={6} className="py-8 px-6 text-center text-[13px] font-semibold text-[#6B7280]">
+                          Loading requisitions...
+                        </td>
+                      </tr>
+                    )}
+                    {!inboxLoading && recentRequisitions.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="py-8 px-6 text-center text-[13px] font-semibold text-[#6B7280]">
+                          No requisitions found.
+                        </td>
+                      </tr>
+                    )}
+                    {!inboxLoading &&
+                      recentRequisitions.map((req, idx) => (
                       <tr key={idx} className="hover:bg-[#F8FAFC] transition-colors bg-white group">
                         <td className="py-4 px-6">
                           <div className="text-[13px] font-[800] text-[#111827]">{req.id}</div>
@@ -370,7 +386,7 @@ export default function Dashboard() {
                           </div>
                         </td>
                       </tr>
-                    ))}
+                      ))}
                   </tbody>
                 </table>
               </div>
@@ -388,3 +404,4 @@ export default function Dashboard() {
     </div>
   )
 }
+
