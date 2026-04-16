@@ -19,12 +19,19 @@ import {
   Save,
   User
 } from "lucide-react"
+import { useAuth } from "@/components/auth/AuthProvider"
 
 const inter = Inter({ subsets: ["latin"] })
 
 export default function Page() {
+  const { updateProfile } = useAuth()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [profile, setProfile] = useState<any>(null)
+  const [fullNameInput, setFullNameInput] = useState("")
+  const [phoneInput, setPhoneInput] = useState("")
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [profileError, setProfileError] = useState<string | null>(null)
+  const [profileSuccess, setProfileSuccess] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [sessions, setSessions] = useState<any[]>([])
   const [sessionsLoading, setSessionsLoading] = useState(true)
@@ -42,6 +49,9 @@ export default function Page() {
       .then(data => {
         if (data.data) {
           setProfile(data.data)
+          const nextFullName = `${data.data.firstName || ""} ${data.data.lastName || ""}`.trim()
+          setFullNameInput(nextFullName)
+          setPhoneInput(String(data.data.phone ?? data.data.phoneNumber ?? ""))
         }
       })
       .catch(console.error)
@@ -70,16 +80,26 @@ export default function Page() {
     setRevokeMessage(null)
     setRevokingSessions(true)
     try {
+      const currentSession = sessions.find((session) =>
+        Boolean(session?.isCurrent ?? session?.isCurrentSession ?? session?.current ?? session?.currentDevice)
+      )
+      const currentSessionId = String(currentSession?._id ?? currentSession?.id ?? "")
       const res = await fetch("/api/sessions/revoke-all", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(currentSessionId ? { currentSessionId } : {}),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         throw new Error(data?.message || "Unable to revoke sessions")
       }
       setRevokeMessage(data?.message || "All sessions revoked successfully.")
-      setSessions((prev) => prev.map((session) => ({ ...session, isActive: false })))
+      setSessions((prev) =>
+        prev.map((session) => {
+          const sessionId = String(session?._id ?? session?.id ?? "")
+          return { ...session, isActive: currentSessionId ? sessionId === currentSessionId : false }
+        })
+      )
     } catch (err: any) {
       setSessionsError(err.message || "Unable to revoke sessions")
     } finally {
@@ -128,11 +148,64 @@ export default function Page() {
     }
   }
 
-  const fullName = profile ? `${profile.firstName || ""} ${profile.lastName || ""}`.trim() : "Loading..."
+  const fullName = fullNameInput || (profile ? `${profile.firstName || ""} ${profile.lastName || ""}`.trim() : "Loading...")
   const roleName = profile?.roleName || "Accountant"
   const email = profile?.email || ""
-  const phone = profile?.phoneNumber || ""
+  const phone = phoneInput || String(profile?.phone ?? profile?.phoneNumber ?? "")
   const initials = profile ? `${profile.firstName?.[0] || ""}${profile.lastName?.[0] || ""}`.toUpperCase() : ""
+
+  const handleSaveProfile = async () => {
+    if (!profile) return
+    setProfileError(null)
+    setProfileSuccess(null)
+
+    const normalizedFullName = fullNameInput.trim().replace(/\s+/g, " ")
+    const normalizedPhone = phoneInput.trim()
+    const originalFirstName = String(profile.firstName ?? "").trim()
+    const originalLastName = String(profile.lastName ?? "").trim()
+    const originalPhone = String(profile.phone ?? profile.phoneNumber ?? "").trim()
+
+    const payload: { firstName?: string; lastName?: string; phone?: string } = {}
+    if (normalizedFullName) {
+      const nameParts = normalizedFullName.split(" ").filter(Boolean)
+      const firstName = nameParts[0] ?? ""
+      const lastName = nameParts.slice(1).join(" ")
+      if (firstName.length < 2) {
+        setProfileError("First name must be at least 2 characters.")
+        return
+      }
+      if (lastName && lastName.length < 2) {
+        setProfileError("Last name must be at least 2 characters.")
+        return
+      }
+      if (firstName !== originalFirstName) payload.firstName = firstName
+      if (lastName && lastName !== originalLastName) payload.lastName = lastName
+    }
+    if (normalizedPhone && normalizedPhone !== originalPhone) {
+      payload.phone = normalizedPhone
+    }
+
+    if (Object.keys(payload).length === 0) {
+      setProfileError("No profile changes to save.")
+      return
+    }
+
+    setProfileSaving(true)
+    try {
+      await updateProfile(payload)
+      setProfile((prev: unknown) => ({
+        ...(prev ?? {}),
+        ...(payload.firstName ? { firstName: payload.firstName } : {}),
+        ...(payload.lastName ? { lastName: payload.lastName } : {}),
+        ...(payload.phone ? { phone: payload.phone, phoneNumber: payload.phone } : {}),
+      }))
+      setProfileSuccess("Profile updated successfully.")
+    } catch (err) {
+      setProfileError(err instanceof Error ? err.message : "Unable to update profile.")
+    } finally {
+      setProfileSaving(false)
+    }
+  }
 
   return (
     <div className={`flex flex-col xl:flex-row min-h-screen bg-[#F8FAFC] relative w-full ${inter.className} antialiased`}>
@@ -272,12 +345,14 @@ export default function Page() {
               </div>
 
               <div className="flex items-center shrink-0">
-                <button className="w-full sm:w-auto flex items-center justify-center gap-2 h-[42px] px-6 rounded-[8px] bg-[#2563EB] text-[13px] font-bold text-white shadow-[0_2px_8px_rgba(37,99,235,0.25)] hover:bg-[#1D4ED8] transition-colors tracking-wide">
+                <button onClick={handleSaveProfile} disabled={profileSaving} className="w-full sm:w-auto flex items-center justify-center gap-2 h-[42px] px-6 rounded-[8px] bg-[#2563EB] text-[13px] font-bold text-white shadow-[0_2px_8px_rgba(37,99,235,0.25)] hover:bg-[#1D4ED8] transition-colors tracking-wide disabled:opacity-70">
                   <Save className="h-4 w-4" strokeWidth={2.5} />
-                  Save All Changes
+                  {profileSaving ? "Saving..." : "Save All Changes"}
                 </button>
               </div>
             </header>
+            {profileError ? <p className="mb-4 text-[12.5px] font-semibold text-rose-600">{profileError}</p> : null}
+            {profileSuccess ? <p className="mb-4 text-[12.5px] font-semibold text-emerald-600">{profileSuccess}</p> : null}
 
             {/* Card Container */}
             {loading ? (
@@ -331,7 +406,7 @@ export default function Page() {
                     <input 
                       type="text" 
                       value={fullName}
-                      readOnly
+                      onChange={(event) => setFullNameInput(event.target.value)}
                       className="w-full rounded-[10px] bg-[#F9FAFB] border border-transparent h-[46px] px-4 text-[14px] font-medium text-[#111827] focus-visible:bg-white focus-visible:border-[#3B5BDB] focus-visible:ring-1 focus-visible:ring-[#3B5BDB]/20 outline-none transition-all" 
                     />
                   </div>
@@ -364,7 +439,7 @@ export default function Page() {
                     <input 
                       type="tel" 
                       value={phone}
-                      readOnly
+                      onChange={(event) => setPhoneInput(event.target.value)}
                       className="w-full rounded-[10px] bg-[#F9FAFB] border border-transparent h-[46px] px-4 text-[14px] font-medium text-[#111827] focus-visible:bg-white focus-visible:border-[#3B5BDB] focus-visible:ring-1 focus-visible:ring-[#3B5BDB]/20 outline-none transition-all" 
                     />
                   </div>

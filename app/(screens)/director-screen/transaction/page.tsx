@@ -42,6 +42,34 @@ const navItems = [
   { label: "Settings", href: "/director-screen/settings", icon: Settings },
 ]
 
+type CoaTreeNode = {
+  id?: string
+  _id?: string
+  coaId?: string
+  code?: string
+  accountCode?: string
+  number?: string
+  name?: string
+  accountName?: string
+  title?: string
+  accountType?: string
+  children?: CoaTreeNode[]
+}
+
+function flattenCoaTree(nodes: CoaTreeNode[]): CoaTreeNode[] {
+  const flat: CoaTreeNode[] = []
+  const queue = [...nodes]
+  while (queue.length > 0) {
+    const node = queue.shift()
+    if (!node) continue
+    flat.push(node)
+    if (Array.isArray(node.children) && node.children.length > 0) {
+      queue.push(...node.children)
+    }
+  }
+  return flat
+}
+
 export default function Page() {
   const { user } = useAuth()
   const [statusFilter, setStatusFilter] = useState<"ALL" | "UNVERIFIED" | "VERIFIED">("ALL")
@@ -84,8 +112,11 @@ export default function Page() {
   const [reconcileError, setReconcileError] = useState<string | null>(null)
   const [selectedTransactionId, setSelectedTransactionId] = useState<string>("")
   const [coaOptions, setCoaOptions] = useState<Array<{ id: string; label: string }>>([])
+  const [selectedCoaId, setSelectedCoaId] = useState<string>("")
   const [coaLoading, setCoaLoading] = useState(true)
   const [coaError, setCoaError] = useState<string | null>(null)
+  const [coaDeleteError, setCoaDeleteError] = useState<string | null>(null)
+  const [deletingCoa, setDeletingCoa] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
   const [parseOpen, setParseOpen] = useState(false)
@@ -94,7 +125,7 @@ export default function Page() {
   const [parseBody, setParseBody] = useState("")
   const [parseLoading, setParseLoading] = useState(false)
   const [parseError, setParseError] = useState<string | null>(null)
-  const [parseResults, setParseResults] = useState<Array<Record<string, any>>>([])
+  const [parseResults, setParseResults] = useState<Array<Record<string, unknown>>>([])
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
@@ -210,6 +241,34 @@ export default function Page() {
       setReconcileError(err instanceof Error ? err.message : "Unable to reconcile transaction.")
     } finally {
       setReconciling(false)
+    }
+  }
+
+  const handleDeleteSelectedCoa = async () => {
+    if (!selectedCoaId) return
+    setDeletingCoa(true)
+    setCoaDeleteError(null)
+    try {
+      const csrfToken = getCsrfToken()
+      const response = await fetch(`/api/core/financial/coa/${encodeURIComponent(selectedCoaId)}`, {
+        method: "DELETE",
+        headers: { "x-csrf-token": csrfToken },
+        credentials: "include",
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Unable to delete chart of account.")
+      }
+
+      setCoaOptions((prev) => {
+        const next = prev.filter((option) => option.id !== selectedCoaId)
+        setSelectedCoaId(next[0]?.id ?? "")
+        return next
+      })
+    } catch (error) {
+      setCoaDeleteError(error instanceof Error ? error.message : "Unable to delete chart of account.")
+    } finally {
+      setDeletingCoa(false)
     }
   }
 
@@ -372,8 +431,8 @@ export default function Page() {
 
       try {
         const url = tenantId
-          ? `/api/core/financial/coa?type=INCOME&tenantId=${encodeURIComponent(tenantId)}`
-          : "/api/core/financial/coa?type=INCOME"
+          ? `/api/core/financial/coa/tree?branchId=${encodeURIComponent(tenantId)}`
+          : "/api/core/financial/coa/tree"
 
         const coaResponse = await fetch(url, {
           method: "GET",
@@ -385,28 +444,31 @@ export default function Page() {
           throw new Error(coaData?.message ?? "Unable to fetch chart of accounts.")
         }
 
-        const rawItems = Array.isArray(coaData?.data?.content)
-          ? coaData.data.content
-          : Array.isArray(coaData?.data)
-            ? coaData.data
-            : Array.isArray(coaData?.items)
-              ? coaData.items
-              : Array.isArray(coaData)
-                ? coaData
-                : []
+        const rawTree = Array.isArray(coaData?.data)
+          ? coaData.data
+          : Array.isArray(coaData?.items)
+            ? coaData.items
+            : Array.isArray(coaData)
+              ? coaData
+              : []
 
-        const options = rawItems.map((item: any, index: number) => {
+        const rawItems = flattenCoaTree(rawTree as CoaTreeNode[]).filter(
+          (item) => String(item.accountType ?? "").toLowerCase() === "revenue"
+        )
+
+        const options = rawItems.map((item: CoaTreeNode, index: number) => {
           const name =
             item?.name ?? item?.accountName ?? item?.title ?? `COA ${index + 1}`
           const code = item?.code ?? item?.accountCode ?? item?.number
           return {
-            id: String(item?.id ?? item?.coaId ?? `${index}`),
+            id: String(item?.id ?? item?._id ?? item?.coaId ?? `${index}`),
             label: code ? `${code} - ${name}` : name,
           }
         })
 
         if (isMounted) {
           setCoaOptions(options)
+          setSelectedCoaId((prev) => prev || options[0]?.id || "")
         }
       } catch (error) {
         if (isMounted) {
@@ -872,28 +934,26 @@ export default function Page() {
 
                 {/* Table Footer */}
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t border-[#EEF1F6] p-5">
-                  <span className="text-[12px] sm:text-[13px] font-medium text-[#6B7280]">
-                <div>
-                  Showing {pagination && pagination.total > 0 
+                  <div className="text-[12px] sm:text-[13px] font-medium text-[#6B7280]">
+                    Showing {pagination && pagination.total > 0
                       ? `${(pagination.page - 1) * pagination.limit + 1}-${Math.min(pagination.page * pagination.limit, pagination.total)}`
                       : "0"} of {pagination?.total ?? 0} transactions
-                </div>
-                <div className="flex gap-2">
-                  <button 
-                    onClick={() => setPage(p => Math.max(1, p - 1))}
-                    disabled={!pagination || pagination.page <= 1}
-                    className="px-5 py-2 rounded-[6px] border border-[#EEF1F6] bg-white hover:bg-gray-50 transition-colors font-bold text-[#111827] shadow-[0_1px_2px_rgba(0,0,0,0.02)] disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Previous
-                  </button>
-                  <button 
-                    onClick={() => setPage(p => Math.min(pagination?.pages ?? 1, p + 1))}
-                    disabled={!pagination || pagination.page >= (pagination?.pages ?? 1)}
-                    className="px-5 py-2 rounded-[6px] border border-[#EEF1F6] bg-white hover:bg-gray-50 transition-colors font-bold text-[#111827] shadow-[0_1px_2px_rgba(0,0,0,0.02)] disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Next
-                  </button>
-                </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={!pagination || pagination.page <= 1}
+                      className="px-5 py-2 rounded-[6px] border border-[#EEF1F6] bg-white hover:bg-gray-50 transition-colors font-bold text-[#111827] shadow-[0_1px_2px_rgba(0,0,0,0.02)] disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Previous
+                    </button>
+                    <button
+                      onClick={() => setPage((p) => Math.min(pagination?.pages ?? 1, p + 1))}
+                      disabled={!pagination || pagination.page >= (pagination?.pages ?? 1)}
+                      className="px-5 py-2 rounded-[6px] border border-[#EEF1F6] bg-white hover:bg-gray-50 transition-colors font-bold text-[#111827] shadow-[0_1px_2px_rgba(0,0,0,0.02)] disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Next
+                    </button>
                   </div>
                 </div>
 
@@ -949,7 +1009,11 @@ export default function Page() {
                     <div className="flex flex-col gap-2">
                        <label className="text-[12px] font-bold text-[#111827]">Chart of Accounts</label>
                        <div className="relative">
-                        <select className="h-[42px] w-full appearance-none rounded-[8px] border border-[#EEF1F6] bg-white pl-3.5 pr-10 text-[13px] font-medium text-[#111827] focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]/20 transition-all shadow-[0_1px_2px_0_rgba(0,0,0,0.02)]">
+                        <select
+                          value={selectedCoaId}
+                          onChange={(event) => setSelectedCoaId(event.target.value)}
+                          className="h-[42px] w-full appearance-none rounded-[8px] border border-[#EEF1F6] bg-white pl-3.5 pr-10 text-[13px] font-medium text-[#111827] focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]/20 transition-all shadow-[0_1px_2px_0_rgba(0,0,0,0.02)]"
+                        >
                           {coaLoading ? (
                             <option>Loading chart of accounts...</option>
                           ) : coaError ? (
@@ -965,6 +1029,19 @@ export default function Page() {
                           )}
                         </select>
                         <ChevronDown className="absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF] pointer-events-none" />
+                       </div>
+                       <div className="flex items-center justify-between">
+                        <button
+                          type="button"
+                          onClick={handleDeleteSelectedCoa}
+                          disabled={!selectedCoaId || deletingCoa}
+                          className="rounded-md border border-rose-200 bg-white px-3 py-1.5 text-[11px] font-bold text-rose-600 hover:bg-rose-50 disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                          {deletingCoa ? "Removing..." : "Delete Selected COA"}
+                        </button>
+                        {coaDeleteError && (
+                          <span className="text-[11px] font-medium text-rose-500">{coaDeleteError}</span>
+                        )}
                        </div>
                     </div>
                     

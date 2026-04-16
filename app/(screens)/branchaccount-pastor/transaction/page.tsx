@@ -29,6 +29,34 @@ import { useAuth } from "@/components/auth/AuthProvider"
 import { useTransactions } from "@/components/hooks/useTransactions"
 import BranchesDropdown from "@/components/navigation/BranchesDropdown"
 
+type CoaTreeNode = {
+  id?: string
+  _id?: string
+  coaId?: string
+  code?: string
+  accountCode?: string
+  number?: string
+  name?: string
+  accountName?: string
+  title?: string
+  accountType?: string
+  children?: CoaTreeNode[]
+}
+
+function flattenCoaTree(nodes: CoaTreeNode[]): CoaTreeNode[] {
+  const flat: CoaTreeNode[] = []
+  const queue = [...nodes]
+  while (queue.length > 0) {
+    const node = queue.shift()
+    if (!node) continue
+    flat.push(node)
+    if (Array.isArray(node.children) && node.children.length > 0) {
+      queue.push(...node.children)
+    }
+  }
+  return flat
+}
+
 export default function Page() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const { user } = useAuth()
@@ -327,8 +355,8 @@ export default function Page() {
 
       try {
         const url = tenantId
-          ? `/api/core/financial/coa?type=INCOME&tenantId=${encodeURIComponent(tenantId)}`
-          : "/api/core/financial/coa?type=INCOME"
+          ? `/api/core/financial/coa/tree?branchId=${encodeURIComponent(tenantId)}`
+          : "/api/core/financial/coa/tree"
 
         const coaResponse = await fetch(url, {
           method: "GET",
@@ -340,22 +368,24 @@ export default function Page() {
           throw new Error(coaData?.message ?? "Unable to fetch chart of accounts.")
         }
 
-        const rawItems = Array.isArray(coaData?.data?.content)
-          ? coaData.data.content
-          : Array.isArray(coaData?.data)
-            ? coaData.data
-            : Array.isArray(coaData?.items)
-              ? coaData.items
-              : Array.isArray(coaData)
-                ? coaData
-                : []
+        const rawTree = Array.isArray(coaData?.data)
+          ? coaData.data
+          : Array.isArray(coaData?.items)
+            ? coaData.items
+            : Array.isArray(coaData)
+              ? coaData
+              : []
 
-        const options = rawItems.map((item: any, index: number) => {
+        const rawItems = flattenCoaTree(rawTree as CoaTreeNode[]).filter(
+          (item) => String(item.accountType ?? "").toLowerCase() === "revenue"
+        )
+
+        const options = rawItems.map((item: CoaTreeNode, index: number) => {
           const name =
             item?.name ?? item?.accountName ?? item?.title ?? `COA ${index + 1}`
           const code = item?.code ?? item?.accountCode ?? item?.number
           return {
-            id: String(item?.id ?? item?.coaId ?? `${index}`),
+            id: String(item?.id ?? item?._id ?? item?.coaId ?? `${index}`),
             label: code ? `${code} - ${name}` : name,
           }
         })

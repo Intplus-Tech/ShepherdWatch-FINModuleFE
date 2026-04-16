@@ -1,27 +1,82 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
-import { applyCors, getCorsHeaders } from "@/lib/cors";
+import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 
-const resetSchema = z.object({
-  token: z.string().min(1),
-  password: z.string().min(6),
-});
+function getBackendResetPasswordUrl(): string | null {
+  const baseUrl = process.env.BACKEND_API_URL?.replace(/\/+$/, "");
+  if (baseUrl) {
+    return `${baseUrl}/api/v1/auth/reset-password`;
+  }
+
+  const loginUrl = process.env.BACKEND_LOGIN_URL;
+  if (!loginUrl) return null;
+
+  if (loginUrl.includes("/auth/login")) {
+    return loginUrl.replace("/auth/login", "/auth/reset-password");
+  }
+
+  if (loginUrl.endsWith("/login")) {
+    return loginUrl.replace(/\/login$/, "/reset-password");
+  }
+
+  return null;
+}
+
+type ResetPasswordPayload = {
+  email: string
+  code: string
+  newPassword: string
+}
+
+function normalizeResetPasswordPayload(body: unknown): ResetPasswordPayload | null {
+  if (!body || typeof body !== "object") return null;
+  const source = body as Record<string, unknown>;
+
+  const email = String(source.email ?? "").trim().toLowerCase();
+  const code = String(source.code ?? "").trim();
+  const newPassword = String(source.newPassword ?? "");
+
+  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  const codeOk = /^\d{6}$/.test(code);
+  const passwordOk = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(newPassword);
+
+  if (!emailOk || !codeOk || !passwordOk) return null;
+
+  return { email, code, newPassword };
+}
 
 export async function POST(req: NextRequest) {
   try {
-    const rawBody = await req.json().catch(() => null);
-    const parsedBody = resetSchema.safeParse(rawBody);
-
-    if (!parsedBody.success) {
+    if (!isOriginAllowed(req)) {
       return applyCors(
-        NextResponse.json({ success: false, message: "Invalid reset payload" }, { status: 400 }),
+        NextResponse.json({ success: false, message: "Invalid request origin" }, { status: 403 }),
         req
       );
     }
 
-    const { token, password } = parsedBody.data;
-    const backendUrl = process.env.BACKEND_LOGIN_URL?.replace("/login", "/reset-password");
+    const rawText = await req.text();
+    let payloadToSend: ResetPasswordPayload | null = null;
+    try {
+      const parsed = rawText ? JSON.parse(rawText) : null;
+      payloadToSend = normalizeResetPasswordPayload(parsed);
+    } catch {
+      payloadToSend = null;
+    }
 
+    if (!payloadToSend) {
+      return applyCors(
+        NextResponse.json(
+          {
+            success: false,
+            message:
+              "Invalid payload. Provide email, 6-digit code, and a strong password (min 8 with uppercase, lowercase, and number).",
+          },
+          { status: 400 }
+        ),
+        req
+      );
+    }
+
+    const backendUrl = getBackendResetPasswordUrl();
     if (!backendUrl) {
       return applyCors(
         NextResponse.json({ success: false, message: "Backend URL not configured" }, { status: 500 }),
@@ -35,32 +90,37 @@ export async function POST(req: NextRequest) {
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: JSON.stringify({ token, password }),
+      body: JSON.stringify(payloadToSend),
+      cache: "no-store",
     });
 
-    const responseData = await backendRes.json().catch(() => null);
+    const responseText = await backendRes.text();
+    const contentType = backendRes.headers.get("content-type") ?? "";
+    const isJson = contentType.includes("application/json");
 
-    if (!backendRes.ok) {
-      return applyCors(
-        NextResponse.json(
-          {
-            success: false,
-            message: responseData?.message || "Failed to reset password. Please try again.",
-          },
-          { status: backendRes.status }
-        ),
-        req
-      );
+    if (isJson) {
+      try {
+        const responseData = responseText ? JSON.parse(responseText) : null;
+        return applyCors(NextResponse.json(responseData, { status: backendRes.status }), req);
+      } catch {
+        return applyCors(
+          NextResponse.json(
+            { success: false, message: "Invalid response received from authentication service" },
+            { status: 502 }
+          ),
+          req
+        );
+      }
     }
 
     return applyCors(
-      NextResponse.json(
-        { success: true, message: responseData?.message || "Password successfully reset." },
-        { status: 200 }
-      ),
+      new NextResponse(responseText, {
+        status: backendRes.status,
+        headers: contentType ? { "Content-Type": contentType } : undefined,
+      }),
       req
     );
-  } catch (err) {
+  } catch {
     return applyCors(
       NextResponse.json(
         { success: false, message: "Server error occurred while resetting password" },

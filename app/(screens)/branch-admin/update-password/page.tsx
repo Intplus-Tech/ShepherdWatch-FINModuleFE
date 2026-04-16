@@ -36,6 +36,10 @@ export default function UpdatePasswordModalPage() {
       setError("New passwords do not match.");
       return;
     }
+    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(newPassword)) {
+      setError("New password must be at least 8 characters and include uppercase, lowercase, and a number.");
+      return;
+    }
 
     setLoading(true);
     try {
@@ -44,8 +48,8 @@ export default function UpdatePasswordModalPage() {
       setTimeout(() => {
         handleClose();
       }, 2000);
-    } catch (err: any) {
-      setError(err.message || "Failed to update password.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to update password.");
     } finally {
       setLoading(false);
     }
@@ -102,6 +106,9 @@ export default function UpdatePasswordModalPage() {
                 onChange={(e) => setNewPassword(e.target.value)}
                 className="h-[48px] w-full px-4 rounded-[8px] border border-[#E2E8F0] bg-[#F8FAFC] text-[#111827] text-[14px] font-[500] outline-none focus:border-[#2563EB] focus:bg-white focus:ring-2 focus:ring-[#2563EB]/20 transition-all" 
               />
+              <p className="text-[11px] text-[#64748B]">
+                Use at least 8 characters with uppercase, lowercase, and a number.
+              </p>
             </div>
 
             {/* Confirm New Password Input */}

@@ -10,6 +10,16 @@ export type CreateDeductionPayload = {
   branchId?: string
 }
 
+export type UpdateDeductionPayload = {
+  amount?: number
+  period?: string
+}
+
+export type RemitDeductionPayload = {
+  remittanceDate?: string
+  receiptNumber?: string
+}
+
 export type ListDeductionsParams = {
   page?: number
   limit?: number
@@ -24,6 +34,8 @@ export type StatutoryDeduction = {
   type: DeductionType
   amount: number
   remitted: boolean
+  remittedAt?: string
+  receiptNumber?: string
   period: string
   employeeProfileId: string
   branchId?: string
@@ -61,6 +73,8 @@ function mapDeduction(item: Record<string, unknown>, index: number): StatutoryDe
     type: toString(item?.type, "paye") as DeductionType,
     amount: toNumber(item?.amount),
     remitted: Boolean(item?.remitted),
+    remittedAt: toString(item?.remittedAt, ""),
+    receiptNumber: toString(item?.receiptNumber, ""),
     period: toString(item?.period, ""),
     employeeProfileId: toString(item?.employeeProfileId, ""),
     branchId: toString(item?.branchId, ""),
@@ -69,6 +83,8 @@ function mapDeduction(item: Record<string, unknown>, index: number): StatutoryDe
 
 export function useStatutoryDeductions() {
   const [creating, setCreating] = useState(false)
+  const [updating, setUpdating] = useState(false)
+  const [remitting, setRemitting] = useState(false)
   const [loading, setLoading] = useState(false)
   const [detailLoading, setDetailLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -193,14 +209,103 @@ export function useStatutoryDeductions() {
     }
   }, [])
 
+  const updateDeduction = useCallback(
+    async (id: string, payload: UpdateDeductionPayload): Promise<StatutoryDeduction> => {
+      if (!id) {
+        throw new Error("Deduction ID is required.")
+      }
+      if (payload.amount === undefined && payload.period === undefined) {
+        throw new Error("Provide amount or period to update deduction.")
+      }
+
+      setUpdating(true)
+      setError(null)
+      setDetailError(null)
+      try {
+        const response = await fetch(`/api/core/financial/compliance/deductions/${id}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "x-csrf-token": getCsrfToken(),
+          },
+          credentials: "include",
+          body: JSON.stringify(payload),
+        })
+        const data = await response.json().catch(() => null)
+        if (!response.ok) {
+          throw new Error(data?.message ?? "Unable to update statutory deduction.")
+        }
+
+        const raw = (data?.data ?? data ?? {}) as Record<string, unknown>
+        const mapped = mapDeduction(raw, 0)
+
+        setDeductions((prev) => prev.map((item) => (item.id === mapped.id ? mapped : item)))
+        setSelectedDeduction(mapped)
+        return mapped
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Unable to update statutory deduction."
+        setError(message)
+        throw err
+      } finally {
+        setUpdating(false)
+      }
+    },
+    []
+  )
+
+  const remitDeduction = useCallback(
+    async (id: string, payload: RemitDeductionPayload = {}): Promise<StatutoryDeduction> => {
+      if (!id) {
+        throw new Error("Deduction ID is required.")
+      }
+
+      setRemitting(true)
+      setError(null)
+      setDetailError(null)
+      try {
+        const response = await fetch(`/api/core/financial/compliance/deductions/${id}/remit`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "x-csrf-token": getCsrfToken(),
+          },
+          credentials: "include",
+          body: JSON.stringify(payload),
+        })
+        const data = await response.json().catch(() => null)
+        if (!response.ok) {
+          throw new Error(data?.message ?? "Unable to mark deduction as remitted.")
+        }
+
+        const raw = (data?.data ?? data ?? {}) as Record<string, unknown>
+        const mapped = mapDeduction(raw, 0)
+
+        setDeductions((prev) => prev.map((item) => (item.id === mapped.id ? mapped : item)))
+        setSelectedDeduction(mapped)
+        return mapped
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Unable to mark deduction as remitted."
+        setError(message)
+        throw err
+      } finally {
+        setRemitting(false)
+      }
+    },
+    []
+  )
+
   return {
     createDeduction,
     fetchDeductions,
     getDeductionById,
+    updateDeduction,
+    remitDeduction,
     deductions,
     selectedDeduction,
     pagination,
     creating,
+    updating,
+    remitting,
     loading,
     detailLoading,
     error,

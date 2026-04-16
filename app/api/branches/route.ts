@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config";
-import { applyCors, getCorsHeaders } from "@/lib/cors";
+import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
+import { isCsrfValid } from "@/lib/csrf";
 
 function getBackendBranchesUrl(): string | null {
   const baseUrl = process.env.BACKEND_API_URL?.replace(/\/+$/, "");
   if (baseUrl) {
-    return `${baseUrl}/branches`;
+    return `${baseUrl}/api/v1/branches`;
   }
 
   const loginUrl = process.env.BACKEND_LOGIN_URL;
@@ -22,7 +23,52 @@ function getBackendBranchesUrl(): string | null {
   return null;
 }
 
+type CreateBranchPayload = {
+  name: string
+  branchType: "parish" | "area" | "zone"
+  region?: string
+  address?: string
+  leadPastorId?: string
+  assignedAccountantId?: string
+  currency?: "NGN" | "USD" | "GBP" | "EUR"
+}
+
+function normalizeCreateBranchPayload(body: unknown): CreateBranchPayload | null {
+  if (!body || typeof body !== "object") return null
+  const source = body as Record<string, unknown>
+  const name = String(source.name ?? "").trim()
+  const branchTypeRaw = String(source.branchType ?? "").toLowerCase()
+  const region = String(source.region ?? "").trim()
+  const address = String(source.address ?? "").trim()
+  const leadPastorId = String(source.leadPastorId ?? "").trim()
+  const assignedAccountantId = String(source.assignedAccountantId ?? "").trim()
+  const currencyRaw = String(source.currency ?? "").toUpperCase()
+
+  if (!name || !["parish", "area", "zone"].includes(branchTypeRaw)) return null
+
+  const payload: CreateBranchPayload = {
+    name,
+    branchType: branchTypeRaw as CreateBranchPayload["branchType"],
+  }
+  if (region) payload.region = region
+  if (address) payload.address = address
+  if (leadPastorId) payload.leadPastorId = leadPastorId
+  if (assignedAccountantId) payload.assignedAccountantId = assignedAccountantId
+  if (["NGN", "USD", "GBP", "EUR"].includes(currencyRaw)) {
+    payload.currency = currencyRaw as CreateBranchPayload["currency"]
+  }
+
+  return payload
+}
+
 export async function GET(req: NextRequest) {
+  if (!isOriginAllowed(req)) {
+    return applyCors(
+      NextResponse.json({ success: false, message: "Invalid request origin" }, { status: 403 }),
+      req
+    );
+  }
+
   const accessToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value;
   if (!accessToken) {
     return applyCors(
@@ -41,7 +87,7 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const query = new URLSearchParams();
-  ["page", "limit", "status", "branchType", "search"].forEach((key) => {
+  ["page", "limit", "status", "branchType", "region", "search"].forEach((key) => {
     const val = searchParams.get(key);
     if (val !== null && val !== "") query.set(key, val);
   });
@@ -85,6 +131,20 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  if (!isOriginAllowed(req)) {
+    return applyCors(
+      NextResponse.json({ success: false, message: "Invalid request origin" }, { status: 403 }),
+      req
+    );
+  }
+
+  if (!isCsrfValid(req)) {
+    return applyCors(
+      NextResponse.json({ success: false, message: "CSRF token invalid" }, { status: 403 }),
+      req
+    );
+  }
+
   const accessToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value;
   if (!accessToken) {
     return applyCors(
@@ -101,7 +161,17 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const body = await req.text();
+  const bodyJson = await req.json().catch(() => null);
+  const payload = normalizeCreateBranchPayload(bodyJson)
+  if (!payload) {
+    return applyCors(
+      NextResponse.json(
+        { success: false, message: "Invalid payload. Required fields: name, branchType." },
+        { status: 400 }
+      ),
+      req
+    )
+  }
 
   const backendRes = await fetch(backendUrl, {
     method: "POST",
@@ -110,7 +180,7 @@ export async function POST(req: NextRequest) {
       "Content-Type": "application/json",
       Authorization: `Bearer ${accessToken}`,
     },
-    body,
+    body: JSON.stringify(payload),
   });
 
   const responseText = await backendRes.text();

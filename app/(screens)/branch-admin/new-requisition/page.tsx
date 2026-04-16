@@ -29,6 +29,31 @@ type BranchIdentity = {
   tenant?: { id?: string }
 }
 
+type CoaTreeNode = {
+  id?: string
+  _id?: string
+  coaId?: string
+  name?: string
+  accountName?: string
+  coaName?: string
+  accountType?: string
+  children?: CoaTreeNode[]
+}
+
+function flattenCoaTree(nodes: CoaTreeNode[]): CoaTreeNode[] {
+  const flat: CoaTreeNode[] = []
+  const queue = [...nodes]
+  while (queue.length > 0) {
+    const node = queue.shift()
+    if (!node) continue
+    flat.push(node)
+    if (Array.isArray(node.children) && node.children.length > 0) {
+      queue.push(...node.children)
+    }
+  }
+  return flat
+}
+
 export default function NewRequisitionPage() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const { user } = useAuth()
@@ -40,6 +65,8 @@ export default function NewRequisitionPage() {
   const [coaOptions, setCoaOptions] = useState<Array<{ id: string; label: string }>>([])
   const [coaLoading, setCoaLoading] = useState(true)
   const [coaError, setCoaError] = useState<string | null>(null)
+  const [selectedCoaMeta, setSelectedCoaMeta] = useState<string>("")
+  const [selectedCoaLoading, setSelectedCoaLoading] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -75,8 +102,8 @@ export default function NewRequisitionPage() {
 
       try {
         const url = tenantId
-          ? `/api/core/financial/coa?type=EXPENSE&tenantId=${encodeURIComponent(tenantId)}`
-          : "/api/core/financial/coa?type=EXPENSE"
+          ? `/api/core/financial/coa/tree?branchId=${encodeURIComponent(tenantId)}`
+          : "/api/core/financial/coa/tree"
         const response = await fetch(url, {
           method: "GET",
           credentials: "include",
@@ -86,17 +113,19 @@ export default function NewRequisitionPage() {
           throw new Error(payload?.message ?? "Unable to fetch budget categories.")
         }
 
-        const rawItems = Array.isArray(payload?.data?.content)
-          ? payload.data.content
-          : Array.isArray(payload?.data)
-            ? payload.data
-            : Array.isArray(payload?.items)
-              ? payload.items
-              : Array.isArray(payload)
-                ? payload
-                : []
+        const rawTree = Array.isArray(payload?.data)
+          ? payload.data
+          : Array.isArray(payload?.items)
+            ? payload.items
+            : Array.isArray(payload)
+              ? payload
+              : []
 
-        const mapped = rawItems.map((item: Record<string, unknown>) => ({
+        const rawItems = flattenCoaTree(rawTree as CoaTreeNode[]).filter(
+          (item) => String(item.accountType ?? "").toLowerCase() === "expense"
+        )
+
+        const mapped = rawItems.map((item: CoaTreeNode) => ({
           id: String(item?.id ?? item?._id ?? ""),
           label:
             String(item?.name ?? item?.accountName ?? item?.coaName ?? "Budget Category"),
@@ -122,6 +151,47 @@ export default function NewRequisitionPage() {
       isMounted = false
     }
   }, [tenantId])
+
+  useEffect(() => {
+    if (!coaId) {
+      setSelectedCoaMeta("")
+      return
+    }
+
+    let isMounted = true
+    const loadById = async () => {
+      setSelectedCoaLoading(true)
+      try {
+        const response = await fetch(`/api/core/financial/coa/${encodeURIComponent(coaId)}`, {
+          method: "GET",
+          credentials: "include",
+        })
+        const payload = await response.json().catch(() => null)
+        if (!response.ok) {
+          throw new Error(payload?.message ?? "Unable to fetch budget category details.")
+        }
+        const item = (payload?.data ?? payload ?? {}) as Record<string, unknown>
+        const label = String(item?.name ?? item?.accountName ?? item?.coaName ?? "Budget Category")
+        const code = String(item?.code ?? "")
+        if (isMounted) {
+          setSelectedCoaMeta(code ? `${code} - ${label}` : label)
+        }
+      } catch {
+        if (isMounted) {
+          setSelectedCoaMeta("")
+        }
+      } finally {
+        if (isMounted) {
+          setSelectedCoaLoading(false)
+        }
+      }
+    }
+
+    loadById()
+    return () => {
+      isMounted = false
+    }
+  }, [coaId])
 
   const getCsrfToken = () => {
     if (typeof document === "undefined") return ""
@@ -482,6 +552,15 @@ export default function NewRequisitionPage() {
                         </div>
                         {coaError && (
                           <p className="text-[12px] text-red-500 font-medium mt-1">{coaError}</p>
+                        )}
+                        {!coaError && coaId && (
+                          <p className="text-[12px] text-[#6B7280] font-medium mt-1">
+                            {selectedCoaLoading
+                              ? "Loading category details..."
+                              : selectedCoaMeta
+                                ? `Selected: ${selectedCoaMeta}`
+                                : "Category details unavailable."}
+                          </p>
                         )}
                       </div>
 

@@ -16,10 +16,14 @@ export default function Page() {
     createDeduction,
     fetchDeductions,
     getDeductionById,
+    updateDeduction,
+    remitDeduction,
     deductions,
     selectedDeduction,
     pagination,
     creating,
+    updating,
+    remitting,
     loading,
     detailLoading,
     error,
@@ -35,6 +39,12 @@ export default function Page() {
   } = useComplianceSummary()
 
   const [success, setSuccess] = useState<string | null>(null)
+  const [updateSuccess, setUpdateSuccess] = useState<string | null>(null)
+  const [remitSuccess, setRemitSuccess] = useState<string | null>(null)
+  const [editAmount, setEditAmount] = useState("")
+  const [editPeriod, setEditPeriod] = useState("")
+  const [remittanceDate, setRemittanceDate] = useState("")
+  const [receiptNumber, setReceiptNumber] = useState("")
   const [form, setForm] = useState<{
     type: DeductionType
     employeeProfileId: string
@@ -93,6 +103,63 @@ export default function Page() {
       await fetchDeductions({ branchId: tenantId, page: 1, limit: 10 })
     } catch {
       // error handled in hook state
+    }
+  }
+
+  const handleSelect = (id: string) => {
+    setUpdateSuccess(null)
+    setRemitSuccess(null)
+    getDeductionById(id)
+      .then((deduction) => {
+        setEditAmount(deduction.amount ? String(deduction.amount) : "")
+        setEditPeriod(deduction.period || "")
+        setRemittanceDate(deduction.remittedAt ? deduction.remittedAt.slice(0, 10) : "")
+        setReceiptNumber(deduction.receiptNumber || "")
+      })
+      .catch(() => undefined)
+  }
+
+  const handleUpdate = async () => {
+    if (!selectedDeduction) return
+    setUpdateSuccess(null)
+    setError(null)
+
+    const amount = Number(editAmount)
+    if (!editPeriod.trim()) {
+      setError("Period is required.")
+      return
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setError("Amount must be greater than 0.")
+      return
+    }
+
+    try {
+      await updateDeduction(selectedDeduction.id, {
+        amount,
+        period: editPeriod.trim(),
+      })
+      setUpdateSuccess("Deduction updated successfully.")
+      await fetchDeductions({ branchId: tenantId, page: 1, limit: 10 })
+    } catch {
+      // handled in hook state
+    }
+  }
+
+  const handleRemit = async () => {
+    if (!selectedDeduction || selectedDeduction.remitted) return
+    setRemitSuccess(null)
+    setError(null)
+
+    try {
+      await remitDeduction(selectedDeduction.id, {
+        remittanceDate: remittanceDate || undefined,
+        receiptNumber: receiptNumber.trim() || undefined,
+      })
+      setRemitSuccess("Deduction marked as remitted successfully.")
+      await fetchDeductions({ branchId: tenantId, page: 1, limit: 10 })
+    } catch {
+      // handled in hook state
     }
   }
 
@@ -238,7 +305,7 @@ export default function Page() {
                       <div className="text-[10px] text-[#6B7280]">Remittance: {item.remitted ? "Remitted" : "Pending"}</div>
                       <button
                         onClick={() => {
-                          getDeductionById(item.id).catch(() => undefined)
+                          handleSelect(item.id)
                         }}
                         className="mt-2 rounded border border-[#E5E7EB] px-2.5 py-1 text-[10px] font-semibold text-[#4B5563] hover:bg-gray-50"
                       >
@@ -255,9 +322,75 @@ export default function Page() {
                           <div className="font-semibold text-[#111827]">Selected Deduction</div>
                           <div className="mt-1">ID: {selectedDeduction.id}</div>
                           <div>Type: {selectedDeduction.type.toUpperCase()}</div>
-                          <div>Amount: {formatCurrency(selectedDeduction.amount)}</div>
-                          <div>Period: {selectedDeduction.period || "N/A"}</div>
                           <div>Status: {selectedDeduction.remitted ? "Remitted" : "Pending"}</div>
+                          {!selectedDeduction.remitted && (
+                            <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-[1fr_1fr_auto] md:items-end">
+                              <label className="space-y-1">
+                                <span className="font-medium">Amount</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={editAmount}
+                                  onChange={(e) => setEditAmount(e.target.value)}
+                                  className="h-8 w-full rounded-[8px] border border-[#E5E7EB] bg-white px-2 text-[11px] text-[#111827]"
+                                />
+                              </label>
+                              <label className="space-y-1">
+                                <span className="font-medium">Period</span>
+                                <input
+                                  type="month"
+                                  value={editPeriod}
+                                  onChange={(e) => setEditPeriod(e.target.value)}
+                                  className="h-8 w-full rounded-[8px] border border-[#E5E7EB] bg-white px-2 text-[11px] text-[#111827]"
+                                />
+                              </label>
+                              <button
+                                onClick={handleUpdate}
+                                disabled={updating}
+                                className="h-8 rounded-[8px] bg-[#3B5BDB] px-3 text-[10px] font-semibold text-white disabled:opacity-60"
+                              >
+                                {updating ? "Saving..." : "Update"}
+                              </button>
+                              <label className="space-y-1">
+                                <span className="font-medium">Remit Date</span>
+                                <input
+                                  type="date"
+                                  value={remittanceDate}
+                                  onChange={(e) => setRemittanceDate(e.target.value)}
+                                  className="h-8 w-full rounded-[8px] border border-[#E5E7EB] bg-white px-2 text-[11px] text-[#111827]"
+                                />
+                              </label>
+                              <label className="space-y-1">
+                                <span className="font-medium">Receipt No.</span>
+                                <input
+                                  type="text"
+                                  value={receiptNumber}
+                                  onChange={(e) => setReceiptNumber(e.target.value)}
+                                  placeholder="Optional"
+                                  className="h-8 w-full rounded-[8px] border border-[#E5E7EB] bg-white px-2 text-[11px] text-[#111827]"
+                                />
+                              </label>
+                              <button
+                                onClick={handleRemit}
+                                disabled={remitting}
+                                className="h-8 rounded-[8px] bg-emerald-600 px-3 text-[10px] font-semibold text-white disabled:opacity-60"
+                              >
+                                {remitting ? "Remitting..." : "Mark Remitted"}
+                              </button>
+                            </div>
+                          )}
+                          {selectedDeduction.remitted && (
+                            <div className="mt-2 text-[10px] text-amber-700">
+                              This deduction is remitted and can no longer be updated.
+                            </div>
+                          )}
+                          {updateSuccess && (
+                            <div className="mt-2 text-[10px] font-medium text-emerald-600">{updateSuccess}</div>
+                          )}
+                          {remitSuccess && (
+                            <div className="mt-2 text-[10px] font-medium text-emerald-600">{remitSuccess}</div>
+                          )}
                         </div>
                       )}
                     </div>

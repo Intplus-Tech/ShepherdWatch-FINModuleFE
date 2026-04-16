@@ -4,12 +4,12 @@ import {
   BACKEND_TOKEN_COOKIE,
   REFRESH_TOKEN_MAX_AGE_SECONDS,
 } from "@/lib/auth-config";
-import { applyCors, getCorsHeaders } from "@/lib/cors";
+import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 
 function getBackendRefreshUrl(): string | null {
   const baseUrl = process.env.BACKEND_API_URL?.replace(/\/+$/, "");
   if (baseUrl) {
-    return `${baseUrl}/auth/refresh-token`;
+    return `${baseUrl}/api/v1/auth/refresh-token`;
   }
 
   const loginUrl = process.env.BACKEND_LOGIN_URL;
@@ -26,9 +26,33 @@ function getBackendRefreshUrl(): string | null {
   return null;
 }
 
+function parseRefreshTokenBody(body: unknown): string | null {
+  if (!body || typeof body !== "object") return null;
+  const source = body as Record<string, unknown>;
+  const refreshToken = String(source.refreshToken ?? "").trim();
+  return refreshToken.length > 0 ? refreshToken : null;
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const refreshToken = req.cookies.get(BACKEND_REFRESH_TOKEN_COOKIE)?.value;
+    if (!isOriginAllowed(req)) {
+      return applyCors(
+        NextResponse.json({ success: false, message: "Invalid request origin" }, { status: 403 }),
+        req
+      );
+    }
+
+    const rawText = await req.text();
+    let tokenFromBody: string | null = null;
+    try {
+      const parsed = rawText ? JSON.parse(rawText) : null;
+      tokenFromBody = parseRefreshTokenBody(parsed);
+    } catch {
+      tokenFromBody = null;
+    }
+
+    const tokenFromCookie = req.cookies.get(BACKEND_REFRESH_TOKEN_COOKIE)?.value ?? "";
+    const refreshToken = tokenFromBody ?? tokenFromCookie;
     if (!refreshToken) {
       return applyCors(
         NextResponse.json({ success: false, message: "Refresh token missing" }, { status: 401 }),
@@ -68,9 +92,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let responseData: any = null;
+    let responseData: Record<string, unknown> | null = null;
     try {
-      responseData = responseText ? JSON.parse(responseText) : null;
+      responseData = responseText ? (JSON.parse(responseText) as Record<string, unknown>) : null;
     } catch {
       return applyCors(
         NextResponse.json(
@@ -84,8 +108,12 @@ export async function POST(req: NextRequest) {
     const response = NextResponse.json(responseData, { status: backendResponse.status });
 
     if (backendResponse.ok) {
-      const accessToken = responseData?.data?.accessToken;
-      const newRefreshToken = responseData?.data?.refreshToken;
+      const data =
+        responseData && typeof responseData.data === "object" && responseData.data !== null
+          ? (responseData.data as Record<string, unknown>)
+          : null;
+      const accessToken = typeof data?.accessToken === "string" ? data.accessToken : "";
+      const newRefreshToken = typeof data?.refreshToken === "string" ? data.refreshToken : "";
 
       if (accessToken) {
         response.cookies.set({
@@ -113,12 +141,9 @@ export async function POST(req: NextRequest) {
     }
 
     return applyCors(response, req);
-  } catch (error) {
+  } catch {
     return applyCors(
-      NextResponse.json(
-        { success: false, message: "Internal server error" },
-        { status: 500 }
-      ),
+      NextResponse.json({ success: false, message: "Internal server error" }, { status: 500 }),
       req
     );
   }

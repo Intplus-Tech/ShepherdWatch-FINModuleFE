@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -29,11 +29,15 @@ export default function SignInForm() {
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [resendMessage, setResendMessage] = useState<string | null>(null)
+  const [emailCheckMessage, setEmailCheckMessage] = useState<string | null>(null)
+  const [emailExists, setEmailExists] = useState<boolean | null>(null)
+  const [checkingEmail, setCheckingEmail] = useState(false)
 
   const {
     register,
     handleSubmit,
     getValues,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<SignInValues>({
     resolver: zodResolver(signInSchema),
@@ -47,10 +51,56 @@ export default function SignInForm() {
     },
   })
 
+  const watchedEmail = watch("email")
+
+  useEffect(() => {
+    setEmailCheckMessage(null)
+    setEmailExists(null)
+  }, [watchedEmail])
+
+  const checkEmailAvailability = async (rawEmail: string): Promise<boolean | null> => {
+    const email = rawEmail.trim().toLowerCase()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null
+
+    setCheckingEmail(true)
+    try {
+      const res = await fetch(`/api/auth/check-email?email=${encodeURIComponent(email)}`, {
+        method: "GET",
+        cache: "no-store",
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        throw new Error(data?.message || "Unable to validate email.")
+      }
+
+      const exists = Boolean(data?.data?.exists)
+      setEmailExists(exists)
+      setEmailCheckMessage(
+        data?.message || (exists ? "Email is already registered." : "Email is available.")
+      )
+      return exists
+    } catch (err) {
+      setEmailExists(null)
+      setEmailCheckMessage(err instanceof Error ? err.message : "Unable to validate email.")
+      return null
+    } finally {
+      setCheckingEmail(false)
+    }
+  }
+
+  const handleEmailBlur = async () => {
+    await checkEmailAvailability(getValues("email"))
+  }
+
   const onSubmit = async (values: SignInValues) => {
     setError(null)
     setSuccessMessage(null)
     setResendMessage(null)
+    const existingEmail = await checkEmailAvailability(values.email)
+    if (existingEmail === true) {
+      setError("This email is already registered. Please use another email.")
+      return
+    }
     try {
       const res = await fetch("/api/auth/register", {
         method: "POST",
@@ -143,10 +193,19 @@ export default function SignInForm() {
                   id="email"
                   type="email"
                   className="h-[44px] rounded-[6px] border-[#4F63FF] focus-visible:ring-[#5871F5] px-3 w-full"
-                  {...register("email")}
+                  {...register("email", {
+                    onBlur: () => {
+                      void handleEmailBlur()
+                    },
+                  })}
                 />
                 {errors.email ? (
                   <p className="text-[11px] text-rose-600">{errors.email.message}</p>
+                ) : null}
+                {!errors.email && emailCheckMessage ? (
+                  <p className={`text-[11px] ${emailExists ? "text-rose-600" : "text-emerald-600"}`}>
+                    {checkingEmail ? "Checking email..." : emailCheckMessage}
+                  </p>
                 ) : null}
               </div>
 

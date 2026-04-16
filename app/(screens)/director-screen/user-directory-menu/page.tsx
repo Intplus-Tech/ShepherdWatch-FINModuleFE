@@ -121,10 +121,17 @@ export default function Page() {
   const fetchBranches = async () => {
     setBranchesLoading(true)
     try {
-      const res = await fetch("/api/branches")
+      const res = await fetch("/api/branches?page=1&limit=100", { credentials: "include" })
       const json = await res.json()
       if (res.ok) {
-        setBranches(json.data?.data || [])
+        const rows = Array.isArray(json?.data)
+          ? json.data
+          : Array.isArray(json?.data?.data)
+            ? json.data.data
+            : Array.isArray(json?.data?.items)
+              ? json.data.items
+              : []
+        setBranches(rows)
       }
     } catch (e) {
       console.error("Failed to fetch branches", e)

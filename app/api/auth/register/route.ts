@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { REMEMBER_ME_COOKIE } from "@/lib/auth-config";
-import { applyCors, getCorsHeaders } from "@/lib/cors";
+import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 
 function getBackendRegisterUrl(): string | null {
   const baseUrl = process.env.BACKEND_API_URL?.replace(/\/+$/, "");
   if (baseUrl) {
-    return `${baseUrl}/auth/register`;
+    return `${baseUrl}/api/v1/auth/register`;
   }
 
   const loginUrl = process.env.BACKEND_LOGIN_URL;
@@ -22,24 +22,81 @@ function getBackendRegisterUrl(): string | null {
   return null;
 }
 
+type RegisterPayload = {
+  firstName: string
+  lastName: string
+  email: string
+  password: string
+  phone?: string
+}
+
+function normalizeRegisterPayload(body: unknown): RegisterPayload | null {
+  if (!body || typeof body !== "object") return null
+  const source = body as Record<string, unknown>
+  const firstName = String(source.firstName ?? "").trim()
+  const lastName = String(source.lastName ?? "").trim()
+  const email = String(source.email ?? "").trim().toLowerCase()
+  const password = String(source.password ?? "")
+  const phone = String(source.phone ?? "").trim()
+
+  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+  const passwordOk =
+    password.length >= 8 &&
+    /[A-Z]/.test(password) &&
+    /[a-z]/.test(password) &&
+    /\d/.test(password)
+
+  if (firstName.length < 2 || lastName.length < 2 || !emailOk || !passwordOk) {
+    return null
+  }
+
+  return {
+    firstName,
+    lastName,
+    email,
+    password,
+    ...(phone ? { phone } : {}),
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
+    if (!isOriginAllowed(req)) {
+      return applyCors(
+        NextResponse.json({ success: false, message: "Invalid request origin" }, { status: 403 }),
+        req
+      );
+    }
+
     const rawText = await req.text();
     let rememberMe: boolean | undefined;
-    let forwardBody = rawText;
+    let forwardPayload: RegisterPayload | null = null;
 
     try {
       const parsed = rawText ? JSON.parse(rawText) : null;
       if (parsed && typeof parsed === "object") {
-        rememberMe = Boolean(parsed.rememberMe);
-        // Remove rememberMe before sending to backend
-        if ("rememberMe" in parsed) {
-          const { rememberMe: _omit, ...rest } = parsed as Record<string, unknown>;
-          forwardBody = JSON.stringify(rest);
-        }
+        const parsedRecord = parsed as Record<string, unknown>;
+        rememberMe = Boolean(parsedRecord.rememberMe);
+        const rest = { ...parsedRecord };
+        delete rest.rememberMe;
+        forwardPayload = normalizeRegisterPayload(rest);
       }
     } catch {
-      // keep raw body; backend will handle validation
+      forwardPayload = null;
+    }
+
+    if (!forwardPayload) {
+      return applyCors(
+        NextResponse.json(
+          {
+            success: false,
+            message:
+              "Invalid payload. firstName, lastName, valid email, and password (min 8 with upper/lower/number) are required.",
+          },
+          { status: 400 }
+        ),
+        req
+      );
     }
 
     const backendUrl = getBackendRegisterUrl();
@@ -56,7 +113,7 @@ export async function POST(req: NextRequest) {
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: forwardBody,
+      body: JSON.stringify(forwardPayload),
       cache: "no-store",
     });
 
@@ -107,7 +164,7 @@ export async function POST(req: NextRequest) {
       });
     }
     return applyCors(response, req);
-  } catch (error) {
+  } catch {
     return applyCors(
       NextResponse.json(
         { success: false, message: "Server error occurred while registering user" },

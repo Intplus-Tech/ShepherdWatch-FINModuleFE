@@ -37,22 +37,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const normalizeAuthUser = (payload: any): AuthUser | null => {
-    const source = payload?.data ?? payload
+  const normalizeAuthUser = (payload: unknown): AuthUser | null => {
+    const payloadRecord = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : null
+    const data =
+      payloadRecord && payloadRecord.data && typeof payloadRecord.data === "object"
+        ? (payloadRecord.data as Record<string, unknown>)
+        : null
+    const source = data ?? payloadRecord
     if (!source) return null
 
+    const tenantFromSource =
+      source.tenant && typeof source.tenant === "object"
+        ? (source.tenant as Record<string, unknown>)
+        : null
     const tenant =
-      source?.tenant ??
-      (source?.tenantId || source?.tenantName
-        ? { id: source?.tenantId, name: source?.tenantName }
+      tenantFromSource ??
+      (source.tenantId || source.tenantName
+        ? { id: source.tenantId, name: source.tenantName }
         : undefined)
 
     return {
-      id: source?.id ?? source?.userId ?? "unknown",
-      email: source?.email ?? "",
-      role: source?.role ?? source?.roleType ?? "",
-      name: source?.name ?? source?.fullName ?? source?.firstName,
-      tenantId: source?.tenantId ?? source?.tenant?.id,
+      id: String(source.id ?? source.userId ?? "unknown"),
+      email: String(source.email ?? ""),
+      role: String(source.role ?? source.roleType ?? ""),
+      name: source.name ? String(source.name) : source.fullName ? String(source.fullName) : source.firstName ? String(source.firstName) : undefined,
+      tenantId: source.tenantId ? String(source.tenantId) : tenantFromSource?.id ? String(tenantFromSource.id) : undefined,
       tenant: tenant ?? undefined,
     }
   }
@@ -65,7 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         let res = await fetch("/api/auth/session", { credentials: "include" })
         if (!res.ok) {
           if (res.status === 401) {
-            const refreshRes = await fetch("/api/auth/refresh", {
+            const refreshRes = await fetch("/api/auth/refresh-token", {
               method: "POST",
               credentials: "include",
             })
@@ -197,7 +206,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       credentials: "include",
     })
     if (!res.ok && res.status === 401) {
-      const refreshRes = await fetch("/api/auth/refresh", {
+      const refreshRes = await fetch("/api/auth/refresh-token", {
         method: "POST",
         credentials: "include",
       })

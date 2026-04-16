@@ -1,51 +1,140 @@
-import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
+import { NextRequest, NextResponse } from "next/server"
+import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config"
+import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors"
+import { isCsrfValid } from "@/lib/csrf"
 
-const BACKEND_URL = process.env.BACKEND_LOGIN_URL || "https://shw-fin-b-c.onrender.com";
+function getRequiredEnv(name: "BACKEND_API_URL"): string {
+  const value = process.env[name]
+  if (!value) {
+    throw new Error(`${name} is not configured`)
+  }
+  return value
+}
 
-export async function POST(request: NextRequest) {
+type CreateChartPayload = {
+  code: string
+  name: string
+  accountType: "asset" | "liability" | "equity" | "revenue" | "expense"
+  branchId: string
+  parentId?: string
+  description?: string
+}
+
+function normalizeCreateChartPayload(body: unknown): CreateChartPayload | null {
+  if (!body || typeof body !== "object") {
+    return null
+  }
+
+  const source = body as Record<string, unknown>
+  const accountTypeRaw = String(source.accountType ?? "").toLowerCase()
+  const accountType = ["asset", "liability", "equity", "revenue", "expense"].includes(accountTypeRaw)
+    ? (accountTypeRaw as CreateChartPayload["accountType"])
+    : null
+
+  const payload: CreateChartPayload = {
+    code: String(source.code ?? "").trim(),
+    name: String(source.name ?? "").trim(),
+    accountType: (accountType ?? "expense") as CreateChartPayload["accountType"],
+    branchId: String(source.branchId ?? source.tenantId ?? "").trim(),
+  }
+
+  const parentId = String(source.parentId ?? "").trim()
+  const description = String(source.description ?? "").trim()
+
+  if (parentId) payload.parentId = parentId
+  if (description) payload.description = description
+
+  if (!payload.code || !payload.name || !payload.branchId || !accountType) {
+    return null
+  }
+
+  return payload
+}
+
+function buildBackendUrl(): string {
+  const baseUrl = getRequiredEnv("BACKEND_API_URL")
+  if (process.env.NODE_ENV === "production" && baseUrl.startsWith("http://")) {
+    throw new Error("BACKEND_API_URL must use https in production")
+  }
+  return `${baseUrl.replace(/\/+$/, "")}/api/v1/chart-of-accounts`
+}
+
+export async function POST(req: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("BACKEND_TOKEN_COOKIE")?.value;
-
-    if (!token) {
-      return NextResponse.json({ message: "Unauthorized: No valid session found." }, { status: 401 });
+    if (!isOriginAllowed(req)) {
+      return applyCors(
+        NextResponse.json({ success: false, message: "Invalid request origin" }, { status: 403 }),
+        req
+      )
     }
 
-    const body = await request.json();
+    if (!isCsrfValid(req)) {
+      return applyCors(
+        NextResponse.json({ success: false, message: "CSRF token invalid" }, { status: 403 }),
+        req
+      )
+    }
 
-    const response = await fetch(`${BACKEND_URL}/api/v1/core/financial/coa`, {
+    const backendToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value
+    if (!backendToken) {
+      return applyCors(
+        NextResponse.json({ success: false, message: "Unauthenticated" }, { status: 401 }),
+        req
+      )
+    }
+
+    const body = await req.json().catch(() => null)
+    const payloadToSend = normalizeCreateChartPayload(body)
+    if (!payloadToSend) {
+      return applyCors(
+        NextResponse.json(
+          {
+            success: false,
+            message:
+              "Invalid payload. Required fields: code, name, accountType, branchId.",
+          },
+          { status: 400 }
+        ),
+        req
+      )
+    }
+
+    const backendResponse = await fetch(buildBackendUrl(), {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${token}`,
+        Authorization: `Bearer ${backendToken}`,
+        Accept: "application/json",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(body),
-    });
+      body: JSON.stringify(payloadToSend),
+      cache: "no-store",
+    })
 
-    let data = {};
-    const text = await response.text();
-    if (text) {
-      try {
-        data = JSON.parse(text);
-      } catch (e) {
-        data = { message: text };
-      }
+    const payload = await backendResponse.json().catch(() => null)
+    if (!backendResponse.ok) {
+      return applyCors(
+        NextResponse.json(
+          {
+            success: false,
+            message: payload?.message ?? "Unable to create chart of account entry",
+          },
+          { status: backendResponse.status || 502 }
+        ),
+        req
+      )
     }
 
-    if (!response.ok) {
-      return NextResponse.json(
-        { message: (data as any)?.message || "Failed to create COA" },
-        { status: response.status }
-      );
-    }
-
-    return NextResponse.json(data, { status: 201 });
+    return applyCors(NextResponse.json(payload, { status: 201 }), req)
   } catch (error) {
-    console.error("Error creating COA proxy:", error);
-    return NextResponse.json(
-      { message: "Internal server error connecting to backend" },
-      { status: 500 }
-    );
+    console.error("Create chart of account proxy error:", error)
+    return applyCors(
+      NextResponse.json({ success: false, message: "Internal server error" }, { status: 500 }),
+      req
+    )
   }
+}
+
+export async function OPTIONS(req: NextRequest) {
+  const headers = getCorsHeaders(req)
+  return new NextResponse(null, { status: 204, headers: headers ?? undefined })
 }

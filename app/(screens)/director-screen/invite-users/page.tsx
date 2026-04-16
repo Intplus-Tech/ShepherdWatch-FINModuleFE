@@ -40,10 +40,17 @@ export default function Page() {
   useEffect(() => {
     async function fetchBranches() {
       try {
-        const res = await fetch("/api/branches")
+        const res = await fetch("/api/branches?page=1&limit=100", { credentials: "include" })
         const json = await res.json()
-        if (res.ok && json.data) {
-          setBranches(Array.isArray(json.data) ? json.data : [])
+        if (res.ok) {
+          const rows = Array.isArray(json?.data)
+            ? json.data
+            : Array.isArray(json?.data?.data)
+              ? json.data.data
+              : Array.isArray(json?.data?.items)
+                ? json.data.items
+                : []
+          setBranches(rows)
         }
       } catch (err) {
         console.error("Failed to fetch branches", err)
@@ -94,8 +101,8 @@ export default function Page() {
       setTimeout(() => {
         router.push("/director-screen/users")
       }, 2000)
-    } catch (err: any) {
-      setError(err.message || "Failed to send invite.")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to send invite.")
     } finally {
       setLoading(false)
     }

@@ -1,10 +1,10 @@
 import React from "react"
-import ResetPasswordForm from "@/components/forms/ResetPasswordForm"
+import SetNewPasswordForm from "@/components/forms/SetNewPasswordForm"
 
 export default function page() {
   return (
     <div>
-      <ResetPasswordForm/>
+      <SetNewPasswordForm />
     </div>
   )
 }

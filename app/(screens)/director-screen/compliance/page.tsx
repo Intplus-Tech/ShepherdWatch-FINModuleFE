@@ -27,10 +27,14 @@ export default function Page() {
     createDeduction,
     fetchDeductions,
     getDeductionById,
+    updateDeduction,
+    remitDeduction,
     deductions,
     selectedDeduction,
     pagination,
     creating,
+    updating,
+    remitting,
     loading: deductionsLoading,
     detailLoading,
     error: createError,
@@ -51,8 +55,14 @@ export default function Page() {
     fetchSummary,
   } = useComplianceSummary()
   const [createSuccess, setCreateSuccess] = useState<string | null>(null)
+  const [updateSuccess, setUpdateSuccess] = useState<string | null>(null)
+  const [remitSuccess, setRemitSuccess] = useState<string | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [remittedFilter, setRemittedFilter] = useState<"all" | "pending" | "compliant">("all")
+  const [editAmount, setEditAmount] = useState("")
+  const [editPeriod, setEditPeriod] = useState("")
+  const [remittanceDate, setRemittanceDate] = useState("")
+  const [receiptNumber, setReceiptNumber] = useState("")
   const [deductionForm, setDeductionForm] = useState<{
     type: DeductionType
     employeeProfileId: string
@@ -180,6 +190,73 @@ export default function Page() {
       setCurrentPage(1)
     } catch {
       // handled in hook state
+    }
+  }
+
+  const handleSelectDeduction = (id: string) => {
+    setUpdateSuccess(null)
+    setRemitSuccess(null)
+    getDeductionById(id)
+      .then((deduction) => {
+        setEditAmount(deduction.amount ? String(deduction.amount) : "")
+        setEditPeriod(deduction.period || "")
+        setRemittanceDate(deduction.remittedAt ? deduction.remittedAt.slice(0, 10) : "")
+        setReceiptNumber(deduction.receiptNumber || "")
+      })
+      .catch(() => undefined)
+  }
+
+  const handleUpdateDeduction = async () => {
+    if (!selectedDeduction) return
+    setUpdateSuccess(null)
+    setCreateError(null)
+
+    const nextAmount = Number(editAmount)
+    if (!editPeriod.trim()) {
+      setCreateError("Period is required.")
+      return
+    }
+    if (!Number.isFinite(nextAmount) || nextAmount <= 0) {
+      setCreateError("Amount must be greater than 0.")
+      return
+    }
+
+    try {
+      await updateDeduction(selectedDeduction.id, {
+        amount: nextAmount,
+        period: editPeriod.trim(),
+      })
+      setUpdateSuccess("Deduction updated successfully.")
+      await fetchDeductions({
+        page: currentPage,
+        limit: 20,
+        branchId: tenantId,
+        remitted: remittedFilter === "all" ? undefined : remittedFilter === "compliant",
+      })
+    } catch {
+      // handled in hook
+    }
+  }
+
+  const handleRemitDeduction = async () => {
+    if (!selectedDeduction || selectedDeduction.remitted) return
+    setRemitSuccess(null)
+    setCreateError(null)
+
+    try {
+      await remitDeduction(selectedDeduction.id, {
+        remittanceDate: remittanceDate || undefined,
+        receiptNumber: receiptNumber.trim() || undefined,
+      })
+      setRemitSuccess("Deduction marked as remitted successfully.")
+      await fetchDeductions({
+        page: currentPage,
+        limit: 20,
+        branchId: tenantId,
+        remitted: remittedFilter === "all" ? undefined : remittedFilter === "compliant",
+      })
+    } catch {
+      // handled in hook
     }
   }
 
@@ -412,7 +489,7 @@ export default function Page() {
                         <td className="px-6 py-5 text-right">
                           <button
                             onClick={() => {
-                              getDeductionById(row.rawId).catch(() => undefined)
+                              handleSelectDeduction(row.rawId)
                             }}
                             className="rounded border border-[#E5E7EB] px-3 py-1.5 text-[11px] font-semibold text-[#4B5563] hover:bg-gray-50"
                           >
@@ -434,10 +511,79 @@ export default function Page() {
                   )}
                   {!detailLoading && !detailError && selectedDeduction && (
                     <div className="rounded-[10px] border border-[#EEF1F6] bg-[#F9FAFB] px-4 py-3 text-[12px] text-[#4B5563]">
-                      <span className="font-semibold text-[#111827]">Selected Deduction:</span>{" "}
-                      ID {selectedDeduction.id.slice(0, 8).toUpperCase()} • {selectedDeduction.type.toUpperCase()} •{" "}
-                      {formatCurrency(selectedDeduction.amount)} • {selectedDeduction.remitted ? "Remitted" : "Pending"} •{" "}
-                      {selectedDeduction.period || "No period"}
+                      <div>
+                        <span className="font-semibold text-[#111827]">Selected Deduction:</span>{" "}
+                        ID {selectedDeduction.id.slice(0, 8).toUpperCase()} • {selectedDeduction.type.toUpperCase()} •{" "}
+                        {selectedDeduction.remitted ? "Remitted" : "Pending"}
+                      </div>
+                      {!selectedDeduction.remitted && (
+                        <div className="mt-3 flex flex-col gap-2 md:flex-row md:items-end">
+                          <label className="flex flex-col gap-1 text-[11px]">
+                            <span className="font-semibold text-[#6B7280]">Amount</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={editAmount}
+                              onChange={(e) => setEditAmount(e.target.value)}
+                              className="h-8 rounded-[8px] border border-[#E5E7EB] bg-white px-2.5 text-[12px]"
+                            />
+                          </label>
+                          <label className="flex flex-col gap-1 text-[11px]">
+                            <span className="font-semibold text-[#6B7280]">Period</span>
+                            <input
+                              type="month"
+                              value={editPeriod}
+                              onChange={(e) => setEditPeriod(e.target.value)}
+                              className="h-8 rounded-[8px] border border-[#E5E7EB] bg-white px-2.5 text-[12px]"
+                            />
+                          </label>
+                          <button
+                            onClick={handleUpdateDeduction}
+                            disabled={updating}
+                            className="h-8 rounded-[8px] bg-[#3B5BDB] px-3 text-[11px] font-semibold text-white disabled:opacity-60"
+                          >
+                            {updating ? "Saving..." : "Update"}
+                          </button>
+                          <label className="flex flex-col gap-1 text-[11px]">
+                            <span className="font-semibold text-[#6B7280]">Remit Date</span>
+                            <input
+                              type="date"
+                              value={remittanceDate}
+                              onChange={(e) => setRemittanceDate(e.target.value)}
+                              className="h-8 rounded-[8px] border border-[#E5E7EB] bg-white px-2.5 text-[12px]"
+                            />
+                          </label>
+                          <label className="flex flex-col gap-1 text-[11px]">
+                            <span className="font-semibold text-[#6B7280]">Receipt No.</span>
+                            <input
+                              type="text"
+                              value={receiptNumber}
+                              onChange={(e) => setReceiptNumber(e.target.value)}
+                              placeholder="Optional"
+                              className="h-8 rounded-[8px] border border-[#E5E7EB] bg-white px-2.5 text-[12px]"
+                            />
+                          </label>
+                          <button
+                            onClick={handleRemitDeduction}
+                            disabled={remitting}
+                            className="h-8 rounded-[8px] bg-emerald-600 px-3 text-[11px] font-semibold text-white disabled:opacity-60"
+                          >
+                            {remitting ? "Remitting..." : "Mark Remitted"}
+                          </button>
+                        </div>
+                      )}
+                      {selectedDeduction.remitted && (
+                        <div className="mt-2 text-[11px] text-amber-700">
+                          This deduction is remitted and cannot be edited.
+                        </div>
+                      )}
+                      {updateSuccess && (
+                        <div className="mt-2 text-[11px] text-emerald-600">{updateSuccess}</div>
+                      )}
+                      {remitSuccess && (
+                        <div className="mt-2 text-[11px] text-emerald-600">{remitSuccess}</div>
+                      )}
                     </div>
                   )}
                 </div>

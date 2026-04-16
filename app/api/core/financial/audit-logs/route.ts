@@ -1,25 +1,34 @@
-import { NextRequest, NextResponse } from "next/server"
-import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config"
-import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors"
+import { NextRequest, NextResponse } from "next/server";
+import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config";
+import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 
-function getRequiredEnv(name: "BACKEND_API_URL"): string {
-  const value = process.env[name]
-  if (!value) {
-    throw new Error(`${name} is not configured`)
+function getBackendAuditLogsUrl(): string {
+  const baseUrl = process.env.BACKEND_API_URL;
+  if (!baseUrl) {
+    throw new Error("BACKEND_API_URL is not configured");
   }
-  return value
+  return `${baseUrl.replace(/\/+$/, "")}/api/v1/audit-logs`;
 }
 
-function buildBackendUrl(search: string): string {
-  const baseUrl = getRequiredEnv("BACKEND_API_URL")
-  if (process.env.NODE_ENV === "production" && baseUrl.startsWith("http://")) {
-    throw new Error("BACKEND_API_URL must use https in production")
-  }
-  const url = new URL(`${baseUrl.replace(/\\/+$/, "")}/api/v1/core/financial/audit-logs`)
-  if (search) {
-    url.search = search
-  }
-  return url.toString()
+function buildQuery(searchParams: URLSearchParams): string {
+  const query = new URLSearchParams();
+  const limit = searchParams.get("limit") || searchParams.get("size");
+  const page = searchParams.get("page");
+  const action = searchParams.get("action");
+  const userId = searchParams.get("userId");
+  const startDate = searchParams.get("startDate");
+  const endDate = searchParams.get("endDate");
+  const search = searchParams.get("search");
+
+  if (page) query.set("page", page);
+  if (limit) query.set("limit", limit);
+  if (action) query.set("action", action);
+  if (userId) query.set("userId", userId);
+  if (startDate) query.set("startDate", startDate);
+  if (endDate) query.set("endDate", endDate);
+  if (search) query.set("search", search);
+
+  return query.toString();
 }
 
 export async function GET(req: NextRequest) {
@@ -28,27 +37,31 @@ export async function GET(req: NextRequest) {
       return applyCors(
         NextResponse.json({ success: false, message: "Invalid request origin" }, { status: 403 }),
         req
-      )
+      );
     }
 
-    const backendToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value
+    const backendToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value;
     if (!backendToken) {
       return applyCors(
         NextResponse.json({ success: false, message: "Unauthenticated" }, { status: 401 }),
         req
-      )
+      );
     }
 
-    const backendResponse = await fetch(buildBackendUrl(req.nextUrl.search), {
+    const query = buildQuery(req.nextUrl.searchParams);
+    const backendUrl = getBackendAuditLogsUrl();
+    const url = query ? `${backendUrl}?${query}` : backendUrl;
+
+    const backendResponse = await fetch(url, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${backendToken}`,
         Accept: "application/json",
       },
       cache: "no-store",
-    })
+    });
 
-    const payload = await backendResponse.json().catch(() => null)
+    const payload = await backendResponse.json().catch(() => null);
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
@@ -56,20 +69,20 @@ export async function GET(req: NextRequest) {
           { status: backendResponse.status || 502 }
         ),
         req
-      )
+      );
     }
 
-    return applyCors(NextResponse.json(payload, { status: 200 }), req)
+    return applyCors(NextResponse.json(payload, { status: 200 }), req);
   } catch (error) {
-    console.error("Get audit logs proxy error:", error)
+    console.error("Get audit logs proxy error:", error);
     return applyCors(
       NextResponse.json({ success: false, message: "Internal server error" }, { status: 500 }),
       req
-    )
+    );
   }
 }
 
 export async function OPTIONS(req: NextRequest) {
-  const headers = getCorsHeaders(req)
-  return new NextResponse(null, { status: 204, headers: headers ?? undefined })
+  const headers = getCorsHeaders(req);
+  return new NextResponse(null, { status: 204, headers: headers ?? undefined });
 }

@@ -61,14 +61,13 @@ type TenantCard = {
   statusDot: string
 }
 
-type BranchSummary = {
-  id?: string
-  branchId?: string
-  branchName?: string
-  name?: string
-  totalIncome?: number
-  complianceScore?: number
-  pendingAudits?: number
+type BranchHealthSummary = {
+  totalBranches: number
+  activeBranches: number
+  networkHealthPercent: number
+  totalRemittanceYTD: number
+  criticalAlertsCount: number
+  pendingAuditsCount: number
 }
 
 const normalizeTenant = (tenant: TenantApiItem, index: number): TenantCard => {
@@ -185,7 +184,7 @@ export default function Page() {
     branchType: false,
   })
   const [branchStatus, setBranchStatus] = useState<"idle" | "saving">("idle")
-  const [branchSummaries, setBranchSummaries] = useState<BranchSummary[]>([])
+  const [branchHealthSummary, setBranchHealthSummary] = useState<BranchHealthSummary | null>(null)
   const [branchSummaryLoading, setBranchSummaryLoading] = useState(false)
   const [branchSummaryError, setBranchSummaryError] = useState<string | null>(null)
 
@@ -199,33 +198,46 @@ export default function Page() {
   useEffect(() => {
     let isMounted = true
 
-    const fetchBranchSummaries = async () => {
+    const fetchBranchSummary = async () => {
       try {
         setBranchSummaryLoading(true)
         setBranchSummaryError(null)
-        const params = new URLSearchParams({ page: "1", size: "10" })
-        const response = await fetch(`/api/core/financial/branch-aggregation/branches?${params.toString()}`, {
+        const response = await fetch("/api/branches/summary", {
           method: "GET",
           credentials: "include",
         })
         const payload = await response.json().catch(() => null)
         if (!response.ok) {
-          throw new Error(payload?.message ?? "Unable to fetch branch summaries.")
+          throw new Error(payload?.message ?? "Unable to fetch branch summary.")
         }
-        const data = Array.isArray(payload?.data?.content)
-          ? payload.data.content
-          : Array.isArray(payload?.data)
-            ? payload.data
-            : Array.isArray(payload)
-              ? payload
-              : []
+
+        const data = (payload?.data ?? payload ?? {}) as Record<string, unknown>
+        const totalBranches = Number(data.totalBranches ?? 0)
+        const activeBranches = Number(data.activeBranches ?? 0)
+        const networkHealthPercentRaw = Number(data.networkHealthPercent)
+        const networkHealthPercent = Number.isFinite(networkHealthPercentRaw)
+          ? networkHealthPercentRaw
+          : totalBranches > 0
+            ? (activeBranches / totalBranches) * 100
+            : 0
+        const totalRemittanceYTD = Number(data.totalRemittanceYTD ?? 0)
+        const criticalAlertsCount = Number(data.criticalAlertsCount ?? data.criticalAlerts ?? 0)
+        const pendingAuditsCount = Number(data.pendingAuditsCount ?? data.pendingAudits ?? 0)
+
         if (isMounted) {
-          setBranchSummaries(data as BranchSummary[])
+          setBranchHealthSummary({
+            totalBranches: Number.isFinite(totalBranches) ? totalBranches : 0,
+            activeBranches: Number.isFinite(activeBranches) ? activeBranches : 0,
+            networkHealthPercent: Number.isFinite(networkHealthPercent) ? networkHealthPercent : 0,
+            totalRemittanceYTD: Number.isFinite(totalRemittanceYTD) ? totalRemittanceYTD : 0,
+            criticalAlertsCount: Number.isFinite(criticalAlertsCount) ? criticalAlertsCount : 0,
+            pendingAuditsCount: Number.isFinite(pendingAuditsCount) ? pendingAuditsCount : 0,
+          })
         }
       } catch (error) {
         if (isMounted) {
-          setBranchSummaries([])
-          setBranchSummaryError(error instanceof Error ? error.message : "Unable to fetch branch summaries.")
+          setBranchHealthSummary(null)
+          setBranchSummaryError(error instanceof Error ? error.message : "Unable to fetch branch summary.")
         }
       } finally {
         if (isMounted) {
@@ -234,7 +246,7 @@ export default function Page() {
       }
     }
 
-    fetchBranchSummaries()
+    fetchBranchSummary()
 
     return () => {
       isMounted = false
@@ -242,13 +254,11 @@ export default function Page() {
   }, [])
 
   const statCards = useMemo(() => {
-    const totalBranches = branchSummaries.length
-    const totalIncome = branchSummaries.reduce((sum, item) => sum + Number(item.totalIncome ?? 0), 0)
-    const complianceAvg = totalBranches
-      ? branchSummaries.reduce((sum, item) => sum + Number(item.complianceScore ?? 0), 0) / totalBranches
-      : 0
-    const criticalAlerts = branchSummaries.filter((item) => Number(item.complianceScore ?? 0) < 70).length
-    const pendingAudits = branchSummaries.reduce((sum, item) => sum + Number(item.pendingAudits ?? 0), 0)
+    const totalBranches = Number(branchHealthSummary?.totalBranches ?? 0)
+    const totalIncome = Number(branchHealthSummary?.totalRemittanceYTD ?? 0)
+    const complianceAvg = Number(branchHealthSummary?.networkHealthPercent ?? 0)
+    const criticalAlerts = Number(branchHealthSummary?.criticalAlertsCount ?? 0)
+    const pendingAudits = Number(branchHealthSummary?.pendingAuditsCount ?? 0)
 
     return [
       {
@@ -288,7 +298,7 @@ export default function Page() {
         iconBg: "bg-[#FFF4E6]",
       },
     ]
-  }, [branchSummaries])
+  }, [branchHealthSummary])
 
   useEffect(() => {
     let active = true
@@ -407,7 +417,7 @@ export default function Page() {
     setBranchEditLoading(true)
 
     try {
-      const res = await fetch(`/api/core/tenants/${tenant.id}`, { credentials: "include" })
+      const res = await fetch(`/api/branches/${tenant.id}`, { credentials: "include" })
       const payload = await res.json().catch(() => ({}))
       if (!res.ok) {
         throw new Error(payload?.message ?? "Unable to fetch branch details")
@@ -573,6 +583,7 @@ export default function Page() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "X-CSRF-Token": getCsrfToken(),
         },
         credentials: "include",
         body: JSON.stringify({

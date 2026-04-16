@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { applyCors, getCorsHeaders } from "@/lib/cors";
+import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 
 function getBackendVerifyEmailUrl(): string | null {
   const baseUrl = process.env.BACKEND_API_URL?.replace(/\/+$/, "");
   if (baseUrl) {
-    return `${baseUrl}/auth/verify-email`;
+    return `${baseUrl}/api/v1/auth/verify-email`;
   }
 
   const loginUrl = process.env.BACKEND_LOGIN_URL;
@@ -21,9 +21,48 @@ function getBackendVerifyEmailUrl(): string | null {
   return null;
 }
 
+type VerifyEmailPayload = {
+  email: string
+  code: string
+}
+
+function normalizeVerifyEmailPayload(body: unknown): VerifyEmailPayload | null {
+  if (!body || typeof body !== "object") return null
+  const source = body as Record<string, unknown>
+  const email = String(source.email ?? "").trim().toLowerCase()
+  const code = String(source.code ?? "").trim()
+  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+  if (!emailOk || code.length !== 6) return null
+  return { email, code }
+}
+
 export async function POST(req: NextRequest) {
   try {
+    if (!isOriginAllowed(req)) {
+      return applyCors(
+        NextResponse.json({ success: false, message: "Invalid request origin" }, { status: 403 }),
+        req
+      );
+    }
+
     const rawText = await req.text();
+    let payloadToSend: VerifyEmailPayload | null = null
+    try {
+      const parsed = rawText ? JSON.parse(rawText) : null
+      payloadToSend = normalizeVerifyEmailPayload(parsed)
+    } catch {
+      payloadToSend = null
+    }
+
+    if (!payloadToSend) {
+      return applyCors(
+        NextResponse.json(
+          { success: false, message: "Invalid payload. Email and 6-digit code are required." },
+          { status: 400 }
+        ),
+        req
+      );
+    }
 
     const backendUrl = getBackendVerifyEmailUrl();
     if (!backendUrl) {
@@ -39,7 +78,7 @@ export async function POST(req: NextRequest) {
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: rawText,
+      body: JSON.stringify(payloadToSend),
       cache: "no-store",
     });
 
@@ -69,7 +108,7 @@ export async function POST(req: NextRequest) {
       }),
       req
     );
-  } catch (error) {
+  } catch {
     return applyCors(
       NextResponse.json(
         { success: false, message: "Server error occurred while verifying email" },

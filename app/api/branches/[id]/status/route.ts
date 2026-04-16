@@ -11,6 +11,20 @@ function getRequiredEnv(name: "BACKEND_API_URL"): string {
   return value;
 }
 
+type UpdateBranchStatusPayload = {
+  status: "active" | "review" | "suspended" | "onboarding"
+}
+
+function normalizeStatusPayload(body: unknown): UpdateBranchStatusPayload | null {
+  if (!body || typeof body !== "object") return null
+  const source = body as Record<string, unknown>
+  const status = String(source.status ?? "").toLowerCase().trim()
+  if (!["active", "review", "suspended", "onboarding"].includes(status)) {
+    return null
+  }
+  return { status: status as UpdateBranchStatusPayload["status"] }
+}
+
 export async function PATCH(req: NextRequest, context: { params: { id: string } }) {
   try {
     if (!isOriginAllowed(req)) {
@@ -49,6 +63,19 @@ export async function PATCH(req: NextRequest, context: { params: { id: string } 
     }
 
     const body = await req.json().catch(() => null);
+    const payloadToSend = normalizeStatusPayload(body)
+    if (!payloadToSend) {
+      return applyCors(
+        NextResponse.json(
+          {
+            success: false,
+            message: "Invalid payload. status must be one of: active, review, suspended, onboarding.",
+          },
+          { status: 400 }
+        ),
+        req
+      );
+    }
     const backendUrl = `${baseUrl.replace(/\/+$/, "")}/api/v1/branches/${encodeURIComponent(branchId)}/status`;
 
     const backendResponse = await fetch(backendUrl, {
@@ -58,7 +85,7 @@ export async function PATCH(req: NextRequest, context: { params: { id: string } 
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: JSON.stringify(body ?? {}),
+      body: JSON.stringify(payloadToSend),
       cache: "no-store",
     });
 

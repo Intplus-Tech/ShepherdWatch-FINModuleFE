@@ -5,12 +5,12 @@ import {
   REFRESH_TOKEN_MAX_AGE_SECONDS,
   REMEMBER_ME_COOKIE,
 } from "@/lib/auth-config";
-import { applyCors, getCorsHeaders } from "@/lib/cors";
+import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 
 function getBackendLoginUrl(): string | null {
   const baseUrl = process.env.BACKEND_API_URL?.replace(/\/+$/, "");
   if (baseUrl) {
-    return `${baseUrl}/auth/login`;
+    return `${baseUrl}/api/v1/auth/login`;
   }
 
   const loginUrl = process.env.BACKEND_LOGIN_URL;
@@ -27,8 +27,30 @@ function getBackendLoginUrl(): string | null {
   return null;
 }
 
+type LoginPayload = {
+  email: string
+  password: string
+}
+
+function normalizeLoginPayload(body: unknown): LoginPayload | null {
+  if (!body || typeof body !== "object") return null
+  const source = body as Record<string, unknown>
+  const email = String(source.email ?? "").trim().toLowerCase()
+  const password = String(source.password ?? "")
+  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+  if (!emailOk || !password) return null
+  return { email, password }
+}
+
 export async function POST(req: NextRequest) {
   try {
+    if (!isOriginAllowed(req)) {
+      return applyCors(
+        NextResponse.json({ success: false, message: "Invalid request origin" }, { status: 403 }),
+        req
+      );
+    }
+
     const backendLoginUrl = getBackendLoginUrl();
     if (!backendLoginUrl) {
       return applyCors(
@@ -39,18 +61,28 @@ export async function POST(req: NextRequest) {
 
     const rawText = await req.text();
     let rememberMe: boolean | undefined;
-    let forwardBody = rawText;
+    let payloadToSend: LoginPayload | null = null;
     try {
       const parsed = rawText ? JSON.parse(rawText) : null;
       if (parsed && typeof parsed === "object") {
-        if ("rememberMe" in parsed) {
-          rememberMe = Boolean((parsed as any).rememberMe);
-          const { rememberMe: _omit, ...rest } = parsed as Record<string, unknown>;
-          forwardBody = JSON.stringify(rest);
-        }
+        const parsedRecord = parsed as Record<string, unknown>;
+        rememberMe = Boolean(parsedRecord.rememberMe);
+        const rest = { ...parsedRecord };
+        delete rest.rememberMe;
+        payloadToSend = normalizeLoginPayload(rest);
       }
     } catch {
-      // keep raw body; backend will handle validation
+      payloadToSend = null;
+    }
+
+    if (!payloadToSend) {
+      return applyCors(
+        NextResponse.json(
+          { success: false, message: "Invalid payload. Email and password are required." },
+          { status: 400 }
+        ),
+        req
+      );
     }
 
     const backendResponse = await fetch(backendLoginUrl, {
@@ -59,7 +91,7 @@ export async function POST(req: NextRequest) {
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: forwardBody,
+      body: JSON.stringify(payloadToSend),
       cache: "no-store",
     });
 
@@ -77,7 +109,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let responseData: any = null;
+    let responseData: Record<string, unknown> | null = null;
     try {
       responseData = responseText ? JSON.parse(responseText) : null;
     } catch {
@@ -93,8 +125,10 @@ export async function POST(req: NextRequest) {
     const response = NextResponse.json(responseData, { status: backendResponse.status });
 
     if (backendResponse.ok) {
-      const accessToken = responseData?.data?.tokens?.accessToken;
-      const refreshToken = responseData?.data?.tokens?.refreshToken;
+      const data = (responseData?.data ?? {}) as Record<string, unknown>;
+      const tokens = (data.tokens ?? {}) as Record<string, unknown>;
+      const accessToken = typeof tokens.accessToken === "string" ? tokens.accessToken : "";
+      const refreshToken = typeof tokens.refreshToken === "string" ? tokens.refreshToken : "";
 
       if (accessToken) {
         response.cookies.set({
@@ -134,7 +168,7 @@ export async function POST(req: NextRequest) {
     }
 
     return applyCors(response, req);
-  } catch (error) {
+  } catch {
     return applyCors(
       NextResponse.json(
       {

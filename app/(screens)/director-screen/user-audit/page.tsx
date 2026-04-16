@@ -23,10 +23,9 @@ import {
   normalizeRoleKey,
 } from "@/lib/role-permissions"
 
-const logs: AuditLogRow[] = []
-
 type AuditLogRow = {
   id: string
+  rawId: string
   time: string
   user: string
   role: string
@@ -45,9 +44,13 @@ export default function Page() {
   const [roleFilter, setRoleFilter] = useState("")
   const [permissionOptions, setPermissionOptions] = useState<string[]>([])
   const [roleOptions, setRoleOptions] = useState<string[]>([])
-  const [auditLogs, setAuditLogs] = useState<AuditLogRow[]>(logs)
+  const [auditLogs, setAuditLogs] = useState<AuditLogRow[]>([])
   const [auditLoading, setAuditLoading] = useState(true)
   const [auditError, setAuditError] = useState<string | null>(null)
+  const [auditExporting, setAuditExporting] = useState(false)
+  const [selectedAudit, setSelectedAudit] = useState<any | null>(null)
+  const [auditDetailLoading, setAuditDetailLoading] = useState(false)
+  const [auditDetailError, setAuditDetailError] = useState<string | null>(null)
 
   useEffect(() => {
     let isMounted = true
@@ -119,8 +122,8 @@ export default function Page() {
       setAuditError(null)
 
       try {
-        const params = new URLSearchParams({ page: "1", size: "20" })
-        const response = await fetch(`/api/core/financial/audit-logs?${params.toString()}`, {
+        const params = new URLSearchParams({ page: "1", limit: "20" })
+        const response = await fetch(`/api/audit-logs?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         })
@@ -158,7 +161,9 @@ export default function Page() {
           const userLabel =
             item?.userName ??
             item?.actor ??
-            item?.performedBy ??
+            item?.performedBy?.firstName && item?.performedBy?.lastName
+              ? `${item?.performedBy?.firstName} ${item?.performedBy?.lastName}`
+              : item?.performedBy ??
             item?.user ??
             "System"
           const timestamp =
@@ -196,6 +201,7 @@ export default function Page() {
 
           return {
             id: String(item?.id ?? item?.auditId ?? `audit-${index}`),
+            rawId: String(item?._id ?? item?.id ?? item?.auditId ?? `audit-${index}`),
             time: timestamp
               ? new Date(timestamp).toLocaleString()
               : "—",
@@ -234,6 +240,28 @@ export default function Page() {
     }
   }, [])
 
+  const handleViewAuditLog = async (auditId: string) => {
+    if (!auditId || auditId.startsWith("audit-")) return
+    setAuditDetailLoading(true)
+    setAuditDetailError(null)
+    try {
+      const response = await fetch(`/api/audit-logs/${encodeURIComponent(auditId)}`, {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(data?.message ?? "Unable to load audit log details.")
+      }
+      setSelectedAudit(data?.data ?? data)
+    } catch (error) {
+      setAuditDetailError(error instanceof Error ? error.message : "Unable to load audit log details.")
+    } finally {
+      setAuditDetailLoading(false)
+    }
+  }
+
   const filteredLogs = useMemo(() => {
     return auditLogs.filter((log) => {
       const matchesSearch = searchText
@@ -248,6 +276,48 @@ export default function Page() {
       return matchesSearch && matchesAction && matchesRole
     })
   }, [searchText, actionFilter, roleFilter, auditLogs])
+
+  const handleExportAuditLogs = async () => {
+    setAuditError(null)
+    setAuditExporting(true)
+
+    try {
+      const params = new URLSearchParams()
+      if (actionFilter) params.set("action", actionFilter)
+      if (/^[a-f\d]{24}$/i.test(roleFilter)) {
+        params.set("userId", roleFilter)
+      }
+      if (searchText) params.set("search", searchText)
+
+      const response = await fetch(`/api/audit-logs/export?${params.toString()}`, {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+      })
+
+      const data = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(data?.message ?? "Unable to export audit logs.")
+      }
+
+      const rows = Array.isArray(data?.data)
+        ? data.data
+        : Array.isArray(data)
+          ? data
+          : []
+      const blob = new Blob([JSON.stringify(rows, null, 2)], { type: "application/json" })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement("a")
+      anchor.href = url
+      anchor.download = `audit-logs-export-${new Date().toISOString().slice(0, 10)}.json`
+      anchor.click()
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      setAuditError(error instanceof Error ? error.message : "Unable to export audit logs.")
+    } finally {
+      setAuditExporting(false)
+    }
+  }
 
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
@@ -270,8 +340,8 @@ export default function Page() {
                   directors or configure granular access controls.
                 </p>
               </div>
-              <Button className="h-8 rounded-md bg-[#3B5BDB] text-[12px] font-medium text-white shadow hover:bg-blue-700">
-                <Download className="h-4 w-4" /> Export Log
+              <Button onClick={handleExportAuditLogs} disabled={auditExporting} className="h-8 rounded-md bg-[#3B5BDB] text-[12px] font-medium text-white shadow hover:bg-blue-700 disabled:opacity-70">
+                <Download className="h-4 w-4" /> {auditExporting ? "Exporting..." : "Export Log"}
               </Button>
             </div>
 
@@ -340,7 +410,7 @@ export default function Page() {
                 <div className="space-y-1">
                   <div className="text-[10px] text-[#9CA3AF] font-semibold">DATE RANGE</div>
                   <Button variant="outline" size="sm" className="h-9 w-full justify-between rounded-md border-[#E5E7EB] bg-white text-[12px] text-[#6B7280]">
-                    <Calendar className="h-4 w-4" /> Apr 1 - Apr 30, 2024
+                    <Calendar className="h-4 w-4" /> All Dates
                     <ChevronDown className="h-3.5 w-3.5" />
                   </Button>
                 </div>
@@ -401,7 +471,14 @@ export default function Page() {
                       </td>
                       <td className="py-4 px-4 text-[#6B7280]">“{log.justification}”</td>
                       <td className="py-4 px-4 text-right text-[#9CA3AF]">
-                        <Eye className="h-4 w-4" />
+                        <button
+                          type="button"
+                          onClick={() => void handleViewAuditLog(log.rawId)}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-[#EEF2FF]"
+                          aria-label="View audit detail"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
                       </td>
                     </tr>
                   )))}
@@ -420,6 +497,37 @@ export default function Page() {
                   <Button variant="outline" size="sm" className="h-7 rounded-md border-[#E5E7EB] bg-white text-[10px] text-[#6B7280]">Next</Button>
                 </div>
               </div>
+            </div>
+            <div className="mt-4 rounded-[12px] border border-[#EEF1F6] bg-white p-4 text-[12px]">
+              {auditDetailLoading ? (
+                <div className="text-[#64748B]">Loading audit detail...</div>
+              ) : auditDetailError ? (
+                <div className="text-rose-600 font-semibold">{auditDetailError}</div>
+              ) : selectedAudit ? (
+                <div className="space-y-2">
+                  <div className="font-semibold text-[#111827]">Audit Detail</div>
+                  <div className="text-[#6B7280]">
+                    Resource: {selectedAudit?.targetResource ?? "N/A"}{" "}
+                    {selectedAudit?.targetResourceId ? `• ${selectedAudit.targetResourceId}` : ""}
+                  </div>
+                  <div className="text-[#6B7280]">
+                    User: {selectedAudit?.performedBy?.firstName ?? ""} {selectedAudit?.performedBy?.lastName ?? ""}
+                  </div>
+                  <pre className="max-h-56 overflow-auto rounded-md bg-[#F8FAFC] p-3 text-[11px] text-[#334155]">
+{JSON.stringify(
+  {
+    before: selectedAudit?.before ?? selectedAudit?.oldValue ?? null,
+    after: selectedAudit?.after ?? selectedAudit?.newValue ?? null,
+    justification: selectedAudit?.justification ?? selectedAudit?.reason ?? null,
+  },
+  null,
+  2
+)}
+                  </pre>
+                </div>
+              ) : (
+                <div className="text-[#64748B]">Select a log entry to view full details.</div>
+              )}
             </div>
           </section>
         </div>

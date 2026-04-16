@@ -293,6 +293,10 @@ export default function Page() {
   const [auditLogs, setAuditLogs] = useState<any[]>([])
   const [auditLoading, setAuditLoading] = useState(true)
   const [auditError, setAuditError] = useState<string | null>(null)
+  const [auditExporting, setAuditExporting] = useState(false)
+  const [selectedAuditLog, setSelectedAuditLog] = useState<any | null>(null)
+  const [auditDetailLoading, setAuditDetailLoading] = useState(false)
+  const [auditDetailError, setAuditDetailError] = useState<string | null>(null)
   const [auditFilters, setAuditFilters] = useState({
     action: "",
     userId: "",
@@ -445,16 +449,26 @@ export default function Page() {
     setRevokeMessage(null)
     setRevokingSessions(true)
     try {
+      const currentSession = sessions.find((session) =>
+        Boolean(session?.isCurrent ?? session?.isCurrentSession ?? session?.current ?? session?.currentDevice)
+      )
+      const currentSessionId = String(currentSession?._id ?? currentSession?.id ?? "")
       const res = await fetch("/api/sessions/revoke-all", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(currentSessionId ? { currentSessionId } : {}),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         throw new Error(data?.message || "Unable to revoke sessions")
       }
       setRevokeMessage(data?.message || "All sessions revoked successfully.")
-      setSessions((prev) => prev.map((session) => ({ ...session, isActive: false })))
+      setSessions((prev) =>
+        prev.map((session) => {
+          const sessionId = String(session?._id ?? session?.id ?? "")
+          return { ...session, isActive: currentSessionId ? sessionId === currentSessionId : false }
+        })
+      )
     } catch (err: any) {
       setSessionsError(err.message || "Unable to revoke sessions")
     } finally {
@@ -657,6 +671,54 @@ export default function Page() {
       setAuditError(err.message || "Unable to load audit logs")
     } finally {
       setAuditLoading(false)
+    }
+  }
+
+  const exportAuditLogs = async () => {
+    setAuditExporting(true)
+    setAuditError(null)
+    const params = new URLSearchParams()
+    if (auditFilters.action) params.set("action", auditFilters.action)
+    if (auditFilters.userId) params.set("userId", auditFilters.userId)
+    if (auditFilters.startDate) params.set("startDate", auditFilters.startDate)
+    if (auditFilters.endDate) params.set("endDate", auditFilters.endDate)
+    if (auditFilters.search) params.set("search", auditFilters.search)
+    try {
+      const res = await fetch(`/api/audit-logs/export?${params.toString()}`)
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        throw new Error(data?.message || "Unable to export audit logs")
+      }
+      const rows = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : []
+      const blob = new Blob([JSON.stringify(rows, null, 2)], { type: "application/json" })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement("a")
+      anchor.href = url
+      anchor.download = `audit-logs-export-${new Date().toISOString().slice(0, 10)}.json`
+      anchor.click()
+      URL.revokeObjectURL(url)
+    } catch (err: any) {
+      setAuditError(err.message || "Unable to export audit logs")
+    } finally {
+      setAuditExporting(false)
+    }
+  }
+
+  const fetchAuditLogDetails = async (id: string) => {
+    if (!id) return
+    setAuditDetailLoading(true)
+    setAuditDetailError(null)
+    try {
+      const res = await fetch(`/api/audit-logs/${encodeURIComponent(id)}`)
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        throw new Error(data?.message || "Unable to load audit log details")
+      }
+      setSelectedAuditLog(data?.data ?? data)
+    } catch (err: any) {
+      setAuditDetailError(err.message || "Unable to load audit log details")
+    } finally {
+      setAuditDetailLoading(false)
     }
   }
 
@@ -1938,12 +2000,21 @@ export default function Page() {
                   />
                 </div>
                 <div className="px-6 pb-4">
-                  <button
-                    onClick={fetchAuditLogs}
-                    className="h-[34px] px-4 rounded-[8px] bg-[#3B5BDB] text-white text-[12px] font-[700] hover:bg-[#2f4cc2]"
-                  >
-                    Apply Filters
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={fetchAuditLogs}
+                      className="h-[34px] px-4 rounded-[8px] bg-[#3B5BDB] text-white text-[12px] font-[700] hover:bg-[#2f4cc2]"
+                    >
+                      Apply Filters
+                    </button>
+                    <button
+                      onClick={exportAuditLogs}
+                      disabled={auditExporting}
+                      className="h-[34px] px-4 rounded-[8px] border border-[#D1D5DB] bg-white text-[#111827] text-[12px] font-[700] hover:bg-[#F9FAFB] disabled:opacity-70"
+                    >
+                      {auditExporting ? "Exporting..." : "Export"}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="px-6 pb-6">
@@ -1965,6 +2036,14 @@ export default function Page() {
                           </div>
                           <div className="text-[12px] text-[#6B7280]">
                             By: {log.performedBy?.firstName || ""} {log.performedBy?.lastName || ""}
+                          </div>
+                          <div className="mt-2">
+                            <button
+                              onClick={() => fetchAuditLogDetails(String(log._id ?? log.id ?? ""))}
+                              className="text-[11px] font-[700] text-[#2563EB] hover:underline"
+                            >
+                              View details
+                            </button>
                           </div>
                           <div className="text-[11px] text-[#9CA3AF]">
                             Target: {log.targetResource || "N/A"} {log.targetResourceId ? `• ${log.targetResourceId}` : ""}
@@ -2079,6 +2158,33 @@ export default function Page() {
                     <div className="mt-3 text-[11px] text-[#9CA3AF]">
                       Showing page {appLogPagination.page} of {appLogPagination.pages} • {appLogPagination.total} total logs
                     </div>
+                  )}
+                </div>
+                <div className="px-6 pb-6">
+                  {auditDetailLoading ? (
+                    <div className="text-[12px] text-[#64748B]">Loading audit detail...</div>
+                  ) : auditDetailError ? (
+                    <div className="text-[12px] text-rose-600 font-[600]">{auditDetailError}</div>
+                  ) : selectedAuditLog ? (
+                    <div className="rounded-[10px] border border-[#EEF1F6] bg-[#F8FAFC] p-4">
+                      <div className="text-[12px] font-[800] text-[#111827] mb-2">Audit Detail</div>
+                      <div className="text-[12px] text-[#6B7280]">
+                        Resource: {selectedAuditLog?.targetResource || "N/A"} {selectedAuditLog?.targetResourceId ? `• ${selectedAuditLog?.targetResourceId}` : ""}
+                      </div>
+                      <pre className="mt-3 max-h-56 overflow-auto rounded-[8px] bg-white p-3 text-[11px] text-[#334155]">
+{JSON.stringify(
+  {
+    before: selectedAuditLog?.before ?? selectedAuditLog?.oldValue ?? null,
+    after: selectedAuditLog?.after ?? selectedAuditLog?.newValue ?? null,
+    justification: selectedAuditLog?.justification ?? selectedAuditLog?.reason ?? null,
+  },
+  null,
+  2
+)}
+                      </pre>
+                    </div>
+                  ) : (
+                    <div className="text-[12px] text-[#64748B]">Select a log entry to view full details.</div>
                   )}
                 </div>
               </div>
@@ -2218,3 +2324,4 @@ export default function Page() {
     </div>
   )
 }
+

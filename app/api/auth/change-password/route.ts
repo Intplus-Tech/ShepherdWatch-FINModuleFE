@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config";
-import { applyCors, getCorsHeaders } from "@/lib/cors";
+import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 
 function getBackendChangePasswordUrl(): string | null {
   const baseUrl = process.env.BACKEND_API_URL?.replace(/\/+$/, "");
   if (baseUrl) {
-    return `${baseUrl}/auth/change-password`;
+    return `${baseUrl}/api/v1/auth/change-password`;
   }
 
   const loginUrl = process.env.BACKEND_LOGIN_URL;
@@ -22,14 +22,33 @@ function getBackendChangePasswordUrl(): string | null {
   return null;
 }
 
+type ChangePasswordPayload = {
+  currentPassword: string
+  newPassword: string
+}
+
+function normalizePayload(body: unknown): ChangePasswordPayload | null {
+  if (!body || typeof body !== "object") return null;
+  const source = body as Record<string, unknown>;
+  const currentPassword = String(source.currentPassword ?? "");
+  const newPassword = String(source.newPassword ?? "");
+  const passwordOk = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(newPassword);
+  if (!currentPassword || !passwordOk) return null;
+  return { currentPassword, newPassword };
+}
+
 export async function POST(req: NextRequest) {
+  if (!isOriginAllowed(req)) {
+    return applyCors(
+      NextResponse.json({ success: false, message: "Invalid request origin" }, { status: 403 }),
+      req
+    );
+  }
+
   const backendToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value;
   if (!backendToken) {
     return applyCors(
-      NextResponse.json(
-        { success: false, message: "Unauthorized. Please log in again." },
-        { status: 401 }
-      ),
+      NextResponse.json({ success: false, message: "Unauthorized. Please log in again." }, { status: 401 }),
       req
     );
   }
@@ -37,16 +56,34 @@ export async function POST(req: NextRequest) {
   const backendUrl = getBackendChangePasswordUrl();
   if (!backendUrl) {
     return applyCors(
-      NextResponse.json(
-        { success: false, message: "Backend URL not configured" },
-        { status: 500 }
-      ),
+      NextResponse.json({ success: false, message: "Backend URL not configured" }, { status: 500 }),
       req
     );
   }
 
   try {
     const rawText = await req.text();
+    let payloadToSend: ChangePasswordPayload | null = null;
+    try {
+      const parsed = rawText ? JSON.parse(rawText) : null;
+      payloadToSend = normalizePayload(parsed);
+    } catch {
+      payloadToSend = null;
+    }
+
+    if (!payloadToSend) {
+      return applyCors(
+        NextResponse.json(
+          {
+            success: false,
+            message:
+              "Invalid payload. Provide currentPassword and a strong newPassword (min 8 with uppercase, lowercase, and number).",
+          },
+          { status: 400 }
+        ),
+        req
+      );
+    }
 
     const backendRes = await fetch(backendUrl, {
       method: "POST",
@@ -55,7 +92,7 @@ export async function POST(req: NextRequest) {
         Accept: "application/json",
         Authorization: `Bearer ${backendToken}`,
       },
-      body: rawText,
+      body: JSON.stringify(payloadToSend),
       cache: "no-store",
     });
 
@@ -85,7 +122,7 @@ export async function POST(req: NextRequest) {
       }),
       req
     );
-  } catch (error) {
+  } catch {
     return applyCors(
       NextResponse.json(
         { success: false, message: "Server error occurred while changing password" },

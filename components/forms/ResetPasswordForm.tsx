@@ -36,7 +36,7 @@ export default function ResetPasswordForm() {
     setError(null)
     try {
       await forgotPassword(values.email)
-      router.push("/reset-success")
+      router.push(`/reset-password?email=${encodeURIComponent(values.email.trim().toLowerCase())}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to send reset email")
     }

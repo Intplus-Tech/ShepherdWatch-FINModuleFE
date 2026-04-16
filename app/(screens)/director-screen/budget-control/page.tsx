@@ -10,14 +10,12 @@ import {
   Download,
   Search,
   X,
-  RefreshCw,
   CheckCircle2,
   AlertTriangle,
-  Wallet,
   Calendar,
-  Building2,
 } from "lucide-react"
-import { useBudgetEntries } from "@/components/hooks/useBudgetEntries"
+import { useBudgetControlDashboard } from "@/components/hooks/useBudgetControlDashboard"
+import { useBudgetApproval } from "@/components/hooks/useBudgetApproval"
 import { useAuth } from "@/components/auth/AuthProvider"
 import BranchesDropdown from "@/components/navigation/BranchesDropdown"
 
@@ -26,9 +24,8 @@ const smallText = "text-[11.17px] leading-[15.95px] font-semibold"
 
 export default function Page() {
   const { user } = useAuth()
-  const { entries, loading, error } = useBudgetEntries()
-  const [approvingAll, setApprovingAll] = useState(false)
-  const [approveError, setApproveError] = useState<string | null>(null)
+  const { data: controlData, loading, error } = useBudgetControlDashboard()
+  const { approving, approveError, processApprovalAction } = useBudgetApproval()
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
@@ -46,22 +43,23 @@ export default function Page() {
     }).format(value)
 
   const totals = useMemo(() => {
-    const totalBudget = entries.reduce((sum, entry) => sum + Number(entry.amount ?? 0), 0)
-    const appropriated = totalBudget * 0.65
-    const remaining = totalBudget - appropriated
-    return { totalBudget, appropriated, remaining }
-  }, [entries])
+    return {
+      totalBudget: Number(controlData.kpis.totalAllocated ?? 0),
+      appropriated: Number(controlData.kpis.totalCommitted ?? 0),
+      remaining: Number(controlData.kpis.totalAvailable ?? 0),
+      utilizedRate: Number(controlData.kpis.utilizationRate ?? 0),
+      spent: Number(controlData.kpis.totalSpent ?? 0),
+    }
+  }, [controlData])
 
   const branches = useMemo(
-    () =>
-      entries.map((entry, index) => {
-        const id = String(entry.id ?? `entry-${index}`)
-        const name = entry.coaName ?? entry.name ?? `Entry ${index + 1}`
-        const amount = Number(entry.amount ?? 0)
-        const approved =
-          Boolean((entry as any).approvedBy) ||
-          Boolean((entry as any).approvedAt) ||
-          String((entry as any).status ?? "").toUpperCase() === "APPROVED"
+    () => controlData.items.map((item, index) => {
+        const id = String(item.id ?? `item-${index}`)
+        const name = item.name ?? `Budget Item ${index + 1}`
+        const allocated = Number(item.allocated ?? 0)
+        const spent = Number(item.spent ?? 0)
+        const utilization = Number(item.usagePercent ?? 0)
+        const approved = String(item.status ?? "").toUpperCase() === "APPROVED"
 
         return {
           id,
@@ -72,80 +70,39 @@ export default function Page() {
             .join("")
             .toUpperCase() || "BE",
           name,
-          lastYear: formatCurrency(amount),
-          proposed: formatCurrency(amount),
-          variance: "0.0%",
-          status: approved ? "Approved" : "Pending Review",
+          lastYear: formatCurrency(spent),
+          proposed: formatCurrency(allocated),
+          variance: `${utilization.toFixed(1)}%`,
+          status: approved ? "Approved" : "Submitted",
           selected: selectedIds.has(id),
           expanded: false,
         }
       }),
-    [entries, selectedIds]
+    [controlData.items, selectedIds]
   )
 
   const selectedCount = useMemo(() => selectedIds.size, [selectedIds])
 
-  const getCsrfToken = () => {
-    if (typeof document === "undefined") return ""
-    const match = document.cookie
-      .split("; ")
-      .find((cookie) => cookie.startsWith("csrf_token="))
-    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
-  }
+  const approveAllBudgets = async () => {
+    const budgetIds = controlData.items
+      .map((item) => String(item.id ?? ""))
+      .filter(Boolean)
 
-  const approveAllEntries = async () => {
-    const entryIds = entries.map((entry) => entry.id).filter(Boolean)
-    if (entryIds.length === 0) return
-    setApprovingAll(true)
-    setApproveError(null)
+    if (budgetIds.length === 0) return
 
-    try {
-      const csrfToken = getCsrfToken()
-      await Promise.all(
-        entryIds.map(async (entryId) => {
-          const response = await fetch(`/api/core/financial/budget-entries/${entryId}/approve`, {
-            method: "POST",
-            headers: { "x-csrf-token": csrfToken },
-            credentials: "include",
-          })
-          const payload = await response.json().catch(() => null)
-          if (!response.ok) {
-            throw new Error(payload?.message ?? "Unable to approve budget entry.")
-          }
-        })
-      )
-    } catch (err) {
-      setApproveError(err instanceof Error ? err.message : "Unable to approve budget entry.")
-    } finally {
-      setApprovingAll(false)
+    for (const budgetId of budgetIds) {
+      const ok = await processApprovalAction(budgetId, "approved")
+      if (!ok) break
     }
   }
 
-  const approveSelectedEntries = async () => {
-    const entryIds = Array.from(selectedIds).filter(Boolean)
-    if (entryIds.length === 0) return
-    setApprovingAll(true)
-    setApproveError(null)
+  const approveSelectedBudgets = async () => {
+    const budgetIds = Array.from(selectedIds)
+    if (budgetIds.length === 0) return
 
-    try {
-      const csrfToken = getCsrfToken()
-      await Promise.all(
-        entryIds.map(async (entryId) => {
-          const response = await fetch(`/api/core/financial/budget-entries/${entryId}/approve`, {
-            method: "POST",
-            headers: { "x-csrf-token": csrfToken },
-            credentials: "include",
-          })
-          const payload = await response.json().catch(() => null)
-          if (!response.ok) {
-            throw new Error(payload?.message ?? "Unable to approve budget entry.")
-          }
-        })
-      )
-    } catch (err) {
-      setApproveError(err instanceof Error ? err.message : "Unable to approve budget entry.")
-    } finally {
-      setApprovingAll(false)
+    for (const budgetId of budgetIds) {
+      const ok = await processApprovalAction(budgetId, "approved")
+      if (!ok) break
     }
   }
 
@@ -263,11 +220,11 @@ export default function Page() {
               </button>
 
               <button
-                onClick={approveAllEntries}
-                disabled={approvingAll || entries.length === 0}
+                onClick={approveAllBudgets}
+                disabled={approving || branches.length === 0}
                 className={`flex items-center gap-2 rounded-md bg-[#3B5BDB] px-4 py-2 ${smallText} text-white shadow hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed`}
               >
-                <Check className="h-4 w-4" /> {approvingAll ? "Approving..." : "Approve All Pending"}
+                <Check className="h-4 w-4" /> {approving ? "Approving..." : "Approve All Pending"}
               </button>
             </div>
           </div>
@@ -288,7 +245,7 @@ export default function Page() {
 
               <div className={`mt-2 ${bigText} text-[#111827]`}>{formatCurrency(totals.totalBudget)}</div>
 
-              <div className={`mt-2 ${smallText} text-emerald-600`}>+4.2% vs last fiscal year</div>
+              <div className={`mt-2 ${smallText} text-emerald-600`}>{controlData.fiscalYear} Fiscal Year</div>
             </div>
 
             <div className="rounded-[12px] border border-[#EEF1F6] bg-white p-4">
@@ -299,15 +256,15 @@ export default function Page() {
                   <div className={`text-[#9CA3AF] ${smallText}`}>{formatCurrency(totals.totalBudget)} Allocated</div>
                 </div>
 
-                <div className={`text-[#3B5BDB] ${bigText}`}>65%</div>
+                <div className={`text-[#3B5BDB] ${bigText}`}>{totals.utilizedRate.toFixed(0)}%</div>
               </div>
 
               <div className="mt-3 h-2 rounded-full bg-[#EEF1F6]">
-                <div className="h-2 w-[65%] rounded-full bg-[#3B5BDB]" />
+                <div className="h-2 rounded-full bg-[#3B5BDB]" style={{ width: `${Math.min(100, Math.max(0, totals.utilizedRate))}%` }} />
               </div>
 
               <div className={`mt-2 flex items-center justify-between text-[#9CA3AF] ${smallText}`}>
-                <span>{branches.length} Branches Pending Review</span>
+                <span>{controlData.budgetCount} Budgets in Scope</span>
                 <span>{formatCurrency(totals.remaining)} Remaining</span>
               </div>
             </div>
@@ -339,7 +296,7 @@ export default function Page() {
                     <th className="py-3 px-4 text-left"></th>
                     <th className="py-3 px-4 text-left">BRANCH</th>
                     <th className="py-3 px-4 text-left">LAST YEAR (ACTUAL)</th>
-                    <th className="py-3 px-4 text-left">PROPOSED (2024)</th>
+                    <th className="py-3 px-4 text-left">{`PROPOSED (${controlData.fiscalYear || new Date().getFullYear()})`}</th>
                     <th className="py-3 px-4 text-left">VARIANCE</th>
                     <th className="py-3 px-4 text-left">STATUS</th>
                     <th className="py-3 px-4 text-right">ACTIONS</th>
@@ -350,7 +307,7 @@ export default function Page() {
                   {loading ? (
                     <tr>
                       <td colSpan={7} className="px-4 py-6 text-center text-[12px] text-[#6B7280]">
-                        Loading budget entries…
+                        Loading budget control dashboard...
                       </td>
                     </tr>
                   ) : error ? (
@@ -362,7 +319,7 @@ export default function Page() {
                   ) : branches.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="px-4 py-6 text-center text-[12px] text-[#6B7280]">
-                        No budget entries available for this period.
+                        No budget control records available for this period.
                       </td>
                     </tr>
                   ) : (
@@ -528,11 +485,11 @@ export default function Page() {
               <button className="text-[#9CA3AF]">Reject</button>
 
               <button
-                onClick={approveSelectedEntries}
-                disabled={approvingAll || selectedIds.size === 0}
+                onClick={approveSelectedBudgets}
+                disabled={approving || selectedIds.size === 0}
                 className="rounded-full bg-[#3B5BDB] px-3 py-1 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                {approvingAll ? "Approving..." : "Approve Selected"}
+                {approving ? "Approving..." : "Approve Selected"}
               </button>
             </div>
           </div>

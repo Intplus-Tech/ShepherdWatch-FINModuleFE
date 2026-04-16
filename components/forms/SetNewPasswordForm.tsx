@@ -13,10 +13,20 @@ import Image from "next/image"
 
 const setPasswordSchema = z
   .object({
-    password: z.string().min(6, "Password must be at least 6 characters"),
-    confirmPassword: z.string().min(6, "Confirm your password"),
+    email: z.string().trim().email("Enter a valid email"),
+    code: z
+      .string()
+      .trim()
+      .regex(/^\d{6}$/, "Enter the 6-digit OTP code"),
+    newPassword: z
+      .string()
+      .min(8, "Password must be at least 8 characters")
+      .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
+      .regex(/[a-z]/, "Password must contain at least one lowercase letter")
+      .regex(/[0-9]/, "Password must contain at least one number"),
+    confirmPassword: z.string().min(1, "Confirm your password"),
   })
-  .refine((data) => data.password === data.confirmPassword, {
+  .refine((data) => data.newPassword === data.confirmPassword, {
     message: "Passwords do not match",
     path: ["confirmPassword"],
   })
@@ -27,29 +37,42 @@ export default function SetNewPasswordForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [error, setError] = useState<string | null>(null)
+  const [info, setInfo] = useState<string | null>(null)
+  const initialEmail = searchParams.get("email")?.trim() ?? ""
+  const initialCode = searchParams.get("code")?.trim() ?? ""
 
   const {
     register,
     handleSubmit,
+    getValues,
     formState: { errors, isSubmitting },
   } = useForm<SetPasswordValues>({
     resolver: zodResolver(setPasswordSchema),
-    defaultValues: { password: "", confirmPassword: "" },
+    defaultValues: {
+      email: initialEmail,
+      code: initialCode,
+      newPassword: "",
+      confirmPassword: "",
+    },
   })
 
   const onSubmit = async (values: SetPasswordValues) => {
     setError(null)
+    setInfo(null)
     try {
-      const token = searchParams.get("token") || ""
       const res = await fetch("/api/auth/reset-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, password: values.password }),
+        body: JSON.stringify({
+          email: values.email,
+          code: values.code,
+          newPassword: values.newPassword,
+        }),
       })
 
+      const data = await res.json().catch(() => null)
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data.message || "Unable to reset password")
+        throw new Error(data?.message || "Unable to reset password")
       }
 
       router.push("/login")
@@ -58,9 +81,35 @@ export default function SetNewPasswordForm() {
     }
   }
 
+  const handleResendCode = async () => {
+    setError(null)
+    setInfo(null)
+    const email = getValues("email").trim().toLowerCase()
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setError("Enter a valid email address before requesting a new OTP.")
+      return
+    }
+
+    try {
+      const res = await fetch("/api/auth/resend-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, purpose: "password_reset" }),
+      })
+
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        throw new Error(data?.message || "Unable to resend OTP")
+      }
+
+      setInfo(data?.message || "A new OTP has been sent to your email.")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to resend OTP")
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[#1f1f1f] px-6 py-10 flex items-center justify-center relative">
-
       <div className="relative w-full max-w-[1150px] lg:h-[796px] bg-white rounded-[28px] shadow-[0_30px_80px_rgba(0,0,0,0.35)] overflow-hidden flex flex-col lg:flex-row">
         <div className="absolute top-0 left-0 w-[520px] h-[520px] overflow-hidden pointer-events-none opacity-[0.06]">
           <Image
@@ -77,28 +126,68 @@ export default function SetNewPasswordForm() {
           </div>
 
           <div className="text-center mb-8">
-            <h1 className="text-[24px] font-semibold text-[#111827] mb-2">Create New Password</h1>
+            <h1 className="text-[24px] font-semibold text-[#111827] mb-2">Reset Password</h1>
             <p className="text-[12px] text-[#98A2B3] max-w-[360px]">
-              Set a new password for your account. Choose a strong password you will remember.
+              Enter your email, OTP code, and a strong new password to complete your password reset.
             </p>
           </div>
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-5 w-[360px] max-w-full">
             <div className="space-y-2">
-              <Label htmlFor="password" className="text-[12px] text-[#98A2B3]">New Password</Label>
+              <Label htmlFor="email" className="text-[12px] text-[#98A2B3]">
+                Email
+              </Label>
               <Input
-                id="password"
+                id="email"
+                type="email"
+                className="h-[38px] rounded-[4px] border-[#B8C6FF] focus-visible:ring-[#5871F5] px-3"
+                {...register("email")}
+              />
+              {errors.email ? <p className="text-[10px] text-rose-600">{errors.email.message}</p> : null}
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="code" className="text-[12px] text-[#98A2B3]">
+                  OTP Code
+                </Label>
+                <button
+                  type="button"
+                  onClick={handleResendCode}
+                  className="text-[10px] font-medium text-[#3B5BDB] hover:underline"
+                >
+                  Resend OTP
+                </button>
+              </div>
+              <Input
+                id="code"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                className="h-[38px] rounded-[4px] border-[#B8C6FF] focus-visible:ring-[#5871F5] px-3"
+                {...register("code")}
+              />
+              {errors.code ? <p className="text-[10px] text-rose-600">{errors.code.message}</p> : null}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="newPassword" className="text-[12px] text-[#98A2B3]">
+                New Password
+              </Label>
+              <Input
+                id="newPassword"
                 type="password"
                 className="h-[38px] rounded-[4px] border-[#B8C6FF] focus-visible:ring-[#5871F5] px-3"
-                {...register("password")}
+                {...register("newPassword")}
               />
-              {errors.password ? (
-                <p className="text-[10px] text-rose-600">{errors.password.message}</p>
+              {errors.newPassword ? (
+                <p className="text-[10px] text-rose-600">{errors.newPassword.message}</p>
               ) : null}
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="confirmPassword" className="text-[12px] text-[#98A2B3]">Confirm Password</Label>
+              <Label htmlFor="confirmPassword" className="text-[12px] text-[#98A2B3]">
+                Confirm Password
+              </Label>
               <Input
                 id="confirmPassword"
                 type="password"
@@ -111,12 +200,13 @@ export default function SetNewPasswordForm() {
             </div>
 
             {error ? <p className="text-[11px] text-rose-600 text-center">{error}</p> : null}
+            {info ? <p className="text-[11px] text-[#1D4ED8] text-center">{info}</p> : null}
 
             <div className="pt-2 flex justify-center">
               <Button
                 type="submit"
                 disabled={isSubmitting}
-                className="h-[36px] w-[160px] bg-[#3B5BDB] hover:bg-[#2f4cc2] text-white rounded-[4px] text-[12px]"
+                className="h-[36px] w-[180px] bg-[#3B5BDB] hover:bg-[#2f4cc2] text-white rounded-[4px] text-[12px]"
               >
                 {isSubmitting ? "Saving..." : "Save New Password"}
               </Button>

@@ -40,9 +40,9 @@ export default function ResetSuccess() {
               <div className="text-center w-full">
                 <h1 className="text-[28px] md:text-[36px] font-bold text-[#1D4ED8] mb-3 md:mb-4">Success !</h1>
                 <p className="text-[13px] md:text-[14px] text-[#475467] max-w-[340px] mx-auto leading-relaxed">
-                  A email has been send to your email@domain.com.
-                  Please check for an email from system and click on the
-                  included link to reset your password.
+                  An email has been sent to your registered address.
+                  Please check your inbox for the OTP code and use it to
+                  complete your password reset.
                 </p>
               </div>
 

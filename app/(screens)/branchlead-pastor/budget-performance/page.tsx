@@ -1,8 +1,9 @@
 "use client"
 
 import BudgetPage from "../budget/page"
-import { useAuth } from "@/components/auth/AuthProvider"
-import { useEffect, useMemo, useState } from "react"
+import { useBudgetDetailedPerformance } from "@/components/hooks/useBudgetDetailedPerformance"
+import { useEffect, useMemo } from "react"
+import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import {
   AlertTriangle,
@@ -15,26 +16,16 @@ import {
   TrendingDown,
 } from "lucide-react"
 
-type BvaRow = {
-  type: "parent" | "child"
-  category: string
-  budget: string
-  monthly: string
-  actual: string
-  variance: string
-  status: string
-}
-
 export default function Page() {
-  const { user } = useAuth()
-  const [bva, setBva] = useState<{ totalBudgeted: number; totalActual: number; categories: Array<Record<string, any>> } | null>(null)
-  const [bvaLoading, setBvaLoading] = useState(false)
-  const [bvaError, setBvaError] = useState<string | null>(null)
+  const searchParams = useSearchParams()
+  const selectedBudgetId = searchParams.get("id")
+  const { data, loading: bvaLoading, error: bvaError, fetchDetailedPerformance } = useBudgetDetailedPerformance(selectedBudgetId)
 
-  const tenantId = useMemo(
-    () => user?.tenantId ?? user?.tenant?.id ?? "",
-    [user]
-  )
+  useEffect(() => {
+    if (selectedBudgetId) {
+      fetchDetailedPerformance(selectedBudgetId)
+    }
+  }, [fetchDetailedPerformance, selectedBudgetId])
 
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat("en-NG", {
@@ -43,74 +34,20 @@ export default function Page() {
       maximumFractionDigits: 0,
     }).format(value)
 
-  useEffect(() => {
-    let isMounted = true
-
-    const fetchBva = async () => {
-      if (!tenantId) {
-        setBvaError("Tenant is required to load BVA report.")
-        return
-      }
-      try {
-        setBvaLoading(true)
-        setBvaError(null)
-        const now = new Date()
-        const periodStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0]
-        const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0]
-        const params = new URLSearchParams({
-          tenantId,
-          periodStart,
-          periodEnd,
-        })
-        const response = await fetch(`/api/core/financial/reports/bva?${params.toString()}`, {
-          method: "GET",
-          credentials: "include",
-        })
-        const payload = await response.json().catch(() => null)
-        if (!response.ok) {
-          throw new Error(payload?.message ?? "Unable to load BVA report.")
-        }
-        const data = payload?.data ?? payload
-        if (isMounted) {
-          setBva({
-            totalBudgeted: Number(data?.totalBudgeted ?? 0),
-            totalActual: Number(data?.totalActual ?? 0),
-            categories: Array.isArray(data?.categories) ? data.categories : [],
-          })
-        }
-      } catch (error) {
-        if (isMounted) {
-          setBva(null)
-          setBvaError(error instanceof Error ? error.message : "Unable to load BVA report.")
-        }
-      } finally {
-        if (isMounted) {
-          setBvaLoading(false)
-        }
-      }
-    }
-
-    fetchBva()
-
-    return () => {
-      isMounted = false
-    }
-  }, [tenantId])
-
   const cards = useMemo(() => {
-    const totalBudgeted = bva?.totalBudgeted ?? 0
-    const totalActual = bva?.totalActual ?? 0
+    const totalBudgeted = data?.summary?.totalAllocated ?? 0
+    const totalActual = data?.summary?.totalSpent ?? 0
     const variancePct = totalBudgeted ? ((totalBudgeted - totalActual) / totalBudgeted) * 100 : 0
     return [
       {
         title: "TOTAL ANNUAL BUDGET",
         value: formatCurrency(totalBudgeted),
-        meta: "FY 2024",
+        meta: data?.budget?.fiscalYear ? `FY ${data.budget.fiscalYear}` : "FY 2024",
       },
       {
         title: "YTD ACTUAL SPENT",
         value: formatCurrency(totalActual),
-        meta: totalBudgeted ? "5% below target" : "Awaiting entries",
+        meta: totalBudgeted ? `${data?.summary?.utilization ?? 0}% Utilization` : "Awaiting entries",
       },
       {
         title: "OVERALL VARIANCE",
@@ -118,37 +55,21 @@ export default function Page() {
         meta: variancePct >= 0 ? "Healthy Surplus" : "Over Target",
       },
     ]
-  }, [bva])
+  }, [data])
 
-  const rows: BvaRow[] = useMemo(() => {
-    const categories = bva?.categories ?? []
-    return categories.map((category) => {
-      const budget = Number(category?.budgeted ?? category?.totalBudgeted ?? category?.budget ?? 0)
-      const actual = Number(category?.actual ?? category?.totalActual ?? category?.spent ?? 0)
-      const variancePct = budget ? ((budget - actual) / budget) * 100 : 0
-      const status = variancePct < -5 ? "Exceeded" : variancePct < 0 ? "Warning" : "On Track"
-      return {
-        type: "parent",
-        category: category?.name ?? category?.category ?? "Category",
-        budget: formatCurrency(budget),
-        monthly: formatCurrency(budget / 12),
-        actual: formatCurrency(actual),
-        variance: `${variancePct >= 0 ? "+" : ""}${variancePct.toFixed(1)}%`,
-        status,
-      }
-    })
-  }, [bva])
+  const lineItems = data?.lineItems ?? []
 
   const totals = useMemo(() => {
-    const totalBudgeted = bva?.totalBudgeted ?? 0
-    const totalActual = bva?.totalActual ?? 0
+    const totalBudgeted = data?.summary?.totalAllocated ?? 0
+    const totalActual = data?.summary?.totalSpent ?? 0
     const variancePct = totalBudgeted ? ((totalBudgeted - totalActual) / totalBudgeted) * 100 : 0
     return {
       totalBudgeted,
       totalActual,
       variancePct,
     }
-  }, [bva])
+  }, [data])
+
   return (
     <div className="relative min-h-screen w-full overflow-hidden bg-[#0F1115] font-sans" style={{ fontFamily: '"Inter", sans-serif' }}>
       <div className="absolute inset-0 pointer-events-none">
@@ -186,7 +107,12 @@ export default function Page() {
           <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
             {bvaLoading && (
               <div className="md:col-span-3 text-[12px] font-medium text-[#6B7280]">
-                Loading BVA report...
+                Loading Detailed Performance...
+              </div>
+            )}
+            {!selectedBudgetId && !bvaLoading && (
+              <div className="md:col-span-3 text-[12px] font-medium text-amber-600">
+                Select a budget to view detailed performance.
               </div>
             )}
             {bvaError && (
@@ -219,7 +145,7 @@ export default function Page() {
           <div className="mt-6">
             <div className="text-[11px] font-semibold text-[#94A3B8] mb-2">FISCAL PERIOD</div>
             <div className="flex items-center justify-between rounded-[10px] border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-3 text-[12px] text-[#111827]">
-              FY 2024 (Current)
+              {data?.budget?.fiscalYear ? `FY ${data.budget.fiscalYear}` : "FY 2024 (Current)"}
               <ChevronDown className="h-4 w-4 text-[#9CA3AF]" />
             </div>
           </div>
@@ -240,7 +166,13 @@ export default function Page() {
                 {bvaLoading ? (
                   <tr>
                     <td colSpan={6} className="py-6 px-4 text-center text-[12px] text-[#6B7280]">
-                      Loading BVA report…
+                      Loading Detailed Performance…
+                    </td>
+                  </tr>
+                ) : !selectedBudgetId ? (
+                  <tr>
+                    <td colSpan={6} className="py-6 px-4 text-center text-[12px] text-amber-600">
+                      Select a budget to view detailed performance.
                     </td>
                   </tr>
                 ) : bvaError ? (
@@ -249,53 +181,58 @@ export default function Page() {
                       {bvaError}
                     </td>
                   </tr>
-                ) : rows.length === 0 ? (
+                ) : lineItems.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="py-6 px-4 text-center text-[12px] text-[#6B7280]">
-                      No BVA report data available for this period.
+                      No line items available for this budget.
                     </td>
                   </tr>
                 ) : (
-                  rows.map((row) => (
-                  <tr key={row.category} className="border-t border-[#EEF1F6] text-[#111827]">
-                    <td className={`py-3 px-4 font-medium ${row.type === "child" ? "pl-9 text-[#475569]" : "text-[#111827]"}`}>
-                      <span className="inline-flex items-center gap-2">
-                        {row.type === "parent" ? (
-                          <ChevronDown className="h-3.5 w-3.5 text-[#3B5BDB]" />
-                        ) : (
-                          <ChevronRight className="h-3.5 w-3.5 text-[#CBD5E1]" />
-                        )}
-                        {row.category}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-right text-[#334155]">{row.budget}</td>
-                    <td className="py-3 px-4 text-right text-[#64748B]">{row.monthly}</td>
-                    <td className="py-3 px-4 text-right text-[#0F172A]">{row.actual}</td>
-                    <td className={`py-3 px-4 text-right ${row.variance.startsWith("-") ? "text-rose-600" : "text-emerald-600"}`}>
-                      {row.variance}
-                    </td>
-                    <td className="py-3 px-4">
-                      <span
-                        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold ${
-                          row.status === "Warning"
-                            ? "bg-amber-50 text-amber-600"
-                            : row.status === "Exceeded"
-                              ? "bg-rose-50 text-rose-600"
-                              : "bg-emerald-50 text-emerald-600"
-                        }`}
-                      >
-                        {row.status === "Warning" ? (
-                          <AlertTriangle className="h-3 w-3" />
-                        ) : row.status === "Exceeded" ? (
-                          <X className="h-3 w-3" />
-                        ) : (
-                          <CheckCircle2 className="h-3 w-3" />
-                        )}
-                        {row.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))
+                  lineItems.map((item, idx) => {
+                    const statusMap: Record<string, string> = {
+                      under_budget: "Healthy",
+                      on_track: "On Track",
+                      at_risk: "Warning",
+                      over_budget: "Exceeded"
+                    }
+                    const displayStatus = statusMap[item.status] || item.status
+                    return (
+                      <tr key={item.chartOfAccount?.code || idx} className="border-t border-[#EEF1F6] text-[#111827]">
+                        <td className="py-3 px-4 font-medium text-[#111827]">
+                          <span className="inline-flex items-center gap-2">
+                            <ChevronRight className="h-3.5 w-3.5 text-[#CBD5E1]" />
+                            {item.chartOfAccount?.name || "Line Item"}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-right text-[#334155]">{formatCurrency(item.annualBudget)}</td>
+                        <td className="py-3 px-4 text-right text-[#64748B]">{formatCurrency(item.monthlyTarget)}</td>
+                        <td className="py-3 px-4 text-right text-[#0F172A]">{formatCurrency(item.actualSpentYTD)}</td>
+                        <td className={`py-3 px-4 text-right ${item.variancePercent < 0 ? "text-rose-600" : "text-emerald-600"}`}>
+                          {`${item.variancePercent >= 0 ? "+" : ""}${item.variancePercent.toFixed(1)}%`}
+                        </td>
+                        <td className="py-3 px-4">
+                          <span
+                            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold ${
+                              displayStatus === "Warning"
+                                ? "bg-amber-50 text-amber-600"
+                                : displayStatus === "Exceeded"
+                                  ? "bg-rose-50 text-rose-600"
+                                  : "bg-emerald-50 text-emerald-600"
+                            }`}
+                          >
+                            {displayStatus === "Warning" ? (
+                              <AlertTriangle className="h-3 w-3" />
+                            ) : displayStatus === "Exceeded" ? (
+                              <X className="h-3 w-3" />
+                            ) : (
+                              <CheckCircle2 className="h-3 w-3" />
+                            )}
+                            {displayStatus}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })
                 )}
                 <tr className="border-t border-[#EEF1F6] bg-[#F8FAFF] font-semibold">
                   <td className="py-3 px-4 text-[#111827]">TOTALS</td>
@@ -312,8 +249,8 @@ export default function Page() {
           </div>
 
           <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-[#9CA3AF] text-center sm:text-left">
-            <div>Showing 3 Streams, 10 Budget Heads</div>
-            <div>Data updated: Oct 24, 2024 at 10:45 AM</div>
+            <div>Showing {lineItems.length} Line Items</div>
+            <div>Data updated: Just now</div>
           </div>
         </div>
       </div>

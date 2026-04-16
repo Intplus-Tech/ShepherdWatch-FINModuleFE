@@ -15,6 +15,11 @@ import {
 } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
 import BranchesDropdown from "@/components/navigation/BranchesDropdown"
+import { BudgetUpdateModal } from "@/components/budgets/BudgetUpdateModal"
+import { BudgetApprovalModal } from "@/components/budgets/BudgetApprovalModal"
+import { Edit3, ShieldCheck } from "lucide-react"
+import { BudgetUpdateModal } from "@/components/budgets/BudgetUpdateModal"
+import { Edit3 } from "lucide-react"
 
 export default function Page() {
   const { user } = useAuth()
@@ -23,6 +28,13 @@ export default function Page() {
   const [bvaError, setBvaError] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
+  
+  const [selectedBudget, setSelectedBudget] = useState<any>(null)
+  const [editModalOpen, setEditModalOpen] = useState(false)
+  const [approvalModalOpen, setApprovalModalOpen] = useState(false)
+  
+  const [editModalOpen, setEditModalOpen] = useState(false)
+  const [selectedBudget, setSelectedBudget] = useState<any>(null)
 
   const tenantId = useMemo(
     () => user?.tenantId ?? user?.tenant?.id ?? "",
@@ -358,13 +370,20 @@ export default function Page() {
                               {row.group ? <ChevronDown className="h-4 w-4 mr-2" strokeWidth={3} /> : null}
                               {row.name}
                             </td>
+                      ) : (
+                        rows.map((row, idx) => (
+                          <tr key={row.name + idx} className={`bg-white hover:bg-gray-50/50 transition-colors`}>
+                            <td className={`px-6 py-5 text-[12px] flex items-center ${row.group ? "font-bold text-[#111827]" : "font-semibold text-[#6B7280] ml-6"} uppercase tracking-wide`}>
+                              {row.group ? <ChevronDown className="h-4 w-4 mr-2" strokeWidth={3} /> : null}
+                              {row.name}
+                            </td>
                             <td className={`px-6 py-5 text-[13px] ${row.group ? "font-bold text-[#111827]" : "font-bold text-[#6B7280]"}`}>{row.budget}</td>
                             <td className="px-6 py-5 text-[13px] font-bold text-[#9CA3AF]">{row.target}</td>
                             <td className={`px-6 py-5 text-[13px] ${row.group ? "font-bold text-[#111827]" : "font-bold text-[#6B7280]"}`}>{row.spent}</td>
                             <td className={`px-6 py-5 text-[13px] font-bold ${row.variance.startsWith("-") ? "text-rose-500" : "text-emerald-500"}`}>
                               {row.variance}
                             </td>
-                            <td className="px-6 py-5">
+                            <td className="px-6 py-5 flex items-center justify-between">
                               <span
                                 className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold ${
                                   row.status == "On Track"
@@ -383,13 +402,42 @@ export default function Page() {
                                 )}
                                 {row.status}
                               </span>
+                              {!row.group && (
+                                <div className="flex items-center gap-1 ml-3">
+                                  <button
+                                    onClick={() => {
+                                      setSelectedBudget({
+                                        id: row.name.toLowerCase().replace(/ /g, '-'),
+                                        title: row.name,
+                                        amount: parseFloat(row.budget.replace(/[^0-9.]/g, '')),
+                                        category: "operational"
+                                      })
+                                      setEditModalOpen(true)
+                                    }}
+                                    className="p-1.5 text-[#9CA3AF] hover:text-[#3B5BDB] bg-white hover:bg-blue-50 border border-transparent hover:border-blue-100 rounded-md transition-colors"
+                                  >
+                                    <Edit3 className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setSelectedBudget({
+                                        id: row.name.toLowerCase().replace(/ /g, '-'),
+                                        title: row.name
+                                      })
+                                      setApprovalModalOpen(true)
+                                    }}
+                                    className="p-1.5 text-[#9CA3AF] hover:text-indigo-600 bg-white hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-md transition-colors"
+                                    title="Director Approval"
+                                  >
+                                    <ShieldCheck className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              )}
                             </td>
                           </tr>
                         ))
                       )}
                       {!bvaLoading && !bvaError && rows.length > 0 && (
-                        <tr className="bg-[#FAFBFF] border-t-2 border-[#E5E7EB]">
-                          <td className="px-6 py-5 text-[12px] font-bold text-[#111827] uppercase tracking-wide">TOTALS</td>
                           <td className="px-6 py-5 text-[13px] font-bold text-[#111827]">{formatCurrency(totals.totalBudget)}</td>
                           <td className="px-6 py-5 text-[13px] font-bold text-[#111827]">{formatCurrency(totals.totalTarget)}</td>
                           <td className="px-6 py-5 text-[13px] font-bold text-[#111827]">{formatCurrency(totals.totalSpent)}</td>

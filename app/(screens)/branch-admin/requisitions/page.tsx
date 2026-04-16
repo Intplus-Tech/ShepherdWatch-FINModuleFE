@@ -68,8 +68,8 @@ export default function RequisitionsHub() {
       setAuditError(null)
 
       try {
-        const params = new URLSearchParams({ page: "1", size: "20", entity: "Requisition" })
-        const response = await fetch(`/api/core/financial/audit-logs?${params.toString()}`, {
+        const params = new URLSearchParams({ page: "1", limit: "20", search: "Requisition" })
+        const response = await fetch(`/api/audit-logs?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         })

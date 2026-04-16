@@ -84,9 +84,7 @@ export default function Page() {
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
-  const [lastProposalId, setLastProposalId] = useState<string | null>(null)
-  const [deletingProposal, setDeletingProposal] = useState(false)
-  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [lastBudgetId, setLastBudgetId] = useState<string | null>(null)
 
   const tenantId = useMemo(
     () => user?.tenantId ?? user?.tenant?.id ?? "",
@@ -103,20 +101,13 @@ export default function Page() {
 
   const handleSubmitProposal = async () => {
     if (!tenantId) {
-      setSubmitError("Tenant is required to submit a budget proposal.")
+      setSubmitError("Branch is required to submit a budget.")
       return
     }
 
-    const lines = entries
-      .filter((entry) => entry.coaId)
-      .map((entry) => ({
-        coaId: entry.coaId,
-        proposedAmount: Number(entry.amount ?? 0),
-        justification: entry.name ?? entry.coaName ?? "Budget proposal line",
-      }))
-
-    if (lines.length === 0) {
-      setSubmitError("No budget lines available to submit.")
+    const totalAmount = entries.reduce((sum, entry) => sum + Number(entry.amount ?? 0), 0)
+    if (totalAmount <= 0) {
+      setSubmitError("No budget amount available to submit.")
       return
     }
 
@@ -127,7 +118,7 @@ export default function Page() {
     try {
       const year = new Date().getFullYear() + 1
       const csrfToken = getCsrfToken()
-      const response = await fetch("/api/core/financial/budget-proposals", {
+      const response = await fetch("/api/core/financial/budgets", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -135,25 +126,146 @@ export default function Page() {
         },
         credentials: "include",
         body: JSON.stringify({
-          title: `${year} Annual Budget Proposal`,
-          year,
-          tenantId,
-          lines,
+          title: `${year} Annual Budget`,
+          branchId: tenantId,
+          fiscalYear: year,
+          totalAmount,
+          category: "operational",
+          notes: `Prepared from ${entries.length} line items.`,
         }),
       })
       const payload = await response.json().catch(() => null)
       if (!response.ok) {
-        throw new Error(payload?.message ?? "Unable to submit budget proposal.")
+        throw new Error(payload?.message ?? "Unable to create budget.")
       }
 
-      const proposalId = payload?.data?.id ?? payload?.id
-      if (!proposalId) {
-        throw new Error("Budget proposal created but no ID returned.")
+      const budgetId = payload?.data?._id ?? payload?.data?.id ?? payload?._id ?? payload?.id
+      if (!budgetId) {
+        throw new Error("Budget created but no ID returned.")
       }
-      setLastProposalId(String(proposalId))
+      setLastBudgetId(String(budgetId))
 
-      const submitResponse = await fetch(`/api/core/financial/budget-proposals/${proposalId}/submit`, {
-        method: "POST",
+      const allocationRows = entries
+        .map((entry) => ({
+          chartOfAccountId: String(entry.coaId ?? "").trim(),
+          amount: Number(entry.amount ?? 0),
+          notes: String(entry.name ?? entry.coaName ?? "").trim(),
+        }))
+        .filter((entry) => entry.chartOfAccountId && Number.isFinite(entry.amount) && entry.amount > 0)
+
+      if (allocationRows.length === 0) {
+        throw new Error("No valid budget allocations found. Add line items with account mappings before submitting.")
+      }
+
+      const existingAllocationsResponse = await fetch(
+        `/api/core/financial/budget-allocations?budgetId=${encodeURIComponent(String(budgetId))}&page=1&limit=200`,
+        {
+          method: "GET",
+          credentials: "include",
+        }
+      )
+      const existingAllocationsPayload = await existingAllocationsResponse.json().catch(() => null)
+      if (!existingAllocationsResponse.ok) {
+        throw new Error(existingAllocationsPayload?.message ?? "Unable to load existing budget allocations.")
+      }
+
+      const existingAllocations = Array.isArray(existingAllocationsPayload?.data)
+        ? existingAllocationsPayload.data
+        : Array.isArray(existingAllocationsPayload?.data?.data)
+          ? existingAllocationsPayload.data.data
+          : []
+
+      const existingByCoa = new Map<string, string>()
+      for (const item of existingAllocations) {
+        const rawCoa = item?.chartOfAccountId
+        const coaId =
+          typeof rawCoa === "string"
+            ? rawCoa
+            : rawCoa && typeof rawCoa === "object"
+              ? String(rawCoa._id ?? rawCoa.id ?? "")
+              : ""
+        const allocationId = String(item?._id ?? item?.id ?? "")
+        if (coaId && allocationId) {
+          existingByCoa.set(coaId, allocationId)
+        }
+      }
+
+      for (const row of allocationRows) {
+        const existingAllocationId = existingByCoa.get(row.chartOfAccountId)
+        const allocationResponse = await fetch(
+          existingAllocationId
+            ? `/api/core/financial/budget-allocations/${encodeURIComponent(existingAllocationId)}`
+            : "/api/core/financial/budget-allocations",
+          {
+            method: existingAllocationId ? "PATCH" : "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-csrf-token": csrfToken,
+            },
+            credentials: "include",
+            body: JSON.stringify(
+              existingAllocationId
+                ? {
+                    amount: row.amount,
+                    allocationType: "fixed_amount",
+                    notes: row.notes,
+                  }
+                : {
+                    budgetId: String(budgetId),
+                    chartOfAccountId: row.chartOfAccountId,
+                    amount: row.amount,
+                    allocationType: "fixed_amount",
+                    notes: row.notes,
+                  }
+            ),
+          }
+        )
+        const allocationPayload = await allocationResponse.json().catch(() => null)
+        if (!allocationResponse.ok) {
+          throw new Error(allocationPayload?.message ?? "Unable to save one or more budget allocations.")
+        }
+      }
+
+      const allocationListResponse = await fetch(
+        `/api/core/financial/budget-allocations?budgetId=${encodeURIComponent(String(budgetId))}&page=1&limit=200`,
+        {
+          method: "GET",
+          credentials: "include",
+        }
+      )
+      const allocationListPayload = await allocationListResponse.json().catch(() => null)
+      if (!allocationListResponse.ok) {
+        throw new Error(allocationListPayload?.message ?? "Unable to confirm budget allocations.")
+      }
+
+      const createdAllocations = Array.isArray(allocationListPayload?.data)
+        ? allocationListPayload.data
+        : Array.isArray(allocationListPayload?.data?.data)
+          ? allocationListPayload.data.data
+          : []
+      if (createdAllocations.length === 0) {
+        throw new Error("Budget allocations were not found after creation.")
+      }
+
+      const firstAllocationId = String(
+        createdAllocations[0]?._id ?? createdAllocations[0]?.id ?? ""
+      ).trim()
+      if (firstAllocationId) {
+        const allocationDetailResponse = await fetch(
+          `/api/core/financial/budget-allocations/${encodeURIComponent(firstAllocationId)}`,
+          {
+            method: "GET",
+            credentials: "include",
+          }
+        )
+        const allocationDetailPayload = await allocationDetailResponse.json().catch(() => null)
+        if (!allocationDetailResponse.ok) {
+          throw new Error(allocationDetailPayload?.message ?? "Unable to validate budget allocation details.")
+        }
+      }
+
+      const submitResponse = await fetch(`/api/core/financial/budgets/${budgetId}/submit`, {
+        method: "PATCH",
         headers: {
           "x-csrf-token": csrfToken,
         },
@@ -161,12 +273,12 @@ export default function Page() {
       })
       const submitPayload = await submitResponse.json().catch(() => null)
       if (!submitResponse.ok) {
-        throw new Error(submitPayload?.message ?? "Unable to submit budget proposal.")
+        throw new Error(submitPayload?.message ?? "Unable to submit budget.")
       }
 
-      setSubmitSuccess("Budget proposal submitted successfully.")
+      setSubmitSuccess("Budget submitted successfully.")
     } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : "Unable to submit budget proposal.")
+      setSubmitError(error instanceof Error ? error.message : "Unable to submit budget.")
     } finally {
       setSubmittingProposal(false)
     }
@@ -216,39 +328,9 @@ export default function Page() {
     }
   }
 
-  const handleDeleteProposal = async () => {
-    if (!lastProposalId) {
-      setDeleteError("No budget proposal available to delete.")
-      return
-    }
-    setDeletingProposal(true)
-    setDeleteError(null)
-
-    try {
-      const csrfToken = getCsrfToken()
-      const response = await fetch(`/api/core/financial/budget-proposals/${lastProposalId}`, {
-        method: "DELETE",
-        headers: { "x-csrf-token": csrfToken },
-        credentials: "include",
-      })
-      const payload = await response.json().catch(() => null)
-      if (!response.ok) {
-        throw new Error(payload?.message ?? "Unable to delete budget proposal.")
-      }
-      setLastProposalId(null)
-      setSubmitSuccess("Budget proposal deleted successfully.")
-    } catch (error) {
-      setDeleteError(error instanceof Error ? error.message : "Unable to delete budget proposal.")
-    } finally {
-      setDeletingProposal(false)
-    }
-  }
-
-
-
   const budgetData = useMemo(() => {
 
-    const grouped = new Map<string, any[]>()
+    const grouped = new Map<string, typeof entries>()
 
     entries.forEach((entry) => {
 
@@ -591,18 +673,17 @@ export default function Page() {
 
                   </button>
                   <button
-                    onClick={handleDeleteProposal}
-                    disabled={deletingProposal || !lastProposalId}
-                    className="flex flex-1 justify-center md:flex-none whitespace-nowrap items-center h-[38px] md:h-[34px] px-3 sm:px-4 rounded-[6px] border border-rose-200 bg-rose-50 text-[12px] text-rose-600 font-bold shadow-sm hover:bg-rose-100 transition-all tracking-wide disabled:opacity-60 disabled:cursor-not-allowed"
+                    disabled={!lastBudgetId}
+                    className="flex flex-1 justify-center md:flex-none whitespace-nowrap items-center h-[38px] md:h-[34px] px-3 sm:px-4 rounded-[6px] border border-emerald-200 bg-emerald-50 text-[12px] text-emerald-700 font-bold shadow-sm transition-all tracking-wide disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    {deletingProposal ? "Deleting..." : "Delete Proposal"}
+                    {lastBudgetId ? "Submitted" : "Awaiting Submit"}
                   </button>
 
                   <button onClick={handleSubmitProposal} disabled={submittingProposal} className="flex flex-2 justify-center md:flex-none whitespace-nowrap items-center h-[38px] md:h-[34px] px-3 sm:px-4 rounded-[6px] bg-[#3B5BDB] text-[12px] text-white font-bold shadow-[0_4px_14px_rgba(59,91,219,0.25)] hover:bg-[#3451b2] transition-all tracking-wide disabled:opacity-60 disabled:cursor-not-allowed">
 
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" className="mr-2 outline-none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" /></svg>
 
-                    {submittingProposal ? "Submitting..." : "Submit Proposal"}
+                    {submittingProposal ? "Submitting..." : "Submit Budget"}
 
                   </button>
 
@@ -920,11 +1001,10 @@ export default function Page() {
                 {/* Footer Save & Submit Area */}
 
                 <div className="absolute bottom-0 left-0 right-0 py-3 sm:py-4 px-4 sm:px-6 bg-[#F8FAFC] sm:bg-white border-t border-[#EEF1F6] flex flex-row items-center justify-between sm:justify-end gap-3 sm:gap-4 rounded-b-[16px]">
-                  {(submitError || submitSuccess || deleteError) && (
+                  {(submitError || submitSuccess) && (
                     <div className="text-[11px] font-semibold mr-auto">
                       {submitSuccess && <span className="text-emerald-600">{submitSuccess}</span>}
                       {submitError && <span className="text-rose-500">{submitError}</span>}
-                      {deleteError && <span className="text-rose-500">{deleteError}</span>}
                     </div>
                   )}
 
