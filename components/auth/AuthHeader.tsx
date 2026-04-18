@@ -10,6 +10,7 @@ export default function AuthHeader() {
         height={60}
         priority
         className="object-contain"
+        style={{ width: "auto", height: "auto" }}
       />
     </div>
   )

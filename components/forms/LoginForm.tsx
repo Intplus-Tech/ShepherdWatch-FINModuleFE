@@ -7,6 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import AuthHeader from "../auth/AuthHeader"
 import { Input } from "@/components/ui/input"
+import { PasswordInput } from "@/components/ui/password-input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import Image from "next/image"
@@ -18,6 +19,28 @@ const loginSchema = z.object({
 })
 
 type LoginValues = z.infer<typeof loginSchema>
+
+function getDashboardByRole(role?: string): string {
+  const normalized = String(role ?? "").trim().toLowerCase()
+  
+  if (normalized === "super_admin" || normalized === "director") {
+    return "/director-screen/dashboard"
+  }
+  
+  if (normalized === "pastor" || normalized === "regional_pastor" || normalized === "branch_pastor") {
+    return "/branchlead-pastor/dashboard"
+  }
+  
+  if (normalized === "accountant") {
+    return "/branchaccount-pastor/dashboard"
+  }
+  
+  if (normalized === "branch_admin" || normalized === "admin" || normalized === "hr" || normalized === "employee") {
+    return "/branch-admin/dashboard"
+  }
+  
+  return "/director-screen/dashboard"
+}
 
 export default function LoginForm() {
   const router = useRouter()
@@ -36,11 +59,11 @@ export default function LoginForm() {
   const onSubmit = async (values: LoginValues) => {
     setError(null)
     try {
-      await login({
+      const authUser = await login({
         email: values.email,
         password: values.password,
       })
-      router.push("/director-screen/dashboard")
+      router.push(getDashboardByRole(authUser?.role))
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed")
     }
@@ -56,6 +79,7 @@ export default function LoginForm() {
             src="/images/icon-shepherdwatch.svg"
             alt="Background decoration"
             fill
+            sizes="(max-width: 768px) 100vw, 50vw"
             className="object-contain object-top -translate-x-10 -translate-y-10 md:-translate-x-20 md:-translate-y-20 scale-[1.35] rotate-[-15deg]"
           />
         </div>
@@ -101,9 +125,8 @@ export default function LoginForm() {
 
               <div className="space-y-2">
                 <Label htmlFor="password" className="text-[13px] text-[#98A2B3] font-medium">Password</Label>
-                <Input
+                <PasswordInput
                   id="password"
-                  type="password"
                   className="h-11 rounded-[6px] border-[#4F63FF] focus-visible:ring-[#5871F5] px-3 w-full"
                   {...register("password")}
                 />
@@ -140,6 +163,7 @@ export default function LoginForm() {
               src="/images/login%20page%20picture.jpg"
               alt="Login abstract background"
               fill
+              sizes="(max-width: 768px) 100vw, 50vw"
               className="object-cover"
               priority
             />

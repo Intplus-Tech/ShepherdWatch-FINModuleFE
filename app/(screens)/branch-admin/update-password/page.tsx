@@ -6,6 +6,7 @@ import { X } from "lucide-react";
 import UserSettingsPage from "../user-settings/page";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth/AuthProvider";
+import { PasswordInput } from "@/components/ui/password-input";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -89,8 +90,7 @@ export default function UpdatePasswordModalPage() {
             {/* Old Password Input */}
             <div className="flex flex-col gap-2">
               <label className="text-[#111827] text-[12px] font-[800]">Current Password</label>
-              <input 
-                type="password" 
+              <PasswordInput
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
                 className="h-[48px] w-full px-4 rounded-[8px] border border-[#E2E8F0] bg-[#F8FAFC] text-[#111827] text-[14px] font-[500] outline-none focus:border-[#2563EB] focus:bg-white focus:ring-2 focus:ring-[#2563EB]/20 transition-all" 
@@ -100,8 +100,7 @@ export default function UpdatePasswordModalPage() {
             {/* New Password Input */}
             <div className="flex flex-col gap-2">
               <label className="text-[#111827] text-[12px] font-[800]">New Password</label>
-              <input 
-                type="password" 
+              <PasswordInput
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 className="h-[48px] w-full px-4 rounded-[8px] border border-[#E2E8F0] bg-[#F8FAFC] text-[#111827] text-[14px] font-[500] outline-none focus:border-[#2563EB] focus:bg-white focus:ring-2 focus:ring-[#2563EB]/20 transition-all" 
@@ -114,8 +113,7 @@ export default function UpdatePasswordModalPage() {
             {/* Confirm New Password Input */}
             <div className="flex flex-col gap-2">
               <label className="text-[#111827] text-[12px] font-[800]">Re-Enter New Password</label>
-              <input 
-                type="password" 
+              <PasswordInput
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 className="h-[48px] w-full px-4 rounded-[8px] border border-[#E2E8F0] bg-[#F8FAFC] text-[#111827] text-[14px] font-[500] outline-none focus:border-[#2563EB] focus:bg-white focus:ring-2 focus:ring-[#2563EB]/20 transition-all" 

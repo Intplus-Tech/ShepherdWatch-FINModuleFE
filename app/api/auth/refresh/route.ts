@@ -1,29 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  ACCESS_TOKEN_MAX_AGE_SECONDS,
   BACKEND_REFRESH_TOKEN_COOKIE,
   BACKEND_TOKEN_COOKIE,
   REFRESH_TOKEN_MAX_AGE_SECONDS,
 } from "@/lib/auth-config";
+import { getAuthEndpoint } from "@/lib/backend-auth-url";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 
 function getBackendRefreshUrl(): string | null {
-  const baseUrl = process.env.BACKEND_API_URL?.replace(/\/+$/, "");
-  if (baseUrl) {
-    return `${baseUrl}/api/v1/auth/refresh-token`;
-  }
-
-  const loginUrl = process.env.BACKEND_LOGIN_URL;
-  if (!loginUrl) return null;
-
-  if (loginUrl.includes("/auth/login")) {
-    return loginUrl.replace("/auth/login", "/auth/refresh-token");
-  }
-
-  if (loginUrl.endsWith("/login")) {
-    return loginUrl.replace(/\/login$/, "/refresh-token");
-  }
-
-  return null;
+  return getAuthEndpoint("refresh-token");
 }
 
 function parseRefreshTokenBody(body: unknown): string | null {
@@ -31,6 +17,18 @@ function parseRefreshTokenBody(body: unknown): string | null {
   const source = body as Record<string, unknown>;
   const refreshToken = String(source.refreshToken ?? "").trim();
   return refreshToken.length > 0 ? refreshToken : null;
+}
+
+function pickToken(source: unknown, keys: string[]): string {
+  if (!source || typeof source !== "object") return "";
+  const sourceRecord = source as Record<string, unknown>;
+  for (const key of keys) {
+    const value = sourceRecord[key];
+    if (typeof value === "string" && value.trim()) {
+      return value;
+    }
+  }
+  return "";
 }
 
 export async function POST(req: NextRequest) {
@@ -112,8 +110,17 @@ export async function POST(req: NextRequest) {
         responseData && typeof responseData.data === "object" && responseData.data !== null
           ? (responseData.data as Record<string, unknown>)
           : null;
-      const accessToken = typeof data?.accessToken === "string" ? data.accessToken : "";
-      const newRefreshToken = typeof data?.refreshToken === "string" ? data.refreshToken : "";
+      const tokens = data && typeof data.tokens === "object" && data.tokens !== null
+        ? (data.tokens as Record<string, unknown>)
+        : null;
+      const accessToken =
+        pickToken(tokens, ["accessToken", "access_token", "token"]) ||
+        pickToken(data, ["accessToken", "access_token", "token"]) ||
+        pickToken(responseData, ["accessToken", "access_token", "token"]);
+      const newRefreshToken =
+        pickToken(tokens, ["refreshToken", "refresh_token"]) ||
+        pickToken(data, ["refreshToken", "refresh_token"]) ||
+        pickToken(responseData, ["refreshToken", "refresh_token"]);
 
       if (accessToken) {
         response.cookies.set({
@@ -123,7 +130,7 @@ export async function POST(req: NextRequest) {
           secure: process.env.NODE_ENV === "production",
           sameSite: "lax",
           path: "/",
-          maxAge: REFRESH_TOKEN_MAX_AGE_SECONDS,
+          maxAge: ACCESS_TOKEN_MAX_AGE_SECONDS,
         });
       }
 

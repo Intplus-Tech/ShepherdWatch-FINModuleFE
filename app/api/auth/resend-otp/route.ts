@@ -1,24 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAuthEndpoint } from "@/lib/backend-auth-url";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 
-function getBackendResendOtpUrl(): string | null {
-  const baseUrl = process.env.BACKEND_API_URL?.replace(/\/+$/, "");
-  if (baseUrl) {
-    return `${baseUrl}/api/v1/auth/resend-otp`;
+function getBackendResendOtpUrls(): string[] {
+  const urls: string[] = [];
+  const primary = getAuthEndpoint("resend-otp");
+  if (primary) {
+    urls.push(primary);
   }
 
-  const loginUrl = process.env.BACKEND_LOGIN_URL;
-  if (!loginUrl) return null;
-
-  if (loginUrl.includes("/auth/login")) {
-    return loginUrl.replace("/auth/login", "/auth/resend-otp");
+  const fallbackBase = process.env.BACKEND_API_URL?.trim();
+  if (fallbackBase) {
+    const normalized = fallbackBase.replace(/\/+$/, "").replace(/\/api-docs(?:\/.*)?$/i, "");
+    if (normalized) {
+      urls.push(normalized.endsWith("/api/v1") ? `${normalized}/auth/resend-otp` : `${normalized}/api/v1/auth/resend-otp`);
+      urls.push(`${normalized}/auth/resend-otp`);
+    }
   }
 
-  if (loginUrl.endsWith("/login")) {
-    return loginUrl.replace(/\/login$/, "/resend-otp");
-  }
-
-  return null;
+  return Array.from(new Set(urls));
 }
 
 type ResendOtpPayload = {
@@ -66,23 +66,49 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const backendUrl = getBackendResendOtpUrl();
-    if (!backendUrl) {
+    const backendUrls = getBackendResendOtpUrls();
+    if (backendUrls.length === 0) {
       return applyCors(
         NextResponse.json({ success: false, message: "Backend URL not configured" }, { status: 500 }),
         req
       );
     }
 
-    const backendRes = await fetch(backendUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify(payloadToSend),
-      cache: "no-store",
-    });
+    let backendRes: Response | null = null;
+    let lastNetworkError: unknown = null;
+    for (const backendUrl of backendUrls) {
+      try {
+        const candidate = await fetch(backendUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify(payloadToSend),
+          cache: "no-store",
+        });
+        backendRes = candidate;
+      } catch (err) {
+        lastNetworkError = err;
+        continue;
+      }
+
+      if (backendRes && ![404, 405, 502, 503, 504].includes(backendRes.status)) break;
+    }
+
+    if (!backendRes) {
+      const message =
+        lastNetworkError instanceof Error
+          ? lastNetworkError.message
+          : "OTP service is currently unavailable";
+      return applyCors(
+        NextResponse.json(
+          { success: false, message: `Unable to resend OTP: ${message}` },
+          { status: 502 }
+        ),
+        req
+      );
+    }
 
     const responseText = await backendRes.text();
     const contentType = backendRes.headers.get("content-type") ?? "";

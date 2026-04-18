@@ -1,6 +1,7 @@
 "use client"
 
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react"
+import { usePathname } from "next/navigation"
 
 export type AuthUser = {
   id: string
@@ -18,7 +19,7 @@ type AuthContextValue = {
   user: AuthUser | null
   loading: boolean
   refreshUser: () => Promise<void>
-  login: (payload: { email: string; password: string; rememberMe?: boolean }) => Promise<void>
+  login: (payload: { email: string; password: string; rememberMe?: boolean }) => Promise<AuthUser | null>
   logout: () => Promise<void>
   changePassword: (payload: { currentPassword: string; newPassword: string }) => Promise<void>
   forgotPassword: (email: string) => Promise<void>
@@ -34,8 +35,18 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname()
   const [user, setUser] = useState<AuthUser | null>(null)
   const [loading, setLoading] = useState(true)
+  const isPublicAuthRoute =
+    pathname === "/login" ||
+    pathname === "/signin" ||
+    pathname === "/sign-up" ||
+    pathname === "/signup" ||
+    pathname === "/forgot-password" ||
+    pathname === "/verify-email" ||
+    pathname === "/reset-password" ||
+    pathname === "/reset-success"
 
   const normalizeAuthUser = (payload: unknown): AuthUser | null => {
     const payloadRecord = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : null
@@ -70,6 +81,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let active = true
 
     async function loadSession() {
+      if (isPublicAuthRoute) {
+        if (active) {
+          setUser(null)
+          setLoading(false)
+        }
+        return
+      }
+
       try {
         let res = await fetch("/api/auth/session", { credentials: "include" })
         if (!res.ok) {
@@ -133,31 +152,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       active = false
     }
-  }, [])
+  }, [isPublicAuthRoute])
 
   const login = async (payload: { email: string; password: string; rememberMe?: boolean }) => {
+    const normalizedPayload = {
+      ...payload,
+      email: payload.email.trim().toLowerCase(),
+      password: String(payload.password),
+    }
+
     const res = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify(payload),
+      body: JSON.stringify(normalizedPayload),
     })
 
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
-      throw new Error(data.message || "Unable to login")
+      const errMsg = data.message || data.error || data.detail || (typeof data === 'string' ? data : "Unable to login")
+      throw new Error(errMsg)
     }
 
     const data = await res.json()
     const sessionUser = data?.data?.user ?? null
-    setUser(normalizeAuthUser(sessionUser))
+    const normalizedSessionUser = normalizeAuthUser(sessionUser)
+    setUser(normalizedSessionUser)
+    let resolvedUser = normalizedSessionUser
 
     // Always refresh profile after login so user data stays current.
     const meRes = await fetch("/api/auth/me", { credentials: "include" })
     if (meRes.ok) {
       const meData = await meRes.json().catch(() => null)
       const meUser = meData?.data ?? meData?.data?.user ?? meData?.user ?? meData
-      setUser(normalizeAuthUser(meUser))
+      const normalizedMeUser = normalizeAuthUser(meUser)
+      setUser(normalizedMeUser)
+      resolvedUser = normalizedMeUser ?? resolvedUser
     }
 
     const rememberRes = await fetch("/api/auth/remember-me", { credentials: "include" })
@@ -168,7 +198,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (meRes.ok) {
           const meData = await meRes.json().catch(() => null)
           const meUser = meData?.data ?? meData?.data?.user ?? meData?.user ?? meData
-          setUser(normalizeAuthUser(meUser))
+          const normalizedMeUser = normalizeAuthUser(meUser)
+          setUser(normalizedMeUser)
+          resolvedUser = normalizedMeUser ?? resolvedUser
         }
       }
     }
@@ -194,6 +226,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     })()
 
+    return resolvedUser
   }
 
   const logout = async () => {

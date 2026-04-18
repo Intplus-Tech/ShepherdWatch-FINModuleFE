@@ -18,6 +18,7 @@ export default function ResetSuccess() {
             src="/images/icon-shepherdwatch.svg"
             alt="Background decoration"
             fill
+            sizes="(max-width: 768px) 100vw, 50vw"
             className="object-contain object-top -translate-x-10 -translate-y-10 md:-translate-x-20 md:-translate-y-20 scale-[1.35] rotate-[-15deg]"
           />
         </div>
@@ -66,6 +67,7 @@ export default function ResetSuccess() {
               src="/images/login%20page%20picture.jpg"
               alt="Reset success background"
               fill
+              sizes="(max-width: 768px) 100vw, 50vw"
               className="object-cover"
               priority
             />

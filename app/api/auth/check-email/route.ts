@@ -1,24 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 
-function getBackendCheckEmailUrl(): string | null {
-  const baseUrl = process.env.BACKEND_API_URL?.replace(/\/+$/, "");
-  if (baseUrl) {
-    return `${baseUrl}/api/v1/auth/check-email`;
+function getBackendCheckEmailUrls(): string[] {
+  const urls: string[] = [];
+  const baseRaw = process.env.BACKEND_API_URL?.trim();
+  if (baseRaw) {
+    const base = baseRaw.replace(/\/+$/, "");
+    if (base.endsWith("/api/v1")) {
+      urls.push(`${base}/auth/check-email`);
+    } else {
+      urls.push(`${base}/api/v1/auth/check-email`);
+      urls.push(`${base}/auth/check-email`);
+    }
   }
 
-  const loginUrl = process.env.BACKEND_LOGIN_URL;
-  if (!loginUrl) return null;
-
-  if (loginUrl.includes("/auth/login")) {
-    return loginUrl.replace("/auth/login", "/auth/check-email");
+  const loginUrl = process.env.BACKEND_LOGIN_URL?.trim();
+  if (loginUrl) {
+    if (loginUrl.includes("/auth/login")) {
+      urls.push(loginUrl.replace("/auth/login", "/auth/check-email"));
+    }
+    if (loginUrl.endsWith("/login")) {
+      urls.push(loginUrl.replace(/\/login$/, "/check-email"));
+    }
   }
 
-  if (loginUrl.endsWith("/login")) {
-    return loginUrl.replace(/\/login$/, "/check-email");
-  }
-
-  return null;
+  return Array.from(new Set(urls));
 }
 
 function normalizeEmail(value: string | null): string {
@@ -46,21 +52,67 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const backendUrl = getBackendCheckEmailUrl();
-    if (!backendUrl) {
+    const backendUrls = getBackendCheckEmailUrls();
+    if (backendUrls.length === 0) {
       return applyCors(
         NextResponse.json({ success: false, message: "Backend URL not configured" }, { status: 500 }),
         req
       );
     }
 
-    const response = await fetch(`${backendUrl}?email=${encodeURIComponent(email)}`, {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-      },
-      cache: "no-store",
-    });
+    let response: Response | null = null;
+    try {
+      for (const backendUrl of backendUrls) {
+        const candidate = await fetch(`${backendUrl}?email=${encodeURIComponent(email)}`, {
+          method: "GET",
+          headers: {
+            Accept: "application/json",
+          },
+          cache: "no-store",
+        });
+        response = candidate;
+        if (candidate.status !== 404) break;
+      }
+    } catch {
+      return applyCors(
+        NextResponse.json(
+          {
+            success: true,
+            message: "Email validation is temporarily unavailable.",
+            data: { exists: false, validationSkipped: true },
+          },
+          { status: 200 }
+        ),
+        req
+      );
+    }
+    if (!response) {
+      return applyCors(
+        NextResponse.json(
+          {
+            success: true,
+            message: "Email validation is temporarily unavailable.",
+            data: { exists: false, validationSkipped: true },
+          },
+          { status: 200 }
+        ),
+        req
+      );
+    }
+
+    if (response.status === 404) {
+      return applyCors(
+        NextResponse.json(
+          {
+            success: true,
+            message: "Email validation is temporarily unavailable.",
+            data: { exists: false, validationSkipped: true },
+          },
+          { status: 200 }
+        ),
+        req
+      );
+    }
 
     const responseText = await response.text();
     const contentType = response.headers.get("content-type") ?? "";
@@ -90,10 +142,11 @@ export async function GET(req: NextRequest) {
     );
   } catch {
     return applyCors(
-      NextResponse.json(
-        { success: false, message: "Server error occurred while checking email." },
-        { status: 502 }
-      ),
+      NextResponse.json({
+        success: true,
+        message: "Email validation is temporarily unavailable.",
+        data: { exists: false, validationSkipped: true },
+      }),
       req
     );
   }

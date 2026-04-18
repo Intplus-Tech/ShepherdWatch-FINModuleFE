@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
@@ -21,6 +21,8 @@ type VerifyValues = z.infer<typeof verifySchema>
 
 export default function VerifyEmailForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const emailFromQuery = searchParams.get("email")?.trim().toLowerCase() ?? ""
   const { resendOtp } = useAuth()
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
@@ -34,7 +36,7 @@ export default function VerifyEmailForm() {
   } = useForm<VerifyValues>({
     resolver: zodResolver(verifySchema),
     defaultValues: {
-      email: "",
+      email: emailFromQuery,
       code: "",
     },
   })
@@ -86,6 +88,7 @@ export default function VerifyEmailForm() {
             src="/images/icon-shepherdwatch.svg"
             alt="Background decoration"
             fill
+            sizes="(max-width: 768px) 100vw, 50vw"
             className="object-contain object-top -translate-x-10 -translate-y-10 md:-translate-x-20 md:-translate-y-20 scale-[1.35] rotate-[-15deg]"
           />
         </div>
@@ -169,6 +172,7 @@ export default function VerifyEmailForm() {
               src="/images/login%20page%20picture.jpg"
               alt="Verification background"
               fill
+              sizes="(max-width: 768px) 100vw, 50vw"
               className="object-cover"
               priority
             />

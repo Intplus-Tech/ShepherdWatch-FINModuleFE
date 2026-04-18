@@ -1,10 +1,10 @@
 import React from "react"
-import LoginForm from "@/components/forms/LoginForm"
+import SignInForm from "@/components/forms/SignInForm"
 
 function page() {
   return (
     <div className="min-h-screen w-full bg-white flex items-center justify-center p-0">
-      <LoginForm />
+      <SignInForm />
     </div>
   )
 }

@@ -18,8 +18,8 @@ import BranchesDropdown from "@/components/navigation/BranchesDropdown"
 import { BudgetUpdateModal } from "@/components/budgets/BudgetUpdateModal"
 import { BudgetApprovalModal } from "@/components/budgets/BudgetApprovalModal"
 import { Edit3, ShieldCheck } from "lucide-react"
-import { BudgetUpdateModal } from "@/components/budgets/BudgetUpdateModal"
-import { Edit3 } from "lucide-react"
+
+
 
 export default function Page() {
   const { user } = useAuth()
@@ -33,8 +33,8 @@ export default function Page() {
   const [editModalOpen, setEditModalOpen] = useState(false)
   const [approvalModalOpen, setApprovalModalOpen] = useState(false)
   
-  const [editModalOpen, setEditModalOpen] = useState(false)
-  const [selectedBudget, setSelectedBudget] = useState<any>(null)
+
+
 
   const tenantId = useMemo(
     () => user?.tenantId ?? user?.tenant?.id ?? "",
@@ -364,13 +364,9 @@ export default function Page() {
                           </td>
                         </tr>
                       ) : (
-                        rows.map((row, idx) => (
-                          <tr key={row.name + idx} className={`bg-white hover:bg-gray-50/50 transition-colors`}>
-                            <td className={`px-6 py-5 text-[12px] flex items-center ${row.group ? "font-bold text-[#111827]" : "font-semibold text-[#6B7280] ml-6"} uppercase tracking-wide`}>
-                              {row.group ? <ChevronDown className="h-4 w-4 mr-2" strokeWidth={3} /> : null}
-                              {row.name}
-                            </td>
-                      ) : (
+
+
+
                         rows.map((row, idx) => (
                           <tr key={row.name + idx} className={`bg-white hover:bg-gray-50/50 transition-colors`}>
                             <td className={`px-6 py-5 text-[12px] flex items-center ${row.group ? "font-bold text-[#111827]" : "font-semibold text-[#6B7280] ml-6"} uppercase tracking-wide`}>
@@ -438,6 +434,10 @@ export default function Page() {
                         ))
                       )}
                       {!bvaLoading && !bvaError && rows.length > 0 && (
+                        <tr className="bg-gray-50/50 border-t-2 border-[#111827]">
+                          <td className="px-6 py-5 text-[13px] font-bold text-[#111827] uppercase tracking-wide">
+                            Total
+                          </td>
                           <td className="px-6 py-5 text-[13px] font-bold text-[#111827]">{formatCurrency(totals.totalBudget)}</td>
                           <td className="px-6 py-5 text-[13px] font-bold text-[#111827]">{formatCurrency(totals.totalTarget)}</td>
                           <td className="px-6 py-5 text-[13px] font-bold text-[#111827]">{formatCurrency(totals.totalSpent)}</td>

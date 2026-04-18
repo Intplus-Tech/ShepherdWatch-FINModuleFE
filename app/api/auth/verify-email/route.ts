@@ -1,24 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAuthEndpoint } from "@/lib/backend-auth-url";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 
 function getBackendVerifyEmailUrl(): string | null {
-  const baseUrl = process.env.BACKEND_API_URL?.replace(/\/+$/, "");
-  if (baseUrl) {
-    return `${baseUrl}/api/v1/auth/verify-email`;
-  }
-
-  const loginUrl = process.env.BACKEND_LOGIN_URL;
-  if (!loginUrl) return null;
-
-  if (loginUrl.includes("/auth/login")) {
-    return loginUrl.replace("/auth/login", "/auth/verify-email");
-  }
-
-  if (loginUrl.endsWith("/login")) {
-    return loginUrl.replace(/\/login$/, "/verify-email");
-  }
-
-  return null;
+  return getAuthEndpoint("verify-email");
 }
 
 type VerifyEmailPayload = {

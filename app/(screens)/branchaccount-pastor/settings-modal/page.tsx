@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import SettingsPage from "../settings/page"
 import { X } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
+import { PasswordInput } from "@/components/ui/password-input"
 
 export default function Page() {
   const router = useRouter()
@@ -94,8 +95,7 @@ export default function Page() {
 
             <div className="flex flex-col gap-[4px] items-start w-full">
               <label className="text-[12px] font-[800] text-[#4B5563] px-0.5 w-full sm:w-[405.33px]">Old Password</label>
-              <input
-                type="password"
+              <PasswordInput
                 value={currentPassword}
                 onChange={(event) => setCurrentPassword(event.target.value)}
                 className="w-full sm:w-[405.33px] bg-white border-[#E5E7EB] px-3 text-[13px] text-[#111827] focus-visible:border-[#3B5BDB] focus-visible:ring-1 focus-visible:ring-[#3B5BDB]/20 outline-none transition-all shadow-[0_1px_2px_rgba(0,0,0,0.02)]"
@@ -110,8 +110,7 @@ export default function Page() {
 
             <div className="flex flex-col gap-[4px] items-start w-full">
               <label className="text-[12px] font-[800] text-[#4B5563] px-0.5 w-full sm:w-[405.33px]">New Password</label>
-              <input
-                type="password"
+              <PasswordInput
                 value={newPassword}
                 onChange={(event) => setNewPassword(event.target.value)}
                 className="w-full sm:w-[405.33px] bg-white border-[#E5E7EB] px-3 text-[13px] text-[#111827] focus-visible:border-[#3B5BDB] focus-visible:ring-1 focus-visible:ring-[#3B5BDB]/20 outline-none transition-all shadow-[0_1px_2px_rgba(0,0,0,0.02)]"
@@ -126,8 +125,7 @@ export default function Page() {
 
             <div className="flex flex-col gap-[4px] items-start w-full">
               <label className="text-[12px] font-[800] text-[#4B5563] px-0.5 w-full sm:w-[405.33px]">Re-Enter New Password</label>
-              <input
-                type="password"
+              <PasswordInput
                 value={confirmPassword}
                 onChange={(event) => setConfirmPassword(event.target.value)}
                 className="w-full sm:w-[405.33px] bg-white border-[#E5E7EB] px-3 text-[13px] text-[#111827] focus-visible:border-[#3B5BDB] focus-visible:ring-1 focus-visible:ring-[#3B5BDB]/20 outline-none transition-all shadow-[0_1px_2px_rgba(0,0,0,0.02)]"

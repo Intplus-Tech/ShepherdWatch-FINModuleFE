@@ -4,7 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import SettingsPage from "../settings/page"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { PasswordInput } from "@/components/ui/password-input"
 import { X } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
 
@@ -78,15 +78,15 @@ export default function Page() {
           <div className="space-y-5 px-4 sm:px-6 py-5 sm:py-6">
             <div className="space-y-2">
               <label className="text-[11.33px] font-semibold text-[#6B7280] leading-[15.33px]">Old Password</label>
-              <Input value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} type="password" className="h-[34px] w-full rounded-[8px] border border-[#E5E7EB] text-[12px]" />
+              <PasswordInput value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} className="h-[34px] w-full rounded-[8px] border border-[#E5E7EB] text-[12px]" />
             </div>
             <div className="space-y-2">
               <label className="text-[11.33px] font-semibold text-[#6B7280] leading-[15.33px]">New Password</label>
-              <Input value={newPassword} onChange={(event) => setNewPassword(event.target.value)} type="password" className="h-[34px] w-full rounded-[8px] border border-[#E5E7EB] text-[12px]" />
+              <PasswordInput value={newPassword} onChange={(event) => setNewPassword(event.target.value)} className="h-[34px] w-full rounded-[8px] border border-[#E5E7EB] text-[12px]" />
             </div>
             <div className="space-y-2">
               <label className="text-[11.33px] font-semibold text-[#6B7280] leading-[15.33px]">Re Enter New Password</label>
-              <Input value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} type="password" className="h-[34px] w-full rounded-[8px] border border-[#E5E7EB] text-[12px]" />
+              <PasswordInput value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} className="h-[34px] w-full rounded-[8px] border border-[#E5E7EB] text-[12px]" />
             </div>
             <p className="text-[10px] text-[#64748B]">Use at least 8 characters with uppercase, lowercase, and a number.</p>
             {error ? <p className="text-[11px] font-semibold text-rose-600">{error}</p> : null}

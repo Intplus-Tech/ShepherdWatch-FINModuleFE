@@ -1,30 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  ACCESS_TOKEN_MAX_AGE_SECONDS,
   BACKEND_TOKEN_COOKIE,
   BACKEND_REFRESH_TOKEN_COOKIE,
   REFRESH_TOKEN_MAX_AGE_SECONDS,
   REMEMBER_ME_COOKIE,
 } from "@/lib/auth-config";
+import { getAuthEndpoint } from "@/lib/backend-auth-url";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 
-function getBackendLoginUrl(): string | null {
-  const baseUrl = process.env.BACKEND_API_URL?.replace(/\/+$/, "");
-  if (baseUrl) {
-    return `${baseUrl}/api/v1/auth/login`;
+function getBackendLoginUrls(): string[] {
+  const urls: string[] = [];
+
+  const loginUrl = getAuthEndpoint("login");
+  if (loginUrl) {
+    urls.push(loginUrl);
   }
 
-  const loginUrl = process.env.BACKEND_LOGIN_URL;
-  if (!loginUrl) return null;
-
-  if (loginUrl.includes("/auth/login")) {
-    return loginUrl;
+  const fallbackBase = process.env.BACKEND_API_URL?.trim();
+  if (fallbackBase) {
+    const normalized = fallbackBase.replace(/\/+$/, "").replace(/\/api-docs(?:\/.*)?$/i, "");
+    if (normalized) {
+      urls.push(normalized.endsWith("/api/v1") ? `${normalized}/auth/login` : `${normalized}/api/v1/auth/login`);
+    }
   }
 
-  if (loginUrl.endsWith("/login")) {
-    return loginUrl.replace(/\/login$/, "/auth/login");
-  }
-
-  return null;
+  return Array.from(new Set(urls));
 }
 
 type LoginPayload = {
@@ -42,6 +43,18 @@ function normalizeLoginPayload(body: unknown): LoginPayload | null {
   return { email, password }
 }
 
+function pickToken(source: unknown, keys: string[]): string {
+  if (!source || typeof source !== "object") return "";
+  const sourceRecord = source as Record<string, unknown>;
+  for (const key of keys) {
+    const value = sourceRecord[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value;
+    }
+  }
+  return "";
+}
+
 export async function POST(req: NextRequest) {
   try {
     if (!isOriginAllowed(req)) {
@@ -51,8 +64,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const backendLoginUrl = getBackendLoginUrl();
-    if (!backendLoginUrl) {
+    const backendLoginUrls = getBackendLoginUrls();
+    if (backendLoginUrls.length === 0) {
       return applyCors(
         NextResponse.json({ success: false, message: "Backend URL not configured" }, { status: 500 }),
         req
@@ -85,21 +98,56 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const backendResponse = await fetch(backendLoginUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify(payloadToSend),
-      cache: "no-store",
-    });
+    let backendResponse: Response | null = null;
+    let lastNetworkError: unknown = null;
+    for (const backendLoginUrl of backendLoginUrls) {
+      try {
+        const candidate = await fetch(backendLoginUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify(payloadToSend),
+          cache: "no-store",
+        });
+        backendResponse = candidate;
+      } catch (err) {
+        lastNetworkError = err;
+        continue;
+      }
+
+      if (backendResponse && ![404, 405, 502, 503, 504].includes(backendResponse.status)) break;
+    }
+
+    if (!backendResponse) {
+      const message =
+        lastNetworkError instanceof Error
+          ? lastNetworkError.message
+          : "Authentication service is currently unavailable";
+      return applyCors(
+        NextResponse.json(
+          { success: false, message: `Unable to reach authentication service: ${message}` },
+          { status: 502 }
+        ),
+        req
+      );
+    }
 
     const responseText = await backendResponse.text();
     const contentType = backendResponse.headers.get("content-type") ?? "";
     const isJson = contentType.includes("application/json");
 
     if (!isJson) {
+      if (!backendResponse.ok) {
+        return applyCors(
+          NextResponse.json(
+            { success: false, message: `Authentication service error: ${backendResponse.status} ${backendResponse.statusText}` },
+            { status: backendResponse.status }
+          ),
+          req
+        );
+      }
       return applyCors(
         new NextResponse(responseText, {
           status: backendResponse.status,
@@ -127,8 +175,18 @@ export async function POST(req: NextRequest) {
     if (backendResponse.ok) {
       const data = (responseData?.data ?? {}) as Record<string, unknown>;
       const tokens = (data.tokens ?? {}) as Record<string, unknown>;
-      const accessToken = typeof tokens.accessToken === "string" ? tokens.accessToken : "";
-      const refreshToken = typeof tokens.refreshToken === "string" ? tokens.refreshToken : "";
+      const tokenShapeFromData = data.token;
+      const tokenShapeFromRoot = responseData?.token;
+      const accessToken =
+        pickToken(tokens, ["accessToken", "access_token", "token"]) ||
+        (typeof tokenShapeFromData === "string" ? tokenShapeFromData : "") ||
+        (typeof tokenShapeFromRoot === "string" ? tokenShapeFromRoot : "") ||
+        pickToken(data, ["accessToken", "access_token", "token"]) ||
+        pickToken(responseData, ["accessToken", "access_token", "token"]);
+      const refreshToken =
+        pickToken(tokens, ["refreshToken", "refresh_token"]) ||
+        pickToken(data, ["refreshToken", "refresh_token"]) ||
+        pickToken(responseData, ["refreshToken", "refresh_token"]);
 
       if (accessToken) {
         response.cookies.set({
@@ -138,7 +196,7 @@ export async function POST(req: NextRequest) {
           secure: process.env.NODE_ENV === "production",
           sameSite: "lax",
           path: "/",
-          maxAge: REFRESH_TOKEN_MAX_AGE_SECONDS,
+          maxAge: ACCESS_TOKEN_MAX_AGE_SECONDS,
         });
       }
 

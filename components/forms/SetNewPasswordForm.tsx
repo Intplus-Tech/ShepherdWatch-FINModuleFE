@@ -7,6 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import AuthHeader from "../auth/AuthHeader"
 import { Input } from "@/components/ui/input"
+import { PasswordInput } from "@/components/ui/password-input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import Image from "next/image"
@@ -116,6 +117,7 @@ export default function SetNewPasswordForm() {
             src="/images/icon-shepherdwatch.svg"
             alt="Background decoration"
             fill
+            sizes="(max-width: 1024px) 100vw, 520px"
             className="object-contain object-top -translate-x-24 -translate-y-24 scale-125 rotate-[-15deg]"
           />
         </div>
@@ -173,9 +175,8 @@ export default function SetNewPasswordForm() {
               <Label htmlFor="newPassword" className="text-[12px] text-[#98A2B3]">
                 New Password
               </Label>
-              <Input
+              <PasswordInput
                 id="newPassword"
-                type="password"
                 className="h-[38px] rounded-[4px] border-[#B8C6FF] focus-visible:ring-[#5871F5] px-3"
                 {...register("newPassword")}
               />
@@ -188,9 +189,8 @@ export default function SetNewPasswordForm() {
               <Label htmlFor="confirmPassword" className="text-[12px] text-[#98A2B3]">
                 Confirm Password
               </Label>
-              <Input
+              <PasswordInput
                 id="confirmPassword"
-                type="password"
                 className="h-[38px] rounded-[4px] border-[#B8C6FF] focus-visible:ring-[#5871F5] px-3"
                 {...register("confirmPassword")}
               />
@@ -219,6 +219,7 @@ export default function SetNewPasswordForm() {
             src="/images/login%20page%20picture.jpg"
             alt="Reset abstract background"
             fill
+            sizes="(max-width: 1024px) 100vw, 622px"
             className="object-cover"
             priority
           />
