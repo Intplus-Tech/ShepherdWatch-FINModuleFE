@@ -22,9 +22,12 @@ This app provides:
 8. [Role Routing](#role-routing)
 9. [Development Workflow](#development-workflow)
 10. [Build And Deployment](#build-and-deployment)
-11. [Troubleshooting](#troubleshooting)
-12. [Security Notes](#security-notes)
-13. [Known Gaps / Future Improvements](#known-gaps--future-improvements)
+11. [Auth API Examples](#auth-api-examples)
+12. [Screenshots And GIF Walkthrough](#screenshots-and-gif-walkthrough)
+13. [Contributor Guide And PR Checklist](#contributor-guide-and-pr-checklist)
+14. [Troubleshooting](#troubleshooting)
+15. [Security Notes](#security-notes)
+16. [Known Gaps / Future Improvements](#known-gaps--future-improvements)
 
 ---
 
@@ -354,6 +357,312 @@ docker run -p 3000:3000 --env-file .env shepherdwatch-finmodule-fe
 
 ---
 
+## Auth API Examples
+
+Examples below are against the frontend proxy routes (`/api/auth/*`), not direct backend endpoints.
+
+### Register
+
+Request:
+
+```http
+POST /api/auth/register
+Content-Type: application/json
+```
+
+```json
+{
+  "firstName": "John",
+  "lastName": "Doe",
+  "email": "john@example.com",
+  "password": "Password123!",
+  "rememberMe": true
+}
+```
+
+Success response (example):
+
+```json
+{
+  "success": true,
+  "message": "Registration successful. Please verify your email.",
+  "data": {
+    "email": "john@example.com",
+    "status": "pending"
+  }
+}
+```
+
+Error response (example):
+
+```json
+{
+  "success": false,
+  "message": "An account with this email already exists."
+}
+```
+
+### Verify Email
+
+Request:
+
+```http
+POST /api/auth/verify-email
+Content-Type: application/json
+```
+
+```json
+{
+  "email": "john@example.com",
+  "code": "123456"
+}
+```
+
+Success response (example):
+
+```json
+{
+  "success": true,
+  "message": "Email verified successfully."
+}
+```
+
+### Login
+
+Request:
+
+```http
+POST /api/auth/login
+Content-Type: application/json
+```
+
+```json
+{
+  "email": "john@example.com",
+  "password": "Password123!",
+  "rememberMe": true
+}
+```
+
+Success response (example):
+
+```json
+{
+  "success": true,
+  "data": {
+    "user": {
+      "id": "user-id",
+      "email": "john@example.com",
+      "role": "director"
+    },
+    "tokens": {
+      "accessToken": "....",
+      "refreshToken": "...."
+    }
+  }
+}
+```
+
+Also sets cookies:
+- `backend_token`
+- `backend_refresh_token`
+- optionally `remember_me`
+
+### Get Current User
+
+Request:
+
+```http
+GET /api/auth/me
+```
+
+Success response (example):
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "user-id",
+    "email": "john@example.com",
+    "role": "director",
+    "firstName": "John",
+    "lastName": "Doe"
+  }
+}
+```
+
+### Refresh Token
+
+Request:
+
+```http
+POST /api/auth/refresh-token
+Content-Type: application/json
+```
+
+```json
+{
+  "refreshToken": "optional-if-cookie-exists"
+}
+```
+
+Success response (example):
+
+```json
+{
+  "success": true,
+  "data": {
+    "accessToken": "....",
+    "refreshToken": "...."
+  }
+}
+```
+
+Also rotates cookie values for:
+- `backend_token`
+- `backend_refresh_token`
+
+### Resend OTP
+
+Request:
+
+```http
+POST /api/auth/resend-otp
+Content-Type: application/json
+```
+
+```json
+{
+  "email": "john@example.com",
+  "purpose": "email_verification"
+}
+```
+
+Success response (example):
+
+```json
+{
+  "success": true,
+  "message": "OTP sent successfully."
+}
+```
+
+### Logout
+
+Request:
+
+```http
+POST /api/auth/logout
+```
+
+Success response (example):
+
+```json
+{
+  "success": true,
+  "message": "Logged out successfully."
+}
+```
+
+Proxy clears cookies after logout.
+
+---
+
+## Screenshots And GIF Walkthrough
+
+Create a `docs/media/` folder and keep UI walkthrough assets there. Suggested structure:
+
+```text
+docs/
+  media/
+    auth/
+      login.png
+      signup.png
+      verify-email.png
+      login-flow.gif
+    dashboards/
+      director-dashboard.png
+      branch-admin-dashboard.png
+```
+
+Example embed:
+
+```md
+![Login Screen](docs/media/auth/login.png)
+![Signup Flow](docs/media/auth/login-flow.gif)
+```
+
+Recommended walkthrough order:
+1. Sign up page
+2. Verify email page
+3. Login page
+4. Role-based redirect result
+5. One dashboard per major role
+
+Capture tips:
+- Use 1366x768 or 1440x900 for desktop consistency.
+- Keep browser zoom at 100%.
+- Redact real tokens, emails, and IDs.
+- Prefer short GIFs (5-15s) for flows, PNG for static screens.
+
+---
+
+## Contributor Guide And PR Checklist
+
+### Branching
+
+- Create feature branches from current mainline.
+- Recommended branch style: `feature/<short-topic>` or `fix/<short-topic>`.
+
+### Local Quality Gate
+
+Before opening a PR:
+1. `npm ci`
+2. `npm run lint`
+3. `npm run build`
+4. Manually test affected auth/screen flows
+
+### Coding Guidelines
+
+- Keep API route handlers defensive (input checks, safe JSON parsing, graceful fallbacks).
+- Preserve cookie auth behavior (`credentials: "include"` in client calls where needed).
+- Keep UI changes responsive for desktop and mobile.
+- Avoid large unrelated refactors in a single PR.
+
+### Pull Request Checklist
+
+Copy this into your PR description:
+
+```md
+## Summary
+- [ ] Clear description of what changed
+- [ ] Linked issue/ticket (if available)
+
+## Scope
+- [ ] No unrelated file changes
+- [ ] README/docs updated if behavior changed
+
+## Validation
+- [ ] npm run lint passes
+- [ ] npm run build passes
+- [ ] Manually tested key flows
+
+## Auth Impact (if applicable)
+- [ ] Tested register/login/refresh/logout paths
+- [ ] Verified cookies are set/cleared as expected
+- [ ] Verified role-based redirects still work
+
+## UI Impact (if applicable)
+- [ ] Added screenshots/GIFs for major UI changes
+- [ ] Checked desktop + mobile layout
+
+## Risk
+- [ ] Identified potential regressions
+- [ ] Added rollback plan for sensitive changes
+```
+
+---
+
 ## Troubleshooting
 
 ### Login fails with valid backend users
@@ -453,4 +762,3 @@ If you are onboarding a new engineer, start with:
 2. `app/api/auth/login/route.ts`
 3. `app/api/auth/register/route.ts`
 4. `lib/backend-auth-url.ts`
-
