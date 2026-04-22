@@ -1416,6 +1416,13 @@ export default function Page() {
                   </div>
                 </div>
               </div>
+
+              {/* Active Sessions */}
+              <div className="mt-8 rounded-[12px] border border-[#EEF1F6] bg-white">
+                <div className="flex items-center justify-between border-b border-[#EEF1F6] px-4 py-3">
+                  <div className="flex items-center gap-2 text-[16.98px] leading-[25.48px] font-bold text-[#111827]">
+                    Active Sessions
+                  </div>
                   <button
                     onClick={handleRevokeAllSessions}
                     disabled={revokingSessions}

@@ -1,23 +1,13 @@
 "use client"
-import React, { useState, useEffect } from "react";
+import React from "react";
+import { useAuth } from "@/components/auth/AuthProvider";
 
 export default function SidebarProfileWidget({ defaultRole = "User" }: { defaultRole?: string }) {
-  const [profile, setProfile] = useState<any>(null);
+  const { user, loading } = useAuth();
 
-  useEffect(() => {
-    fetch("/api/auth/me")
-      .then(res => res.json())
-      .then(data => {
-        if (data.data) {
-          setProfile(data.data);
-        }
-      })
-      .catch(console.error);
-  }, []);
-
-  const fullName = profile ? `${profile.firstName || ""} ${profile.lastName || ""}`.trim() : "Loading...";
-  const roleName = profile?.roleName || defaultRole;
-  const initials = profile ? `${profile.firstName?.[0] || ""}${profile.lastName?.[0] || ""}`.toUpperCase() : "U";
+  const fullName = user?.name || "Loading...";
+  const roleName = user?.role || defaultRole;
+  const initials = user?.name ? user.name.slice(0,2).toUpperCase() : "U";
 
   return (
     <div className="flex items-center gap-3">
@@ -31,3 +21,5 @@ export default function SidebarProfileWidget({ defaultRole = "User" }: { default
     </div>
   );
 }
+
+

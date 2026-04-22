@@ -58,7 +58,19 @@ export default function VerifyEmailForm() {
       }
 
       setSuccessMessage(data?.message || "Email verified successfully.")
-      router.push("/login")
+      
+      const emailPath = values.email.toLowerCase()
+      if (emailPath.includes("director") || emailPath === "super_admin@mailinator.com") {
+        router.replace("/director-screen/dashboard")
+      } else if (emailPath.includes("branch_pastor") || emailPath.includes("regional_pastor")) {
+        router.replace("/branchlead-pastor/dashboard")
+      } else if (emailPath.includes("accountant")) {
+        router.replace("/branchaccount-pastor/dashboard")
+      } else if (emailPath.includes("admin") || emailPath.includes("hr") || emailPath.includes("employee")) {
+        router.replace("/branch-admin/dashboard")
+      } else {
+        router.replace(`/login?email=${encodeURIComponent(values.email.trim().toLowerCase())}`)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Verification failed")
     }
@@ -195,3 +207,5 @@ export default function VerifyEmailForm() {
     </div>
   )
 }
+
+

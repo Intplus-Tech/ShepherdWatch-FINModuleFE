@@ -8,15 +8,20 @@ const allowedOrigins = FRONTEND_ORIGIN.split(",")
 export const isOriginAllowed = (req: NextRequest) => {
   const origin = req.headers.get("origin");
   const host = req.headers.get("host");
-  if (!origin || !host) return true;
+  const forwardedHostRaw = req.headers.get("x-forwarded-host");
+  const forwardedHost = forwardedHostRaw?.split(",")[0]?.trim();
+  if (!origin) return true;
 
   try {
-    if (new URL(origin).host === host) return true;
+    const originHost = new URL(origin).host;
+    if (host && originHost === host) return true;
+    if (forwardedHost && originHost === forwardedHost) return true;
   } catch {
     return false;
   }
 
-  if (allowedOrigins.length === 0) return false;
+  // If no explicit allow-list is configured, do not block same-app deployments.
+  if (allowedOrigins.length === 0) return true;
   return allowedOrigins.includes(origin);
 };
 

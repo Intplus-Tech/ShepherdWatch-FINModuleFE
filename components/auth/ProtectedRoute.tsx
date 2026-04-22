@@ -1,21 +1,24 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth/AuthProvider";
 
 export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { user, loading } = useAuth();
 
   useEffect(() => {
-    if (!loading && !user) {
-      router.push("/login");
+    if (!loading && !user && pathname !== "/login") {
+      router.replace("/login");
     }
-  }, [loading, user, router]);
+  }, [loading, user, pathname, router]);
 
   if (loading) return <p>Loading...</p>;
   if (!user) return null;
 
   return <>{children}</>;
 }
+
+

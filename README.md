@@ -220,7 +220,7 @@ These values align with backend expectations and are configured in `lib/auth-con
 These are frontend routes consumed by UI components:
 
 - `POST /api/auth/register`
-- `POST /api/auth/login`
+- `POST /api/v1/auth/login`
 - `POST /api/auth/verify-email`
 - `POST /api/auth/resend-otp`
 - `GET /api/auth/check-email`
@@ -280,7 +280,7 @@ UI: `components/forms/LoginForm.tsx`
 
 Flow:
 1. Calls `AuthProvider.login(...)`
-2. `POST /api/auth/login`
+2. `POST /api/v1/auth/login`
 3. Backend tokens are set as httpOnly cookies by proxy route
 4. Fetches current user from `/api/auth/me`
 5. Redirects by role
@@ -432,7 +432,7 @@ Success response (example):
 Request:
 
 ```http
-POST /api/auth/login
+POST /api/v1/auth/login
 Content-Type: application/json
 ```
 
@@ -670,7 +670,7 @@ Copy this into your PR description:
 Checklist:
 1. Confirm user status on backend is active and email verified.
 2. Confirm frontend is using the correct backend host.
-3. Inspect `POST /api/auth/login` response in Network tab.
+3. Inspect `POST /api/v1/auth/login` response in Network tab.
 4. Confirm `backend_token` and `backend_refresh_token` cookies are set.
 
 ### Register returns: `Unable to complete registration: This operation was aborted`
@@ -759,6 +759,6 @@ If you add new protected areas, ensure either:
 
 If you are onboarding a new engineer, start with:
 1. `components/auth/AuthProvider.tsx`
-2. `app/api/auth/login/route.ts`
+2. `app/api/v1/auth/login/route.ts`
 3. `app/api/auth/register/route.ts`
 4. `lib/backend-auth-url.ts`

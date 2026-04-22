@@ -12,6 +12,12 @@ export function getAuthEndpoint(path: string): string | null {
   const cleanPath = String(path).replace(/^\/+/, "");
   if (!cleanPath) return null;
 
+  const base = sanitizeBaseUrl(process.env.BACKEND_API_URL);
+  
+  if (cleanPath === "me" || cleanPath === "session") {
+    return base ? `${base}/api/v1/users/profile` : null;
+  }
+
   const loginUrl = String(process.env.BACKEND_LOGIN_URL ?? "").trim();
   if (loginUrl) {
     if (loginUrl.includes("/api/v1/auth/login")) {
@@ -25,7 +31,6 @@ export function getAuthEndpoint(path: string): string | null {
     }
   }
 
-  const base = sanitizeBaseUrl(process.env.BACKEND_API_URL);
   if (!base) return null;
   return `${base}/api/v1/auth/${cleanPath}`;
 }

@@ -1,12 +1,18 @@
 import React from "react"
 import LoginForm from "@/components/forms/LoginForm"
 
-function page() {
-  return (
-    <div className="min-h-screen w-full bg-white flex items-center justify-center p-0">
-      <LoginForm />
-    </div>
-  )
+type LoginPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
 }
 
-export default page
+export default async function LoginPage({ searchParams }: LoginPageProps) {
+  const resolvedSearchParams = (await searchParams) ?? {}
+  const emailParam = resolvedSearchParams.email
+  const initialEmail = Array.isArray(emailParam)
+    ? (emailParam[0] ?? "").trim().toLowerCase()
+    : String(emailParam ?? "").trim().toLowerCase()
+
+  return (
+    <LoginForm initialEmail={initialEmail} />
+  )
+}

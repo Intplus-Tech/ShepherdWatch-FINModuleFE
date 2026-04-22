@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from "react"
 import Image from "next/image"
 import { Inter } from "next/font/google"
+import { useRouter } from "next/navigation"
 import {
   LayoutDashboard,
   FilePlus2,
@@ -21,6 +22,7 @@ import {
   UploadCloud,
   ChevronDown,
   FileBox,
+  LogOut,
 } from "lucide-react"
 
 import BranchAdminHeader from "@/components/navigation/BranchAdminHeader"
@@ -59,7 +61,19 @@ function mapStatusTone(status: string) {
 
 export default function Dashboard() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
-  const { user } = useAuth()
+  const { user, logout } = useAuth()
+  const router = useRouter()
+
+  const handleLogout = async () => {
+    try {
+      await logout()
+      router.replace("/login")
+    } catch (err) {
+      console.error("Logout failed", err)
+      router.replace("/login")
+    }
+  }
+
   const { requisitions, loading: inboxLoading } = useRequisitionInbox({
     branchId: user?.tenantId ?? user?.tenant?.id ?? "",
     limit: 8,
@@ -154,14 +168,24 @@ export default function Dashboard() {
 
           {/* Bottom Section */}
           <div className="mt-auto px-3 mb-2">
-            <div className="pt-6 border-t border-[#EEF1F6] flex items-center gap-3.5 px-4 cursor-pointer hover:opacity-80 transition-opacity">
-              <div className="h-10 w-10 relative rounded-full overflow-hidden bg-gray-200 shrink-0 border border-gray-200 flex items-center justify-center">
-                <Image src="/images/Beared%20Guy02-min%201.jpg" alt="Profile avatar" fill className="object-cover" />
+            <div className="pt-6 border-t border-[#EEF1F6] flex flex-col gap-4 px-4">
+              <div className="flex items-center gap-3.5 cursor-pointer hover:opacity-80 transition-opacity">
+                <div className="h-10 w-10 relative rounded-full overflow-hidden bg-gray-200 shrink-0 border border-gray-200 flex items-center justify-center">
+                  <Image src="/images/Beared%20Guy02-min%201.jpg" alt="Profile avatar" fill className="object-cover" />
+                </div>
+                <div>
+                  <div className="text-[14px] font-[800] text-[#111827] leading-tight mb-0.5">Alex Morgan</div>
+                  <div className="text-[12px] font-medium text-[#9CA3AF] leading-tight">Branch Officer</div>
+                </div>
               </div>
-              <div>
-                <div className="text-[14px] font-[800] text-[#111827] leading-tight mb-0.5">Alex Morgan</div>
-                <div className="text-[12px] font-medium text-[#9CA3AF] leading-tight">Branch Officer</div>
-              </div>
+
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-3 rounded-[8px] py-2.5 px-2 -mx-2 text-[13px] font-medium text-rose-600 hover:bg-rose-50 transition-colors w-[calc(100%+16px)] text-left"
+              >
+                <LogOut className="h-4.5 w-4.5" />
+                Logout
+              </button>
             </div>
           </div>
         </div>
@@ -404,4 +428,6 @@ export default function Dashboard() {
     </div>
   )
 }
+
+
 

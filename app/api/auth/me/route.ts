@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config";
-import { getAuthEndpoint } from "@/lib/backend-auth-url";
+import { fetchBackendMe, getBackendMeUrls } from "@/lib/backend-auth-me";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
-
-function getBackendMeUrl(): string | null {
-  return getAuthEndpoint("me");
-}
 
 export async function GET(req: NextRequest) {
   try {
@@ -24,22 +20,24 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const backendUrl = getBackendMeUrl();
-    if (!backendUrl) {
+    const backendUrls = getBackendMeUrls();
+    if (backendUrls.length === 0) {
       return applyCors(
         NextResponse.json({ success: false, message: "Backend URL not configured" }, { status: 500 }),
         req
       );
     }
 
-    const backendRes = await fetch(backendUrl, {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${accessToken}`,
-      },
-      cache: "no-store",
-    });
+    console.debug(`[/api/auth/me] backendUrls: ${backendUrls.length}, token length: ${accessToken.length}`);
+    const backendRes = await fetchBackendMe(accessToken);
+    if (!backendRes) {
+      console.warn(`[/api/auth/me] No backend response`);
+      return applyCors(
+        NextResponse.json({ success: false, message: "Backend unavailable - continuing with cookie auth" }, { status: 200 }),
+        req
+      );
+    }
+    console.debug(`[/api/auth/me] backend status: ${backendRes.status}`);
 
     const responseText = await backendRes.text();
     const contentType = backendRes.headers.get("content-type") ?? "";

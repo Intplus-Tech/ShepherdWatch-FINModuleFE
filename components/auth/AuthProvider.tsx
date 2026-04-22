@@ -1,6 +1,6 @@
 "use client"
 
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react"
+import React, { createContext, useCallback, useContext, useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
 
 export type AuthUser = {
@@ -34,6 +34,59 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
+async function parseResponseBody(response: Response): Promise<unknown> {
+  const contentType = response.headers.get("content-type") ?? ""
+  if (contentType.includes("application/json")) {
+    return response.json().catch(() => null)
+  }
+
+  const text = await response.text().catch(() => "")
+  return text ? { message: text } : null
+}
+
+function getErrorMessage(payload: unknown, fallback: string): string {
+  if (typeof payload === "string" && payload.trim()) return payload
+  if (payload && typeof payload === "object") {
+    const source = payload as Record<string, unknown>
+    const data = source.data && typeof source.data === "object"
+      ? (source.data as Record<string, unknown>)
+      : null
+    const firstValidationError = Array.isArray(source.errors) ? source.errors[0] : null
+    const validationMessage =
+      firstValidationError && typeof firstValidationError === "object"
+        ? (firstValidationError as Record<string, unknown>).message
+        : null
+
+    const messageLike =
+      source.message ??
+      source.error ??
+      source.detail ??
+      data?.message ??
+      validationMessage
+
+    if (typeof messageLike === "string" && messageLike.trim()) {
+      return messageLike
+    }
+    if (Array.isArray(messageLike)) {
+      const combined = messageLike.filter((entry) => typeof entry === "string").join(", ").trim()
+      if (combined) return combined
+    }
+
+    const nestedData = source.data && typeof source.data === "object"
+      ? (source.data as Record<string, unknown>)
+      : null
+    const nestedMessage = nestedData?.message
+    if (typeof nestedMessage === "string" && nestedMessage.trim()) {
+      return nestedMessage
+    }
+    if (Array.isArray(nestedMessage)) {
+      const combined = nestedMessage.filter((entry) => typeof entry === "string").join(", ").trim()
+      if (combined) return combined
+    }
+  }
+  return fallback
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const [user, setUser] = useState<AuthUser | null>(null)
@@ -48,7 +101,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     pathname === "/reset-password" ||
     pathname === "/reset-success"
 
-  const normalizeAuthUser = (payload: unknown): AuthUser | null => {
+  const normalizeAuthUser = useCallback((payload: unknown): AuthUser | null => {
     const payloadRecord = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : null
     const data =
       payloadRecord && payloadRecord.data && typeof payloadRecord.data === "object"
@@ -67,20 +120,67 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ? { id: source.tenantId, name: source.tenantName }
         : undefined)
 
+    const rawId = source.id ?? source.userId ?? source._id ?? source.uuid
+    const rawEmail = source.email ?? source.userEmail
+    const rawRole = source.role ?? source.roleType ?? source.userRole
+
+    if (!rawId && !rawEmail) return null
+
     return {
-      id: String(source.id ?? source.userId ?? "unknown"),
-      email: String(source.email ?? ""),
-      role: String(source.role ?? source.roleType ?? ""),
+      id: String(rawId ?? rawEmail ?? "unknown"),
+      email: String(rawEmail ?? ""),
+      role: String(rawRole ?? ""),
       name: source.name ? String(source.name) : source.fullName ? String(source.fullName) : source.firstName ? String(source.firstName) : undefined,
       tenantId: source.tenantId ? String(source.tenantId) : tenantFromSource?.id ? String(tenantFromSource.id) : undefined,
       tenant: tenant ?? undefined,
     }
-  }
+  }, [])
+
+  const resolveAuthUser = useCallback((payload: unknown): AuthUser | null => {
+    const payloadRecord = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : null
+    const data =
+      payloadRecord && payloadRecord.data && typeof payloadRecord.data === "object"
+        ? (payloadRecord.data as Record<string, unknown>)
+        : null
+
+    const candidates: unknown[] = [payloadRecord?.user, data?.user, data, payloadRecord, payload]
+
+    for (const candidate of candidates) {
+      const normalized = normalizeAuthUser(candidate)
+      if (normalized && (normalized.id !== "unknown" || normalized.email || normalized.role)) {
+        return normalized
+      }
+    }
+
+    return null
+  }, [normalizeAuthUser])
+
+  const fetchCurrentUser = useCallback(
+    async (options?: { attemptRefresh?: boolean }): Promise<AuthUser | null> => {
+      const shouldAttemptRefresh = options?.attemptRefresh !== false
+      let res = await fetch("/api/v1/auth/me", { credentials: "include" })
+
+      if (!res.ok && res.status === 401 && shouldAttemptRefresh) {
+        const refreshRes = await fetch("/api/v1/auth/refresh-token", {
+          method: "POST",
+          credentials: "include",
+        })
+        if (refreshRes.ok) {
+          res = await fetch("/api/v1/auth/me", { credentials: "include" })
+        }
+      }
+
+      if (!res.ok) return null
+      const payload = await parseResponseBody(res)
+      return resolveAuthUser(payload)
+    },
+    [resolveAuthUser]
+  )
 
   useEffect(() => {
     let active = true
 
-    async function loadSession() {
+    async function loadUser() {
       if (isPublicAuthRoute) {
         if (active) {
           setUser(null)
@@ -89,58 +189,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return
       }
 
+      if (active) setLoading(true)
       try {
-        let res = await fetch("/api/auth/session", { credentials: "include" })
-        if (!res.ok) {
-          if (res.status === 401) {
-            const refreshRes = await fetch("/api/auth/refresh-token", {
-              method: "POST",
-              credentials: "include",
-            })
-            if (refreshRes.ok) {
-              res = await fetch("/api/auth/session", { credentials: "include" })
-            }
-          }
-
-          if (!res.ok) {
-            if (active) setUser(null)
-            return
-          }
-        }
-        const data = await res.json()
-        const sessionUser = data.user ?? data?.data?.user ?? null
-
-        if (!sessionUser) {
-          if (active) setUser(null)
-          return
-        }
-
-        if (active) {
-          setUser(sessionUser)
-          setLoading(false)
-        }
-
-        // Refresh richer profile in the background without blocking UI.
-        void (async () => {
-          const controller = new AbortController()
-          const timeoutId = setTimeout(() => controller.abort(), 8000)
-          try {
-            const authRes = await fetch("/api/auth/me", {
-              credentials: "include",
-              signal: controller.signal,
-            })
-            if (authRes.ok) {
-              const authData = await authRes.json().catch(() => null)
-              if (active) {
-                setUser(normalizeAuthUser(authData) ?? sessionUser)
-              }
-            }
-          } catch {
-            // fallback to session user
-          } finally {
-            clearTimeout(timeoutId)
-          }
-        })()
+        const authUser = await fetchCurrentUser()
+        if (active) setUser(authUser)
       } catch {
         if (active) setUser(null)
       } finally {
@@ -148,148 +200,89 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    loadSession()
+    loadUser()
     return () => {
       active = false
     }
-  }, [isPublicAuthRoute])
+  }, [fetchCurrentUser, isPublicAuthRoute])
 
   const login = async (payload: { email: string; password: string; rememberMe?: boolean }) => {
     const normalizedPayload = {
       ...payload,
-      email: payload.email.trim().toLowerCase(),
+      email: payload.email.trim(),
       password: String(payload.password),
     }
 
-    const res = await fetch("/api/auth/login", {
+    const res = await fetch("/api/v1/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
       body: JSON.stringify(normalizedPayload),
     })
 
+    const responsePayload = await parseResponseBody(res)
     if (!res.ok) {
-      const data = await res.json().catch(() => ({}))
-      const errMsg = data.message || data.error || data.detail || (typeof data === 'string' ? data : "Unable to login")
-      throw new Error(errMsg)
+      throw new Error(getErrorMessage(responsePayload, "Unable to login"))
     }
 
-    const data = await res.json()
-    const sessionUser = data?.data?.user ?? null
-    const normalizedSessionUser = normalizeAuthUser(sessionUser)
-    setUser(normalizedSessionUser)
-    let resolvedUser = normalizedSessionUser
-
-    // Always refresh profile after login so user data stays current.
-    const meRes = await fetch("/api/auth/me", { credentials: "include" })
-    if (meRes.ok) {
-      const meData = await meRes.json().catch(() => null)
-      const meUser = meData?.data ?? meData?.data?.user ?? meData?.user ?? meData
-      const normalizedMeUser = normalizeAuthUser(meUser)
-      setUser(normalizedMeUser)
-      resolvedUser = normalizedMeUser ?? resolvedUser
+    let authUser = resolveAuthUser(responsePayload)
+    if (!authUser) {
+      authUser = await fetchCurrentUser({ attemptRefresh: false })
     }
 
-    const rememberRes = await fetch("/api/auth/remember-me", { credentials: "include" })
-    if (rememberRes.ok) {
-      const rememberData = await rememberRes.json().catch(() => null)
-      if (rememberData?.rememberMe) {
-        const meRes = await fetch("/api/auth/me", { credentials: "include" })
-        if (meRes.ok) {
-          const meData = await meRes.json().catch(() => null)
-          const meUser = meData?.data ?? meData?.data?.user ?? meData?.user ?? meData
-          const normalizedMeUser = normalizeAuthUser(meUser)
-          setUser(normalizedMeUser)
-          resolvedUser = normalizedMeUser ?? resolvedUser
-        }
-      }
-    }
-
-    // Refresh richer profile in the background without delaying login.
-    void (async () => {
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 8000)
-      try {
-        const authRes = await fetch("/api/auth/me", {
-          credentials: "include",
-          signal: controller.signal,
-        })
-        if (authRes.ok) {
-          const authData = await authRes.json().catch(() => null)
-          const authUser = authData?.data ?? authData?.data?.user ?? authData?.user ?? authData
-          setUser(normalizeAuthUser(authUser) ?? sessionUser)
-        }
-      } catch {
-        // ignore fetch failure; session user already set
-      } finally {
-        clearTimeout(timeoutId)
-      }
-    })()
-
-    return resolvedUser
+    setUser(authUser)
+    return authUser
   }
 
   const logout = async () => {
-    await fetch("/api/auth/logout", { method: "POST", credentials: "include" }).catch(() => null)
+    await fetch("/api/v1/auth/logout", { method: "POST", credentials: "include" }).catch(() => null)
     setUser(null)
   }
 
   const refreshUser = async () => {
-    let res = await fetch("/api/auth/me", {
-      credentials: "include",
-    })
-    if (!res.ok && res.status === 401) {
-      const refreshRes = await fetch("/api/auth/refresh-token", {
-        method: "POST",
-        credentials: "include",
-      })
-      if (refreshRes.ok) {
-        res = await fetch("/api/auth/me", { credentials: "include" })
-      }
-    }
-    if (!res.ok) {
+    const authUser = await fetchCurrentUser()
+    if (!authUser) {
       throw new Error("Unable to refresh user context")
     }
-    const data = await res.json().catch(() => null)
-    setUser(normalizeAuthUser(data))
+    setUser(authUser)
   }
 
   const changePassword = async (payload: { currentPassword: string; newPassword: string }) => {
-    const res = await fetch("/api/auth/change-password", {
+    const res = await fetch("/api/v1/auth/change-password", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     })
 
     if (!res.ok) {
-      const data = await res.json().catch(() => ({}))
-      throw new Error(data.message || "Failed to change password")
+      const data = await parseResponseBody(res)
+      throw new Error(getErrorMessage(data, "Failed to change password"))
     }
   }
 
   const forgotPassword = async (email: string) => {
-    const res = await fetch("/api/auth/forgot-password", {
+    const res = await fetch("/api/v1/auth/forgot-password", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email }),
     })
 
     if (!res.ok) {
-      const data = await res.json().catch(() => ({}))
-      throw new Error(data.message || "Unable to send reset email")
+      const data = await parseResponseBody(res)
+      throw new Error(getErrorMessage(data, "Unable to send reset email"))
     }
   }
 
   const resendOtp = async (payload: { email: string; purpose: "email_verification" | "password_reset" }) => {
-    const res = await fetch("/api/auth/resend-otp", {
+    const res = await fetch("/api/v1/auth/resend-otp", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     })
 
     if (!res.ok) {
-      const data = await res.json().catch(() => ({}))
-      throw new Error(data.message || "Unable to resend OTP")
+      const data = await parseResponseBody(res)
+      throw new Error(getErrorMessage(data, "Unable to resend OTP"))
     }
   }
 
@@ -299,7 +292,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     phone?: string
     avatar?: string
   }) => {
-    const res = await fetch("/api/auth/profile", {
+    const res = await fetch("/api/v1/auth/profile", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
@@ -307,29 +300,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })
 
     if (!res.ok) {
-      const data = await res.json().catch(() => ({}))
-      throw new Error(data.message || "Unable to update profile")
+      const data = await parseResponseBody(res)
+      throw new Error(getErrorMessage(data, "Unable to update profile"))
     }
 
-    const data = await res.json().catch(() => null)
-    const profile = data?.data ?? data?.data?.user ?? data?.user ?? data
-    setUser(normalizeAuthUser(profile))
+    const data = await parseResponseBody(res)
+    setUser(resolveAuthUser(data))
   }
 
-  const value = useMemo<AuthContextValue>(
-    () => ({
-      user,
-      loading,
-      refreshUser,
-      login,
-      logout,
-      changePassword,
-      forgotPassword,
-      resendOtp,
-      updateProfile,
-    }),
-    [user, loading]
-  )
+  const value: AuthContextValue = {
+    user,
+    loading,
+    refreshUser,
+    login,
+    logout,
+    changePassword,
+    forgotPassword,
+    resendOtp,
+    updateProfile,
+  }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

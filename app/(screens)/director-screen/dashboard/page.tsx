@@ -23,9 +23,11 @@ import {
   MapPin,
   ChevronDown,
   Menu,
-  X
+  X,
+  LogOut
 } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
+import { useRouter } from "next/navigation"
 import BranchesDropdown from "@/components/navigation/BranchesDropdown"
 import { useDashboardOverview } from "@/components/hooks/useDashboardOverview"
 import { useIncomeExpenseTrend } from "@/components/hooks/useIncomeExpenseTrend"
@@ -53,7 +55,18 @@ const navItems = [
 
 export default function Page() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const { user } = useAuth()
+  const { user, logout } = useAuth()
+  const router = useRouter()
+
+  const handleLogout = async () => {
+    try {
+      await logout()
+      router.replace("/login")
+    } catch (err) {
+      console.error("Logout failed", err)
+      router.replace("/login")
+    }
+  }
 
   const tenantId = useMemo(
     () => user?.tenantId ?? user?.tenant?.id ?? "",
@@ -268,20 +281,30 @@ export default function Page() {
         </div>
 
         <div className="border-t border-[#EEF1F6] p-5">
-          <div className="flex items-center gap-3 cursor-pointer">
-            <div className="h-10 w-10 overflow-hidden rounded-full border-2 border-white shadow-sm shrink-0">
-              <Image
-                src="/images/Beared%20Guy02-min%201.jpg"
-                alt="User avatar"
-                width={40}
-                height={40}
-                className="h-full w-full object-cover"
-              />
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center gap-3 cursor-pointer">
+              <div className="h-10 w-10 overflow-hidden rounded-full border-2 border-white shadow-sm shrink-0">
+                <Image
+                  src="/images/Beared%20Guy02-min%201.jpg"
+                  alt="User avatar"
+                  width={40}
+                  height={40}
+                  className="h-full w-full object-cover"
+                />
+              </div>
+              <div className="flex flex-col">
+                <span className="text-[13px] font-bold text-[#111827]">Rev. Thomas M.</span>
+                <span className="text-[11px] font-medium text-[#6B7280]">Director</span>
+              </div>
             </div>
-            <div className="flex flex-col">
-              <span className="text-[13px] font-bold text-[#111827]">Rev. Thomas M.</span>
-              <span className="text-[11px] font-medium text-[#6B7280]">Director</span>
-            </div>
+
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-3 rounded-[8px] py-2.5 px-3 -mx-3 text-[13px] font-medium text-rose-600 hover:bg-rose-50 transition-colors w-[calc(100%+24px)] text-left"
+            >
+              <LogOut className="h-4.5 w-4.5" />
+              Logout
+            </button>
           </div>
         </div>
       </aside>
@@ -560,4 +583,6 @@ export default function Page() {
     </div>
   )
 }
+
+
 

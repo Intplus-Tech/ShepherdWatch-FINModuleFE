@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors"
-import { BACKEND_TOKEN_COOKIE } from "@/lib/constants"
-import { getRequiredEnv } from "@/lib/env"
+import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config"
 
 export async function GET(req: NextRequest) {
   try {
@@ -21,7 +20,7 @@ export async function GET(req: NextRequest) {
     }
 
     const { searchParams } = new URL(req.url)
-    const baseUrl = getRequiredEnv("BACKEND_API_URL")
+    const baseUrl = process.env.BACKEND_API_URL || ""
     const queryString = searchParams.toString()
     const backendUrl = `${baseUrl.replace(/\/+$/, "")}/api/v1/dashboard/recent-transactions${
       queryString ? `?${queryString}` : ""

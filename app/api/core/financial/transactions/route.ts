@@ -15,6 +15,7 @@ function buildBackendTransactionsUrl(): string {
   const baseUrl = getRequiredEnv("BACKEND_API_URL")
   if (process.env.NODE_ENV === "production" && baseUrl.startsWith("http://")) {
     throw new Error("BACKEND_API_URL must use https in production")
+  }
   return `${baseUrl.replace(/\/+$/, "")}/api/v1/transactions`
 }
 

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { z } from "zod"
@@ -32,6 +32,7 @@ export default function SignInForm() {
   const [resendMessage, setResendMessage] = useState<string | null>(null)
   const [emailCheckMessage, setEmailCheckMessage] = useState<string | null>(null)
   const [emailExists, setEmailExists] = useState<boolean | null>(null)
+  const [lastCheckedEmail, setLastCheckedEmail] = useState("")
   const [checkingEmail, setCheckingEmail] = useState(false)
   const [emailValidationAvailable, setEmailValidationAvailable] = useState(true)
   const [showExistingAccountActions, setShowExistingAccountActions] = useState(false)
@@ -40,7 +41,6 @@ export default function SignInForm() {
     register,
     handleSubmit,
     getValues,
-    watch,
     formState: { errors, isSubmitting },
   } = useForm<SignInValues>({
     resolver: zodResolver(signInSchema),
@@ -52,13 +52,6 @@ export default function SignInForm() {
       rememberMe: false,
     },
   })
-
-  const watchedEmail = watch("email")
-
-  useEffect(() => {
-    setEmailCheckMessage(null)
-    setEmailExists(null)
-  }, [watchedEmail])
 
   const checkEmailAvailability = async (rawEmail: string): Promise<boolean | null> => {
     if (!emailValidationAvailable) return null
@@ -78,12 +71,14 @@ export default function SignInForm() {
 
       if (data?.data?.validationSkipped) {
         setEmailValidationAvailable(false)
+        setLastCheckedEmail("")
         setEmailExists(null)
         setEmailCheckMessage(null)
         return null
       }
 
       const exists = Boolean(data?.data?.exists)
+      setLastCheckedEmail(email)
       setEmailExists(exists)
       setEmailCheckMessage(
         data?.message || (exists ? "Email is already registered." : "Email is available.")
@@ -91,6 +86,7 @@ export default function SignInForm() {
       return exists
     } catch {
       setEmailValidationAvailable(false)
+      setLastCheckedEmail("")
       setEmailExists(null)
       setEmailCheckMessage(null)
       return null
@@ -110,8 +106,9 @@ export default function SignInForm() {
     setSuccessMessage(null)
     setResendMessage(null)
     setShowExistingAccountActions(false)
-    const existingEmail = await checkEmailAvailability(values.email)
-    if (existingEmail === true) {
+    const normalizedEmail = values.email.trim().toLowerCase()
+    const knownExistingEmail = lastCheckedEmail === normalizedEmail ? emailExists === true : false
+    if (knownExistingEmail) {
       setError("An account with this email already exists.")
       setShowExistingAccountActions(true)
       return
@@ -282,9 +279,19 @@ export default function SignInForm() {
                   id="email"
                   type="email"
                   className="h-[44px] rounded-[6px] border-[#4F63FF] focus-visible:ring-[#5871F5] px-3 w-full"
+                  autoComplete="email"
+                  inputMode="email"
+                  spellCheck={false}
                   {...register("email", {
                     onBlur: () => {
                       void handleEmailBlur()
+                    },
+                    onChange: () => {
+                      if (emailCheckMessage || emailExists !== null || lastCheckedEmail) {
+                        setEmailCheckMessage(null)
+                        setEmailExists(null)
+                        setLastCheckedEmail("")
+                      }
                     },
                   })}
                 />
@@ -359,7 +366,9 @@ export default function SignInForm() {
               fill
               sizes="(max-width: 768px) 100vw, 50vw"
               className="object-cover"
-              priority
+              loading="lazy"
+              fetchPriority="low"
+              quality={75}
             />
             <div className="absolute inset-0 flex flex-col justify-between p-12">
               <div className="text-white">
@@ -380,3 +389,5 @@ export default function SignInForm() {
     </div>
   )
 }
+
+

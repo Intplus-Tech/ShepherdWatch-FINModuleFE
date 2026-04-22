@@ -1,5 +1,8 @@
+"use client"
+
 import Image from "next/image"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import {
   ArrowLeftRight,
   Folder,
@@ -9,8 +12,10 @@ import {
   Settings,
   Users,
   WalletCards,
+  LogOut,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useAuth } from "@/components/auth/AuthProvider"
 
 export type SidebarItem = {
   label: string
@@ -46,6 +51,19 @@ export default function SidebarNav({
   user?: SidebarUser
   className?: string
 }>) {
+  const { logout } = useAuth()
+  const router = useRouter()
+
+  const handleLogout = async () => {
+    try {
+      await logout()
+      router.replace("/login")
+    } catch (err) {
+      console.error("Logout failed", err)
+      router.replace("/login")
+    }
+  }
+
   return (
     <aside
       className={cn(
@@ -86,16 +104,26 @@ export default function SidebarNav({
       </nav>
 
       <div className="mt-auto border-t border-[#EEF1F6] pt-4">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 overflow-hidden rounded-full border-2 border-white shadow-sm shrink-0">
-            {user.avatarSrc ? (
-              <Image src={user.avatarSrc} alt={user.name} width={40} height={40} className="h-full w-full object-cover" />
-            ) : null}
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 overflow-hidden rounded-full border-2 border-white shadow-sm shrink-0">
+              {user.avatarSrc ? (
+                <Image src={user.avatarSrc} alt={user.name} width={40} height={40} className="h-full w-full object-cover" />
+              ) : null}
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[13px] font-bold text-[#111827]">{user.name}</span>
+              <span className="text-[11px] font-medium text-[#6B7280]">{user.role}</span>
+            </div>
           </div>
-          <div className="flex flex-col">
-            <span className="text-[13px] font-bold text-[#111827]">{user.name}</span>
-            <span className="text-[11px] font-medium text-[#6B7280]">{user.role}</span>
-          </div>
+          
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-3 rounded-[8px] px-4 py-2.5 text-[13px] font-medium text-rose-600 hover:bg-rose-50 transition-colors w-full text-left"
+          >
+            <LogOut className="h-4.5 w-4.5" />
+            Logout
+          </button>
         </div>
       </div>
     </aside>

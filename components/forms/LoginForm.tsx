@@ -1,10 +1,8 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { z } from "zod"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { useForm } from "react-hook-form"
 import AuthHeader from "../auth/AuthHeader"
 import { Input } from "@/components/ui/input"
 import { PasswordInput } from "@/components/ui/password-input"
@@ -12,69 +10,79 @@ import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import Image from "next/image"
 import { useAuth } from "@/components/auth/AuthProvider"
+import { getDashboardPathForUser } from "@/lib/auth-redirect"
 
-const loginSchema = z.object({
-  email: z.string().email("Enter a valid email"),
-  password: z.string().min(1, "Password is required"),
-})
-
-type LoginValues = z.infer<typeof loginSchema>
-
-function getDashboardByRole(role?: string): string {
-  const normalized = String(role ?? "").trim().toLowerCase()
-  
-  if (normalized === "super_admin" || normalized === "director") {
-    return "/director-screen/dashboard"
-  }
-  
-  if (normalized === "pastor" || normalized === "regional_pastor" || normalized === "branch_pastor") {
-    return "/branchlead-pastor/dashboard"
-  }
-  
-  if (normalized === "accountant") {
-    return "/branchaccount-pastor/dashboard"
-  }
-  
-  if (normalized === "branch_admin" || normalized === "admin" || normalized === "hr" || normalized === "employee") {
-    return "/branch-admin/dashboard"
-  }
-  
-  return "/director-screen/dashboard"
+type LoginFormProps = {
+  initialEmail?: string
 }
 
-export default function LoginForm() {
+export default function LoginForm({ initialEmail = "" }: LoginFormProps) {
   const router = useRouter()
   const { login } = useAuth()
   const [error, setError] = useState<string | null>(null)
+  const [email, setEmail] = useState(initialEmail)
+  const [password, setPassword] = useState("")
+  const [emailError, setEmailError] = useState<string | null>(null)
+  const [passwordError, setPasswordError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-  } = useForm<LoginValues>({
-    resolver: zodResolver(loginSchema),
-    defaultValues: { email: "", password: "" },
-  })
+  const validate = () => {
+    const normalizedEmail = email.trim()
+    const normalizedPassword = password
+    let hasError = false
 
-  const onSubmit = async (values: LoginValues) => {
+    if (!normalizedEmail) {
+      setEmailError("Email is required")
+      hasError = true
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      setEmailError("Enter a valid email")
+      hasError = true
+    } else {
+      setEmailError(null)
+    }
+
+    if (!normalizedPassword) {
+      setPasswordError("Password is required")
+      hasError = true
+    } else {
+      setPasswordError(null)
+    }
+
+    return { hasError, normalizedEmail, normalizedPassword }
+  }
+
+  const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
     setError(null)
+    const { hasError, normalizedEmail, normalizedPassword } = validate()
+    if (hasError) return
+
+    setIsSubmitting(true)
     try {
       const authUser = await login({
-        email: values.email,
-        password: values.password,
+        email: normalizedEmail,
+        password: normalizedPassword,
       })
-      router.push(getDashboardByRole(authUser?.role))
+      const nextPath = getDashboardPathForUser({ role: authUser?.role, email: normalizedEmail })
+      router.replace(nextPath)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed")
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
+  const emailErrorId = "login-email-error"
+  const passwordErrorId = "login-password-error"
+  const formErrorId = "login-form-error"
+
   return (
-    <div className="w-full h-screen bg-white overflow-y-auto md:overflow-hidden">
-      <div className="relative w-full min-h-full grid grid-cols-1 md:grid-cols-2 gap-0">
-        
-        {/* Background Watermark exactly matching User's preferred restored placement */}
-        <div className="absolute -top-7.5 -left-10 w-100 h-100 md:w-170 md:h-170 overflow-hidden pointer-events-none opacity-[0.08] z-0">
+    <div className="w-full min-h-[100dvh] bg-white">
+      <div className="relative grid min-h-[100dvh] grid-cols-1 md:grid-cols-2">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -left-10 -top-8 z-0 hidden h-[25rem] w-[25rem] overflow-hidden opacity-[0.08] md:block md:h-[42rem] md:w-[42rem]"
+        >
           <Image
             src="/images/icon-shepherdwatch.svg"
             alt="Background decoration"
@@ -84,21 +92,19 @@ export default function LoginForm() {
           />
         </div>
 
-        {/* Form Container (Left Pane) - Corrected to occur first in the grid */}
-        <div className="relative z-10 flex flex-col items-center justify-center w-full h-full p-6 md:p-8 min-h-dvh md:min-h-0">
-          <div className="flex w-full max-w-109 flex-col gap-6 md:gap-8 items-center text-center">
+        <div className="relative z-10 flex min-h-[100dvh] w-full items-center justify-center p-6 md:min-h-0 md:p-8">
+          <div className="flex w-full max-w-[28rem] flex-col items-center gap-6 text-center md:gap-8">
             <div>
               <AuthHeader />
             </div>
 
-            <div className="h-15 w-15 md:h-18 md:w-18 rounded-full bg-white shadow-[0_6px_18px_rgba(59,91,219,0.18)] flex items-center justify-center overflow-hidden">
+            <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-white shadow-[0_6px_18px_rgba(59,91,219,0.18)] md:h-18 md:w-18">
               <Image
                 src="/images/Beared%20Guy02-min%201.jpg"
                 alt="User avatar"
                 width={72}
                 height={72}
                 className="h-full w-full object-cover"
-                priority
               />
             </div>
 
@@ -109,17 +115,27 @@ export default function LoginForm() {
               </p>
             </div>
 
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 w-full text-left">
+            <form onSubmit={onSubmit} className="w-full space-y-6 text-left" noValidate>
               <div className="space-y-2">
                 <Label htmlFor="email" className="text-[13px] text-[#98A2B3] font-medium">Email</Label>
                 <Input
                   id="email"
                   type="email"
                   className="h-11 rounded-[6px] border-[#4F63FF] focus-visible:ring-[#5871F5] px-3 w-full"
-                  {...register("email")}
+                  autoComplete="email"
+                  inputMode="email"
+                  spellCheck={false}
+                  value={email}
+                  onChange={(event) => {
+                    setEmail(event.target.value)
+                    if (emailError) setEmailError(null)
+                    if (error) setError(null)
+                  }}
+                  aria-invalid={Boolean(emailError)}
+                  aria-describedby={emailError ? emailErrorId : undefined}
                 />
-                {errors.email ? (
-                  <p className="text-[11px] text-rose-600">{errors.email.message}</p>
+                {emailError ? (
+                  <p id={emailErrorId} className="text-[11px] text-rose-600">{emailError}</p>
                 ) : null}
               </div>
 
@@ -128,25 +144,43 @@ export default function LoginForm() {
                 <PasswordInput
                   id="password"
                   className="h-11 rounded-[6px] border-[#4F63FF] focus-visible:ring-[#5871F5] px-3 w-full"
-                  {...register("password")}
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(event) => {
+                    setPassword(event.target.value)
+                    if (passwordError) setPasswordError(null)
+                    if (error) setError(null)
+                  }}
+                  aria-invalid={Boolean(passwordError)}
+                  aria-describedby={passwordError ? passwordErrorId : undefined}
                 />
-                {errors.password ? (
-                  <p className="text-[11px] text-rose-600">{errors.password.message}</p>
+                {!passwordError ? (
+                  <p className="text-[11px] text-[#98A2B3]">
+                    Tip: Passwords are case-sensitive.
+                  </p>
+                ) : null}
+                {passwordError ? (
+                  <p id={passwordErrorId} className="text-[11px] text-rose-600">{passwordError}</p>
                 ) : null}
               </div>
 
               <div className="flex items-center justify-end pt-1">
-                <a href="/forgot-password" className="text-[13px] text-[#4F63FF] font-medium hover:underline">
+                <Link href="/forgot-password" className="text-[13px] text-[#4F63FF] font-medium hover:underline">
                   Forgot Password
-                </a>
+                </Link>
               </div>
 
-              {error ? <p className="text-[12px] text-rose-600 text-center">{error}</p> : null}
+              {error ? (
+                <p id={formErrorId} role="alert" className="text-[12px] text-rose-600 text-center">
+                  {error}
+                </p>
+              ) : null}
 
               <div className="pt-4 flex justify-center">
                 <Button
                   type="submit"
                   disabled={isSubmitting}
+                  aria-describedby={error ? formErrorId : undefined}
                   className="h-11 px-16 bg-[#3B5BDB] hover:bg-[#2f4cc2] text-white rounded-[6px] text-[15px] shadow-[0_4px_12px_rgba(59,91,219,0.2)] font-medium"
                 >
                   {isSubmitting ? "Logging in..." : "Login"}
@@ -156,8 +190,7 @@ export default function LoginForm() {
           </div>
         </div>
 
-        {/* Hero Image Container (Right Pane) */}
-        <div className="relative w-full h-full p-4 lg:p-6 hidden md:block">
+        <div className="relative hidden h-full w-full p-4 [content-visibility:auto] md:block lg:p-6">
           <div className="relative w-full h-full rounded-[32px] overflow-hidden shadow-sm">
             <Image
               src="/images/login%20page%20picture.jpg"
@@ -165,10 +198,10 @@ export default function LoginForm() {
               fill
               sizes="(max-width: 768px) 100vw, 50vw"
               className="object-cover"
-              priority
+              loading="lazy"
+              fetchPriority="low"
+              quality={75}
             />
-            {/* Intentionally removed the text overlay "Welcome to ShepherdWatch" from Login screen 
-                as it is not present in the new Figma! */}
           </div>
         </div>
 
@@ -176,3 +209,5 @@ export default function LoginForm() {
     </div>
   )
 }
+
+
