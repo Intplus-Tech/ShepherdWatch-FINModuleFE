@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useState, useEffect, Suspense } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import {
@@ -21,8 +21,9 @@ import {
   FileSpreadsheet
 } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import BranchesDropdown from "@/components/navigation/BranchesDropdown"
+import RecordAssetSaleModal, { AssetSaleDetails } from "@/components/modals/RecordAssetSaleModal"
 
 const navItems = [
   { label: "Dashboard", href: "/director-screen/dashboard", icon: LayoutDashboard },
@@ -35,9 +36,41 @@ const navItems = [
   { label: "Settings", href: "/director-screen/settings", icon: Settings },
 ]
 
+function ModalContainer() {
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const isModalOpen = searchParams.get('modal') === 'record-sale'
+
+  // Placeholder mock data that matches the uploaded design for demonstration purposes
+  const mockSale: AssetSaleDetails = {
+    branchName: "Agodi, Ibadan",
+    location: "Maryland, Lagos",
+    assetName: "Projector (Epson) - IT Equipment",
+    saleDate: "10 Apr 2025",
+    saleAmount: "Projector (Epson) - IT Equipment",
+    buyerName: "Light City School",
+    buyerContact: "08012345678",
+    reasonForSale: "Upgraded to new model",
+    proceedsToAccount: "Domiciliary / Naira",
+    history: [
+      { yearNumber: "Year 1", year: "2022", amount: "₦2,700,000" },
+      { yearNumber: "Year 2", year: "2023", amount: "₦2,700,000" },
+      { yearNumber: "Year 3", year: "2024", amount: "₦500,000", isYTD: true }
+    ]
+  }
+
+  return (
+    <RecordAssetSaleModal 
+      isOpen={isModalOpen} 
+      onClose={() => router.push('/director-screen/assets/sales-log')}
+      saleDetails={mockSale}
+    />
+  )
+}
+
 export default function Page() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
-  const { logout } = useAuth()
+  const { user, logout } = useAuth()
   const router = useRouter()
 
   const handleLogout = async () => {
@@ -50,11 +83,80 @@ export default function Page() {
     }
   }
 
-  const salesRows = [
-    { date: "05 Apr 25", branch: "Agodi, Ibadan", asset: "Projector (Epson)", amount: "₦80,000", buyer: "Light City Sch" },
-    { date: "12 Mar 25", branch: "Maryland, LAG", asset: "Office Desk (x5)", amount: "₦150,000", buyer: "Individual" },
-    { date: "20 Feb 25", branch: "Ibadan HQ", asset: "Old AC Unit", amount: "₦50,000", buyer: "Staff member" },
-  ]
+  const [salesRows, setSalesRows] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchSales = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+
+        const response = await fetch(`/api/core/financial/fixed-assets`, {
+          method: "GET",
+          credentials: "include",
+        })
+        const payload = await response.json().catch(() => null)
+        if (!response.ok) {
+          throw new Error(payload?.message ?? "Unable to load sales log.")
+        }
+
+        const data =
+          payload?.data?.content ??
+          payload?.data ??
+          payload?.content ??
+          []
+        
+        const formatCurrency = (amount: number) =>
+          new Intl.NumberFormat("en-NG", {
+            style: "currency",
+            currency: "NGN",
+            maximumFractionDigits: 0,
+          }).format(amount)
+
+        const formatDate = (dateStr: string) => {
+          if (!dateStr) return "N/A"
+          return new Date(dateStr).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }).replace(/ /g, ' ')
+        }
+
+        const soldAssets = (Array.isArray(data) ? data : []).filter(
+          (asset: any) => asset?.status?.toUpperCase() === "SOLD" || asset?.status?.toUpperCase() === "DISPOSED"
+        )
+
+        const mapped = soldAssets.map((asset: any) => {
+          return {
+            date: formatDate(asset?.disposalDate || asset?.updatedAt),
+            branch: asset?.tenantId ?? "All Branches",
+            asset: asset?.name ?? asset?.description ?? asset?.assetName ?? "Unnamed Asset",
+            amount: formatCurrency(Number(asset?.disposalValue || asset?.currentValue || 0)),
+            buyer: asset?.buyer || asset?.disposedTo || "N/A",
+          }
+        })
+
+        if (isMounted) {
+          setSalesRows(mapped)
+        }
+      } catch (err) {
+        if (isMounted) {
+          setSalesRows([])
+          setError(err instanceof Error ? err.message : "Unable to load sales log.")
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false)
+        }
+      }
+    }
+
+    fetchSales()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
@@ -79,7 +181,9 @@ export default function Page() {
           >
             <X className="h-5 w-5" />
           </button>
-          <span className="text-[10px] font-medium text-[#3B5BDB] ml-9 -mt-1">Super Admin</span>
+          <span className="text-[10px] font-medium text-[#3B5BDB] ml-9 -mt-1 uppercase">
+            {user?.role ? String(user.role).replace(/_/g, ' ') : "Director"}
+          </span>
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-2 mt-2">
@@ -118,8 +222,12 @@ export default function Page() {
                 />
               </div>
               <div className="flex flex-col">
-                <span className="text-[13px] font-bold text-[#111827]">Rev. Thomas M.</span>
-                <span className="text-[11px] font-medium text-[#6B7280]">Director</span>
+                <span className="text-[13px] font-bold text-[#111827]">
+                  {user?.name && !['director user', 'super admin', 'admin user'].includes(user.name.toLowerCase()) ? user.name : user?.email || "Super Admin"}
+                </span>
+                <span className="text-[11px] font-medium text-[#6B7280] capitalize">
+                  {user?.role ? String(user.role).replace(/_/g, ' ').toLowerCase() : "Director"}
+                </span>
               </div>
             </div>
 
@@ -223,15 +331,39 @@ export default function Page() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#EEF1F6]">
-                  {salesRows.map((row, idx) => (
-                    <tr key={idx}>
-                      <td className="px-6 py-4 font-medium text-[#9CA3AF]">{row.date}</td>
-                      <td className="px-6 py-4 font-medium text-[#4B5563]">{row.branch}</td>
-                      <td className="px-6 py-4 font-[700] text-[#111827]">{row.asset}</td>
-                      <td className="px-6 py-4 font-[700] text-[#111827]">{row.amount}</td>
-                      <td className="px-6 py-4 font-medium text-[#4B5563]">{row.buyer}</td>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-8 text-center text-[13px] text-[#6B7280]">
+                        Loading sales log...
+                      </td>
                     </tr>
-                  ))}
+                  ) : error ? (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-8 text-center text-[13px] text-rose-600">
+                        {error}
+                      </td>
+                    </tr>
+                  ) : salesRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-8 text-center text-[13px] text-[#6B7280]">
+                        No asset sales found.
+                      </td>
+                    </tr>
+                  ) : (
+                    salesRows.map((row, idx) => (
+                      <tr 
+                        key={idx} 
+                        className="cursor-pointer hover:bg-[#F8FAFC] transition-colors"
+                        onClick={() => router.push('/director-screen/assets/sales-log?modal=record-sale')}
+                      >
+                        <td className="px-6 py-4 font-medium text-[#9CA3AF]">{row.date}</td>
+                        <td className="px-6 py-4 font-medium text-[#4B5563]">{row.branch}</td>
+                        <td className="px-6 py-4 font-[700] text-[#111827]">{row.asset}</td>
+                        <td className="px-6 py-4 font-[700] text-[#111827]">{row.amount}</td>
+                        <td className="px-6 py-4 font-medium text-[#4B5563]">{row.buyer}</td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -246,6 +378,10 @@ export default function Page() {
 
         </div>
       </main>
+      
+      <Suspense fallback={null}>
+        <ModalContainer />
+      </Suspense>
     </div>
   )
 }

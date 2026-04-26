@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useState, useEffect, Suspense } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import {
@@ -23,8 +23,10 @@ import {
   Plus
 } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import BranchesDropdown from "@/components/navigation/BranchesDropdown"
+import AssetDetailsModal, { AssetDetails } from "@/components/modals/AssetDetailsModal"
+import RecordAssetSaleModal, { AssetSaleDetails } from "@/components/modals/RecordAssetSaleModal"
 
 const navItems = [
   { label: "Dashboard", href: "/director-screen/dashboard", icon: LayoutDashboard },
@@ -37,9 +39,67 @@ const navItems = [
   { label: "Settings", href: "/director-screen/settings", icon: Settings },
 ]
 
+function ModalContainer() {
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const isDetailsModalOpen = searchParams.get('modal') === 'asset-details'
+  const isRecordSaleModalOpen = searchParams.get('modal') === 'record-sale'
+
+  // Placeholder mock data that perfectly matches the uploaded design for demonstration purposes
+  const mockAsset: AssetDetails = {
+    name: "Toyota Hiace Bus",
+    location: "Maryland, Lagos",
+    category: "Motor Vehicle",
+    cost: "₦15,000,000",
+    purchaseDate: "10 Jan 2022",
+    depreciationMethod: "Straight Line (Director Policy)",
+    usefulLife: "5 years",
+    residualValue: "10% (₦1,500,000)",
+    accumulatedDepreciation: "₦6,000,000",
+    currentNBV: "₦9,000,000",
+    history: [
+      { yearNumber: "Year 1", year: "2022", amount: "₦2,700,000" },
+      { yearNumber: "Year 2", year: "2023", amount: "₦2,700,000" },
+      { yearNumber: "Year 3", year: "2024", amount: "₦600,000", isYTD: true }
+    ]
+  }
+
+  const mockSale: AssetSaleDetails = {
+    branchName: "Agodi, Ibadan",
+    location: "Maryland, Lagos",
+    assetName: "Projector (Epson) - IT Equipment",
+    saleDate: "10 Apr 2025",
+    saleAmount: "Projector (Epson) - IT Equipment",
+    buyerName: "Light City School",
+    buyerContact: "08012345678",
+    reasonForSale: "Upgraded to new model",
+    proceedsToAccount: "Domiciliary / Naira",
+    history: [
+      { yearNumber: "Year 1", year: "2022", amount: "₦2,700,000" },
+      { yearNumber: "Year 2", year: "2023", amount: "₦2,700,000" },
+      { yearNumber: "Year 3", year: "2024", amount: "₦500,000", isYTD: true }
+    ]
+  }
+
+  return (
+    <>
+      <AssetDetailsModal 
+        isOpen={isDetailsModalOpen} 
+        onClose={() => router.push('/director-screen/assets/branch-assets')}
+        asset={mockAsset}
+      />
+      <RecordAssetSaleModal 
+        isOpen={isRecordSaleModalOpen} 
+        onClose={() => router.push('/director-screen/assets/branch-assets')}
+        saleDetails={mockSale}
+      />
+    </>
+  )
+}
+
 export default function Page() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
-  const { logout } = useAuth()
+  const { user, logout } = useAuth()
   const router = useRouter()
 
   const handleLogout = async () => {
@@ -52,13 +112,72 @@ export default function Page() {
     }
   }
 
-  const assetRows = [
-    { branch: "Maryland, LAG", name: "Toyota Hiace Bus", category: "Motor Vehicle", cost: "15,000,000", nbv: "9,000,000", status: "Active" },
-    { branch: "Ibadan HQ", name: "HP Laptops (x10)", category: "IT Equipment", cost: "4,500,000", nbv: "1,200,000", status: "Active" },
-    { branch: "Ado Ekiti", name: "Church Building", category: "Building", cost: "50,000,000", nbv: "48,000,000", status: "Active" },
-    { branch: "Maryland, US", name: "Chairs (200pcs)", category: "Furniture", cost: "2,000,000", nbv: "1,200,000", status: "Active" },
-    { branch: "Agodi, Ibadan", name: "Projector", category: "IT Equipment", cost: "500,000", nbv: "150,000", status: "Sold" },
-  ]
+  const [assets, setAssets] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchAssets = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+
+        const response = await fetch(`/api/core/financial/fixed-assets`, {
+          method: "GET",
+          credentials: "include",
+        })
+        const payload = await response.json().catch(() => null)
+        if (!response.ok) {
+          throw new Error(payload?.message ?? "Unable to load assets.")
+        }
+
+        const data =
+          payload?.data?.content ??
+          payload?.data ??
+          payload?.content ??
+          []
+        
+        const formatCurrency = (amount: number) =>
+          new Intl.NumberFormat("en-NG", {
+            style: "currency",
+            currency: "NGN",
+            maximumFractionDigits: 0,
+          }).format(amount)
+
+        const mapped = (Array.isArray(data) ? data : []).map((asset) => {
+          return {
+            branch: asset?.tenantId ?? "All Branches",
+            name: asset?.name ?? asset?.description ?? asset?.assetName ?? "Unnamed Asset",
+            category: asset?.category ?? "General",
+            cost: formatCurrency(Number(asset?.purchaseValue || asset?.value || 0)),
+            nbv: formatCurrency(Number(asset?.currentValue || asset?.purchaseValue || 0)),
+            status: asset?.status ?? "Active",
+          }
+        })
+
+        if (isMounted) {
+          setAssets(mapped)
+        }
+      } catch (err) {
+        if (isMounted) {
+          setAssets([])
+          setError(err instanceof Error ? err.message : "Unable to load assets.")
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false)
+        }
+      }
+    }
+
+    fetchAssets()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
@@ -83,7 +202,9 @@ export default function Page() {
           >
             <X className="h-5 w-5" />
           </button>
-          <span className="text-[10px] font-medium text-[#3B5BDB] ml-9 -mt-1">Super Admin</span>
+          <span className="text-[10px] font-medium text-[#3B5BDB] ml-9 -mt-1 uppercase">
+            {user?.role ? String(user.role).replace(/_/g, ' ') : "Director"}
+          </span>
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-2 mt-2">
@@ -122,8 +243,12 @@ export default function Page() {
                 />
               </div>
               <div className="flex flex-col">
-                <span className="text-[13px] font-bold text-[#111827]">Rev. Thomas M.</span>
-                <span className="text-[11px] font-medium text-[#6B7280]">Director</span>
+                <span className="text-[13px] font-bold text-[#111827]">
+                  {user?.name && !['director user', 'super admin', 'admin user'].includes(user.name.toLowerCase()) ? user.name : user?.email || "Super Admin"}
+                </span>
+                <span className="text-[11px] font-medium text-[#6B7280] capitalize">
+                  {user?.role ? String(user.role).replace(/_/g, ' ').toLowerCase() : "Director"}
+                </span>
               </div>
             </div>
 
@@ -247,27 +372,47 @@ export default function Page() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#EEF1F6]">
-                  {assetRows.map((row, idx) => (
-                    <tr key={idx}>
-                      <td className="px-6 py-4 font-medium text-[#4B5563]">{row.branch}</td>
-                      <td className="px-6 py-4 font-[700] text-[#111827]">{row.name}</td>
-                      <td className="px-6 py-4 font-medium text-[#9CA3AF]">{row.category}</td>
-                      <td className="px-6 py-4 font-[600] text-[#4B5563] text-right">{row.cost}</td>
-                      <td className="px-6 py-4 font-[600] text-[#4B5563] text-right">{row.nbv}</td>
-                      <td className="px-6 py-4">
-                        {row.status === "Active" ? (
-                          <span className="inline-flex items-center rounded-full bg-[#10B981] px-2.5 py-0.5 text-[11px] font-[600] text-white">
-                            Active
-                          </span>
-                        ) : (
-                          <button className="inline-flex items-center gap-1 rounded-full border border-[#E5E7EB] bg-white px-2.5 py-0.5 text-[11px] font-[600] text-[#6B7280] shadow-sm">
-                            Sold
-                            <ChevronDown className="h-3 w-3 text-[#9CA3AF]" />
-                          </button>
-                        )}
+                  {loading ? (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-8 text-center text-[13px] text-[#6B7280]">
+                        Loading branch assets...
                       </td>
                     </tr>
-                  ))}
+                  ) : error ? (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-8 text-center text-[13px] text-rose-600">
+                        {error}
+                      </td>
+                    </tr>
+                  ) : assets.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-8 text-center text-[13px] text-[#6B7280]">
+                        No branch assets found.
+                      </td>
+                    </tr>
+                  ) : (
+                    assets.map((row, idx) => (
+                      <tr key={idx}>
+                        <td className="px-6 py-4 font-medium text-[#4B5563]">{row.branch}</td>
+                        <td className="px-6 py-4 font-[700] text-[#111827]">{row.name}</td>
+                        <td className="px-6 py-4 font-medium text-[#9CA3AF]">{row.category}</td>
+                        <td className="px-6 py-4 font-[600] text-[#4B5563] text-right">{row.cost}</td>
+                        <td className="px-6 py-4 font-[600] text-[#4B5563] text-right">{row.nbv}</td>
+                        <td className="px-6 py-4">
+                          {row.status === "Active" || row.status === "ACTIVE" ? (
+                            <span className="inline-flex items-center rounded-full bg-[#10B981] px-2.5 py-0.5 text-[11px] font-[600] text-white">
+                              Active
+                            </span>
+                          ) : (
+                            <button className="inline-flex items-center gap-1 rounded-full border border-[#E5E7EB] bg-white px-2.5 py-0.5 text-[11px] font-[600] text-[#6B7280] shadow-sm">
+                              {row.status || "Sold"}
+                              <ChevronDown className="h-3 w-3 text-[#9CA3AF]" />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -278,14 +423,20 @@ export default function Page() {
                   <Download className="h-3.5 w-3.5" />
                   Export Log
                 </button>
-                <button className="flex items-center gap-2 text-[12px] font-[600] text-[#4B5563] border border-[#E5E7EB] bg-white rounded-[6px] px-3.5 py-2 hover:bg-gray-50 transition-colors shadow-sm">
+                <button 
+                  onClick={() => router.push('/director-screen/assets/branch-assets?modal=asset-details')}
+                  className="flex items-center gap-2 text-[12px] font-[600] text-[#4B5563] border border-[#E5E7EB] bg-white rounded-[6px] px-3.5 py-2 hover:bg-gray-50 transition-colors shadow-sm"
+                >
                   <Eye className="h-3.5 w-3.5" />
                   View Details
                 </button>
               </div>
               
               <div className="flex items-center gap-3">
-                <button className="flex items-center gap-2 text-[12px] font-[600] text-[#4B5563] border border-[#E5E7EB] bg-white rounded-[6px] px-3.5 py-2 hover:bg-gray-50 transition-colors shadow-sm">
+                <button 
+                  onClick={() => router.push('/director-screen/assets/branch-assets?modal=record-sale')}
+                  className="flex items-center gap-2 text-[12px] font-[600] text-[#4B5563] border border-[#E5E7EB] bg-white rounded-[6px] px-3.5 py-2 hover:bg-gray-50 transition-colors shadow-sm"
+                >
                   Record Asset Sale
                 </button>
                 <button className="flex items-center gap-2 rounded-[6px] bg-[#3B5BDB] px-4 py-2 text-[12px] font-[600] text-white shadow hover:bg-blue-700 transition-colors">
@@ -298,6 +449,10 @@ export default function Page() {
 
         </div>
       </main>
+      
+      <Suspense fallback={null}>
+        <ModalContainer />
+      </Suspense>
     </div>
   )
 }

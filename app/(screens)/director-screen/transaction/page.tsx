@@ -503,7 +503,9 @@ export default function Page() {
           <div className="flex items-center gap-2">
             <Image src="/images/logo.svg" alt="ShepherdWatch" width={160} height={36} className="object-contain" />
           </div>
-          <span className="text-[10px] font-medium text-[#3B5BDB] ml-9 -mt-1">Super Admin</span>
+          <span className="text-[10px] font-medium text-[#3B5BDB] ml-9 -mt-1 uppercase">
+            {user?.role ? String(user.role).replace(/_/g, ' ') : "Director"}
+          </span>
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-2 mt-2">
@@ -541,8 +543,12 @@ export default function Page() {
               />
             </div>
             <div className="flex flex-col">
-              <span className="text-[13px] font-bold text-[#111827]">Rev. Thomas M.</span>
-              <span className="text-[11px] font-medium text-[#6B7280]">Director</span>
+              <span className="text-[13px] font-bold text-[#111827]">
+                {user?.name && !['director user', 'super admin', 'admin user'].includes(user.name.toLowerCase()) ? user.name : user?.email || "Super Admin"}
+              </span>
+              <span className="text-[11px] font-medium text-[#6B7280] capitalize">
+                {user?.role ? String(user.role).replace(/_/g, ' ').toLowerCase() : "Director"}
+              </span>
             </div>
           </div>
         </div>

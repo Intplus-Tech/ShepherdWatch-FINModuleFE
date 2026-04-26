@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useRef, useEffect } from "react"
+import React, { useState, useRef, useEffect, Suspense } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import {
@@ -23,8 +23,10 @@ import {
   Check
 } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import BranchesDropdown from "@/components/navigation/BranchesDropdown"
+import { useAssetConfig } from "@/components/hooks/useAssetConfig"
+import NewAssetCategoryModal from "@/components/modals/NewAssetCategoryModal"
 
 const navItems = [
   { label: "Dashboard", href: "/director-screen/dashboard", icon: LayoutDashboard },
@@ -94,12 +96,27 @@ function Dropdown({
   )
 }
 
+function ModalContainer() {
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const isModalOpen = searchParams.get('modal') === 'new-asset-category'
+
+  return (
+    <NewAssetCategoryModal 
+      isOpen={isModalOpen} 
+      onClose={() => router.push('/director-screen/assets')} 
+    />
+  )
+}
+
 export default function Page() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
-  const { logout } = useAuth()
+  const { user, logout } = useAuth()
   const router = useRouter()
   
-  const [openDropdownId, setOpenDropdownId] = useState<string | null>("Motor Vehicles")
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null)
+  
+  const { assetConfig, loading, error } = useAssetConfig()
 
   const handleLogout = async () => {
     try {
@@ -111,21 +128,13 @@ export default function Page() {
     }
   }
 
-  const assetRows = [
-    { id: "Motor Vehicles", life: "5", residual: "10%" },
-    { id: "Furniture", life: "8", residual: "5%" },
-    { id: "IT Equipment", life: "3", residual: "0%" },
-    { id: "Buildings", life: "50", residual: "20%" },
-    { id: "Office Equipment", life: "5", residual: "5%" },
-    { id: "Church Planting", life: "20", residual: "0%" },
-  ]
-
   const methodOptions = [
     "Straight Line",
     "Reducing Balance",
     "Sum of Years' Digits",
     "Units of Production"
   ]
+
 
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
@@ -150,7 +159,9 @@ export default function Page() {
           >
             <X className="h-5 w-5" />
           </button>
-          <span className="text-[10px] font-medium text-[#3B5BDB] ml-9 -mt-1">Super Admin</span>
+          <span className="text-[10px] font-medium text-[#3B5BDB] ml-9 -mt-1 uppercase">
+            {user?.role ? String(user.role).replace(/_/g, ' ') : "Director"}
+          </span>
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-2 mt-2">
@@ -189,8 +200,12 @@ export default function Page() {
                 />
               </div>
               <div className="flex flex-col">
-                <span className="text-[13px] font-bold text-[#111827]">Rev. Thomas M.</span>
-                <span className="text-[11px] font-medium text-[#6B7280]">Director</span>
+                <span className="text-[13px] font-bold text-[#111827]">
+                  {user?.name && !['director user', 'super admin', 'admin user'].includes(user.name.toLowerCase()) ? user.name : user?.email || "Super Admin"}
+                </span>
+                <span className="text-[11px] font-medium text-[#6B7280] capitalize">
+                  {user?.role ? String(user.role).replace(/_/g, ' ').toLowerCase() : "Director"}
+                </span>
               </div>
             </div>
 
@@ -293,28 +308,51 @@ export default function Page() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#EEF1F6]">
-                  {assetRows.map((row) => (
-                    <tr key={row.id}>
-                      <td className="px-6 py-4 font-medium text-[#111827]">{row.id}</td>
-                      <td className="px-6 py-3">
-                        <Dropdown 
-                          value="Straight Line" 
-                          options={methodOptions} 
-                          onChange={() => {}} 
-                          isOpen={openDropdownId === row.id}
-                          setIsOpen={(open) => setOpenDropdownId(open ? row.id : null)}
-                        />
+                  {loading ? (
+                    <tr>
+                      <td colSpan={4} className="px-6 py-8 text-center text-[13px] text-[#6B7280]">
+                        Loading asset policies...
                       </td>
-                      <td className="px-6 py-4 font-medium text-[#4B5563]">{row.life}</td>
-                      <td className="px-6 py-4 font-medium text-[#4B5563]">{row.residual}</td>
                     </tr>
-                  ))}
+                  ) : error ? (
+                    <tr>
+                      <td colSpan={4} className="px-6 py-8 text-center text-[13px] text-rose-600">
+                        {error}
+                      </td>
+                    </tr>
+                  ) : !assetConfig?.classes || assetConfig.classes.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-6 py-8 text-center text-[13px] text-[#6B7280]">
+                        No asset categories configured yet.
+                      </td>
+                    </tr>
+                  ) : (
+                    assetConfig.classes.map((row) => (
+                      <tr key={row._id || row.name}>
+                        <td className="px-6 py-4 font-medium text-[#111827]">{row.name}</td>
+                        <td className="px-6 py-3">
+                          <Dropdown 
+                            value={row.depreciationMethod || "Straight Line"} 
+                            options={methodOptions} 
+                            onChange={() => {}} 
+                            isOpen={openDropdownId === (row._id || row.name)}
+                            setIsOpen={(open) => setOpenDropdownId(open ? (row._id || row.name || null) : null)}
+                          />
+                        </td>
+                        <td className="px-6 py-4 font-medium text-[#4B5563]">{row.usefulLifeYears || "N/A"}</td>
+                        <td className="px-6 py-4 font-medium text-[#4B5563]">0%</td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
             
             <div className="flex items-center justify-between p-4 px-6 border-t border-[#EEF1F6]">
-              <button className="flex items-center gap-2 text-[12px] font-medium text-[#4B5563] bg-gray-50 border border-[#E5E7EB] rounded-[6px] px-3.5 py-2 hover:bg-gray-100 transition-colors shadow-sm">
+              <button 
+                onClick={() => router.push('/director-screen/assets?modal=new-asset-category')}
+                className="flex items-center gap-2 text-[12px] font-medium text-[#4B5563] bg-gray-50 border border-[#E5E7EB] rounded-[6px] px-3.5 py-2 hover:bg-gray-100 transition-colors shadow-sm"
+              >
                 <Plus className="h-3.5 w-3.5" />
                 Add New Asset Category
               </button>
@@ -326,6 +364,10 @@ export default function Page() {
 
         </div>
       </main>
+      
+      <Suspense fallback={null}>
+        <ModalContainer />
+      </Suspense>
     </div>
   )
 }

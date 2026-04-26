@@ -8,6 +8,8 @@ export type AuthUser = {
   email: string
   role: string
   name?: string
+  firstName?: string
+  lastName?: string
   tenantId?: string
   tenant?: {
     id?: string
@@ -130,7 +132,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       id: String(rawId ?? rawEmail ?? "unknown"),
       email: String(rawEmail ?? ""),
       role: String(rawRole ?? ""),
-      name: source.name ? String(source.name) : source.fullName ? String(source.fullName) : source.firstName ? String(source.firstName) : undefined,
+      name: source.fullName ? String(source.fullName) : source.name ? String(source.name) : (source.firstName && source.lastName) ? `${source.firstName} ${source.lastName}` : source.firstName ? String(source.firstName) : undefined,
+      firstName: source.firstName ? String(source.firstName) : undefined,
+      lastName: source.lastName ? String(source.lastName) : undefined,
       tenantId: source.tenantId ? String(source.tenantId) : tenantFromSource?.id ? String(tenantFromSource.id) : undefined,
       tenant: tenant ?? undefined,
     }
