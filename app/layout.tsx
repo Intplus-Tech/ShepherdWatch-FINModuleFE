@@ -3,6 +3,8 @@ import { Inter, Geist_Mono, Public_Sans } from "next/font/google";
 import "@/app/globals.css";
 import { AuthProvider } from "@/components/auth/AuthProvider";
 import { ToastProvider } from "@/components/ui/toast";
+import { ReactQueryProvider } from "@/components/providers/ReactQueryProvider";
+import { ReactQueryProvider } from "@/components/providers/ReactQueryProvider";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -32,9 +34,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${publicSans.className} antialiased`}>
-        <AuthProvider>
+        <ReactQueryProvider>
+          <AuthProvider>
           <ToastProvider>{children}</ToastProvider>
         </AuthProvider>
+        </ReactQueryProvider>
       </body>
     </html>
   );
