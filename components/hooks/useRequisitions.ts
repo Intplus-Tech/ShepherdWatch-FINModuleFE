@@ -134,8 +134,8 @@ export function useRequisitions(options: UseRequisitionsOptions = {}) {
 
         const query = params.toString()
         const url = query
-          ? `/api/core/financial/requisitions?${query}`
-          : "/api/core/financial/requisitions"
+          ? `/api/v1/core/financial/requisitions?${query}`
+          : "/api/v1/core/financial/requisitions"
 
         const response = await fetch(url, {
           method: "GET",

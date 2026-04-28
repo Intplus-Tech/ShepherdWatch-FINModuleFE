@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { useAuth } from "@/components/auth/AuthProvider"
 import {
   ArrowLeft,
   Building2,
@@ -56,6 +57,9 @@ type BudgetRow = {
 }
 
 export function BudgetReviewContent({ rightSidebar, activeRowId }: { rightSidebar?: React.ReactNode, activeRowId?: string }) {
+  const { user } = useAuth()
+  const displayName = user?.name || user?.email || "User"
+  const roleLabel = user?.role ? String(user.role).replace(/_/g, " ") : "Lead Pastor"
   const { entries, loading, error } = useBudgetEntries()
   const [data, setData] = useState<BudgetRow[]>([])
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
@@ -79,7 +83,7 @@ export function BudgetReviewContent({ rightSidebar, activeRowId }: { rightSideba
 
     try {
       const csrfToken = getCsrfToken()
-      const response = await fetch(`/api/core/financial/budget-entries/${entryId}/approve`, {
+      const response = await fetch(`/api/v1/core/financial/budget-entries/${entryId}/approve`, {
         method: "POST",
         headers: {
           "x-csrf-token": csrfToken,
@@ -110,7 +114,7 @@ export function BudgetReviewContent({ rightSidebar, activeRowId }: { rightSideba
       const csrfToken = getCsrfToken()
       await Promise.all(
         entryIds.map(async (entryId) => {
-          const response = await fetch(`/api/core/financial/budget-entries/${entryId}/approve`, {
+          const response = await fetch(`/api/v1/core/financial/budget-entries/${entryId}/approve`, {
             method: "POST",
             headers: { "x-csrf-token": csrfToken },
             credentials: "include",
@@ -319,8 +323,8 @@ export function BudgetReviewContent({ rightSidebar, activeRowId }: { rightSideba
                 <Image src="/images/Beared%20Guy02-min%201.jpg" alt="Profile avatar" fill className="object-cover" />
               </div>
               <div>
-                <div className="text-[14px] font-bold text-[#111827]">Alex Morgan</div>
-                <div className="text-[11px] text-[#9CA3AF] font-medium">Lead Pastor</div>
+                <div className="text-[14px] font-bold text-[#111827]">{displayName}</div>
+                <div className="text-[11px] text-[#9CA3AF] font-medium">{roleLabel}</div>
               </div>
             </div>
           </div>

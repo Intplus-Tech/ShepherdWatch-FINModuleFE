@@ -50,7 +50,7 @@ export function useBudgetEntries() {
           throw new Error("Tenant context is missing.")
         }
 
-        const url = `/api/core/financial/budget-entries?tenantId=${encodeURIComponent(
+        const url = `/api/v1/core/financial/budget-entries?tenantId=${encodeURIComponent(
           tenantId
         )}&periodStart=${encodeURIComponent(start)}&periodEnd=${encodeURIComponent(end)}`
 

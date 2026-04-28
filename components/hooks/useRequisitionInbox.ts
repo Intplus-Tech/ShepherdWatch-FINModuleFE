@@ -83,7 +83,7 @@ export function useRequisitionInbox(options: UseRequisitionInboxOptions = {}) {
         params.set("limit", String(options.limit ?? 20))
         if (branchId) params.set("branchId", branchId)
 
-        const response = await fetch(`/api/core/financial/requisitions/inbox?${params.toString()}`, {
+        const response = await fetch(`/api/v1/core/financial/requisitions/inbox?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         })

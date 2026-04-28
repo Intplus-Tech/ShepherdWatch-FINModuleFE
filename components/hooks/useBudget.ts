@@ -27,7 +27,7 @@ export function useBudget() {
     setError(null)
     
     try {
-      const response = await fetch(`/api/core/financial/budgets/${id}`, {
+      const response = await fetch(`/api/v1/core/financial/budgets/${id}`, {
         credentials: "include",
       })
       const payload = await response.json().catch(() => null)

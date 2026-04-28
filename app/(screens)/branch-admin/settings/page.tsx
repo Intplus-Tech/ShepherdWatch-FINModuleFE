@@ -1,3 +1,5 @@
+import UserSettingsPage from "../user-settings/page"
+
 export default function SettingsPage() {
-  return <div>Settings Page</div>
+  return <UserSettingsPage />
 }

@@ -2,6 +2,10 @@
 
 import React, { useState, useEffect } from "react";
 import { Inter } from "next/font/google";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import axios from "axios";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { 
   Bell, 
   Search, 
@@ -12,7 +16,8 @@ import {
   Truck, 
   Briefcase, 
   Settings as SettingsIcon,
-  User
+  User,
+  LogOut
 } from "lucide-react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { ActiveSessionsManager } from "@/components/settings/ActiveSessionsManager";
@@ -22,7 +27,9 @@ const inter = Inter({ subsets: ["latin"] });
 
 export default function UserSettingsPage() {
   const queryClient = useQueryClient();
-  const { updateProfile } = useAuth();
+  const { updateProfile, logout } = useAuth();
+  const pathname = usePathname();
+  const router = useRouter();
   const [profile, setProfile] = useState<any>(null);
   const [fullNameInput, setFullNameInput] = useState("");
   const [phoneInput, setPhoneInput] = useState("");
@@ -114,19 +121,40 @@ export default function UserSettingsPage() {
   const [activeHeader, setActiveHeader] = useState<any | null>(null);
   const [activeFooter, setActiveFooter] = useState<any | null>(null);
 
+  const handleLogout = async () => {
+    try {
+      await logout();
+      router.replace("/login");
+    } catch (error) {
+      console.error("Logout failed", error);
+      router.replace("/login");
+    }
+  };
+
   useEffect(() => {
-    fetch("/api/auth/me")
-      .then(res => res.json())
-      .then(data => {
-        if (data.data) {
-          setProfile(data.data);
-          const nextFullName = `${data.data.firstName || ""} ${data.data.lastName || ""}`.trim();
-          setFullNameInput(nextFullName);
-          setPhoneInput(String(data.data.phone ?? data.data.phoneNumber ?? ""));
+    const loadProfile = async () => {
+      let res = await fetch("/api/v1/auth/me", { credentials: "include" });
+      if (res.status === 401) {
+        const refreshRes = await fetch("/api/v1/auth/refresh-token", {
+          method: "POST",
+          credentials: "include",
+        });
+        if (refreshRes.ok) {
+          res = await fetch("/api/v1/auth/me", { credentials: "include" });
         }
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+      }
+
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.data) {
+        setProfile(data.data);
+        const nextFullName = `${data.data.firstName || ""} ${data.data.lastName || ""}`.trim();
+        setFullNameInput(nextFullName);
+        setPhoneInput(String(data.data.phone ?? data.data.phoneNumber ?? ""));
+      }
+      setLoading(false);
+    };
+
+    loadProfile().catch(console.error);
   }, []);
 
 
@@ -152,7 +180,7 @@ export default function UserSettingsPage() {
       if (templateForm.branchId) {
         payload.branchId = templateForm.branchId;
       }
-      const res = await fetch("/api/templates", {
+      const res = await fetch("/api/v1/templates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -188,7 +216,7 @@ export default function UserSettingsPage() {
         description: purposeForm.description,
         isActive: purposeForm.isActive,
       };
-      const res = await fetch("/api/templates/purposes", {
+      const res = await fetch("/api/v1/templates/purposes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -215,7 +243,7 @@ export default function UserSettingsPage() {
     setPurposesLoading(true);
     setPurposesError(null);
     try {
-      const res = await fetch("/api/templates/purposes?page=1&limit=20");
+      const res = await fetch("/api/v1/templates/purposes?page=1&limit=20");
       const data = await res.json().catch(() => null);
       if (!res.ok) {
         throw new Error(data?.message || "Unable to load purposes");
@@ -232,7 +260,7 @@ export default function UserSettingsPage() {
     setPurposeDetailsLoading(true);
     setPurposeDetailsError(null);
     try {
-      const res = await fetch(`/api/templates/purposes/${id}`);
+      const res = await fetch(`/api/v1/templates/purposes/${id}`);
       const data = await res.json().catch(() => null);
       if (!res.ok) {
         throw new Error(data?.message || "Unable to load purpose");
@@ -257,7 +285,7 @@ export default function UserSettingsPage() {
     setUpdatingPurpose(true);
     setPurposeDetailsError(null);
     try {
-      const res = await fetch(`/api/templates/purposes/${selectedPurpose._id}`, {
+      const res = await fetch(`/api/v1/templates/purposes/${selectedPurpose._id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(purposeEdit),
@@ -281,7 +309,7 @@ export default function UserSettingsPage() {
     setDeletingPurposeId(id);
     setPurposeDetailsError(null);
     try {
-      const res = await fetch(`/api/templates/purposes/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/v1/templates/purposes/${id}`, { method: "DELETE" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(data.message || "Unable to delete purpose");
@@ -307,7 +335,7 @@ export default function UserSettingsPage() {
     if (templateFilters.branchId) params.set("branchId", templateFilters.branchId);
     if (templateFilters.isActive) params.set("isActive", templateFilters.isActive);
     try {
-      const res = await fetch(`/api/templates?${params.toString()}`);
+      const res = await fetch(`/api/v1/templates?${params.toString()}`);
       const data = await res.json().catch(() => null);
       if (!res.ok) {
         throw new Error(data?.message || "Unable to load templates");
@@ -337,7 +365,7 @@ export default function UserSettingsPage() {
     setTemplateUpdating(true);
     setTemplateEditError(null);
     try {
-      const res = await fetch(`/api/templates/${selectedTemplate._id}`, {
+      const res = await fetch(`/api/v1/templates/${selectedTemplate._id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -369,7 +397,7 @@ export default function UserSettingsPage() {
     setDeletingTemplateId(id);
     setTemplateEditError(null);
     try {
-      const res = await fetch(`/api/templates/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/v1/templates/${id}`, { method: "DELETE" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(data.message || "Unable to delete template");
@@ -390,7 +418,7 @@ export default function UserSettingsPage() {
     setHeaderFooterMessage(null);
     setHeaderFooterError(null);
     try {
-      const res = await fetch("/api/templates/header-footer", {
+      const res = await fetch("/api/v1/templates/header-footer", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -416,7 +444,7 @@ export default function UserSettingsPage() {
     setHeaderFootersLoading(true);
     setHeaderFootersError(null);
     try {
-      const res = await fetch("/api/templates/header-footer");
+      const res = await fetch("/api/v1/templates/header-footer");
       const data = await res.json().catch(() => null);
       if (!res.ok) {
         throw new Error(data?.message || "Unable to load header/footer");
@@ -431,7 +459,7 @@ export default function UserSettingsPage() {
 
   const fetchActiveHeaderFooter = async (type: "header" | "footer") => {
     try {
-      const res = await fetch(`/api/templates/header-footer/${type}`);
+      const res = await fetch(`/api/v1/templates/header-footer/${type}`);
       const data = await res.json().catch(() => null);
       if (!res.ok) {
         throw new Error(data?.message || `Unable to load ${type}`);
@@ -534,25 +562,25 @@ export default function UserSettingsPage() {
         {/* Navigation Links */}
         <div className="flex flex-col px-4 mt-6 gap-1 w-full">
           {/* Main Links */}
-          <button className="w-full flex items-center gap-3.5 px-4 h-[44px] rounded-[10px] text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#334155] transition-colors group">
+          <Link href="/branch-admin/dashboard" className="w-full flex items-center gap-3.5 px-4 h-[44px] rounded-[10px] text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#334155] transition-colors group">
             <LayoutDashboard className="w-[18px] h-[18px] stroke-[2.2px] group-hover:text-[#475569]" />
             <span className="text-[14px] font-[600]">Dashboard</span>
-          </button>
+          </Link>
           
-          <button className="w-full flex items-center gap-3.5 px-4 h-[44px] rounded-[10px] text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#334155] transition-colors group">
+          <Link href="/branch-admin/requisitions" className="w-full flex items-center gap-3.5 px-4 h-[44px] rounded-[10px] text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#334155] transition-colors group">
             <FileText className="w-[18px] h-[18px] stroke-[2.2px] group-hover:text-[#475569]" />
             <span className="text-[14px] font-[600]">Requisitions</span>
-          </button>
+          </Link>
           
-          <button className="w-full flex items-center gap-3.5 px-4 h-[44px] rounded-[10px] text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#334155] transition-colors group">
+          <Link href="/branch-admin/logistics-repair" className="w-full flex items-center gap-3.5 px-4 h-[44px] rounded-[10px] text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#334155] transition-colors group">
             <Truck className="w-[18px] h-[18px] stroke-[2.2px] group-hover:text-[#475569]" />
             <span className="text-[14px] font-[600]">Logistics & Repairs</span>
-          </button>
+          </Link>
           
-          <button className="w-full flex items-center gap-3.5 px-4 h-[44px] rounded-[10px] text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#334155] transition-colors group">
+          <Link href="/branch-admin/asset" className="w-full flex items-center gap-3.5 px-4 h-[44px] rounded-[10px] text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#334155] transition-colors group">
             <Briefcase className="w-[18px] h-[18px] stroke-[2.2px] group-hover:text-[#475569]" />
             <span className="text-[14px] font-[600]">Assets</span>
-          </button>
+          </Link>
 
           {/* System Section Label */}
           <div className="mt-8 mb-2 px-4">
@@ -560,22 +588,30 @@ export default function UserSettingsPage() {
           </div>
           
           {/* Active Settings Link */}
-          <button className="w-full flex items-center gap-3.5 px-4 h-[44px] rounded-[10px] bg-[#EEF2FF] text-[#2563EB] transition-colors">
+          <Link href="/branch-admin/settings" className={`w-full flex items-center gap-3.5 px-4 h-[44px] rounded-[10px] transition-colors ${pathname === "/branch-admin/settings" ? "bg-[#EEF2FF] text-[#2563EB]" : "text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#334155]"}`}>
             <SettingsIcon className="w-[18px] h-[18px] stroke-[2.5px]" />
             <span className="text-[14px] font-[800]">Settings</span>
-          </button>
+          </Link>
         </div>
 
         {/* Profile Footer */}
-        <div className="mt-auto border-t border-[#EEF1F6] p-4 flex items-center gap-3 bg-[#FAFAFA]">
-          <div className="w-[36px] h-[36px] rounded-full overflow-hidden border-2 border-white shadow-sm shrink-0">
-            {/* Generic avatar placeholder */}
-            <div className="w-full h-full bg-[#1E293B] flex items-center justify-center text-white text-[12px] font-[700]">{initials || "U"}</div>
+        <div className="mt-auto border-t border-[#EEF1F6] p-4 bg-[#FAFAFA]">
+          <div className="flex items-center gap-3">
+            <div className="w-[36px] h-[36px] rounded-full overflow-hidden border-2 border-white shadow-sm shrink-0">
+              <div className="w-full h-full bg-[#1E293B] flex items-center justify-center text-white text-[12px] font-[700]">{initials || "U"}</div>
+            </div>
+            <div className="flex flex-col truncate">
+              <span className="text-[#111827] text-[13.5px] font-[800] truncate">{fullName}</span>
+              <span className="text-[#64748B] text-[11.5px] font-[500] truncate">{roleName}</span>
+            </div>
           </div>
-          <div className="flex flex-col truncate">
-            <span className="text-[#111827] text-[13.5px] font-[800] truncate">{fullName}</span>
-            <span className="text-[#64748B] text-[11.5px] font-[500] truncate">{roleName}</span>
-          </div>
+          <button
+            onClick={handleLogout}
+            className="mt-3 flex items-center gap-2 rounded-[8px] py-2 px-2 text-[12px] font-medium text-rose-600 hover:bg-rose-50 transition-colors w-full text-left"
+          >
+            <LogOut className="h-4 w-4" />
+            Logout
+          </button>
         </div>
       </aside>
 

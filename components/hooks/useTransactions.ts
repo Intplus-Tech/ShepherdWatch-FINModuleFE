@@ -63,8 +63,8 @@ export function useTransactions(options: UseTransactionsOptions = {}) {
         if (options.type) params.set("type", options.type)
         const query = params.toString()
         const url = query
-          ? `/api/core/financial/transactions?${query}`
-          : "/api/core/financial/transactions"
+          ? `/api/v1/core/financial/transactions?${query}`
+          : "/api/v1/core/financial/transactions"
 
         const response = await fetch(url, {
           method: "GET",

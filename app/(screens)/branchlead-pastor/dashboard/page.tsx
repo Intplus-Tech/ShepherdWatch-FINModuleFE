@@ -2,6 +2,7 @@
 
 import { useMemo } from "react"
 import Image from "next/image"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -11,7 +12,6 @@ import {
   Calendar,
   ChevronDown,
   FileText,
-  FolderKanban,
   HelpCircle,
   LayoutDashboard,
   PiggyBank,
@@ -22,50 +22,36 @@ import {
   TrendingUp,
   TriangleAlert,
   Wallet,
+  Wrench,
   Zap,
+  LogOut,
 } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
+import { useRouter } from "next/navigation"
+import { usePathname } from "next/navigation"
 import { useDashboardOverview } from "@/components/hooks/useDashboardOverview"
 import { useEffect } from "react"
 import { useExpenseDistribution } from "@/components/hooks/useExpenseDistribution"
 import { useFinancialCalendar } from "@/components/hooks/useFinancialCalendar"
 import { useRecentDashboardTransactions } from "@/components/hooks/useRecentDashboardTransactions"
 
-const approvals = [
-  {
-    id: "REQ-2301",
-    title: "Audio Upgrade",
-    meta: "Submitted by Dcn. Samuel • 2 hours ago",
-    amount: "₦150,000",
-    tag: "OVER-BUDGET",
-    tagTone: "bg-rose-50 text-rose-600",
-    iconTone: "bg-rose-50 text-rose-600",
-    iconPath: "/images/microphone.svg",
-  },
-  {
-    id: "REQ-2302",
-    title: "Youth Camp Logistics",
-    meta: "Submitted by Admin Dept • 5 hours ago",
-    amount: "₦75,000",
-    tag: "",
-    tagTone: "bg-amber-50 text-amber-600",
-    iconTone: "bg-amber-50 text-amber-600",
-    iconPath: "/images/humon.svg",
-  },
-  {
-    id: "REQ-2303",
-    title: "Staff Emergency Loan",
-    meta: "Submitted by Admin Dept • 1 day ago",
-    amount: "₦95,000",
-    tagTone: "bg-emerald-50 text-emerald-600",
-    iconTone: "bg-emerald-50 text-emerald-600",
-    iconPath: "/images/user.svg",
-  },
-]
-
 export default function Page() {
-  const { user } = useAuth()
+  const { user, logout } = useAuth()
+  const displayName = user?.name || user?.email || "User"
+  const roleLabel = user?.role ? String(user.role).replace(/_/g, " ") : "Lead Pastor"
+  const router = useRouter()
+  const pathname = usePathname()
   const branchId = user?.tenantId ?? user?.tenant?.id ?? ""
+
+  const handleLogout = async () => {
+    try {
+      await logout()
+      router.replace("/login")
+    } catch (error) {
+      console.error("Logout failed", error)
+      router.replace("/login")
+    }
+  }
   
   const { transactions: rawTransactions, loading: txLoading, error: txError } = useRecentDashboardTransactions({
     branchId,
@@ -198,71 +184,86 @@ export default function Page() {
       background: `conic-gradient(${conicStops.join(",")})`,
     }
   }, [expenseItems])
+
+  const approvalInbox = useMemo(() => {
+    return rawTransactions
+      .filter((tx) => (tx.status ?? "").toUpperCase() !== "VERIFIED")
+      .slice(0, 3)
+      .map((tx, idx) => ({
+        id: tx.id ?? `TX-${idx + 1}`,
+        title: tx.description || "Transaction Approval",
+        meta: tx.accountName || tx.transactionType || "Pending review",
+        amount: formatCurrency(Math.abs(Number(tx.amount ?? 0))),
+        tag: (tx.status ?? "").toUpperCase() === "PENDING" ? "PENDING" : "",
+        tagTone: "bg-amber-50 text-amber-600",
+        iconTone: "bg-amber-50 text-amber-600",
+        iconPath: "/images/user.svg",
+      }))
+  }, [rawTransactions])
   return (
-    <div className="flex min-h-screen bg-[#F7F8FC] font-sans">
-      <aside
-        className="bg-white px-5 py-6"
-        style={{
-          width: "170.6666717529297px",
-          height: "1358px",
-          borderRightWidth: "0.67px",
-          borderRightStyle: "solid",
-          borderRightColor: "#EEF1F6",
-          opacity: 1
-        }}
-      >
-        <div className="flex items-center gap-2 pb-6">
-          <Image src="/images/icon-shepherdwatch.svg" alt="ShepherdWatch" width={24} height={24} />
-          <div>
-            <div className="text-[14px] font-semibold text-[#1F2937] leading-none">ShepherdWatch</div>
-            <div className="text-[10px] text-[#9CA3AF]">Lead Pastor View</div>
+    <div className="flex min-h-screen bg-[#F2F4F7] font-sans text-[#111827]">
+      <aside className="hidden lg:flex w-[260px] h-screen sticky top-0 border-r border-[#EEF1F6] bg-[#FAFBFF] flex-col shrink-0">
+        <div className="flex flex-col gap-1 px-6 pt-8 pb-4">
+          <div className="flex items-center gap-2">
+            <Image src="/images/logo.svg" alt="ShepherdWatch" width={160} height={36} className="object-contain" />
           </div>
+          <span className="text-[10px] font-medium text-[#3B5BDB] ml-9 -mt-1 uppercase">Lead Pastor&apos;s View</span>
         </div>
 
-        <nav className="space-y-1">
+        <nav className="px-4 py-2 mt-2 space-y-1.5">
           {[
-            { label: "Dashboard", icon: LayoutDashboard, active: true },
-            { label: "Financial Management", icon: FolderKanban },
-            { label: "Assets", icon: Building2 },
-            { label: "Budget", icon: Wallet },
-            { label: "Compliance & Remittance", icon: ShieldCheck },
+            { label: "Dashboard", icon: LayoutDashboard, href: "/branchlead-pastor/dashboard" },
+            { label: "Financial Management", icon: FileText, href: "/branchlead-pastor/financial-management" },
+            { label: "Assets", icon: Wrench, href: "/branchlead-pastor/assets" },
+            { label: "Budget", icon: Wallet, href: "/branchlead-pastor/budget" },
+            { label: "Compliance & Remittance", icon: ShieldCheck, href: "/branchlead-pastor/compliance-remittance" },
           ].map((item) => {
             const Icon = item.icon
+            const isActive = pathname === item.href
             return (
-              <div
-                key={item.label}
-                className={`flex items-center gap-3 rounded-[10px] px-3 py-2.5 text-[13px] ${item.active ? "bg-[#EEF2FF] text-[#3B5BDB] font-semibold" : "text-[#6B7280]"
-                  }`}
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex items-center gap-3 rounded-[8px] px-4 py-3 text-[13px] font-medium transition-colors ${
+                  isActive ? "bg-[#3B5BDB] text-white shadow-sm" : "text-[#6B7280] hover:bg-white hover:text-[#111827]"
+                }`}
               >
-                <Icon
-                  style={{ width: "12.266709327697754px", height: "11.62109375px", opacity: 1 }}
-                  className="shrink-0"
-                />
+                <Icon className="h-[18px] w-[18px]" />
                 {item.label}
-              </div>
+              </Link>
             )
           })}
         </nav>
 
-        <div className="mt-8 space-y-3 text-[12px] text-[#6B7280]">
-          <div className="flex items-center gap-2">
-            <Settings style={{ width: "12.266709327697754px", height: "11.62109375px", opacity: 1 }} className="shrink-0" />
+        <div className="mt-auto border-t border-[#EEF1F6] p-5">
+          <div className="space-y-1.5">
+            <Link href="/branchlead-pastor/settings" className="flex items-center gap-3 rounded-[8px] px-4 py-3 text-[13px] font-medium transition-colors text-[#6B7280] hover:bg-white hover:text-[#111827]">
+              <Settings className="h-[18px] w-[18px]" />
             Settings
-          </div>
-          <div className="flex items-center gap-2">
-            <HelpCircle style={{ width: "12.266709327697754px", height: "11.62109375px", opacity: 1 }} className="shrink-0" />
+            </Link>
+            <div className="flex items-center gap-3 rounded-[8px] px-4 py-3 text-[13px] font-medium transition-colors text-[#6B7280] hover:bg-white hover:text-[#111827]">
+              <HelpCircle className="h-[18px] w-[18px]" />
             Help Center
+            </div>
           </div>
-        </div>
 
-        <div className="mt-10 flex items-center gap-3 pt-4">
-          <div className="h-8 w-8 rounded-full overflow-hidden bg-[#E8EDFF]">
-            <Image src="/images/Beared%20Guy02-min%201.jpg" alt="Alex" width={32} height={32} className="h-full w-full object-cover" />
+          <div className="flex items-center gap-3 mt-6">
+            <div className="h-10 w-10 rounded-full bg-[#1F2937] text-white text-[13px] font-bold flex items-center justify-center">
+              {String(displayName)[0]?.toUpperCase() ?? "U"}
+            </div>
+            <div className="leading-tight overflow-hidden">
+              <div className="text-[13px] font-bold text-[#111827] truncate">{displayName}</div>
+              <div className="text-[11px] font-medium text-[#6B7280] truncate">{roleLabel}</div>
+            </div>
           </div>
-          <div className="text-[11px]">
-            <div className="font-semibold text-[#111827]">Alex Morgan</div>
-            <div className="text-[#9CA3AF]">Lead Pastor</div>
-          </div>
+
+          <button
+            onClick={handleLogout}
+            className="mt-4 flex items-center gap-3 rounded-[8px] py-2.5 px-3 -mx-3 text-[13px] font-medium text-rose-600 hover:bg-rose-50 transition-colors w-[calc(100%+24px)] text-left"
+          >
+            <LogOut className="h-[18px] w-[18px]" />
+            Logout
+          </button>
         </div>
       </aside>
 
@@ -527,7 +528,12 @@ export default function Page() {
               <button className="text-[12px] font-medium text-[#3B5BDB]">View All</button>
             </div>
             <div className="mt-4 space-y-3">
-              {approvals.map((item) => (
+              {approvalInbox.length === 0 && (
+                <div className="rounded-[12px] border border-[#EEF1F6] px-4 py-6 text-[12px] text-[#6B7280]">
+                  No pending approvals.
+                </div>
+              )}
+              {approvalInbox.map((item) => (
                 <div key={item.id} className="flex items-center justify-between rounded-[12px] border border-[#EEF1F6] px-4 py-3">
                   <div className="flex items-start gap-3">
                     <div

@@ -2,7 +2,9 @@
 
 import React, { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
+import Link from "next/link"
 import { Inter } from "next/font/google"
+import { usePathname } from "next/navigation"
 import {
   LayoutDashboard,
   List,
@@ -42,6 +44,7 @@ type AuditTimelineItem = {
 
 export default function RequisitionsHub() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const pathname = usePathname()
   const [auditItems, setAuditItems] = useState<AuditTimelineItem[]>([])
   const [auditLoading, setAuditLoading] = useState(true)
   const [auditError, setAuditError] = useState<string | null>(null)
@@ -69,7 +72,7 @@ export default function RequisitionsHub() {
 
       try {
         const params = new URLSearchParams({ page: "1", limit: "20", search: "Requisition" })
-        const response = await fetch(`/api/audit-logs?${params.toString()}`, {
+        const response = await fetch(`/api/v1/audit-logs?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         })
@@ -273,7 +276,7 @@ export default function RequisitionsHub() {
 
     try {
       const csrfToken = getCsrfToken()
-      const response = await fetch(`/api/core/financial/requisitions/${reqId}`, {
+      const response = await fetch(`/api/v1/core/financial/requisitions/${reqId}`, {
         method: "DELETE",
         headers: { "x-csrf-token": csrfToken },
         credentials: "include",
@@ -298,7 +301,7 @@ export default function RequisitionsHub() {
 
     try {
       const csrfToken = getCsrfToken()
-      const response = await fetch(`/api/core/financial/requisitions/${reqId}/submit`, {
+      const response = await fetch(`/api/v1/core/financial/requisitions/${reqId}/submit`, {
         method: "PATCH",
         headers: {
           "x-csrf-token": csrfToken,
@@ -360,7 +363,7 @@ export default function RequisitionsHub() {
     setEditSuccess(null)
     try {
       const csrfToken = getCsrfToken()
-      const response = await fetch(`/api/core/financial/requisitions/${editingReqId}`, {
+      const response = await fetch(`/api/v1/core/financial/requisitions/${editingReqId}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -454,23 +457,25 @@ export default function RequisitionsHub() {
           {/* Main Navigation */}
           <nav className="space-y-1.5 mt-2 px-3">
             {[
-              { label: "Dashboard", href: "#", icon: LayoutDashboard },
-              { label: "Requisitions", href: "#", icon: List, active: true },
-              { label: "Logistics & Repairs", href: "#", icon: Wrench },
-              { label: "Assets", href: "#", icon: Database },
+              { label: "Dashboard", href: "/branch-admin/dashboard", icon: LayoutDashboard },
+              { label: "Requisitions", href: "/branch-admin/requisitions", icon: List },
+              { label: "Logistics & Repairs", href: "/branch-admin/logistics-repair", icon: Wrench },
+              { label: "Assets", href: "/branch-admin/asset", icon: Database },
             ].map((item) => {
               const Icon = item.icon
+              const isActive = pathname === item.href
               return (
-                <div
+                <Link
                   key={item.label}
-                  className={`flex items-center justify-between rounded-[8px] px-4 py-3 text-[14px] font-[700] cursor-pointer transition-colors ${item.active ? "bg-[#EEF2FF] text-[#2563EB]" : "text-[#4B5563] hover:bg-gray-50"
+                  href={item.href}
+                  className={`flex items-center justify-between rounded-[8px] px-4 py-3 text-[14px] font-[700] cursor-pointer transition-colors ${isActive ? "bg-[#EEF2FF] text-[#2563EB]" : "text-[#4B5563] hover:bg-gray-50"
                     }`}
                 >
                   <div className="flex items-center gap-3.5">
-                    <Icon className={`h-5 w-5 stroke-[2] ${item.active ? "text-[#2563EB]" : "text-[#6B7280]"}`} />
+                    <Icon className={`h-5 w-5 stroke-[2] ${isActive ? "text-[#2563EB]" : "text-[#6B7280]"}`} />
                     {item.label}
                   </div>
-                </div>
+                </Link>
               )
             })}
           </nav>
@@ -479,10 +484,10 @@ export default function RequisitionsHub() {
           <div className="px-3 mt-4">
             <div className="text-[11px] font-[800] text-[#9CA3AF] tracking-widest uppercase mb-3 px-4">System</div>
             <div className="space-y-1">
-              <div className="flex items-center gap-3.5 rounded-[8px] px-4 py-3 cursor-pointer text-[14px] font-[700] text-[#4B5563] hover:bg-gray-50 transition-colors">
+              <Link href="/branch-admin/settings" className="flex items-center gap-3.5 rounded-[8px] px-4 py-3 cursor-pointer text-[14px] font-[700] text-[#4B5563] hover:bg-gray-50 transition-colors">
                 <Settings className="h-5 w-5 stroke-[2] text-[#6B7280]" />
                 Settings
-              </div>
+              </Link>
             </div>
           </div>
 

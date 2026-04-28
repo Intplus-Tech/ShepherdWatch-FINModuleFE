@@ -1,7 +1,9 @@
 "use client"
 
 import Image from "next/image"
+import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
+import { usePathname } from "next/navigation"
 import { Input } from "@/components/ui/input"
 import { useAuth } from "@/components/auth/AuthProvider"
 import {
@@ -47,6 +49,9 @@ type CalendarEvent = { title: string; sub?: string; colorType: EventColorType }
 
 export default function MaintenanceManagementPage() {
   const { user } = useAuth()
+  const displayName = user?.name || user?.email || "User"
+  const roleLabel = user?.role ? String(user.role).replace(/_/g, " ") : "Lead Pastor"
+  const pathname = usePathname()
   const [urgentAlerts, setUrgentAlerts] = useState<
     { id: string; title: string; meta: string; daysOverdue: number }[]
   >([])
@@ -84,7 +89,7 @@ export default function MaintenanceManagementPage() {
 
     try {
       const csrfToken = getCsrfToken()
-      const response = await fetch(`/api/core/financial/maintenance-tasks/${taskId}`, {
+      const response = await fetch(`/api/v1/core/financial/maintenance-tasks/${taskId}`, {
         method: "DELETE",
         headers: { "x-csrf-token": csrfToken },
         credentials: "include",
@@ -129,7 +134,7 @@ export default function MaintenanceManagementPage() {
           limit: "50",
         })
 
-        const response = await fetch(`/api/maintenance/history?${params.toString()}`, {
+        const response = await fetch(`/api/v1/maintenance/history?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         })
@@ -187,7 +192,7 @@ export default function MaintenanceManagementPage() {
         setAlertsError(null)
         const params = new URLSearchParams({ branchId })
 
-        const response = await fetch(`/api/maintenance/alerts?${params.toString()}`, {
+        const response = await fetch(`/api/v1/maintenance/alerts?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         })
@@ -313,7 +318,7 @@ export default function MaintenanceManagementPage() {
           endDate: formatDateParam(end),
         })
 
-        const response = await fetch(`/api/maintenance/schedule?${params.toString()}`, {
+        const response = await fetch(`/api/v1/maintenance/schedule?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         })
@@ -441,7 +446,7 @@ export default function MaintenanceManagementPage() {
     setVerifyError(null)
     setVerifyingId(recordId)
     try {
-      const response = await fetch(`/api/maintenance/${recordId}/verify`, {
+      const response = await fetch(`/api/v1/maintenance/${recordId}/verify`, {
         method: "POST",
         credentials: "include",
       })
@@ -484,18 +489,20 @@ export default function MaintenanceManagementPage() {
 
           <nav className="space-y-2">
             {[
-              { label: "Dashboard", icon: LayoutDashboard },
-              { label: "Maintenance Management", icon: FolderKanban, hasDropdown: true },
-              { label: "Assets", icon: Wallet, active: true },
-              { label: "Budget", icon: ShieldCheck },
-              { label: "Compliance & Remittance", icon: BarChart3 },
+              { label: "Dashboard", icon: LayoutDashboard, href: "/branchlead-pastor/dashboard" },
+              { label: "Maintenance Management", icon: FolderKanban, hasDropdown: true, href: "/branchlead-pastor/financial-management" },
+              { label: "Assets", icon: Wallet, href: "/branchlead-pastor/assets" },
+              { label: "Budget", icon: ShieldCheck, href: "/branchlead-pastor/budget" },
+              { label: "Compliance & Remittance", icon: BarChart3, href: "/branchlead-pastor/compliance-remittance" },
             ].map((item) => {
               const Icon = item.icon
+              const isActive = pathname === item.href
               return (
-                <div
+                <Link
                   key={item.label}
+                  href={item.href}
                   className={`flex items-center justify-between rounded-[8px] px-3.5 py-3 text-[13px] font-bold cursor-pointer transition-colors ${
-                    item.active ? "bg-[#EEF2FF] text-[#3B5BDB]" : "text-[#475569] hover:bg-gray-100 hover:text-[#111827]"
+                    isActive ? "bg-[#EEF2FF] text-[#3B5BDB]" : "text-[#475569] hover:bg-gray-100 hover:text-[#111827]"
                   }`}
                 >
                   <div className="flex items-center gap-3.5">
@@ -503,7 +510,7 @@ export default function MaintenanceManagementPage() {
                     {item.label}
                   </div>
                   {item.hasDropdown && <ChevronDown className="h-4 w-4 stroke-[2]" />}
-                </div>
+                </Link>
               )
             })}
           </nav>
@@ -511,23 +518,23 @@ export default function MaintenanceManagementPage() {
 
         <div className="p-6 border-t border-[#EEF1F6]">
           <div className="space-y-1.5 mb-6">
-            <div className="flex items-center gap-3.5 rounded-[8px] px-3.5 py-3 text-[13px] font-bold text-[#475569] hover:bg-gray-100 cursor-pointer transition-colors">
+            <Link href="/branchlead-pastor/settings" className="flex items-center gap-3.5 rounded-[8px] px-3.5 py-3 text-[13px] font-bold text-[#475569] hover:bg-gray-100 cursor-pointer transition-colors">
               <Settings className="h-[18px] w-[18px] stroke-[2]" />
               Settings
-            </div>
-            <div className="flex items-center gap-3.5 rounded-[8px] px-3.5 py-3 text-[13px] font-bold text-[#475569] hover:bg-gray-100 cursor-pointer transition-colors">
+            </Link>
+            <Link href="/branchlead-pastor/dashboard" className="flex items-center gap-3.5 rounded-[8px] px-3.5 py-3 text-[13px] font-bold text-[#475569] hover:bg-gray-100 cursor-pointer transition-colors">
               <HelpCircle className="h-[18px] w-[18px] stroke-[2]" />
               Help Center
-            </div>
+            </Link>
           </div>
 
           <div className="flex items-center gap-3.5 px-3.5 pt-2">
             <div className="h-10 w-10 rounded-full overflow-hidden bg-gray-100 ring-2 ring-white shrink-0 shadow-sm">
-              <img src="/images/Beared%20Guy02-min%201.jpg" alt="Alex Morgan" className="h-full w-full object-cover" />
+              <img src="/images/Beared%20Guy02-min%201.jpg" alt="Profile avatar" className="h-full w-full object-cover" />
             </div>
             <div>
-              <div className="text-[14px] font-extrabold text-[#111827]">Alex Morgan</div>
-              <div className="text-[11px] text-[#94A3B8] font-bold mt-0.5 tracking-wide">Lead Pastor</div>
+              <div className="text-[14px] font-extrabold text-[#111827]">{displayName}</div>
+              <div className="text-[11px] text-[#94A3B8] font-bold mt-0.5 tracking-wide">{roleLabel}</div>
             </div>
           </div>
         </div>

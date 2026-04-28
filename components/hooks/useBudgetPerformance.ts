@@ -37,7 +37,7 @@ export function useBudgetPerformance(initialProps?: UseBudgetPerformanceProps) {
         if (mergedProps.startDate) qs.set("startDate", mergedProps.startDate)
         if (mergedProps.endDate) qs.set("endDate", mergedProps.endDate)
 
-        const res = await fetch(`/api/core/dashboard/budget-performance?${qs.toString()}`)
+        const res = await fetch(`/api/v1/core/dashboard/budget-performance?${qs.toString()}`)
         const data = await res.json().catch(() => null)
         
         if (!res.ok) {

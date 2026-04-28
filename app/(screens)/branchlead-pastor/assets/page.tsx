@@ -1,6 +1,9 @@
 "use client"
 
 import Image from "next/image"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
+import { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -19,27 +22,76 @@ import {
   ArrowRight,
   Menu
 } from "lucide-react"
-
-const assets = [
-  {
-    name: "Church Sound System (Array)",
-    category: "Electronics",
-    date: "Oct 12, 2022",
-    value: "N4,200,000",
-    condition: "EXCELLENT",
-    statusColor: "text-emerald-600 bg-emerald-50",
-  },
-  {
-    name: "Industrial Generator 250KVA",
-    category: "Power Plant",
-    date: "Jan 05, 2021",
-    value: "N12,500,000",
-    condition: "SERVICE REQ.",
-    statusColor: "text-amber-600 bg-amber-50",
-  },
-]
+import { useAuth } from "@/components/auth/AuthProvider"
 
 export default function Page() {
+  const pathname = usePathname()
+  const { user } = useAuth()
+  const displayName = user?.name || user?.email || "User"
+  const roleLabel = user?.role ? String(user.role).replace(/_/g, " ") : "Lead Pastor"
+  const [assetRows, setAssetRows] = useState<
+    { name: string; category: string; date: string; value: string; condition: string; statusColor: string }[]
+  >([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat("en-NG", {
+      style: "currency",
+      currency: "NGN",
+      maximumFractionDigits: 0,
+    }).format(amount)
+
+  useEffect(() => {
+    let mounted = true
+    const run = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        const res = await fetch("/api/v1/core/financial/fixed-assets", { credentials: "include" })
+        const payload = await res.json().catch(() => null)
+        if (!res.ok) throw new Error(payload?.message ?? "Unable to load assets.")
+        const list = payload?.data?.content ?? payload?.data ?? payload?.content ?? []
+        const rows = (Array.isArray(list) ? list : []).map((asset: any) => ({
+          name: asset?.name ?? asset?.description ?? "Unnamed Asset",
+          category: asset?.category ?? "General",
+          date: asset?.purchaseDate
+            ? new Date(asset.purchaseDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
+            : "—",
+          value: formatCurrency(Number(asset?.purchaseValue ?? asset?.value ?? 0)),
+          condition: String(asset?.status ?? "ACTIVE").toUpperCase(),
+          statusColor:
+            String(asset?.status ?? "").toLowerCase() === "active"
+              ? "text-emerald-600 bg-emerald-50"
+              : "text-amber-600 bg-amber-50",
+        }))
+        if (mounted) setAssetRows(rows)
+      } catch (e) {
+        if (mounted) {
+          setAssetRows([])
+          setError(e instanceof Error ? e.message : "Unable to load assets.")
+        }
+      } finally {
+        if (mounted) setLoading(false)
+      }
+    }
+    run()
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  const valuation = useMemo(() => {
+    const totalBook = assetRows.reduce((sum, item) => {
+      const numeric = Number(item.value.replace(/[^\d.-]/g, "")) || 0
+      return sum + numeric
+    }, 0)
+    return {
+      book: formatCurrency(totalBook),
+      nbv: formatCurrency(totalBook),
+    }
+  }, [assetRows])
+
   return (
     <div 
       className="min-h-screen bg-[#F7F9FC] text-sm"
@@ -61,18 +113,20 @@ export default function Page() {
 
             <nav className="space-y-1.5">
               {[
-                { label: "Dashboard", icon: LayoutDashboard },
-                { label: "Financial Management", icon: FolderKanban, hasDropdown: true },
-                { label: "Assets", icon: Wallet, active: true },
-                { label: "Budget", icon: ShieldCheck },
-                { label: "Operational Performance", icon: BarChart3 },
+                { label: "Dashboard", icon: LayoutDashboard, href: "/branchlead-pastor/dashboard" },
+                { label: "Financial Management", icon: FolderKanban, hasDropdown: true, href: "/branchlead-pastor/financial-management" },
+                { label: "Assets", icon: Wallet, href: "/branchlead-pastor/assets" },
+                { label: "Budget", icon: ShieldCheck, href: "/branchlead-pastor/budget" },
+                { label: "Compliance & Remittance", icon: BarChart3, href: "/branchlead-pastor/compliance-remittance" },
               ].map((item) => {
                 const Icon = item.icon
+                const isActive = pathname === item.href
                 return (
-                  <div
+                  <Link
                     key={item.label}
+                    href={item.href}
                     className={`flex items-center justify-between rounded-[10px] px-3.5 py-3 text-[13px] font-semibold cursor-pointer transition-colors ${
-                      item.active ? "bg-[#EEF2FF] text-[#3B5BDB]" : "text-[#6B7280] hover:bg-gray-50 hover:text-gray-900"
+                      isActive ? "bg-[#EEF2FF] text-[#3B5BDB]" : "text-[#6B7280] hover:bg-gray-50 hover:text-gray-900"
                     }`}
                   >
                     <div className="flex items-center gap-3.5">
@@ -80,7 +134,7 @@ export default function Page() {
                       {item.label}
                     </div>
                     {item.hasDropdown && <ChevronDown className="h-4 w-4" />}
-                  </div>
+                  </Link>
                 )
               })}
             </nav>
@@ -88,23 +142,23 @@ export default function Page() {
 
           <div className="p-6 border-t border-[#EEF1F6]">
             <div className="space-y-1.5 mb-6">
-              <div className="flex items-center gap-3.5 rounded-[10px] px-3.5 py-3 text-[13px] font-semibold text-[#6B7280] hover:bg-gray-50 cursor-pointer">
+              <Link href="/branchlead-pastor/settings" className="flex items-center gap-3.5 rounded-[10px] px-3.5 py-3 text-[13px] font-semibold text-[#6B7280] hover:bg-gray-50 cursor-pointer">
                 <Settings className="h-4.5 w-4.5" />
                 Settings
-              </div>
-              <div className="flex items-center gap-3.5 rounded-[10px] px-3.5 py-3 text-[13px] font-semibold text-[#6B7280] hover:bg-gray-50 cursor-pointer">
+              </Link>
+              <Link href="/branchlead-pastor/dashboard" className="flex items-center gap-3.5 rounded-[10px] px-3.5 py-3 text-[13px] font-semibold text-[#6B7280] hover:bg-gray-50 cursor-pointer">
                 <HelpCircle className="h-4.5 w-4.5" />
                 Help Center
-              </div>
+              </Link>
             </div>
 
             <div className="flex items-center gap-3.5 px-3.5">
                 <div className="h-10 w-10 rounded-full overflow-hidden bg-gray-100 ring-2 ring-white">
-                <img src="/images/Beared%20Guy02-min%201.jpg" alt="Profile avatar for Ava Morgan, Lead Pastor. Bearded man with a calm and professional demeanor against a neutral background." className="h-full w-full object-cover" />
+                <img src="/images/Beared%20Guy02-min%201.jpg" alt="Profile avatar" className="h-full w-full object-cover" />
                 </div>
               <div>
-                <div className="text-[14px] font-bold text-[#111827]">Ava Morgan</div>
-                <div className="text-[12px] text-[#9CA3AF] font-medium">Lead Pastor</div>
+                <div className="text-[14px] font-bold text-[#111827]">{displayName}</div>
+                <div className="text-[12px] text-[#9CA3AF] font-medium">{roleLabel}</div>
               </div>
             </div>
           </div>
@@ -166,11 +220,11 @@ export default function Page() {
                 <div className="flex justify-between items-end mb-4">
                   <div>
                     <div className="text-[12px] text-gray-400 font-semibold mb-1">Book Value</div>
-                    <div className="text-[24px] sm:text-[26px] font-extrabold text-[#111827]">N28.45M</div>
+                    <div className="text-[24px] sm:text-[26px] font-extrabold text-[#111827]">{valuation.book}</div>
                   </div>
                   <div className="text-left">
                     <div className="text-[12px] text-gray-400 font-semibold mb-1">Net Book Value (NBV)</div>
-                    <div className="text-[24px] sm:text-[26px] font-extrabold text-[#3B5BDB]">N21.75M</div>
+                    <div className="text-[24px] sm:text-[26px] font-extrabold text-[#3B5BDB]">{valuation.nbv}</div>
                   </div>
                 </div>
 
@@ -327,7 +381,7 @@ export default function Page() {
                     </tr>
                   </thead>
                   <tbody>
-                    {assets.map((asset, i) => (
+                    {assetRows.map((asset, i) => (
                       <tr key={i} className="border-b border-[#EEF1F6] hover:bg-gray-50/50 transition-colors last:border-0">
                         <td className="py-5 px-4 sm:px-6 font-bold text-[#111827]">{asset.name}</td>
                         <td className="py-5 px-4 sm:px-6 text-gray-500 font-medium">{asset.category}</td>
@@ -345,6 +399,13 @@ export default function Page() {
                         </td>
                       </tr>
                     ))}
+                    {!loading && assetRows.length === 0 && (
+                      <tr>
+                        <td className="py-6 px-6 text-[#6B7280]" colSpan={6}>
+                          {error ?? "No assets found."}
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>

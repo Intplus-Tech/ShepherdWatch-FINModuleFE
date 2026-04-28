@@ -25,7 +25,7 @@ import {
 import { useAuth } from "@/components/auth/AuthProvider"
 import { useRouter, useSearchParams } from "next/navigation"
 import BranchesDropdown from "@/components/navigation/BranchesDropdown"
-import { useAssetConfig } from "@/components/hooks/useAssetConfig"
+import { useAssetClasses } from "@/components/hooks/useAssetClasses"
 import NewAssetCategoryModal from "@/components/modals/NewAssetCategoryModal"
 
 const navItems = [
@@ -104,7 +104,7 @@ function ModalContainer() {
   return (
     <NewAssetCategoryModal 
       isOpen={isModalOpen} 
-      onClose={() => router.push('/director-screen/assets')} 
+      onClose={() => router.replace('/director-screen/assets')} 
     />
   )
 }
@@ -116,7 +116,7 @@ export default function Page() {
   
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null)
   
-  const { assetConfig, loading, error } = useAssetConfig()
+  const { assetClasses, isLoading: loading, error } = useAssetClasses()
 
   const handleLogout = async () => {
     try {
@@ -320,27 +320,29 @@ export default function Page() {
                         {error}
                       </td>
                     </tr>
-                  ) : !assetConfig?.classes || assetConfig.classes.length === 0 ? (
+                  ) : !assetClasses || assetClasses.length === 0 ? (
                     <tr>
                       <td colSpan={4} className="px-6 py-8 text-center text-[13px] text-[#6B7280]">
                         No asset categories configured yet.
                       </td>
                     </tr>
                   ) : (
-                    assetConfig.classes.map((row) => (
+                    assetClasses.map((row) => (
                       <tr key={row._id || row.name}>
                         <td className="px-6 py-4 font-medium text-[#111827]">{row.name}</td>
                         <td className="px-6 py-3">
                           <Dropdown 
-                            value={row.depreciationMethod || "Straight Line"} 
+                            value={row.defaultDepreciationMethod || row.depreciationMethod || "straight_line"} 
                             options={methodOptions} 
                             onChange={() => {}} 
                             isOpen={openDropdownId === (row._id || row.name)}
                             setIsOpen={(open) => setOpenDropdownId(open ? (row._id || row.name || null) : null)}
                           />
                         </td>
-                        <td className="px-6 py-4 font-medium text-[#4B5563]">{row.usefulLifeYears || "N/A"}</td>
-                        <td className="px-6 py-4 font-medium text-[#4B5563]">0%</td>
+                        <td className="px-6 py-4 font-medium text-[#4B5563]">{row.defaultUsefulLifeYears || row.usefulLifeYears || "N/A"}</td>
+                        <td className="px-6 py-4 font-medium text-[#4B5563]">
+                          {(row.residualValuePercent ?? row.defaultResidualValuePercent ?? 0)}%
+                        </td>
                       </tr>
                     ))
                   )}

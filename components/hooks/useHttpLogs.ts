@@ -52,7 +52,7 @@ export function useHttpLogs(filters: HttpLogsFilters = {}) {
       if (filters.startDate) queryParams.append("startDate", filters.startDate)
       if (filters.endDate) queryParams.append("endDate", filters.endDate)
       
-      const res = await fetch(`/api/core/logs/http?${queryParams.toString()}`, {
+      const res = await fetch(`/api/v1/core/logs/http?${queryParams.toString()}`, {
         method: "GET",
         credentials: "include",
       })

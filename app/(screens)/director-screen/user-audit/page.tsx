@@ -1,7 +1,8 @@
-﻿"use client"
+"use client"
 
 import React from "react"
 import { useEffect, useMemo, useState } from "react"
+import Link from "next/link"
 import SidebarNav from "@/components/navigation/SidebarNav"
 import ScreenHeader from "@/components/navigation/ScreenHeader"
 import { Button } from "@/components/ui/button"
@@ -58,11 +59,11 @@ export default function Page() {
     const loadPermissions = async () => {
       try {
         const [permissionsResponse, rolesResponse] = await Promise.all([
-          fetch("/api/core/roles/permissions", {
+          fetch("/api/v1/core/roles/permissions", {
             method: "GET",
             credentials: "include",
           }),
-          fetch("/api/core/roles", {
+          fetch("/api/v1/core/roles", {
             method: "GET",
             credentials: "include",
           }),
@@ -123,7 +124,7 @@ export default function Page() {
 
       try {
         const params = new URLSearchParams({ page: "1", limit: "20" })
-        const response = await fetch(`/api/audit-logs?${params.toString()}`, {
+        const response = await fetch(`/api/v1/audit-logs?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         })
@@ -151,21 +152,24 @@ export default function Page() {
             item?.event ??
             item?.activity ??
             item?.actionType ??
-            "Audit Event"
+            ""
           const roleLabel =
             item?.role ??
             item?.roleName ??
             item?.userRole ??
             item?.actorRole ??
-            "User"
+            ""
+          const performedByFullName =
+            item?.performedBy?.firstName && item?.performedBy?.lastName
+              ? `${item?.performedBy?.firstName} ${item?.performedBy?.lastName}`
+              : null
           const userLabel =
             item?.userName ??
             item?.actor ??
-            item?.performedBy?.firstName && item?.performedBy?.lastName
-              ? `${item?.performedBy?.firstName} ${item?.performedBy?.lastName}`
-              : item?.performedBy ??
+            performedByFullName ??
+            item?.performedBy ??
             item?.user ??
-            "System"
+            ""
           const timestamp =
             item?.timestamp ??
             item?.createdAt ??
@@ -177,7 +181,7 @@ export default function Page() {
             item?.justification ??
             item?.details ??
             item?.message ??
-            "No justification provided."
+            ""
 
           const impactValue =
             item?.impactValue ??
@@ -197,20 +201,20 @@ export default function Page() {
               ? "bg-rose-50 text-rose-600"
               : item?.status === "PENDING"
                 ? "bg-amber-50 text-amber-600"
-                : "bg-blue-50 text-blue-600"
+                : "bg-slate-50 text-slate-600"
 
           return {
-            id: String(item?.id ?? item?.auditId ?? `audit-${index}`),
-            rawId: String(item?._id ?? item?.id ?? item?.auditId ?? `audit-${index}`),
+            id: String(item?.id ?? item?.auditId ?? item?._id ?? `row-${index}`),
+            rawId: String(item?._id ?? item?.id ?? item?.auditId ?? ""),
             time: timestamp
               ? new Date(timestamp).toLocaleString()
-              : "—",
-            user: userLabel,
-            role: roleLabel,
-            action,
+              : "",
+            user: String(userLabel),
+            role: String(roleLabel),
+            action: String(action),
             actionTone,
             impactLabel: impactValue ? "Before" : "",
-            impactValue: impactValue ? String(impactValue) : "—",
+            impactValue: impactValue ? String(impactValue) : "",
             impactAfterLabel: impactAfterValue ? "After" : "",
             impactAfterValue: impactAfterValue ? String(impactAfterValue) : "",
             justification: String(justification),
@@ -241,11 +245,11 @@ export default function Page() {
   }, [])
 
   const handleViewAuditLog = async (auditId: string) => {
-    if (!auditId || auditId.startsWith("audit-")) return
+    if (!auditId) return
     setAuditDetailLoading(true)
     setAuditDetailError(null)
     try {
-      const response = await fetch(`/api/audit-logs/${encodeURIComponent(auditId)}`, {
+      const response = await fetch(`/api/v1/audit-logs/${encodeURIComponent(auditId)}`, {
         method: "GET",
         credentials: "include",
         cache: "no-store",
@@ -289,7 +293,7 @@ export default function Page() {
       }
       if (searchText) params.set("search", searchText)
 
-      const response = await fetch(`/api/audit-logs/export?${params.toString()}`, {
+      const response = await fetch(`/api/v1/audit-logs/export?${params.toString()}`, {
         method: "GET",
         credentials: "include",
         cache: "no-store",
@@ -322,7 +326,7 @@ export default function Page() {
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
       <SidebarNav
-        activeHref="/director-screen/users"
+        activeHref="/director-screen/user-audit"
         className="fixed inset-y-0 left-0 z-20 w-[260px] rounded-none bg-[#FAFBFF] border-r border-[#EEF1F6]"
       />
 
@@ -346,15 +350,24 @@ export default function Page() {
             </div>
 
             <div className="mt-5 flex items-center gap-6 border-b border-[#EEF1F6] text-[12px]">
-              <button className="flex items-center gap-2 pb-2 text-[#6B7280]">
+              <Link
+                href="/director-screen/users"
+                className="flex items-center gap-2 pb-2 text-[#6B7280] hover:text-[#3B5BDB] transition-colors"
+              >
                 <Users className="h-4 w-4" /> User Directory
-              </button>
-              <button className="flex items-center gap-2 pb-2 text-[#6B7280]">
+              </Link>
+              <Link
+                href="/director-screen/user-permission"
+                className="flex items-center gap-2 pb-2 text-[#6B7280] hover:text-[#3B5BDB] transition-colors"
+              >
                 <ShieldCheck className="h-4 w-4" /> Permissions Matrix
-              </button>
-              <button className="flex items-center gap-2 border-b-2 border-[#3B5BDB] pb-2 text-[#3B5BDB] font-medium">
+              </Link>
+              <Link
+                href="/director-screen/user-audit"
+                className="flex items-center gap-2 border-b-2 border-[#3B5BDB] pb-2 text-[#3B5BDB] font-medium"
+              >
                 <History className="h-4 w-4" /> Audit Log
-              </button>
+              </Link>
             </div>
 
             <div className="mt-4 rounded-[12px] border border-[#EEF1F6] bg-white p-4">
@@ -446,18 +459,18 @@ export default function Page() {
                   ) : (
                     filteredLogs.map((log) => (
                     <tr key={log.id} className="border-t border-[#EEF1F6] align-top">
-                      <td className="py-4 px-4 text-[#6B7280]">{log.time}</td>
+                      <td className="py-4 px-4 text-[#6B7280]">{log.time || "—"}</td>
                       <td className="py-4 px-4">
                         <div className="flex items-center gap-2">
                           <div className="h-8 w-8 rounded-full bg-[#EEF2FF]" />
                           <div>
-                            <div className="text-[12px] font-semibold text-[#111827]">{log.user}</div>
-                            <div className="text-[11px] text-[#9CA3AF]">{log.role}</div>
+                            <div className="text-[12px] font-semibold text-[#111827]">{log.user || "—"}</div>
+                            <div className="text-[11px] text-[#9CA3AF]">{log.role || "—"}</div>
                           </div>
                         </div>
                       </td>
                       <td className="py-4 px-4">
-                        <span className={`rounded-full px-2 py-1 text-[10px] ${log.actionTone}`}>{log.action}</span>
+                        <span className={`rounded-full px-2 py-1 text-[10px] ${log.actionTone}`}>{log.action || "—"}</span>
                       </td>
                       <td className="py-4 px-4">
                         <div className="text-[10px] text-[#9CA3AF]">{log.impactLabel}</div>
@@ -469,11 +482,12 @@ export default function Page() {
                           </div>
                         ) : null}
                       </td>
-                      <td className="py-4 px-4 text-[#6B7280]">“{log.justification}”</td>
+                      <td className="py-4 px-4 text-[#6B7280]">{log.justification ? `“${log.justification}”` : "—"}</td>
                       <td className="py-4 px-4 text-right text-[#9CA3AF]">
                         <button
                           type="button"
                           onClick={() => void handleViewAuditLog(log.rawId)}
+                          disabled={!log.rawId}
                           className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-[#EEF2FF]"
                           aria-label="View audit detail"
                         >

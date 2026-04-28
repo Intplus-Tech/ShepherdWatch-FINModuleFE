@@ -112,7 +112,7 @@ export default function Page() {
       setCoaLoading(true)
       setCoaError(null)
       try {
-        const response = await fetch("/api/core/financial/coa?page=1&limit=200", {
+        const response = await fetch("/api/v1/core/financial/coa?page=1&limit=200", {
           method: "GET",
           credentials: "include",
         })
@@ -195,7 +195,7 @@ export default function Page() {
 
     setLoadingTemplate(true)
     try {
-      const response = await fetch(`/api/core/financial/budget-templates/${encodeURIComponent(id)}`, {
+      const response = await fetch(`/api/v1/core/financial/budget-templates/${encodeURIComponent(id)}`, {
         method: "GET",
         credentials: "include",
       })
@@ -251,8 +251,8 @@ export default function Page() {
       const isUpdate = Boolean(activeTemplateId)
       const response = await fetch(
         isUpdate
-          ? `/api/core/financial/budget-templates/${encodeURIComponent(activeTemplateId ?? "")}`
-          : "/api/core/financial/budget-templates",
+          ? `/api/v1/core/financial/budget-templates/${encodeURIComponent(activeTemplateId ?? "")}`
+          : "/api/v1/core/financial/budget-templates",
         {
         method: isUpdate ? "PATCH" : "POST",
         headers: {
@@ -300,7 +300,7 @@ export default function Page() {
 
     setDeleting(true)
     try {
-      const response = await fetch(`/api/core/financial/budget-templates/${encodeURIComponent(id)}`, {
+      const response = await fetch(`/api/v1/core/financial/budget-templates/${encodeURIComponent(id)}`, {
         method: "DELETE",
         headers: {
           "x-csrf-token": getCsrfToken(),

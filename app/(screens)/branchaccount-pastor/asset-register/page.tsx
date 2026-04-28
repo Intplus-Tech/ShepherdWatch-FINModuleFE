@@ -111,7 +111,7 @@ export default function Page() {
           params.set("category", categoryParam)
         }
 
-        const response = await fetch(`/api/core/financial/fixed-assets?${params.toString()}`, {
+        const response = await fetch(`/api/v1/core/financial/fixed-assets?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         })
@@ -182,7 +182,7 @@ export default function Page() {
     try {
       const csrfToken = getCsrfToken()
       const assetCode = `GEN-${String(Date.now()).slice(-4)}`
-      const response = await fetch("/api/core/financial/fixed-assets", {
+      const response = await fetch("/api/v1/core/financial/fixed-assets", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

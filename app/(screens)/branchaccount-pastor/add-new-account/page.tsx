@@ -102,8 +102,8 @@ export default function AddNewAccountPage() {
 
       try {
         const url = tenantId
-          ? `/api/core/financial/coa/tree?branchId=${encodeURIComponent(tenantId)}`
-          : "/api/core/financial/coa/tree"
+          ? `/api/v1/core/financial/coa/tree?branchId=${encodeURIComponent(tenantId)}`
+          : "/api/v1/core/financial/coa/tree"
 
         const coaResponse = await fetch(url, {
           method: "GET",
@@ -178,7 +178,7 @@ export default function AddNewAccountPage() {
     let active = true
     const loadLatestDetail = async () => {
       try {
-        const response = await fetch(`/api/core/financial/bank-accounts/${encodeURIComponent(latestId)}`, {
+        const response = await fetch(`/api/v1/core/financial/bank-accounts/${encodeURIComponent(latestId)}`, {
           method: "GET",
           credentials: "include",
         })
@@ -215,7 +215,7 @@ export default function AddNewAccountPage() {
           limit: "20",
           branchId: tenantId,
         })
-        const response = await fetch(`/api/core/financial/bank-accounts?${params.toString()}`, {
+        const response = await fetch(`/api/v1/core/financial/bank-accounts?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         })
@@ -260,7 +260,7 @@ export default function AddNewAccountPage() {
     const loadCoaById = async () => {
       setSelectedCoaLoading(true)
       try {
-        const response = await fetch(`/api/core/financial/coa/${encodeURIComponent(selectedCoaId)}`, {
+        const response = await fetch(`/api/v1/core/financial/coa/${encodeURIComponent(selectedCoaId)}`, {
           method: "GET",
           credentials: "include",
         })
@@ -303,7 +303,7 @@ export default function AddNewAccountPage() {
     setUpdatingCoa(true)
     setCoaUpdateMessage(null)
     try {
-      const response = await fetch(`/api/core/financial/coa/${encodeURIComponent(selectedCoaId)}`, {
+      const response = await fetch(`/api/v1/core/financial/coa/${encodeURIComponent(selectedCoaId)}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -375,10 +375,10 @@ export default function AddNewAccountPage() {
 
       const response = await fetch(
         existingAccount?._id || existingAccount?.id
-          ? `/api/core/financial/bank-accounts/${encodeURIComponent(
+          ? `/api/v1/core/financial/bank-accounts/${encodeURIComponent(
               String(existingAccount._id ?? existingAccount.id ?? "")
             )}`
-          : "/api/core/financial/bank-accounts",
+          : "/api/v1/core/financial/bank-accounts",
         {
         method: existingAccount ? "PATCH" : "POST",
         headers: {
@@ -403,7 +403,7 @@ export default function AddNewAccountPage() {
 
       setSubmitMessage(payload?.message ?? `Bank account ${existingAccount ? "updated" : "created"} successfully.`)
       const params = new URLSearchParams({ page: "1", limit: "20", branchId: tenantId })
-      const listResponse = await fetch(`/api/core/financial/bank-accounts?${params.toString()}`, {
+      const listResponse = await fetch(`/api/v1/core/financial/bank-accounts?${params.toString()}`, {
         method: "GET",
         credentials: "include",
       })

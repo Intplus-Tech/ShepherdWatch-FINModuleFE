@@ -124,7 +124,7 @@ export default function Page() {
         setLoading(true)
         setError(null)
 
-        const response = await fetch(`/api/core/financial/fixed-assets`, {
+        const response = await fetch(`/api/v1/core/financial/fixed-assets`, {
           method: "GET",
           credentials: "include",
         })
@@ -439,7 +439,10 @@ export default function Page() {
                 >
                   Record Asset Sale
                 </button>
-                <button className="flex items-center gap-2 rounded-[6px] bg-[#3B5BDB] px-4 py-2 text-[12px] font-[600] text-white shadow hover:bg-blue-700 transition-colors">
+                <button
+                  onClick={() => router.push('/director-screen/add-new-asset')}
+                  className="flex items-center gap-2 rounded-[6px] bg-[#3B5BDB] px-4 py-2 text-[12px] font-[600] text-white shadow hover:bg-blue-700 transition-colors"
+                >
                   <Plus className="h-3.5 w-3.5" />
                   Add Asset
                 </button>

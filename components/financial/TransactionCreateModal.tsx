@@ -90,7 +90,7 @@ export function TransactionCreateModal({
       setCoaLoading(true)
       try {
         const accountType = flowType === "income" ? "revenue" : "expense"
-        const url = `/api/core/financial/coa/tree?branchId=${encodeURIComponent(tenantId)}`
+        const url = `/api/v1/core/financial/coa/tree?branchId=${encodeURIComponent(tenantId)}`
         const res = await fetch(url, { credentials: "include" })
         const payload = await res.json().catch(() => null)
         
@@ -144,7 +144,7 @@ export function TransactionCreateModal({
     const loadCoaById = async () => {
       setSelectedCoaLoading(true)
       try {
-        const res = await fetch(`/api/core/financial/coa/${encodeURIComponent(chartOfAccountId)}`, {
+        const res = await fetch(`/api/v1/core/financial/coa/${encodeURIComponent(chartOfAccountId)}`, {
           method: "GET",
           credentials: "include",
         })
@@ -191,7 +191,7 @@ export function TransactionCreateModal({
     setUpdatingCoa(true)
     setCoaUpdateMessage(null)
     try {
-      const res = await fetch(`/api/core/financial/coa/${encodeURIComponent(selectedCoa.id)}`, {
+      const res = await fetch(`/api/v1/core/financial/coa/${encodeURIComponent(selectedCoa.id)}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -243,7 +243,7 @@ export function TransactionCreateModal({
     setDeletingCoa(true)
     setCoaUpdateMessage(null)
     try {
-      const res = await fetch(`/api/core/financial/coa/${encodeURIComponent(selectedCoa.id)}`, {
+      const res = await fetch(`/api/v1/core/financial/coa/${encodeURIComponent(selectedCoa.id)}`, {
         method: "DELETE",
         headers: {
           "x-csrf-token": getCsrfToken(),
@@ -289,7 +289,7 @@ export function TransactionCreateModal({
         transactionDate,
       }
 
-      const res = await fetch("/api/core/financial/transactions", {
+      const res = await fetch("/api/v1/core/financial/transactions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

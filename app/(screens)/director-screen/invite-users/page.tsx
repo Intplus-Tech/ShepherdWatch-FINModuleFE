@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
+import { useInviteUser, useBranches } from "@/components/hooks/useUsers"
 
 const labelText = "text-[9.33px] leading-[13.33px] font-medium"
 const inputText = "text-[12px] leading-[16px]"
@@ -25,9 +26,9 @@ export default function Page() {
   const [branchId, setBranchId] = useState("")
   const [phone, setPhone] = useState("")
   
-  const [branches, setBranches] = useState<any[]>([])
-  
-  const [loading, setLoading] = useState(false)
+
+
+  const { mutateAsync: inviteUser, isPending: loading } = useInviteUser()
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   const [sendEmail, setSendEmail] = useState(true)
@@ -37,27 +38,6 @@ export default function Page() {
     [user]
   )
 
-  useEffect(() => {
-    async function fetchBranches() {
-      try {
-        const res = await fetch("/api/branches?page=1&limit=100", { credentials: "include" })
-        const json = await res.json()
-        if (res.ok) {
-          const rows = Array.isArray(json?.data)
-            ? json.data
-            : Array.isArray(json?.data?.data)
-              ? json.data.data
-              : Array.isArray(json?.data?.items)
-                ? json.data.items
-                : []
-          setBranches(rows)
-        }
-      } catch (err) {
-        console.error("Failed to fetch branches", err)
-      }
-    }
-    fetchBranches()
-  }, [])
 
   const handleClose = () => {
     router.back()
@@ -72,39 +52,26 @@ export default function Page() {
       return
     }
 
-    setLoading(true)
     const parts = fullName.trim().split(" ")
     const firstName = parts[0] || "Unknown"
     const lastName = parts.slice(1).join(" ") || "User"
 
     try {
-      const res = await fetch("/api/users/invite", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          firstName,
-          lastName,
-          email,
-          role,
-          branchId,
-          ...(phone && { phone }) // Add phone if provided
-        })
+      await inviteUser({
+        firstName,
+        lastName,
+        email,
+        role,
+        branchId,
+        ...(phone && { phone })
       })
       
-      const data = await res.json().catch(() => ({}))
-      
-      if (!res.ok) {
-        throw new Error(data.message || "Failed to invite user.")
-      }
-
       setSuccess(true)
       setTimeout(() => {
         router.push("/director-screen/users")
       }, 2000)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to send invite.")
-    } finally {
-      setLoading(false)
+    } catch (err: any) {
+      setError(err?.response?.data?.message || err.message || "Failed to send invite.")
     }
   }
 
@@ -194,11 +161,10 @@ export default function Page() {
                   onChange={e => setBranchId(e.target.value)}
                 >
                   <option value="" disabled className="text-[#9CA3AF]">Select a branch...</option>
-                  {branches.map((b: any) => (
-                    <option key={b.id || b._id} value={b.id || b._id}>
-                      {b.name || b.address || "Unnamed Branch"}
-                    </option>
-                  ))}
+                  <option value="hq">Headquarters (HQ)</option>
+                  <option value="lagos_parish">Lagos Parish</option>
+                  <option value="abuja_area">Abuja Area</option>
+                  <option value="ph_zone">Port Harcourt Zone</option>
                 </select>
                 <ChevronDown className="absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9CA3AF] pointer-events-none" />
               </div>

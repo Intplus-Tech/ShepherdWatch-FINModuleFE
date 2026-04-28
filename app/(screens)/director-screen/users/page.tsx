@@ -5,6 +5,9 @@ import ScreenHeader from "@/components/navigation/ScreenHeader"
 import { Button } from "@/components/ui/button"
 import {  Input } from "@/components/ui/input"
 import { useState, useEffect } from "react"
+import { useUsers, useToggleUserStatus } from "@/components/hooks/useUsers"
+import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { 
   ChevronDown,
   Download,
@@ -23,88 +26,57 @@ const smallText = "text-[12.4px] leading-[17.71px] font-normal"
 const bigText = "text-[22.23px] leading-[26.68px] font-bold tracking-[-0.56px]"
 
 export default function Page() {
-  const [users, setUsers] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+  const router = useRouter()
   const [searchTerm, setSearchTerm] = useState("")
-
-  const fetchUsers = async (search = "") => {
-    setLoading(true)
-    try {
-      const url = new URL("/api/users", window.location.origin)
-      if (search) url.searchParams.append("search", search)
-
-      const res = await fetch(url.toString())
-      const json = await res.json()
-      
-      if (res.ok && json.data) {
-        const fetchedUsers = Array.isArray(json.data) ? json.data : []
-        
-        const mappedUsers = fetchedUsers.map((u: any) => {
-          const firstName = u.firstName || ""
-          const lastName = u.lastName || ""
-          const name = `${firstName} ${lastName}`.trim() || "Unknown User"
-          
-          const rawStatus = (u.status || "INACTIVE").toUpperCase()
-          const statusTone = rawStatus === "ACTIVE" 
-            ? "bg-emerald-50 text-emerald-600" 
-            : "bg-rose-50 text-rose-600"
-
-          return {
-            id: u.id || u._id,
-            name,
-            email: u.email,
-            role: u.roleName || u.role || "Staff",
-            roleTone: "bg-[#F3F4F6] text-[#6B7280]",
-            roleDot: "bg-[#6B7280]",
-            branch: u.branchId?.name || u.branch || u.address || "HQ",
-            lastActive: u.lastActive || "N/A",
-            rawStatus,
-            statusTone,
-            initials: `${firstName[0] || ""}${lastName[0] || ""}`.toUpperCase() || "?",
-            avatar: null,
-          }
-        })
-        setUsers(mappedUsers)
-      }
-    } catch (error) {
-      console.error("Failed to fetch users:", error)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(20)
 
   useEffect(() => {
-    fetchUsers(searchTerm)
+    const timer = setTimeout(() => setDebouncedSearch(searchTerm), 500)
+    return () => clearTimeout(timer)
   }, [searchTerm])
 
-  const handleToggleStatus = async (user: any) => {
-    const newStatus = user.rawStatus === "ACTIVE" ? "INACTIVE" : "ACTIVE"
-    try {
-      const res = await fetch(`/api/users/${user.id}/status`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: newStatus })
-      })
+  const { data, isLoading: loading } = useUsers({
+    page,
+    limit,
+    search: debouncedSearch
+  })
 
-      if (res.ok) {
-        setUsers(users.map(u => {
-          if (u.id === user.id) {
-            return {
-              ...u,
-              rawStatus: newStatus,
-              statusTone: newStatus === "ACTIVE" 
-                ? "bg-emerald-50 text-emerald-600" 
-                : "bg-rose-50 text-rose-600"
-            }
-          }
-          return u;
-        }))
-      } else {
-        console.error("Failed to toggle status")
-      }
-    } catch (e) {
-      console.error(e)
+  const { mutate: toggleStatus } = useToggleUserStatus()
+
+  const fetchedUsers = Array.isArray(data?.data) ? data.data : []
+  const pagination = data?.pagination || { total: 0, page: 1, limit: 20, pages: 1 }
+
+  const users = fetchedUsers.map((u: any) => {
+    const firstName = u.firstName || ""
+    const lastName = u.lastName || ""
+    const name = `${firstName} ${lastName}`.trim() || "Unknown User"
+    
+    const rawStatus = (u.status || "INACTIVE").toUpperCase()
+    const statusTone = rawStatus === "ACTIVE" 
+      ? "bg-emerald-50 text-emerald-600" 
+      : "bg-rose-50 text-rose-600"
+
+    return {
+      id: u.id || u._id,
+      name,
+      email: u.email,
+      role: u.roleName || u.role || "Staff",
+      roleTone: "bg-[#F3F4F6] text-[#6B7280]",
+      roleDot: "bg-[#6B7280]",
+      branch: u.branchId?.name || u.branch || u.address || "HQ",
+      lastActive: u.lastActive || "N/A",
+      rawStatus,
+      statusTone,
+      initials: `${firstName[0] || ""}${lastName[0] || ""}`.toUpperCase() || "?",
+      avatar: null,
     }
+  })
+
+  const handleToggleStatus = (user: any) => {
+    const newStatus = user.rawStatus === "ACTIVE" ? "deactivated" : "active"
+    toggleStatus({ userId: user.id, status: newStatus })
   }
 
   const [isExporting, setIsExporting] = useState(false)
@@ -112,8 +84,8 @@ export default function Page() {
   const handleExport = async () => {
     setIsExporting(true)
     try {
-      const url = new URL("/api/users/export", window.location.origin)
-      if (searchTerm) url.searchParams.append("search", searchTerm)
+      const url = new URL("/api/v1/users/export", window.location.origin)
+      if (debouncedSearch) url.searchParams.append("search", debouncedSearch)
 
       const res = await fetch(url.toString())
       if (res.ok) {
@@ -174,15 +146,24 @@ export default function Page() {
             </div>
 
             <div className="mt-5 flex items-center gap-6 border-b border-[#EEF1F6] text-[12px]">
-              <button className="flex items-center gap-2 border-b-2 border-[#3B5BDB] pb-2 text-[#3B5BDB] font-semibold">
+              <Link
+                href="/director-screen/users"
+                className="flex items-center gap-2 border-b-2 border-[#3B5BDB] pb-2 text-[#3B5BDB] font-semibold"
+              >
                 <Users className="h-4 w-4" /> User Directory
-              </button>
-              <button className="flex items-center gap-2 pb-2 text-[#6B7280]">
+              </Link>
+              <Link
+                href="/director-screen/user-permission"
+                className="flex items-center gap-2 pb-2 text-[#6B7280] hover:text-[#3B5BDB] transition-colors"
+              >
                 <ShieldCheck className="h-4 w-4" /> Permissions Matrix
-              </button>
-              <button className="flex items-center gap-2 pb-2 text-[#6B7280]">
+              </Link>
+              <Link
+                href="/director-screen/user-audit"
+                className="flex items-center gap-2 pb-2 text-[#6B7280] hover:text-[#3B5BDB] transition-colors"
+              >
                 <History className="h-4 w-4" /> Audit Log
-              </button>
+              </Link>
             </div>
 
             <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -206,10 +187,18 @@ export default function Page() {
                 </Button>
               </div>
               <div className={`${smallText} text-[#6B7280] flex items-center gap-2`}>
-                <span>Showing 1-{users.length} of {users.length} users</span>
+                <span>Showing {(page - 1) * limit + 1}-{Math.min(page * limit, pagination.total || 0)} of {pagination.total || 0} users</span>
                 <div className="flex items-center gap-1 rounded-[8px] border border-[#E5E7EB] bg-white px-1">
-                  <button className="h-6 w-6 flex items-center justify-center text-[#6B7280]">&lt;</button>
-                  <button className="h-6 w-6 flex items-center justify-center text-[#6B7280]">&gt;</button>
+                  <button 
+                    disabled={page <= 1} 
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    className="h-6 w-6 flex items-center justify-center text-[#6B7280] disabled:opacity-50"
+                  >&lt;</button>
+                  <button 
+                    disabled={page >= (pagination.pages || 1)} 
+                    onClick={() => setPage(p => p + 1)}
+                    className="h-6 w-6 flex items-center justify-center text-[#6B7280] disabled:opacity-50"
+                  >&gt;</button>
                 </div>
               </div>
             </div>
@@ -232,7 +221,15 @@ export default function Page() {
                   </tr>
                 </thead>
                 <tbody>
-                  {users.map((user) => (
+                  {loading ? (
+                    <tr>
+                      <td colSpan={6} className="py-6 text-center text-[#9CA3AF]">Loading users...</td>
+                    </tr>
+                  ) : users.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-6 text-center text-[#9CA3AF]">No users found.</td>
+                    </tr>
+                  ) : users.map((user: any) => (
                     <tr key={user.email} className="border-t border-[#EEF1F6]">
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-3">
@@ -288,10 +285,15 @@ export default function Page() {
               <div className="flex items-center justify-between border-t border-[#EEF1F6] px-4 py-2 text-[11px] text-[#9CA3AF]">
                 <div className="flex items-center gap-2">
                   Rows per page
-                  <Button variant="outline" size="sm" className="h-7 rounded-md border-[#E5E7EB] bg-white text-[10px] text-[#6B7280]">
-                    10
-                    <ChevronDown className="h-3 w-3" />
-                  </Button>
+                  <select 
+                    value={limit} 
+                    onChange={(e) => { setLimit(Number(e.target.value)); setPage(1); }}
+                    className="h-7 rounded-md border-[#E5E7EB] bg-white text-[10px] text-[#6B7280] px-2 outline-none"
+                  >
+                    <option value={10}>10</option>
+                    <option value={20}>20</option>
+                    <option value={50}>50</option>
+                  </select>
                 </div>
                 <div>Last synced: Just now</div>
               </div>
@@ -375,7 +377,12 @@ export default function Page() {
                 </div>
 
                 <div className="mt-4 flex justify-end">
-                  <button className={`flex items-center gap-1 ${smallText} text-[#3B5BDB]`}><span>Edit Full Matrix</span><ArrowRight className="h-3 w-3" /> </button>
+                  <button
+                    onClick={() => router.push("/director-screen/user-permission")}
+                    className={`flex items-center gap-1 ${smallText} text-[#3B5BDB]`}
+                  >
+                    <span>Edit Full Matrix</span><ArrowRight className="h-3 w-3" />
+                  </button>
                 </div>
               </div>
             </div>
@@ -385,4 +392,3 @@ export default function Page() {
     </div>
   )
 }
-

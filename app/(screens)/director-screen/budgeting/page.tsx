@@ -67,7 +67,7 @@ export default function Page() {
           periodStart,
           periodEnd,
         })
-        const response = await fetch(`/api/core/financial/reports/bva?${params.toString()}`, {
+        const response = await fetch(`/api/v1/core/financial/reports/bva?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         })
@@ -174,7 +174,7 @@ export default function Page() {
 
     try {
       const params = new URLSearchParams({ tenantId })
-      const response = await fetch(`/api/core/export/budget-entries?${params.toString()}`, {
+      const response = await fetch(`/api/v1/core/export/budget-entries?${params.toString()}`, {
         method: "GET",
         credentials: "include",
       })

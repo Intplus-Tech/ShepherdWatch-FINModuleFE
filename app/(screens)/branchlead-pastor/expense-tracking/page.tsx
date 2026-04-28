@@ -29,6 +29,8 @@ import { TransactionCreateModal } from "@/components/financial/TransactionCreate
 export default function Page() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { user } = useAuth();
+  const displayName = user?.name || user?.email || "User";
+  const roleLabel = user?.role ? String(user.role).replace(/_/g, " ") : "Lead Pastor";
   const tenantId = user?.tenantId ?? user?.tenant?.id ?? "";
   const [page, setPage] = useState(1);
   const { transactions: allTransactions, pagination, loading, error, refresh } = useTransactions({ page, limit: 20 });
@@ -140,8 +142,8 @@ export default function Page() {
               <Image src="/images/login%20page%20picture.jpg" alt="Alex" width={40} height={40} className="h-full w-full object-cover" />
             </div>
             <div className="min-w-0">
-              <div className="text-[13px] font-bold text-[#111827] truncate">Alex Morgan</div>
-              <div className="text-[11px] font-medium text-[#6B7280] truncate">Lead Pastor</div>
+              <div className="text-[13px] font-bold text-[#111827] truncate">{displayName}</div>
+              <div className="text-[11px] font-medium text-[#6B7280] truncate">{roleLabel}</div>
             </div>
           </div>
         </div>

@@ -24,6 +24,17 @@ const signInSchema = z.object({
 
 type SignInValues = z.infer<typeof signInSchema>
 
+async function parseApiResponse(response: Response): Promise<Record<string, unknown> | null> {
+  const contentType = response.headers.get("content-type") ?? ""
+  if (contentType.includes("application/json")) {
+    return response.json().catch(() => null)
+  }
+
+  const text = await response.text().catch(() => "")
+  if (!text) return null
+  return { message: text }
+}
+
 export default function SignInForm() {
   const router = useRouter()
   const { resendOtp } = useAuth()
@@ -60,13 +71,13 @@ export default function SignInForm() {
 
     setCheckingEmail(true)
     try {
-      const res = await fetch(`/api/auth/check-email?email=${encodeURIComponent(email)}`, {
+      const res = await fetch(`/api/v1/auth/check-email?email=${encodeURIComponent(email)}`, {
         method: "GET",
         cache: "no-store",
       })
-      const data = await res.json().catch(() => null)
+      const data = await parseApiResponse(res)
       if (!res.ok) {
-        throw new Error(data?.message || "Unable to validate email.")
+        throw new Error((data as { message?: string } | null)?.message || "Unable to validate email.")
       }
 
       if (data?.data?.validationSkipped) {
@@ -114,19 +125,19 @@ export default function SignInForm() {
       return
     }
     try {
-      const res = await fetch("/api/auth/register", {
+      const res = await fetch("/api/v1/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(values),
       })
 
-      const data = await res.json().catch(() => ({}))
+      const data = await parseApiResponse(res)
 
       if (!res.ok) {
-        throw new Error(data.message || "Registration failed")
+        throw new Error((data as { message?: string } | null)?.message || "Registration failed")
       }
 
-      setSuccessMessage(data?.message || "Registration successful. Please verify your email.")
+      setSuccessMessage((data as { message?: string } | null)?.message || "Registration successful. Please verify your email.")
       router.push(`/verify-email?email=${encodeURIComponent(values.email.trim().toLowerCase())}`)
     } catch (err) {
       const message = err instanceof Error ? err.message : "Registration failed"
@@ -226,13 +237,13 @@ export default function SignInForm() {
                           Log In Instead
                         </Link>
                       </div>
-                      
+
                       {resendMessage ? (
                         <div className="mt-3 p-2 bg-emerald-100 rounded-md border border-emerald-200">
                           <p className="text-[12px] text-emerald-800 font-semibold">{resendMessage}</p>
                         </div>
                       ) : null}
-                      
+
                       {error && error !== "An account with this email already exists." ? (
                         <div className="mt-3 p-2 bg-rose-100 rounded-md border border-rose-200">
                           <p className="text-[12px] text-rose-800 font-semibold">{error}</p>
@@ -389,5 +400,3 @@ export default function SignInForm() {
     </div>
   )
 }
-
-

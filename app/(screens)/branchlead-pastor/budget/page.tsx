@@ -2,6 +2,8 @@
 
 import React, { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -30,7 +32,7 @@ import {
 import { useBudgetEntries } from "@/components/hooks/useBudgetEntries"
 import { useAuth } from "@/components/auth/AuthProvider"
 
-const SidebarContent = () => (
+const SidebarContent = ({ pathname, displayName, roleLabel }: { pathname: string; displayName: string; roleLabel: string }) => (
   <div className="p-6 flex flex-col h-full">
     <div className="flex items-center gap-3 pb-8">
       <Image src="/images/icon-shepherdwatch.svg" alt="ShepherdWatch logo" width={28} height={28} className="shrink-0" />
@@ -42,37 +44,39 @@ const SidebarContent = () => (
 
     <nav className="space-y-1.5 flex-1">
       {[
-        { label: "Dashboard", icon: LayoutDashboard },
-        { label: "Financial Management", icon: BarChart3 },
-        { label: "Assets", icon: Building2 },
-        { label: "Budget", icon: PiggyBank, active: true },
-        { label: "Compliance & Remittance", icon: ShieldCheck },
+        { label: "Dashboard", icon: LayoutDashboard, href: "/branchlead-pastor/dashboard" },
+        { label: "Financial Management", icon: BarChart3, href: "/branchlead-pastor/financial-management" },
+        { label: "Assets", icon: Building2, href: "/branchlead-pastor/assets" },
+        { label: "Budget", icon: PiggyBank, href: "/branchlead-pastor/budget" },
+        { label: "Compliance & Remittance", icon: ShieldCheck, href: "/branchlead-pastor/compliance-remittance" },
       ].map((item) => {
         const Icon = item.icon
+        const isActive = pathname === item.href
         return (
-          <div
+          <Link
             key={item.label}
+            href={item.href}
             className={`flex items-center gap-3.5 rounded-[10px] px-3.5 py-3 text-[13px] font-bold cursor-pointer transition-colors ${
-              item.active ? "bg-[#EEF2FF] text-[#3B5BDB]" : "text-[#4B5563] hover:bg-gray-50"
+              isActive ? "bg-[#EEF2FF] text-[#3B5BDB]" : "text-[#4B5563] hover:bg-gray-50"
             }`}
           >
-            <Icon className={`h-4.5 w-4.5 stroke-[2] ${item.active ? "text-[#3B5BDB]" : "text-[#6B7280]"}`} />
+            <Icon className={`h-4.5 w-4.5 stroke-[2] ${isActive ? "text-[#3B5BDB]" : "text-[#6B7280]"}`} />
             {item.label}
-          </div>
+          </Link>
         )
       })}
     </nav>
 
     <div className="mt-auto">
       <div className="space-y-1.5 border-t border-[#EEF1F6] pt-6 text-[13px] font-bold text-[#4B5563]">
-        <div className="flex items-center gap-3.5 rounded-[10px] px-3.5 py-3 cursor-pointer hover:bg-gray-50 transition-colors">
+        <Link href="/branchlead-pastor/settings" className="flex items-center gap-3.5 rounded-[10px] px-3.5 py-3 cursor-pointer hover:bg-gray-50 transition-colors">
           <Settings className="h-4.5 w-4.5 stroke-[2] text-[#6B7280]" />
           Settings
-        </div>
-        <div className="flex items-center gap-3.5 rounded-[10px] px-3.5 py-3 cursor-pointer hover:bg-gray-50 transition-colors">
+        </Link>
+        <Link href="/branchlead-pastor/dashboard" className="flex items-center gap-3.5 rounded-[10px] px-3.5 py-3 cursor-pointer hover:bg-gray-50 transition-colors">
           <HelpCircle className="h-4.5 w-4.5 stroke-[2] text-[#6B7280]" />
           Help Guide
-        </div>
+        </Link>
       </div>
 
       <div className="mt-8 flex items-center gap-3.5 px-3.5 pb-2">
@@ -80,8 +84,8 @@ const SidebarContent = () => (
           <img src="/images/Beared%20Guy02-min%201.jpg" alt="Profile avatar" className="h-full w-full object-cover" />
         </div>
         <div>
-          <div className="text-[14px] font-extrabold text-[#111827]">Alex Morgan</div>
-          <div className="text-[11px] text-[#9CA3AF] font-bold tracking-wide">Lead Pastor</div>
+          <div className="text-[14px] font-extrabold text-[#111827]">{displayName}</div>
+          <div className="text-[11px] text-[#9CA3AF] font-bold tracking-wide">{roleLabel}</div>
         </div>
       </div>
     </div>
@@ -89,7 +93,10 @@ const SidebarContent = () => (
 )
 
 export default function Page() {
+  const pathname = usePathname()
   const { user } = useAuth()
+  const displayName = user?.name || user?.email || "User"
+  const roleLabel = user?.role ? String(user.role).replace(/_/g, " ") : "Lead Pastor"
   const [mobileOpen, setMobileOpen] = useState(false)
   const [approvingAll, setApprovingAll] = useState(false)
   const [approveError, setApproveError] = useState<string | null>(null)
@@ -213,7 +220,7 @@ export default function Page() {
       const csrfToken = getCsrfToken()
       await Promise.all(
         entryIds.map(async (entryId) => {
-          const response = await fetch(`/api/core/financial/budget-entries/${entryId}/approve`, {
+          const response = await fetch(`/api/v1/core/financial/budget-entries/${entryId}/approve`, {
             method: "POST",
             headers: { "x-csrf-token": csrfToken },
             credentials: "include",
@@ -241,7 +248,7 @@ export default function Page() {
 
     try {
       const params = new URLSearchParams({ tenantId })
-      const response = await fetch(`/api/core/export/budget-entries?${params.toString()}`, {
+      const response = await fetch(`/api/v1/core/export/budget-entries?${params.toString()}`, {
         method: "GET",
         credentials: "include",
       })
@@ -298,13 +305,13 @@ export default function Page() {
         <aside
           className={`absolute left-0 top-0 h-full w-[260px] bg-white shadow-xl transition-transform duration-300 ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}
         >
-          <SidebarContent />
+          <SidebarContent pathname={pathname} displayName={displayName} roleLabel={roleLabel} />
         </aside>
       </div>
 
       {/* Sidebar - Desktop */}
       <aside className="w-[260px] border-r border-[#EEF1F6] bg-white hidden xl:flex flex-col shrink-0 h-screen sticky top-0 z-20 shadow-[2px_0_8px_-4px_rgba(0,0,0,0.05)]">
-        <SidebarContent />
+            <SidebarContent pathname={pathname} displayName={displayName} roleLabel={roleLabel} />
       </aside>
 
       {/* Main Layout Wrapping Column */}

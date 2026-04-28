@@ -116,7 +116,7 @@ export default function Page() {
 
     try {
       const params = new URLSearchParams({ tenantId })
-      const response = await fetch(`/api/core/export/budget-entries?${params.toString()}`, {
+      const response = await fetch(`/api/v1/core/export/budget-entries?${params.toString()}`, {
         method: "GET",
         credentials: "include",
       })

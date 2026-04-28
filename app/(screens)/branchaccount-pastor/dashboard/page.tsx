@@ -70,7 +70,7 @@ export default function Page() {
     setPaymentSuccess(null)
 
     try {
-      const response = await fetch(`/api/core/financial/requisitions/${id}/pay`, {
+      const response = await fetch(`/api/v1/core/financial/requisitions/${id}/pay`, {
         method: "PATCH",
         headers: {
           "x-csrf-token": getCsrfToken(),

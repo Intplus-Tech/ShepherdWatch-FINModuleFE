@@ -200,11 +200,13 @@ export async function POST(req: NextRequest) {
       : null;
 
     const accessToken =
-      pickToken(tokens, ["accessToken", "access_token"]) ||
-      pickToken(data, ["accessToken", "access_token"]);
+      pickToken(tokens, ["accessToken", "access_token", "token"]) ||
+      pickToken(data, ["accessToken", "access_token", "token"]) ||
+      pickToken(responseData, ["accessToken", "access_token", "token"]);
     const refreshToken =
       pickToken(tokens, ["refreshToken", "refresh_token"]) ||
-      pickToken(data, ["refreshToken", "refresh_token"]);
+      pickToken(data, ["refreshToken", "refresh_token"]) ||
+      pickToken(responseData, ["refreshToken", "refresh_token"]);
 
     if (!accessToken) {
       return applyCors(
@@ -254,7 +256,8 @@ export async function POST(req: NextRequest) {
     }
 
     return applyCors(response, req);
-  } catch {
+  } catch (error) {
+    console.error("Login proxy error:", error);
     return applyCors(
       NextResponse.json({ success: false, message: "Internal server error" }, { status: 500 }),
       req

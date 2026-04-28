@@ -102,8 +102,8 @@ export default function NewRequisitionPage() {
 
       try {
         const url = tenantId
-          ? `/api/core/financial/coa/tree?branchId=${encodeURIComponent(tenantId)}`
-          : "/api/core/financial/coa/tree"
+          ? `/api/v1/core/financial/coa/tree?branchId=${encodeURIComponent(tenantId)}`
+          : "/api/v1/core/financial/coa/tree"
         const response = await fetch(url, {
           method: "GET",
           credentials: "include",
@@ -162,7 +162,7 @@ export default function NewRequisitionPage() {
     const loadById = async () => {
       setSelectedCoaLoading(true)
       try {
-        const response = await fetch(`/api/core/financial/coa/${encodeURIComponent(coaId)}`, {
+        const response = await fetch(`/api/v1/core/financial/coa/${encodeURIComponent(coaId)}`, {
           method: "GET",
           credentials: "include",
         })
@@ -235,7 +235,7 @@ export default function NewRequisitionPage() {
         ? `${title.trim()} - ${justification.trim()}`
         : justification.trim()
 
-      const response = await fetch("/api/core/financial/requisitions", {
+      const response = await fetch("/api/v1/core/financial/requisitions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -303,7 +303,7 @@ export default function NewRequisitionPage() {
         ? `${title.trim()} - ${justification.trim()}`
         : justification.trim()
 
-      const response = await fetch("/api/core/financial/requisitions", {
+      const response = await fetch("/api/v1/core/financial/requisitions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -334,7 +334,7 @@ export default function NewRequisitionPage() {
         throw new Error("Draft created but requisition ID was not returned.")
       }
 
-      const submitResponse = await fetch(`/api/core/financial/requisitions/${requisitionId}/submit`, {
+      const submitResponse = await fetch(`/api/v1/core/financial/requisitions/${requisitionId}/submit`, {
         method: "PATCH",
         headers: {
           "x-csrf-token": csrfToken,

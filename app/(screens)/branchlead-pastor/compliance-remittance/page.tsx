@@ -2,6 +2,8 @@
 
 import React, { useEffect, useMemo } from "react"
 import Image from "next/image"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { 
   Search, Bell, LayoutDashboard, BarChart3, Building2, Wallet, 
   ShieldCheck, ChevronRight, Settings, HelpCircle, ArrowUpRight, 
@@ -24,7 +26,10 @@ type ComplianceRow = {
 
 export default function ComplianceRemittancePage() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false)
+  const pathname = usePathname()
   const { user } = useAuth()
+  const displayName = user?.name || user?.email || "User"
+  const roleLabel = user?.role ? String(user.role).replace(/_/g, " ") : "Lead Pastor"
   const {
     data: complianceDashboard,
     loading: complianceLoading,
@@ -120,40 +125,42 @@ export default function ComplianceRemittancePage() {
 
           <nav className="space-y-1.5 flex-1">
             {[
-              { label: "Dashboard", icon: LayoutDashboard },
-              { label: "Financial Management", icon: BarChart3, hasChevron: true },
-              { label: "Assets", icon: Building2 },
-              { label: "Budget", icon: Wallet },
-              { label: "Compliance & Remittance", icon: ShieldCheck, active: true },
+              { label: "Dashboard", icon: LayoutDashboard, href: "/branchlead-pastor/dashboard" },
+              { label: "Financial Management", icon: BarChart3, hasChevron: true, href: "/branchlead-pastor/financial-management" },
+              { label: "Assets", icon: Building2, href: "/branchlead-pastor/assets" },
+              { label: "Budget", icon: Wallet, href: "/branchlead-pastor/budget" },
+              { label: "Compliance & Remittance", icon: ShieldCheck, href: "/branchlead-pastor/compliance-remittance" },
             ].map((item) => {
               const Icon = item.icon
+              const isActive = pathname === item.href
               return (
-                <div
+                <Link
                   key={item.label}
+                  href={item.href}
                   className={`flex items-center justify-between rounded-[8px] px-3.5 py-3 text-[13px] font-semibold cursor-pointer transition-colors ${
-                    item.active ? "bg-[#EEF2FF] text-[#3B5BDB]" : "text-[#4B5563] hover:bg-gray-50"
+                    isActive ? "bg-[#EEF2FF] text-[#3B5BDB]" : "text-[#4B5563] hover:bg-gray-50"
                   }`}
                 >
                   <div className="flex items-center gap-3.5">
-                    <Icon className={`h-4.5 w-4.5 stroke-[2] ${item.active ? "text-[#3B5BDB]" : "text-[#6B7280]"}`} />
+                    <Icon className={`h-4.5 w-4.5 stroke-[2] ${isActive ? "text-[#3B5BDB]" : "text-[#6B7280]"}`} />
                     {item.label}
                   </div>
                   {item.hasChevron && <ChevronRight className="h-4 w-4 text-[#9CA3AF]" />}
-                </div>
+                </Link>
               )
             })}
           </nav>
 
           <div className="mt-auto">
             <div className="space-y-1.5 border-t border-[#EEF1F6] pt-6 text-[13px] font-semibold text-[#4B5563]">
-              <div className="flex items-center gap-3.5 rounded-[8px] px-3.5 py-3 cursor-pointer hover:bg-gray-50 transition-colors">
+              <Link href="/branchlead-pastor/settings" className="flex items-center gap-3.5 rounded-[8px] px-3.5 py-3 cursor-pointer hover:bg-gray-50 transition-colors">
                 <Settings className="h-4.5 w-4.5 stroke-[2] text-[#6B7280]" />
                 Settings
-              </div>
-              <div className="flex items-center gap-3.5 rounded-[8px] px-3.5 py-3 cursor-pointer hover:bg-gray-50 transition-colors">
+              </Link>
+              <Link href="/branchlead-pastor/dashboard" className="flex items-center gap-3.5 rounded-[8px] px-3.5 py-3 cursor-pointer hover:bg-gray-50 transition-colors">
                 <HelpCircle className="h-4.5 w-4.5 stroke-[2] text-[#6B7280]" />
                 Help Center
-              </div>
+              </Link>
             </div>
 
             <div className="mt-8 flex items-center gap-3.5 px-3.5 pb-2 cursor-pointer hover:opacity-80 transition-opacity">
@@ -167,8 +174,8 @@ export default function ComplianceRemittancePage() {
                 />
               </div>
               <div>
-                <div className="text-[14px] font-bold text-[#111827]">Alex Morgan</div>
-                <div className="text-[11px] text-[#9CA3AF] font-medium">Lead Pastor</div>
+                <div className="text-[14px] font-bold text-[#111827]">{displayName}</div>
+                <div className="text-[11px] text-[#9CA3AF] font-medium">{roleLabel}</div>
               </div>
             </div>
           </div>

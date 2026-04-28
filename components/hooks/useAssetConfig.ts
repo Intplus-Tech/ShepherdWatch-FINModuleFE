@@ -31,7 +31,7 @@ export function useAssetConfig() {
       setError(null)
 
       try {
-        const response = await fetch("/api/settings/asset-config", {
+        const response = await fetch("/api/v1/settings/asset-config", {
           method: "GET",
           credentials: "include",
         })

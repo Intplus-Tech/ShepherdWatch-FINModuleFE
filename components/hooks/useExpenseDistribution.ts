@@ -44,8 +44,8 @@ export function useExpenseDistribution(options: Options = {}) {
         if (options.fiscalYear) params.set("fiscalYear", String(options.fiscalYear))
         const query = params.toString()
         const url = query
-          ? `/api/core/dashboard/expense-distribution?${query}`
-          : "/api/core/dashboard/expense-distribution"
+          ? `/api/v1/core/dashboard/expense-distribution?${query}`
+          : "/api/v1/core/dashboard/expense-distribution"
         const response = await fetch(url, { method: "GET", credentials: "include" })
         const payload = await response.json().catch(() => null)
         if (!response.ok) {

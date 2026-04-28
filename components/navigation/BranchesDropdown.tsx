@@ -38,18 +38,20 @@ export default function BranchesDropdown({
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch("/api/branches?page=1&limit=20", { credentials: "include" })
+      const res = await fetch("/api/v1/branches?page=1&limit=20", { credentials: "include" })
       const data = await res.json().catch(() => null)
       if (!res.ok) {
         throw new Error(data?.message || "Unable to load branches")
       }
-      const rows = Array.isArray(data?.data)
-        ? data.data
-        : Array.isArray(data?.data?.data)
-          ? data.data.data
-          : Array.isArray(data?.data?.items)
-            ? data.data.items
-            : []
+      const rows = Array.isArray(data) ? data
+        : Array.isArray(data?.data) ? data.data
+        : Array.isArray(data?.data?.data) ? data.data.data
+        : Array.isArray(data?.data?.content) ? data.data.content
+        : Array.isArray(data?.data?.items) ? data.data.items
+        : Array.isArray(data?.content) ? data.content
+        : Array.isArray(data?.items) ? data.items
+        : Array.isArray(data?.branches) ? data.branches
+        : [];
       setBranches(rows)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load branches")

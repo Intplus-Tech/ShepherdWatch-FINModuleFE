@@ -44,7 +44,7 @@ export default function Page() {
     setSelectedUserId(id)
     setUserLoading(true)
     try {
-      const res = await fetch(`/api/users/${id}`)
+      const res = await fetch(`/api/v1/users/${id}`)
       const json = await res.json()
       if (res.ok) {
         setSelectedUser(json.data)
@@ -88,7 +88,7 @@ export default function Page() {
     setIsUpdatingRole(true);
     setRoleUpdateError(null);
     try {
-      const res = await fetch(`/api/users/${editRoleUserId}/role`, {
+      const res = await fetch(`/api/v1/users/${editRoleUserId}/role`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -121,7 +121,7 @@ export default function Page() {
   const fetchBranches = async () => {
     setBranchesLoading(true)
     try {
-      const res = await fetch("/api/branches?page=1&limit=100", { credentials: "include" })
+      const res = await fetch("/api/v1/branches?page=1&limit=100", { credentials: "include" })
       const json = await res.json()
       if (res.ok) {
         const rows = Array.isArray(json?.data)
@@ -163,7 +163,7 @@ export default function Page() {
     setIsUpdatingBranch(true);
     setBranchUpdateError(null);
     try {
-      const res = await fetch(`/api/users/${changeBranchUserId}/branch`, {
+      const res = await fetch(`/api/v1/users/${changeBranchUserId}/branch`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -209,7 +209,7 @@ export default function Page() {
     setResetPasswordError(null);
     setResetPasswordSuccess(null);
     try {
-      const res = await fetch(`/api/users/${resetPasswordUserId}/reset-password`, {
+      const res = await fetch(`/api/v1/users/${resetPasswordUserId}/reset-password`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -256,7 +256,7 @@ export default function Page() {
     setDeactivateError(null);
     setDeactivateSuccess(null);
     try {
-      const res = await fetch(`/api/users/${deactivateUserId}/deactivate`, {
+      const res = await fetch(`/api/v1/users/${deactivateUserId}/deactivate`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -304,7 +304,7 @@ export default function Page() {
     setActivateError(null);
     setActivateSuccess(null);
     try {
-      const res = await fetch(`/api/users/${activateUserId}/activate`, {
+      const res = await fetch(`/api/v1/users/${activateUserId}/activate`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -352,7 +352,7 @@ export default function Page() {
     setResendInviteError(null);
     setResendInviteSuccess(null);
     try {
-      const res = await fetch(`/api/users/${resendInviteUserId}/resend-invite`, {
+      const res = await fetch(`/api/v1/users/${resendInviteUserId}/resend-invite`, {
         method: "POST",
         headers: { "Content-Type": "application/json" }
       });
@@ -375,7 +375,7 @@ export default function Page() {
   const fetchUsers = async (search = "") => {
     setLoading(true)
     try {
-      const url = new URL("/api/users", window.location.origin)
+      const url = new URL("/api/v1/users", window.location.origin)
       if (search) url.searchParams.append("search", search)
 
       const res = await fetch(url.toString())
@@ -443,7 +443,7 @@ export default function Page() {
   const handleExport = async () => {
     setIsExporting(true)
     try {
-      const url = new URL("/api/users/export", window.location.origin)
+      const url = new URL("/api/v1/users/export", window.location.origin)
       if (searchTerm) url.searchParams.append("search", searchTerm)
 
       const res = await fetch(url.toString())

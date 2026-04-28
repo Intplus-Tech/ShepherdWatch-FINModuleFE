@@ -106,7 +106,7 @@ export function useStatutoryDeductions() {
       if (params.branchId) query.set("branchId", params.branchId)
       if (params.remitted !== undefined) query.set("remitted", String(params.remitted))
 
-      const response = await fetch(`/api/core/financial/compliance/deductions?${query.toString()}`, {
+      const response = await fetch(`/api/v1/core/financial/compliance/deductions?${query.toString()}`, {
         method: "GET",
         credentials: "include",
       })
@@ -155,7 +155,7 @@ export function useStatutoryDeductions() {
     setCreating(true)
     setError(null)
     try {
-      const response = await fetch("/api/core/financial/compliance/deductions", {
+      const response = await fetch("/api/v1/core/financial/compliance/deductions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -187,7 +187,7 @@ export function useStatutoryDeductions() {
     setDetailLoading(true)
     setDetailError(null)
     try {
-      const response = await fetch(`/api/core/financial/compliance/deductions/${id}`, {
+      const response = await fetch(`/api/v1/core/financial/compliance/deductions/${id}`, {
         method: "GET",
         credentials: "include",
       })
@@ -222,7 +222,7 @@ export function useStatutoryDeductions() {
       setError(null)
       setDetailError(null)
       try {
-        const response = await fetch(`/api/core/financial/compliance/deductions/${id}`, {
+        const response = await fetch(`/api/v1/core/financial/compliance/deductions/${id}`, {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
@@ -263,7 +263,7 @@ export function useStatutoryDeductions() {
       setError(null)
       setDetailError(null)
       try {
-        const response = await fetch(`/api/core/financial/compliance/deductions/${id}/remit`, {
+        const response = await fetch(`/api/v1/core/financial/compliance/deductions/${id}/remit`, {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",

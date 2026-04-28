@@ -1,5 +1,7 @@
-﻿"use client"
+"use client"
 
+import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
@@ -11,8 +13,33 @@ import {
   Coins,
   FileSpreadsheet
 } from "lucide-react"
+import { useAssetClasses } from "@/components/hooks/useAssetClasses"
 
 export default function Page() {
+  const router = useRouter()
+  const { createAssetClass, isCreating, createError } = useAssetClasses()
+
+  const [name, setName] = useState("")
+  const [method, setMethod] = useState("straight_line")
+  const [usefulLife, setUsefulLife] = useState("0")
+  const [salvageValue, setSalvageValue] = useState("0.0")
+
+  const handleSave = async () => {
+    if (!name.trim()) return;
+
+    try {
+      await createAssetClass({
+        name: name.trim(),
+        defaultDepreciationMethod: method,
+        defaultUsefulLifeYears: Number(usefulLife) || 0,
+        defaultResidualValuePercent: Number(salvageValue) || 0,
+      })
+      router.push("/director-screen/settings-asset")
+    } catch (err) {
+      // Error is handled by the hook and displayed below
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[#F8FAFC] font-sans pb-24">
       <div className="mx-auto w-[1184px] max-w-full h-[852px] px-6 pt-16 pb-12">
@@ -28,7 +55,7 @@ export default function Page() {
           </div>
           <div className="mt-4 md:mt-0 flex items-center justify-center gap-2 rounded-full bg-[#EFF6FF] px-4 py-2 border border-[#DBEAFE] text-[12px] font-bold text-[#3B5BDB] shadow-sm">
             <span className="flex h-4 w-4 items-center justify-center rounded-full bg-white">
-              <img src="/images/base%20curr%20icon.svg" alt="Currency icon representing Nigerian Naira base currency setting" className="h-3 w-3" />
+              <img src="/images/base%20curr%20icon.svg" alt="Currency icon" className="h-3 w-3" />
             </span>
             Base Currency: Naira (₦)
           </div>
@@ -46,22 +73,31 @@ export default function Page() {
           </div>
 
           <div className="px-8 py-8 border-b border-[#EEF1F6] bg-white">
+            {createError && (
+              <div className="mb-4 p-4 text-[13px] font-bold text-rose-600 bg-rose-50 rounded-[8px]">
+                {createError}
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div className="space-y-2">
                 <label className="text-[13px] font-bold text-[#374151]">
                   Asset Class Name <span className="text-[#EF4444]">*</span>
                 </label>
                 <Input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
                   className="h-11 rounded-[8px] border-[#E5E7EB] bg-[#F9FAFB] text-[14px] placeholder:text-[#9CA3AF] shadow-sm"
                   placeholder="e.g. Electronic Equipment"
                 />
               </div>
               <div className="space-y-2">
                 <label className="text-[13px] font-bold text-[#374151]">Category Mapping</label>
-                <button className="flex h-11 w-full items-center justify-between rounded-[8px] border border-[#E5E7EB] bg-[#F9FAFB] px-3 shadow-sm hover:bg-[#F3F4F6] transition-colors text-[14px] text-[#9CA3AF] font-medium">
-                  Select a category...
-                  <ChevronDown className="h-4 w-4 text-[#6B7280]" />
-                </button>
+                <div className="relative">
+                  <select disabled className="appearance-none flex h-11 w-full items-center justify-between rounded-[8px] border border-[#E5E7EB] bg-[#F9FAFB] px-3 shadow-sm text-[14px] text-[#9CA3AF] font-medium outline-none opacity-60">
+                    <option>Select a category...</option>
+                  </select>
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6B7280]" />
+                </div>
               </div>
             </div>
           </div>
@@ -80,17 +116,28 @@ export default function Page() {
                 <label className="text-[13px] font-bold text-[#374151]">
                   Default Depreciation Method <span className="text-[#EF4444]">*</span>
                 </label>
-                <button className="flex h-11 w-full items-center justify-between rounded-[8px] border border-[#E5E7EB] bg-white px-3 shadow-sm hover:bg-[#F9FAFB] transition-colors text-[14px] text-[#111827] font-medium">
-                  Straight Line
-                  <ChevronDown className="h-4 w-4 text-[#6B7280]" />
-                </button>
+                <div className="relative">
+                  <select 
+                    value={method}
+                    onChange={(e) => setMethod(e.target.value)}
+                    className="appearance-none flex h-11 w-full items-center justify-between rounded-[8px] border border-[#E5E7EB] bg-white px-3 shadow-sm hover:bg-[#F9FAFB] transition-colors text-[14px] text-[#111827] font-medium outline-none"
+                  >
+                    <option value="straight_line">Straight Line</option>
+                    <option value="declining_balance">Declining Balance</option>
+                    <option value="units_of_production">Units of Production</option>
+                  </select>
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6B7280] pointer-events-none" />
+                </div>
               </div>
               <div className="space-y-2">
                 <label className="text-[13px] font-bold text-[#374151]">Useful Life</label>
                 <div className="relative">
                   <Input 
+                    type="number"
+                    min="0"
+                    value={usefulLife}
+                    onChange={(e) => setUsefulLife(e.target.value)}
                     className="h-11 rounded-[8px] border-[#E5E7EB] bg-[#F9FAFB] text-[14px] font-bold text-[#6B7280] shadow-sm pr-14" 
-                    defaultValue="0" 
                   />
                   <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[12px] font-bold text-[#3B5BDB]">Years</span>
                 </div>
@@ -99,8 +146,12 @@ export default function Page() {
                 <label className="text-[13px] font-bold text-[#374151]">Salvage Value</label>
                 <div className="relative">
                   <Input 
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={salvageValue}
+                    onChange={(e) => setSalvageValue(e.target.value)}
                     className="h-11 rounded-[8px] border-[#E5E7EB] bg-[#F9FAFB] text-[14px] font-bold text-[#6B7280] shadow-sm pr-10" 
-                    defaultValue="0.0" 
                   />
                   <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[14px] font-bold text-[#3B5BDB]">%</span>
                 </div>
@@ -108,7 +159,7 @@ export default function Page() {
             </div>
 
             <p className="mt-4 text-[12px] font-medium italic text-[#9CA3AF]">
-              Note: Monetary calculations will be processed in Naira (â‚¦) based on the asset acquisition value.
+              Note: Monetary calculations will be processed in Naira (₦) based on the asset acquisition value.
             </p>
 
             <div className="mt-10 flex items-center justify-between rounded-[12px] border border-[#DBEAFE] bg-[#F0F7FF] p-5 shadow-sm">
@@ -123,18 +174,24 @@ export default function Page() {
                   </div>
                 </div>
               </div>
-              {/* Forced OFF state style for the toggle to match Figma */}
               <Switch checked={false} className="data-[state=unchecked]:bg-[#E5E7EB]" />
             </div>
           </div>
 
           <div className="flex items-center justify-end gap-6 border-t border-[#EEF1F6] bg-white px-8 py-6">
-            <button className="text-[14px] font-bold text-[#6B7280] hover:text-[#374151] transition-colors outline-none bg-transparent border-none">
+            <button 
+              onClick={() => router.push("/director-screen/settings-asset")}
+              className="text-[14px] font-bold text-[#6B7280] hover:text-[#374151] transition-colors outline-none bg-transparent border-none"
+            >
               Cancel
             </button>
-            <Button className="h-11 px-6 rounded-[8px] bg-[#2E90FA] hover:bg-[#1570EF] text-[14px] font-bold text-white shadow-[0_1px_2px_rgba(0,0,0,0.05)] flex items-center gap-2 transition-colors">
+            <Button 
+              onClick={handleSave}
+              disabled={isCreating || !name.trim()}
+              className="h-11 px-6 rounded-[8px] bg-[#2E90FA] hover:bg-[#1570EF] text-[14px] font-bold text-white shadow-[0_1px_2px_rgba(0,0,0,0.05)] flex items-center gap-2 transition-colors disabled:opacity-70"
+            >
               <Save className="h-4 w-4" />
-              Save Configuration
+              {isCreating ? "Saving..." : "Save Category"}
             </Button>
           </div>
 
@@ -143,4 +200,3 @@ export default function Page() {
     </div>
   )
 }
-

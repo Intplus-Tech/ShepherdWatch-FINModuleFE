@@ -26,7 +26,7 @@ export function useBudgetConfig() {
       setError(null)
 
       try {
-        const response = await fetch("/api/settings/budget-config", {
+        const response = await fetch("/api/v1/settings/budget-config", {
           method: "GET",
           credentials: "include",
         })

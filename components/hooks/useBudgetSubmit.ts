@@ -26,7 +26,7 @@ export function useBudgetSubmit() {
     setSubmitSuccess(false)
     
     try {
-      const response = await fetch(`/api/core/financial/budgets/${id}/submit`, {
+      const response = await fetch(`/api/v1/core/financial/budgets/${id}/submit`, {
         method: "PATCH",
         headers: {
           "x-csrf-token": getCsrfToken(),

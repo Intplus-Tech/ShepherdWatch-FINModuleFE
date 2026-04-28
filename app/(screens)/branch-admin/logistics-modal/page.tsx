@@ -43,7 +43,7 @@ export default function LogisticsModalPage() {
     const fetchFirstAsset = async () => {
       if (!tenantId) return
       try {
-        const response = await fetch(`/api/core/financial/fixed-assets?tenantId=${tenantId}`, {
+        const response = await fetch(`/api/v1/core/financial/fixed-assets?tenantId=${tenantId}`, {
           method: "GET",
           credentials: "include",
         })
@@ -102,7 +102,7 @@ export default function LogisticsModalPage() {
       const scheduledDate = new Date()
       scheduledDate.setDate(scheduledDate.getDate() + intervalDays)
 
-      const response = await fetch("/api/maintenance", {
+      const response = await fetch("/api/v1/maintenance", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

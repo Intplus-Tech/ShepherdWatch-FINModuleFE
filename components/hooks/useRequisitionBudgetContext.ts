@@ -38,7 +38,7 @@ export function useRequisitionBudgetContext(requisitionId?: string) {
       setLoading(true)
       setError(null)
       try {
-        const response = await fetch(`/api/core/financial/requisitions/${id}/budget-context`, {
+        const response = await fetch(`/api/v1/core/financial/requisitions/${id}/budget-context`, {
           method: "GET",
           credentials: "include",
         })

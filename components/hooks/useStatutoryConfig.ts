@@ -26,7 +26,7 @@ export function useStatutoryConfig() {
       setError(null)
 
       try {
-        const response = await fetch("/api/settings/statutory-config", {
+        const response = await fetch("/api/v1/settings/statutory-config", {
           method: "GET",
           credentials: "include",
         })

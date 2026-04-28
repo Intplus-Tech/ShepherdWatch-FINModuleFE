@@ -53,7 +53,7 @@ export function useBudgetControl(initialProps?: UseBudgetControlProps) {
         if (mergedProps.branchId) qs.set("branchId", mergedProps.branchId)
         if (mergedProps.fiscalYear) qs.set("fiscalYear", mergedProps.fiscalYear.toString())
 
-        const res = await fetch(`/api/core/financial/budgets/control?${qs.toString()}`, {
+        const res = await fetch(`/api/v1/core/financial/budgets/control?${qs.toString()}`, {
           credentials: "include",
         })
         const payload = await res.json().catch(() => null)

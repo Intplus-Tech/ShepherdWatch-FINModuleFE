@@ -61,7 +61,7 @@ export default function SetNewPasswordForm() {
     setError(null)
     setInfo(null)
     try {
-      const res = await fetch("/api/auth/reset-password", {
+      const res = await fetch("/api/v1/auth/reset-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -92,7 +92,7 @@ export default function SetNewPasswordForm() {
     }
 
     try {
-      const res = await fetch("/api/auth/resend-otp", {
+      const res = await fetch("/api/v1/auth/resend-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, purpose: "password_reset" }),

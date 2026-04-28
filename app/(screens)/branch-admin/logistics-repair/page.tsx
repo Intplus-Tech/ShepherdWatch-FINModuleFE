@@ -2,7 +2,9 @@
 
 import React, { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
+import Link from "next/link"
 import { Inter } from "next/font/google"
+import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard,
   List,
@@ -22,6 +24,7 @@ import {
   Calendar,
   CreditCard,
   Check,
+  LogOut,
 } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
 
@@ -43,7 +46,9 @@ type MaintenanceRecord = {
 }
 
 export default function LogisticsRepairsPage() {
-  const { user } = useAuth()
+  const { user, logout } = useAuth()
+  const pathname = usePathname()
+  const router = useRouter()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [maintenanceTasks, setMaintenanceTasks] = useState<MaintenanceRecord[]>([])
   const [tasksLoading, setTasksLoading] = useState(false)
@@ -117,7 +122,7 @@ export default function LogisticsRepairsPage() {
           order: "asc",
         })
 
-        const response = await fetch(`/api/maintenance?${params.toString()}`, {
+        const response = await fetch(`/api/v1/maintenance?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         })
@@ -185,7 +190,7 @@ export default function LogisticsRepairsPage() {
           endDate: formatDateParam(currentMonthEnd),
         })
 
-        const response = await fetch(`/api/maintenance/schedule?${params.toString()}`, {
+        const response = await fetch(`/api/v1/maintenance/schedule?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         })
@@ -290,6 +295,16 @@ export default function LogisticsRepairsPage() {
   const monthLabel = useMemo(() => {
     return currentMonthStart.toLocaleDateString("en-GB", { month: "long", year: "numeric" })
   }, [currentMonthStart])
+
+  const handleLogout = async () => {
+    try {
+      await logout()
+      router.replace("/login")
+    } catch (error) {
+      console.error("Logout failed", error)
+      router.replace("/login")
+    }
+  }
 
   const calendarDays = useMemo(() => {
     const daysInMonth = currentMonthEnd.getDate()
@@ -420,7 +435,7 @@ export default function LogisticsRepairsPage() {
       if (completeForm.cost) payload.cost = Number(completeForm.cost)
       if (completeForm.notes) payload.notes = completeForm.notes
 
-      const response = await fetch(`/api/maintenance/${recordId}/complete`, {
+      const response = await fetch(`/api/v1/maintenance/${recordId}/complete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -461,7 +476,7 @@ export default function LogisticsRepairsPage() {
         throw new Error("Maintenance record ID is missing.")
       }
 
-      const response = await fetch(`/api/maintenance/${recordId}`, {
+      const response = await fetch(`/api/v1/maintenance/${recordId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -520,23 +535,25 @@ export default function LogisticsRepairsPage() {
           {/* Main Navigation */}
           <nav className="space-y-1.5 mt-2 px-3">
             {[
-              { label: "Dashboard", href: "#", icon: LayoutDashboard },
-              { label: "Requisitions", href: "#", icon: List },
-              { label: "Logistics & Repairs", href: "#", icon: Wrench, active: true },
-              { label: "Assets", href: "#", icon: Database },
+              { label: "Dashboard", href: "/branch-admin/dashboard", icon: LayoutDashboard },
+              { label: "Requisitions", href: "/branch-admin/requisitions", icon: List },
+              { label: "Logistics & Repairs", href: "/branch-admin/logistics-repair", icon: Wrench },
+              { label: "Assets", href: "/branch-admin/asset", icon: Database },
             ].map((item) => {
               const Icon = item.icon
+              const isActive = pathname === item.href
               return (
-                <div
+                <Link
                   key={item.label}
-                  className={`flex items-center justify-between rounded-[8px] px-4 py-3 text-[14px] font-[700] cursor-pointer transition-colors ${item.active ? "bg-[#EEF2FF] text-[#2563EB]" : "text-[#4B5563] hover:bg-gray-50"
+                  href={item.href}
+                  className={`flex items-center justify-between rounded-[8px] px-4 py-3 text-[14px] font-[700] cursor-pointer transition-colors ${isActive ? "bg-[#EEF2FF] text-[#2563EB]" : "text-[#4B5563] hover:bg-gray-50"
                     }`}
                 >
                   <div className="flex items-center gap-3.5">
-                    <Icon className={`h-5 w-5 stroke-[2] ${item.active ? "text-[#2563EB]" : "text-[#6B7280]"}`} />
+                    <Icon className={`h-5 w-5 stroke-[2] ${isActive ? "text-[#2563EB]" : "text-[#6B7280]"}`} />
                     {item.label}
                   </div>
-                </div>
+                </Link>
               )
             })}
           </nav>
@@ -545,23 +562,34 @@ export default function LogisticsRepairsPage() {
           <div className="px-3 mt-4">
             <div className="text-[11px] font-[800] text-[#9CA3AF] tracking-widest uppercase mb-3 px-4">System</div>
             <div className="space-y-1">
-              <div className="flex items-center gap-3.5 rounded-[8px] px-4 py-3 cursor-pointer text-[14px] font-[700] text-[#4B5563] hover:bg-gray-50 transition-colors">
+              <Link href="/branch-admin/settings" className="flex items-center gap-3.5 rounded-[8px] px-4 py-3 cursor-pointer text-[14px] font-[700] text-[#4B5563] hover:bg-gray-50 transition-colors">
                 <Settings className="h-5 w-5 stroke-[2] text-[#6B7280]" />
                 Settings
-              </div>
+              </Link>
             </div>
           </div>
 
           {/* Bottom Section */}
           <div className="mt-auto px-3 mb-2">
-            <div className="pt-6 border-t border-[#EEF1F6] flex items-center gap-3.5 px-4 cursor-pointer hover:opacity-80 transition-opacity">
-              <div className="h-10 w-10 relative rounded-full overflow-hidden bg-gray-200 shrink-0 border border-gray-200 flex items-center justify-center">
-                <Image src="/images/Beared%20Guy02-min%201.jpg" alt="Profile avatar" fill className="object-cover" />
+            <div className="pt-6 border-t border-[#EEF1F6] flex flex-col gap-4 px-4">
+              <div className="flex items-center gap-3.5 cursor-pointer hover:opacity-80 transition-opacity">
+                <div className="h-10 w-10 relative rounded-full overflow-hidden bg-gray-200 shrink-0 border border-gray-200 flex items-center justify-center">
+                  <Image src="/images/Beared%20Guy02-min%201.jpg" alt="Profile avatar" fill className="object-cover" />
+                </div>
+                <div>
+                  <div className="text-[14px] font-[800] text-[#111827] leading-tight mb-0.5">{user?.name || user?.email || "User"}</div>
+                  <div className="text-[12px] font-medium text-[#9CA3AF] leading-tight">
+                    {user?.role ? String(user.role).replace(/_/g, " ") : "Branch Officer"}
+                  </div>
+                </div>
               </div>
-              <div>
-                <div className="text-[14px] font-[800] text-[#111827] leading-tight mb-0.5">Alex Morgan</div>
-                <div className="text-[12px] font-medium text-[#9CA3AF] leading-tight">Branch Officer</div>
-              </div>
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-3 rounded-[8px] py-2.5 px-2 -mx-2 text-[13px] font-medium text-rose-600 hover:bg-rose-50 transition-colors w-[calc(100%+16px)] text-left"
+              >
+                <LogOut className="h-4.5 w-4.5" />
+                Logout
+              </button>
             </div>
           </div>
         </div>

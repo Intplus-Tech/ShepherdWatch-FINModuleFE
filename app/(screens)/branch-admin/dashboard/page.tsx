@@ -3,7 +3,8 @@
 import React, { useMemo, useState } from "react"
 import Image from "next/image"
 import { Inter } from "next/font/google"
-import { useRouter } from "next/navigation"
+import Link from "next/link"
+import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard,
   FilePlus2,
@@ -63,6 +64,7 @@ export default function Dashboard() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const { user, logout } = useAuth()
   const router = useRouter()
+  const pathname = usePathname()
 
   const handleLogout = async () => {
     try {
@@ -134,23 +136,25 @@ export default function Dashboard() {
           {/* Main Navigation */}
           <nav className="space-y-1.5 mt-2 px-3">
             {[
-              { label: "Dashboard", href: "#", icon: LayoutDashboard, active: true },
-              { label: "Requisitions", href: "#", icon: FilePlus2 },
-              { label: "Logistics & Repairs", href: "#", icon: Wrench },
-              { label: "Assets", href: "#", icon: Database },
+              { label: "Dashboard", href: "/branch-admin/dashboard", icon: LayoutDashboard },
+              { label: "Requisitions", href: "/branch-admin/requisitions", icon: FilePlus2 },
+              { label: "Logistics & Repairs", href: "/branch-admin/logistics-repair", icon: Wrench },
+              { label: "Assets", href: "/branch-admin/asset", icon: Database },
             ].map((item) => {
               const Icon = item.icon
+              const isActive = pathname === item.href
               return (
-                <div
+                <Link
                   key={item.label}
-                  className={`flex items-center justify-between rounded-[8px] px-4 py-3 text-[14px] font-[700] cursor-pointer transition-colors ${item.active ? "bg-[#EEF2FF] text-[#2563EB]" : "text-[#4B5563] hover:bg-gray-50"
+                  href={item.href}
+                  className={`flex items-center justify-between rounded-[8px] px-4 py-3 text-[14px] font-[700] cursor-pointer transition-colors ${isActive ? "bg-[#EEF2FF] text-[#2563EB]" : "text-[#4B5563] hover:bg-gray-50"
                     }`}
                 >
                   <div className="flex items-center gap-3.5">
-                    <Icon className={`h-5 w-5 ${item.active ? "text-[#2563EB]" : "text-[#6B7280]"}`} strokeWidth={2} />
+                    <Icon className={`h-5 w-5 ${isActive ? "text-[#2563EB]" : "text-[#6B7280]"}`} strokeWidth={2} />
                     {item.label}
                   </div>
-                </div>
+                </Link>
               )
             })}
           </nav>
@@ -159,10 +163,10 @@ export default function Dashboard() {
           <div className="px-3 mt-4">
             <div className="text-[11px] font-[800] text-[#9CA3AF] tracking-widest uppercase mb-3 px-4">System</div>
             <div className="space-y-1">
-              <div className="flex items-center gap-3.5 rounded-[8px] px-4 py-3 cursor-pointer text-[14px] font-[700] text-[#4B5563] hover:bg-gray-50 transition-colors">
+              <Link href="/branch-admin/settings" className="flex items-center gap-3.5 rounded-[8px] px-4 py-3 cursor-pointer text-[14px] font-[700] text-[#4B5563] hover:bg-gray-50 transition-colors">
                 <Settings className="h-5 w-5 stroke-[2] text-[#6B7280]" />
                 Settings
-              </div>
+              </Link>
             </div>
           </div>
 

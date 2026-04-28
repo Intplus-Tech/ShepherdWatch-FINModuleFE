@@ -55,56 +55,76 @@ export default function Page() {
   }
 
   return (
-    <div className="relative min-h-screen w-full overflow-hidden bg-[#0F1115] font-sans" style={{ fontFamily: '"Inter", sans-serif' }}>
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute inset-0 scale-[1.04] origin-top-left blur-[6px]">
-          <SettingsPage />
-        </div>
-        <div className="absolute inset-0 bg-black/35" />
+    <div className="fixed inset-0 z-[100] flex items-center justify-center font-sans">
+      {/* Background Settings Page and overlay */}
+      <div className="absolute inset-0 z-[-1] blur-[4px] pointer-events-none scale-[1.02]">
+        <SettingsPage />
       </div>
 
-      <div className="relative z-10 min-h-screen">
-        <div className="absolute left-[226.9px] top-[53.14px] h-[694.319px] w-[827.204px] rounded-[14px] bg-white shadow-[0_25px_60px_rgba(15,23,42,0.35)]">
-          <div className="flex items-center justify-between border-b border-[#EEF1F6] px-4 sm:px-6 py-4">
-            <div>
-              <div className="text-[17px] font-semibold leading-[20px] text-[#111827]">Change Password</div>
-              <div className="text-[10.67px] font-normal leading-[16px] text-[#9CA3AF]">Enter your new password credentials</div>
-            </div>
-            <button onClick={handleClose} className="h-8 w-8 sm:h-9 sm:w-9 rounded-full border border-[#E5E7EB] bg-white flex items-center justify-center text-[#6B7280] hover:bg-[#F9FAFB] transition-colors" aria-label="Close">
-              <X className="h-4 w-4" />
-            </button>
-          </div>
+      <div className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm z-0" onClick={handleClose} />
 
-          <div className="space-y-5 px-4 sm:px-6 py-5 sm:py-6">
-            <div className="space-y-2">
-              <label className="text-[11.33px] font-semibold text-[#6B7280] leading-[15.33px]">Old Password</label>
-              <PasswordInput value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} className="h-[34px] w-full rounded-[8px] border border-[#E5E7EB] text-[12px]" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-[11.33px] font-semibold text-[#6B7280] leading-[15.33px]">New Password</label>
-              <PasswordInput value={newPassword} onChange={(event) => setNewPassword(event.target.value)} className="h-[34px] w-full rounded-[8px] border border-[#E5E7EB] text-[12px]" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-[11.33px] font-semibold text-[#6B7280] leading-[15.33px]">Re Enter New Password</label>
-              <PasswordInput value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} className="h-[34px] w-full rounded-[8px] border border-[#E5E7EB] text-[12px]" />
-            </div>
-            <p className="text-[10px] text-[#64748B]">Use at least 8 characters with uppercase, lowercase, and a number.</p>
-            {error ? <p className="text-[11px] font-semibold text-rose-600">{error}</p> : null}
-            {success ? <p className="text-[11px] font-semibold text-emerald-600">{success}</p> : null}
-          </div>
+      <div className="relative z-10 w-[448px] h-[315px] rounded-[16px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.15)] flex flex-col p-6 animate-in zoom-in-95 duration-200">
 
-          <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-3 border-t border-[#EEF1F6] px-4 sm:px-6 py-4">
-            <Button onClick={handleClose} disabled={loading} variant="outline" size="sm" className="h-9 w-full sm:w-auto rounded-[10px] border-[#E5E7EB] bg-white text-[11.33px] font-semibold text-[#6B7280]">
-              Cancel
-            </Button>
-            <Button onClick={handleUpdatePassword} disabled={loading} size="sm" className="h-9 w-full sm:w-auto rounded-[10px] bg-[#3B5BDB] text-[11.33px] font-semibold text-white">
-              {loading ? "Updating..." : "Update Password"}
-            </Button>
+        {/* Header */}
+        <div className="flex items-start justify-between">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-[17px] font-[800] text-[#111827] tracking-tight">Change Password</h2>
+            <p className="text-[12px] font-medium text-[#6B7280]">Enter your new password credentials</p>
           </div>
+          <button onClick={handleClose} className="h-7 w-7 rounded-full flex items-center justify-center text-[#9CA3AF] hover:bg-gray-100 transition-colors shrink-0">
+            <X className="h-4 w-4" />
+          </button>
         </div>
+
+        {/* Form Body */}
+        <div className="flex flex-col gap-[14px] flex-1 mt-[14px]">
+          <div className="space-y-1">
+            <label className="text-[11px] font-[700] text-[#374151]">Old Password</label>
+            <PasswordInput
+              value={currentPassword}
+              onChange={(event) => setCurrentPassword(event.target.value)}
+              className="h-[36px] w-full rounded-[8px] border border-[#E2E8F0] bg-[#F8FAFC] px-4 text-[13px] font-medium text-[#111827] focus:bg-white focus:border-[#3B5BDB] focus:ring-1 focus:ring-[#3B5BDB] transition-colors outline-none"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[11px] font-[700] text-[#374151]">New Password</label>
+            <PasswordInput
+              value={newPassword}
+              onChange={(event) => setNewPassword(event.target.value)}
+              className="h-[36px] w-full rounded-[8px] border border-[#E2E8F0] bg-[#F8FAFC] px-4 text-[13px] font-medium text-[#111827] focus:bg-white focus:border-[#3B5BDB] focus:ring-1 focus:ring-[#3B5BDB] transition-colors outline-none"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[11px] font-[700] text-[#374151]">Re Enter New Password</label>
+            <PasswordInput
+              value={confirmPassword}
+              onChange={(event) => setConfirmPassword(event.target.value)}
+              className="h-[36px] w-full rounded-[8px] border border-[#E2E8F0] bg-[#F8FAFC] px-4 text-[13px] font-medium text-[#111827] focus:bg-white focus:border-[#3B5BDB] focus:ring-1 focus:ring-[#3B5BDB] transition-colors outline-none"
+            />
+          </div>
+          {error ? <p className="text-[11px] font-semibold text-rose-600 -mt-1">{error}</p> : null}
+          {success ? <p className="text-[11px] font-semibold text-emerald-600 -mt-1">{success}</p> : null}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-2 mt-4">
+          <button
+            onClick={handleClose}
+            disabled={loading}
+            className="px-5 py-2 text-[12px] font-[700] text-[#4B5563] hover:bg-gray-50 rounded-[8px] transition-colors disabled:opacity-70"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleUpdatePassword}
+            disabled={loading}
+            className="px-6 py-2 rounded-[8px] bg-blue-600 hover:bg-blue-700 text-[12px] font-[700] text-white transition-colors disabled:opacity-70 shadow-sm"
+          >
+            {loading ? "Updating..." : "Update Password"}
+          </button>
+        </div>
+
       </div>
     </div>
   )
 }
-
-

@@ -67,7 +67,7 @@ export default function CommunicationPage() {
     setDeleteError(null)
     try {
       const response = await fetch(
-        `/api/core/financial/budgets/${encodeURIComponent(budgetId)}/comments/${encodeURIComponent(commentId)}`,
+        `/api/v1/core/financial/budgets/${encodeURIComponent(budgetId)}/comments/${encodeURIComponent(commentId)}`,
         {
           method: "DELETE",
           headers: {
@@ -103,7 +103,7 @@ export default function CommunicationPage() {
     setPosting(true)
     setPostError(null)
     try {
-      const response = await fetch(`/api/core/financial/budgets/${encodeURIComponent(budgetId)}/comments`, {
+      const response = await fetch(`/api/v1/core/financial/budgets/${encodeURIComponent(budgetId)}/comments`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { useAuth } from "@/components/auth/AuthProvider"
 import {
   BarChart3,
   Bell,
@@ -29,7 +30,7 @@ import {
 } from "lucide-react"
 import { useBudgetEntries } from "@/components/hooks/useBudgetEntries"
 
-const SidebarContent = () => (
+const SidebarContent = ({ displayName, roleLabel }: { displayName: string; roleLabel: string }) => (
   <div className="p-6 flex flex-col h-full">
     <div className="flex items-center gap-3 pb-8">
       <Image src="/images/icon-shepherdwatch.svg" alt="ShepherdWatch logo" width={28} height={28} className="shrink-0" />
@@ -79,8 +80,8 @@ const SidebarContent = () => (
           <img src="/images/Beared%20Guy02-min%201.jpg" alt="Profile avatar" className="h-full w-full object-cover" />
         </div>
         <div>
-          <div className="text-[14px] font-extrabold text-[#111827]">Alex Morgan</div>
-          <div className="text-[11px] text-[#9CA3AF] font-bold tracking-wide">Lead Pastor</div>
+          <div className="text-[14px] font-extrabold text-[#111827]">{displayName}</div>
+          <div className="text-[11px] text-[#9CA3AF] font-bold tracking-wide">{roleLabel}</div>
         </div>
       </div>
     </div>
@@ -88,6 +89,9 @@ const SidebarContent = () => (
 )
 
 export default function Page() {
+  const { user } = useAuth()
+  const displayName = user?.name || user?.email || "User"
+  const roleLabel = user?.role ? String(user.role).replace(/_/g, " ") : "Lead Pastor"
   const [mobileOpen, setMobileOpen] = useState(false)
   const { entries, loading, error } = useBudgetEntries()
   const [approvingAll, setApprovingAll] = useState(false)
@@ -204,7 +208,7 @@ export default function Page() {
       const csrfToken = getCsrfToken()
       await Promise.all(
         entryIds.map(async (entryId) => {
-          const response = await fetch(`/api/core/financial/budget-entries/${entryId}/approve`, {
+          const response = await fetch(`/api/v1/core/financial/budget-entries/${entryId}/approve`, {
             method: "POST",
             headers: { "x-csrf-token": csrfToken },
             credentials: "include",
@@ -245,13 +249,13 @@ export default function Page() {
         <aside
           className={`absolute left-0 top-0 h-full w-[260px] bg-white shadow-xl transition-transform duration-300 ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}
         >
-          <SidebarContent />
+          <SidebarContent displayName={displayName} roleLabel={roleLabel} />
         </aside>
       </div>
 
       {/* Sidebar - Desktop */}
       <aside className="w-[260px] border-r border-[#EEF1F6] bg-white hidden xl:flex flex-col shrink-0 h-screen sticky top-0 z-20 shadow-[2px_0_8px_-4px_rgba(0,0,0,0.05)]">
-        <SidebarContent />
+            <SidebarContent displayName={displayName} roleLabel={roleLabel} />
       </aside>
 
       {/* Main Layout Wrapping Column */}

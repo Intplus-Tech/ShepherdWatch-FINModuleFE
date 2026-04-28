@@ -47,7 +47,7 @@ export function useFinancialCalendar(options: Options = {}) {
         if (options.endDate) params.set("endDate", options.endDate)
 
         const query = params.toString()
-        const url = query ? `/api/core/dashboard/financial-calendar?${query}` : "/api/core/dashboard/financial-calendar"
+        const url = query ? `/api/v1/core/dashboard/financial-calendar?${query}` : "/api/v1/core/dashboard/financial-calendar"
         const response = await fetch(url, { method: "GET", credentials: "include" })
         const payload = await response.json().catch(() => null)
 

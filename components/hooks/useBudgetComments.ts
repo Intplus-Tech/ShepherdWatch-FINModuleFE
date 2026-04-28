@@ -35,7 +35,7 @@ export function useBudgetComments(budgetId: string, page = 1, limit = 20) {
     setError(null)
     try {
       const response = await fetch(
-        `/api/core/financial/budgets/${encodeURIComponent(budgetId)}/comments?page=${page}&limit=${limit}`,
+        `/api/v1/core/financial/budgets/${encodeURIComponent(budgetId)}/comments?page=${page}&limit=${limit}`,
         { method: "GET", credentials: "include" }
       )
       const payload = await response.json().catch(() => null)

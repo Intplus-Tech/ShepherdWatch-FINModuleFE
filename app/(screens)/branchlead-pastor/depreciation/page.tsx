@@ -4,6 +4,7 @@ import Image from "next/image"
 import { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { useAuth } from "@/components/auth/AuthProvider"
 import {
   Bell,
   Search,
@@ -23,44 +24,7 @@ import {
   Menu
 } from "lucide-react"
 
-const categoryData = [
-  {
-    category: "Vehicles",
-    method: "Straight-line",
-    methodColor: "text-[#3B5BDB] bg-[#EEF2FF]",
-    cost: "₦15.0M",
-    openingNbv: "₦8.5M",
-    currentDepr: "₦1.5M",
-    closingNbv: "₦7.0M",
-  },
-  {
-    category: "Equipment",
-    method: "Reducing Balance",
-    methodColor: "text-[#D97706] bg-[#FEF3C7]",
-    cost: "₦5.2M",
-    openingNbv: "₦3.1M",
-    currentDepr: "₦450k",
-    closingNbv: "₦2.65M",
-  },
-  {
-    category: "Furniture",
-    method: "Straight-line",
-    methodColor: "text-[#3B5BDB] bg-[#EEF2FF]",
-    cost: "₦2.5M",
-    openingNbv: "₦1.8M",
-    currentDepr: "₦250k",
-    closingNbv: "₦1.55M",
-  },
-  {
-    category: "Buildings",
-    method: "Straight-line",
-    methodColor: "text-[#3B5BDB] bg-[#EEF2FF]",
-    cost: "₦45.0M",
-    openingNbv: "₦40.5M",
-    currentDepr: "₦900k",
-    closingNbv: "₦39.6M",
-  },
-]
+const categoryData: Array<{ category: string; method: string; methodColor: string; cost: string; openingNbv: string; currentDepr: string; closingNbv: string }> = []
 
 type ScheduleItem = {
   label: string
@@ -70,6 +34,9 @@ type ScheduleItem = {
 
 
 export default function DepreciationPage() {
+  const { user } = useAuth()
+  const displayName = user?.name || user?.email || "User"
+  const roleLabel = user?.role ? String(user.role).replace(/_/g, " ") : "Lead Pastor"
   const [scheduleItems, setScheduleItems] = useState<ScheduleItem[]>([])
   const [scheduleLoading, setScheduleLoading] = useState(false)
   const [scheduleError, setScheduleError] = useState<string | null>(null)
@@ -111,7 +78,7 @@ export default function DepreciationPage() {
         setScheduleLoading(true)
         setScheduleError(null)
 
-        const assetsResponse = await fetch("/api/core/financial/fixed-assets", {
+        const assetsResponse = await fetch("/api/v1/core/financial/fixed-assets", {
           method: "GET",
           credentials: "include",
         })
@@ -133,7 +100,7 @@ export default function DepreciationPage() {
         }
 
         const scheduleResponse = await fetch(
-          `/api/core/financial/fixed-assets/${assetId}/depreciation-schedule?granularity=yearly&periods=10`,
+          `/api/v1/core/financial/fixed-assets/${assetId}/depreciation-schedule?granularity=yearly&periods=10`,
           {
             method: "GET",
             credentials: "include",
@@ -236,11 +203,11 @@ export default function DepreciationPage() {
 
           <div className="flex items-center gap-3.5 px-3.5">
             <div className="h-10 w-10 rounded-full overflow-hidden bg-gray-100 ring-2 ring-white shrink-0">
-              <img src="/images/Beared%20Guy02-min%201.jpg" alt="Alex Morgan" className="h-full w-full object-cover" />
+              <img src="/images/Beared%20Guy02-min%201.jpg" alt="Profile avatar" className="h-full w-full object-cover" />
             </div>
             <div>
-              <div className="text-[14px] font-extrabold text-[#111827]">Alex Morgan</div>
-              <div className="text-[11px] text-[#94A3B8] font-bold mt-0.5">Lead Pastor</div>
+              <div className="text-[14px] font-extrabold text-[#111827]">{displayName}</div>
+              <div className="text-[11px] text-[#94A3B8] font-bold mt-0.5">{roleLabel}</div>
             </div>
           </div>
         </div>

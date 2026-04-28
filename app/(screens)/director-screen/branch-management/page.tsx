@@ -202,7 +202,7 @@ export default function Page() {
       try {
         setBranchSummaryLoading(true)
         setBranchSummaryError(null)
-        const response = await fetch("/api/branches/summary", {
+        const response = await fetch("/api/v1/branches/summary", {
           method: "GET",
           credentials: "include",
         })
@@ -328,7 +328,7 @@ export default function Page() {
         params.set("page", String(page))
         params.set("size", String(pageSize))
 
-        const res = await fetch(`/api/core/regions?${params.toString()}`, {
+        const res = await fetch(`/api/v1/core/regions?${params.toString()}`, {
           credentials: "include",
           signal: controller.signal,
         })
@@ -384,7 +384,7 @@ export default function Page() {
     setTenantsLoading(true)
     setTenantsError("")
     try {
-      const res = await fetch("/api/branches", { credentials: "include" })
+      const res = await fetch("/api/v1/branches", { credentials: "include" })
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}))
         throw new Error(payload?.message ?? "Unable to fetch branches")
@@ -417,7 +417,7 @@ export default function Page() {
     setBranchEditLoading(true)
 
     try {
-      const res = await fetch(`/api/branches/${tenant.id}`, { credentials: "include" })
+      const res = await fetch(`/api/v1/branches/${tenant.id}`, { credentials: "include" })
       const payload = await res.json().catch(() => ({}))
       if (!res.ok) {
         throw new Error(payload?.message ?? "Unable to fetch branch details")
@@ -479,7 +479,7 @@ export default function Page() {
         )
       }
 
-      const res = await fetch(`/api/branches/${editingBranchId}`, {
+      const res = await fetch(`/api/v1/branches/${editingBranchId}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -532,7 +532,7 @@ export default function Page() {
     setTenants((prev) => prev.map((item) => (item.id === tenant.id ? optimistic : item)))
 
     try {
-      const res = await fetch(`/api/branches/${tenant.id}/status`, {
+      const res = await fetch(`/api/v1/branches/${tenant.id}/status`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -579,7 +579,7 @@ export default function Page() {
 
     setBranchStatus("saving")
     try {
-      const res = await fetch("/api/branches", {
+      const res = await fetch("/api/v1/branches", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -632,7 +632,7 @@ export default function Page() {
     if (regionOptionsLoaded) return
     try {
       setRegionOptionsLoading(true)
-      const res = await fetch("/api/core/regions?page=1&size=100", { credentials: "include" })
+      const res = await fetch("/api/v1/core/regions?page=1&size=100", { credentials: "include" })
       if (!res.ok) return
       const payload = await res.json()
       const data = Array.isArray(payload?.data)
@@ -652,7 +652,7 @@ export default function Page() {
     setSelectedRegion(region)
     setDetailLoading(true)
     try {
-      const res = await fetch(`/api/core/regions/${region.id}`, { credentials: "include" })
+      const res = await fetch(`/api/v1/core/regions/${region.id}`, { credentials: "include" })
       if (!res.ok) return
       const payload = await res.json()
       const data = payload?.data ?? payload
@@ -720,7 +720,7 @@ export default function Page() {
     }
 
     try {
-      const res = await fetch(`/api/core/regions/${editingRegionId}`, {
+      const res = await fetch(`/api/v1/core/regions/${editingRegionId}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -780,7 +780,7 @@ export default function Page() {
     }
 
     try {
-      const res = await fetch(`/api/core/regions/${region.id}`, {
+      const res = await fetch(`/api/v1/core/regions/${region.id}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -832,7 +832,7 @@ export default function Page() {
     setCreateError("")
 
     try {
-      const res = await fetch("/api/core/regions", {
+      const res = await fetch("/api/v1/core/regions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

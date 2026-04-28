@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import { useEffect, useState } from "react"
 import SidebarNav from "@/components/navigation/SidebarNav"
@@ -147,7 +147,7 @@ export default function Page() {
 
     setSaving(true)
     try {
-      const res = await fetch("/api/settings/statutory-config", {
+      const res = await fetch("/api/v1/settings/statutory-config", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

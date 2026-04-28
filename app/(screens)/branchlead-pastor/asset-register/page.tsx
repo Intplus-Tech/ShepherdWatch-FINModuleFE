@@ -41,6 +41,8 @@ type AssetRow = {
 
 export default function AssetRegisterPage() {
   const { user } = useAuth()
+  const displayName = user?.name || user?.email || "User"
+  const roleLabel = user?.role ? String(user.role).replace(/_/g, " ") : "Lead Pastor"
   const [activeCategory, setActiveCategory] = useState("All Assets")
   const [assets, setAssets] = useState<AssetRow[]>([])
   const [assetsLoading, setAssetsLoading] = useState(false)
@@ -102,7 +104,7 @@ export default function AssetRegisterPage() {
           params.set("category", categoryParam)
         }
 
-        const response = await fetch(`/api/core/financial/fixed-assets?${params.toString()}`, {
+        const response = await fetch(`/api/v1/core/financial/fixed-assets?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         })
@@ -220,11 +222,11 @@ export default function AssetRegisterPage() {
 
           <div className="flex items-center gap-3.5 px-3.5">
             <div className="h-10 w-10 rounded-full overflow-hidden bg-gray-100 ring-2 ring-white">
-              <img src="/images/Beared%20Guy02-min%201.jpg" alt="Ava Morgan" className="h-full w-full object-cover" />
+              <img src="/images/Beared%20Guy02-min%201.jpg" alt="Profile avatar" className="h-full w-full object-cover" />
             </div>
             <div>
-              <div className="text-[14px] font-bold text-[#111827]">Ava Morgan</div>
-              <div className="text-[12px] text-[#9CA3AF] font-medium">Lead Pastor</div>
+              <div className="text-[14px] font-bold text-[#111827]">{displayName}</div>
+              <div className="text-[12px] text-[#9CA3AF] font-medium">{roleLabel}</div>
             </div>
           </div>
         </div>

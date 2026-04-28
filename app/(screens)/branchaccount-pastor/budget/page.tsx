@@ -118,7 +118,7 @@ export default function Page() {
     try {
       const year = new Date().getFullYear() + 1
       const csrfToken = getCsrfToken()
-      const response = await fetch("/api/core/financial/budgets", {
+      const response = await fetch("/api/v1/core/financial/budgets", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -158,7 +158,7 @@ export default function Page() {
       }
 
       const existingAllocationsResponse = await fetch(
-        `/api/core/financial/budget-allocations?budgetId=${encodeURIComponent(String(budgetId))}&page=1&limit=200`,
+        `/api/v1/core/financial/budget-allocations?budgetId=${encodeURIComponent(String(budgetId))}&page=1&limit=200`,
         {
           method: "GET",
           credentials: "include",
@@ -194,8 +194,8 @@ export default function Page() {
         const existingAllocationId = existingByCoa.get(row.chartOfAccountId)
         const allocationResponse = await fetch(
           existingAllocationId
-            ? `/api/core/financial/budget-allocations/${encodeURIComponent(existingAllocationId)}`
-            : "/api/core/financial/budget-allocations",
+            ? `/api/v1/core/financial/budget-allocations/${encodeURIComponent(existingAllocationId)}`
+            : "/api/v1/core/financial/budget-allocations",
           {
             method: existingAllocationId ? "PATCH" : "POST",
             headers: {
@@ -227,7 +227,7 @@ export default function Page() {
       }
 
       const allocationListResponse = await fetch(
-        `/api/core/financial/budget-allocations?budgetId=${encodeURIComponent(String(budgetId))}&page=1&limit=200`,
+        `/api/v1/core/financial/budget-allocations?budgetId=${encodeURIComponent(String(budgetId))}&page=1&limit=200`,
         {
           method: "GET",
           credentials: "include",
@@ -252,7 +252,7 @@ export default function Page() {
       ).trim()
       if (firstAllocationId) {
         const allocationDetailResponse = await fetch(
-          `/api/core/financial/budget-allocations/${encodeURIComponent(firstAllocationId)}`,
+          `/api/v1/core/financial/budget-allocations/${encodeURIComponent(firstAllocationId)}`,
           {
             method: "GET",
             credentials: "include",
@@ -264,7 +264,7 @@ export default function Page() {
         }
       }
 
-      const submitResponse = await fetch(`/api/core/financial/budgets/${budgetId}/submit`, {
+      const submitResponse = await fetch(`/api/v1/core/financial/budgets/${budgetId}/submit`, {
         method: "PATCH",
         headers: {
           "x-csrf-token": csrfToken,
@@ -294,7 +294,7 @@ export default function Page() {
 
     try {
       const params = new URLSearchParams({ tenantId })
-      const response = await fetch(`/api/core/export/budget-entries?${params.toString()}`, {
+      const response = await fetch(`/api/v1/core/export/budget-entries?${params.toString()}`, {
         method: "GET",
         credentials: "include",
       })

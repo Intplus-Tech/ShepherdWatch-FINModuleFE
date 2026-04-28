@@ -95,7 +95,7 @@ export default function Page() {
         setLoading(true)
         setError(null)
 
-        const response = await fetch(`/api/core/financial/fixed-assets`, {
+        const response = await fetch(`/api/v1/core/financial/fixed-assets`, {
           method: "GET",
           credentials: "include",
         })

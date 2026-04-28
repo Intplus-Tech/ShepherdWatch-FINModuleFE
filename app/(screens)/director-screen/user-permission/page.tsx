@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useEffect, useMemo, useState } from "react"
+import Link from "next/link"
 import SidebarNav from "@/components/navigation/SidebarNav"
 import ScreenHeader from "@/components/navigation/ScreenHeader"
 import { Button } from "@/components/ui/button"
@@ -111,11 +112,11 @@ export default function Page() {
 
       try {
         const [permissionsResponse, rolesResponse] = await Promise.all([
-          fetch("/api/permissions/matrix", {
+          fetch("/api/v1/permissions/matrix", {
             method: "GET",
             credentials: "include",
           }),
-          fetch("/api/core/roles", {
+          fetch("/api/v1/core/roles", {
             method: "GET",
             credentials: "include",
           }),
@@ -401,7 +402,7 @@ export default function Page() {
           actions: Array.from(actions),
         })),
       }))
-      const res = await fetch("/api/permissions/matrix", {
+      const res = await fetch("/api/v1/permissions/matrix", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ matrix }),
@@ -429,7 +430,7 @@ export default function Page() {
     setMatrixSaveMessage(null)
     setMatrixResetting(true)
     try {
-      const res = await fetch("/api/permissions/matrix/reset", {
+      const res = await fetch("/api/v1/permissions/matrix/reset", {
         method: "POST",
       })
       const data = await res.json().catch(() => ({}))
@@ -465,7 +466,7 @@ export default function Page() {
       setRoleError(null)
 
       try {
-        const response = await fetch(`/api/core/roles/${selectedRoleId}`, {
+        const response = await fetch(`/api/v1/core/roles/${selectedRoleId}`, {
           method: "GET",
           credentials: "include",
         })
@@ -551,7 +552,7 @@ export default function Page() {
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
       <SidebarNav
-        activeHref="/director-screen/users"
+        activeHref="/director-screen/user-permission"
         className="fixed inset-y-0 left-0 z-20 w-[260px] rounded-none bg-[#FAFBFF] border-r border-[#EEF1F6]"
       />
 
@@ -595,15 +596,24 @@ export default function Page() {
             ) : null}
 
             <div className="mt-5 flex items-center gap-6 border-b border-[#EEF1F6] text-[11px]">
-              <button className="flex items-center gap-2 pb-2 text-[#6B7280]">
+              <Link
+                href="/director-screen/users"
+                className="flex items-center gap-2 pb-2 text-[#6B7280] hover:text-[#3B5BDB] transition-colors"
+              >
                 <Users className="h-4 w-4" /> User Directory
-              </button>
-              <button className="flex items-center gap-2 border-b-2 border-[#3B5BDB] pb-2 text-[#3B5BDB] font-medium">
+              </Link>
+              <Link
+                href="/director-screen/user-permission"
+                className="flex items-center gap-2 border-b-2 border-[#3B5BDB] pb-2 text-[#3B5BDB] font-medium"
+              >
                 <ShieldCheck className="h-4 w-4" /> Permissions Matrix
-              </button>
-              <button className="flex items-center gap-2 pb-2 text-[#6B7280]">
+              </Link>
+              <Link
+                href="/director-screen/user-audit"
+                className="flex items-center gap-2 pb-2 text-[#6B7280] hover:text-[#3B5BDB] transition-colors"
+              >
                 <History className="h-4 w-4" /> Audit Log
-              </button>
+              </Link>
             </div>
 
             <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -703,7 +713,7 @@ export default function Page() {
 
                         try {
                           const response = await fetch(
-                            `/api/core/roles/${selectedRoleId}`,
+                            `/api/v1/core/roles/${selectedRoleId}`,
                             {
                               method: "PUT",
                               credentials: "include",

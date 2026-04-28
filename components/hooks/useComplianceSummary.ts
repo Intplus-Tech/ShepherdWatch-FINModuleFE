@@ -29,7 +29,7 @@ export function useComplianceSummary(initialProps?: UseComplianceSummaryProps) {
         if (mergedProps.startDate) qs.set("startDate", mergedProps.startDate)
         if (mergedProps.endDate) qs.set("endDate", mergedProps.endDate)
 
-        const res = await fetch(`/api/core/financial/compliance/summary?${qs.toString()}`, {
+        const res = await fetch(`/api/v1/core/financial/compliance/summary?${qs.toString()}`, {
           method: "GET",
           credentials: "include",
         })

@@ -159,26 +159,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return null
   }, [normalizeAuthUser])
 
+  const requestWithRefresh = useCallback(
+    async (input: string, init?: RequestInit, options?: { retryOn401?: boolean }): Promise<Response> => {
+      const retryOn401 = options?.retryOn401 !== false
+      const response = await fetch(input, {
+        credentials: "include",
+        ...init,
+      })
+
+      if (response.status !== 401 || !retryOn401 || input === "/api/v1/auth/refresh-token") {
+        return response
+      }
+
+      const refreshResponse = await fetch("/api/v1/auth/refresh-token", {
+        method: "POST",
+        credentials: "include",
+      })
+
+      if (!refreshResponse.ok) {
+        return response
+      }
+
+      return fetch(input, {
+        credentials: "include",
+        ...init,
+      })
+    },
+    []
+  )
+
   const fetchCurrentUser = useCallback(
     async (options?: { attemptRefresh?: boolean }): Promise<AuthUser | null> => {
       const shouldAttemptRefresh = options?.attemptRefresh !== false
-      let res = await fetch("/api/v1/auth/me", { credentials: "include" })
-
-      if (!res.ok && res.status === 401 && shouldAttemptRefresh) {
-        const refreshRes = await fetch("/api/v1/auth/refresh-token", {
-          method: "POST",
-          credentials: "include",
-        })
-        if (refreshRes.ok) {
-          res = await fetch("/api/v1/auth/me", { credentials: "include" })
-        }
-      }
+      const res = await requestWithRefresh(
+        "/api/v1/auth/me",
+        undefined,
+        { retryOn401: shouldAttemptRefresh }
+      )
 
       if (!res.ok) return null
       const payload = await parseResponseBody(res)
       return resolveAuthUser(payload)
     },
-    [resolveAuthUser]
+    [requestWithRefresh, resolveAuthUser]
   )
 
   useEffect(() => {
@@ -239,7 +262,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const logout = async () => {
-    await fetch("/api/v1/auth/logout", { method: "POST", credentials: "include" }).catch(() => null)
+    await requestWithRefresh("/api/v1/auth/logout", { method: "POST" }, { retryOn401: false }).catch(() => null)
     setUser(null)
   }
 
@@ -252,7 +275,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const changePassword = async (payload: { currentPassword: string; newPassword: string }) => {
-    const res = await fetch("/api/v1/auth/change-password", {
+    const res = await requestWithRefresh("/api/v1/auth/change-password", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -265,11 +288,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const forgotPassword = async (email: string) => {
-    const res = await fetch("/api/v1/auth/forgot-password", {
+    const res = await requestWithRefresh("/api/v1/auth/forgot-password", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email }),
-    })
+    }, { retryOn401: false })
 
     if (!res.ok) {
       const data = await parseResponseBody(res)
@@ -278,11 +301,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const resendOtp = async (payload: { email: string; purpose: "email_verification" | "password_reset" }) => {
-    const res = await fetch("/api/v1/auth/resend-otp", {
+    const res = await requestWithRefresh("/api/v1/auth/resend-otp", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-    })
+    }, { retryOn401: false })
 
     if (!res.ok) {
       const data = await parseResponseBody(res)
@@ -296,10 +319,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     phone?: string
     avatar?: string
   }) => {
-    const res = await fetch("/api/v1/auth/profile", {
+    const res = await requestWithRefresh("/api/v1/auth/profile", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      credentials: "include",
       body: JSON.stringify(payload),
     })
 

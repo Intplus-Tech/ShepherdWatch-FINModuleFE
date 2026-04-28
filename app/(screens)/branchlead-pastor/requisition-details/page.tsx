@@ -70,7 +70,7 @@ export default function Page() {
 
     try {
       const csrfToken = getCsrfToken()
-      const response = await fetch(`/api/core/financial/requisitions/${requisitionId}/override`, {
+      const response = await fetch(`/api/v1/core/financial/requisitions/${requisitionId}/override`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",

@@ -30,7 +30,7 @@ export function useDashboardOverview(initialProps?: UseDashboardOverviewProps) {
         if (mergedProps.startDate) qs.set("startDate", mergedProps.startDate)
         if (mergedProps.endDate) qs.set("endDate", mergedProps.endDate)
 
-        const res = await fetch(`/api/core/dashboard/overview?${qs.toString()}`)
+        const res = await fetch(`/api/v1/core/dashboard/overview?${qs.toString()}`)
         const data = await res.json().catch(() => null)
         
         if (!res.ok) {

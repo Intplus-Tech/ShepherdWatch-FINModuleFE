@@ -1,1 +1,1 @@
-export { POST, OPTIONS } from "../../../auth/refresh-token/route";
+export { POST, OPTIONS } from "../refresh/route";

@@ -77,7 +77,7 @@ export default function Page() {
     setDeleteError(null)
 
     try {
-      const response = await fetch(`/api/core/financial/maintenance-tasks/${taskId}`, {
+      const response = await fetch(`/api/v1/core/financial/maintenance-tasks/${taskId}`, {
         method: "DELETE",
         credentials: "include",
       })
@@ -119,7 +119,7 @@ export default function Page() {
           limit: "50",
         })
 
-        const response = await fetch(`/api/maintenance/history?${params.toString()}`, {
+        const response = await fetch(`/api/v1/maintenance/history?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         })
@@ -176,7 +176,7 @@ export default function Page() {
         setAlertsError(null)
         const params = new URLSearchParams({ branchId })
 
-        const response = await fetch(`/api/maintenance/alerts?${params.toString()}`, {
+        const response = await fetch(`/api/v1/maintenance/alerts?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         })
@@ -296,7 +296,7 @@ export default function Page() {
           endDate: formatDateParam(end),
         })
 
-        const response = await fetch(`/api/maintenance/schedule?${params.toString()}`, {
+        const response = await fetch(`/api/v1/maintenance/schedule?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         })

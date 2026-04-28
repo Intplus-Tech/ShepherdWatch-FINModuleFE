@@ -77,7 +77,7 @@ export default function MaintenanceHistoryModalPage() {
           limit: "50",
         });
 
-        const response = await fetch(`/api/maintenance/history?${params.toString()}`, {
+        const response = await fetch(`/api/v1/maintenance/history?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         });
@@ -151,7 +151,7 @@ export default function MaintenanceHistoryModalPage() {
     setVerifyError(null);
     setVerifyingId(recordId);
     try {
-      const response = await fetch(`/api/maintenance/${recordId}/verify`, {
+      const response = await fetch(`/api/v1/maintenance/${recordId}/verify`, {
         method: "POST",
         credentials: "include",
       });
