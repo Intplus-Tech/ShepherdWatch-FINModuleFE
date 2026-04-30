@@ -94,7 +94,7 @@ export default function SettingsPage() {
 
   const navItems = [
     { label: "Dashboard", href: "/branchlead-pastor/dashboard", icon: LayoutDashboard },
-    { label: "Financial Management", href: "/branchlead-pastor/financial-management", icon: FileText },
+    { label: "Financial Management", href: "/branchlead-pastor/financial-management/income-tracking", icon: FileText },
     { label: "Assets", href: "/branchlead-pastor/assets", icon: Wrench },
     { label: "Budget", href: "/branchlead-pastor/budget", icon: Wallet },
     { label: "Compliance & Remittance", href: "/branchlead-pastor/compliance-remittance", icon: ShieldCheck },

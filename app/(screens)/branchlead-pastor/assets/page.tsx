@@ -2,7 +2,7 @@
 
 import Image from "next/image"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -26,6 +26,7 @@ import { useAuth } from "@/components/auth/AuthProvider"
 
 export default function Page() {
   const pathname = usePathname()
+  const router = useRouter()
   const { user } = useAuth()
   const displayName = user?.name || user?.email || "User"
   const roleLabel = user?.role ? String(user.role).replace(/_/g, " ") : "Lead Pastor"
@@ -114,7 +115,7 @@ export default function Page() {
             <nav className="space-y-1.5">
               {[
                 { label: "Dashboard", icon: LayoutDashboard, href: "/branchlead-pastor/dashboard" },
-                { label: "Financial Management", icon: FolderKanban, hasDropdown: true, href: "/branchlead-pastor/financial-management" },
+                { label: "Financial Management", icon: FolderKanban, hasDropdown: true, href: "/branchlead-pastor/financial-management/income-tracking" },
                 { label: "Assets", icon: Wallet, href: "/branchlead-pastor/assets" },
                 { label: "Budget", icon: ShieldCheck, href: "/branchlead-pastor/budget" },
                 { label: "Compliance & Remittance", icon: BarChart3, href: "/branchlead-pastor/compliance-remittance" },
@@ -196,10 +197,16 @@ export default function Page() {
                 <p className="text-[14px] text-gray-500 mt-2 font-medium">Here&apos;s your branch asset overview 2024</p>
               </div>
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                <Button className="w-full sm:w-auto bg-[#3B5BDB] hover:bg-[#2e4ac0] text-white px-6 h-11 rounded-[10px] font-bold shadow-sm text-[13px]">
+                <Button
+                  onClick={() => router.push("/branchlead-pastor/asset-register")}
+                  className="w-full sm:w-auto bg-[#3B5BDB] hover:bg-[#2e4ac0] text-white px-6 h-11 rounded-[10px] font-bold shadow-sm text-[13px]"
+                >
                   Asset Register
                 </Button>
-                <Button className="w-full sm:w-auto bg-[#FF4646] hover:bg-[#e63e3e] text-white px-6 h-11 rounded-[10px] font-bold shadow-sm text-[13px]">
+                <Button
+                  onClick={() => router.push("/branchlead-pastor/financial-management")}
+                  className="w-full sm:w-auto bg-[#FF4646] hover:bg-[#e63e3e] text-white px-6 h-11 rounded-[10px] font-bold shadow-sm text-[13px]"
+                >
                   Maintenance Schedule
                 </Button>
               </div>

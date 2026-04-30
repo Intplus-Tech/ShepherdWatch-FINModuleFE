@@ -27,6 +27,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import BranchesDropdown from "@/components/navigation/BranchesDropdown"
 import AssetDetailsModal, { AssetDetails } from "@/components/modals/AssetDetailsModal"
 import RecordAssetSaleModal, { AssetSaleDetails } from "@/components/modals/RecordAssetSaleModal"
+import AddNewAssetModal from "@/components/modals/AddNewAssetModal"
 
 const navItems = [
   { label: "Dashboard", href: "/director-screen/dashboard", icon: LayoutDashboard },
@@ -44,6 +45,7 @@ function ModalContainer() {
   const router = useRouter()
   const isDetailsModalOpen = searchParams.get('modal') === 'asset-details'
   const isRecordSaleModalOpen = searchParams.get('modal') === 'record-sale'
+  const isAddAssetModalOpen = searchParams.get('modal') === 'add-asset'
 
   // Placeholder mock data that perfectly matches the uploaded design for demonstration purposes
   const mockAsset: AssetDetails = {
@@ -92,6 +94,10 @@ function ModalContainer() {
         isOpen={isRecordSaleModalOpen} 
         onClose={() => router.push('/director-screen/assets/branch-assets')}
         saleDetails={mockSale}
+      />
+      <AddNewAssetModal
+        isOpen={isAddAssetModalOpen}
+        onClose={() => router.push('/director-screen/assets/branch-assets')}
       />
     </>
   )
@@ -440,7 +446,7 @@ export default function Page() {
                   Record Asset Sale
                 </button>
                 <button
-                  onClick={() => router.push('/director-screen/add-new-asset')}
+                  onClick={() => router.push('/director-screen/assets/branch-assets?modal=add-asset')}
                   className="flex items-center gap-2 rounded-[6px] bg-[#3B5BDB] px-4 py-2 text-[12px] font-[600] text-white shadow hover:bg-blue-700 transition-colors"
                 >
                   <Plus className="h-3.5 w-3.5" />

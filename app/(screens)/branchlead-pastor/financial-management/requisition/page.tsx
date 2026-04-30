@@ -1,5 +1,5 @@
 "use client"
-import { useMemo, useState } from "react"
+import { useState } from "react"
 
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
@@ -17,11 +17,13 @@ import {
   X,
   AlertCircle,
   MoreVertical,
-  LockKeyhole
+  LockKeyhole,
+  FileText
 } from "lucide-react"
+import Link from "next/link"
 import { useAuth } from "@/components/auth/AuthProvider"
-import { useRequisitionInbox } from "@/components/hooks/useRequisitionInbox"
-import { useExpenseDistribution } from "@/components/hooks/useExpenseDistribution"
+import { RequisitionDetailsModal } from "@/components/modals/RequisitionDetailsModal"
+import BranchLeadPastorSidebar from "@/components/navigation/BranchLeadPastorSidebar"
 
 export default function Page() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -29,14 +31,12 @@ export default function Page() {
   const displayName = user?.name || user?.email || "User"
   const roleLabel = user?.role ? String(user.role).replace(/_/g, " ") : "Lead Pastor"
   const branchId = user?.tenantId ?? user?.tenant?.id ?? ""
-  const { requisitions, loading: reqLoading, error: reqError, refresh } = useRequisitionInbox({
-    branchId,
-  })
-  const { items: expenseItems, loading: expenseLoading } = useExpenseDistribution({ branchId })
 
   const [isApproving, setIsApproving] = useState<string | null>(null)
   const [approveError, setApproveError] = useState<string | null>(null)
   const [approveSuccess, setApproveSuccess] = useState<string | null>(null)
+
+  const [selectedRequisitionId, setSelectedRequisitionId] = useState<string | null>(null)
 
   const getCsrfToken = () => {
     if (typeof document === "undefined") return ""
@@ -67,7 +67,6 @@ export default function Page() {
         throw new Error(payload?.message ?? "Failed to approve requisition")
       }
       setApproveSuccess("Requisition approved successfully.")
-      refresh()
     } catch (err: unknown) {
       setApproveError(err instanceof Error ? err.message : "Failed to approve requisition")
     } finally {
@@ -75,195 +74,120 @@ export default function Page() {
     }
   }
 
-  const formatCurrency = (value: number) =>
-    new Intl.NumberFormat("en-NG", {
-      style: "currency",
-      currency: "NGN",
-      maximumFractionDigits: 2,
-    }).format(value)
 
-  const pendingRows = useMemo(() => {
-    return requisitions.map((req) => {
-      const createdAt = req.createdAt ? new Date(req.createdAt) : null
-      const timeLabel =
-        createdAt && !Number.isNaN(createdAt.getTime())
-          ? createdAt.toLocaleString("en-GB", {
-              day: "2-digit",
-              month: "short",
-              hour: "2-digit",
-              minute: "2-digit",
-            })
-          : "—"
-
-      return {
-      id: req.reference ? `#${req.reference}` : `#${req.id.slice(0, 8).toUpperCase()}`,
-      description: req.justification || "Requisition",
-      category: req.coaName || "Operational",
-      amount: formatCurrency(req.amount || 0),
-      status: (req.currentStatus ?? "PENDING").toUpperCase().replace(/_/g, " "),
-      requestedBy: req.requestedBy || "Branch Admin",
-      rawId: req.id,
-      timeLabel,
+  const priorityCards = [
+    {
+      id: "#REQ-2301",
+      description: "Audio Upgrade",
+      fullDescription: "The proposed equipment list for the main hall exceeds the Q1 Capital Allocation by $1,200.",
+      category: "Capital Expenditure",
+      amount: "₦1,150,000",
+      timeLabel: "Today, 09:42 AM",
+      rawId: "req-2301"
+    },
+    {
+      id: "#REQ-2302",
+      description: "Emergency Repairs",
+      fullDescription: "Leaking roof in the youth center requires immediate professional repair. Exceeds Maintenance budget by $300.",
+      category: "Maintenance",
+      amount: "₦3,150,000",
+      timeLabel: "Yesterday, 04:15 PM",
+      rawId: "req-2302"
     }
-  })
-  }, [requisitions])
+  ]
 
-  const priorityCards = pendingRows.slice(0, 2)
-  const recentActivity = pendingRows.slice(2, 5)
-  const expenseChart = useMemo(() => {
-    const grouped = new Map<string, number>()
-    for (const item of expenseItems) {
-      const key = String(item.category || "other").toLowerCase()
-      grouped.set(key, (grouped.get(key) ?? 0) + Number(item.percentage || 0))
+  const pendingRows = [
+    {
+      id: "#REQ-2303",
+      description: "Weekly Cleaning Supplies",
+      requestedBy: "Admin Unit",
+      category: "Operational",
+      amount: "$250.00",
+      status: "IN REVIEW",
+      rawId: "req-2303"
+    },
+    {
+      id: "#REQ-2304",
+      description: "Sunday Bulletin Print",
+      requestedBy: "Media Dept",
+      category: "Programs",
+      amount: "$185.00",
+      status: "IN REVIEW",
+      rawId: "req-2304"
+    },
+    {
+      id: "#REQ-2305",
+      description: "Guest Speaker Honorarium",
+      requestedBy: "Pastoral",
+      category: "Programs",
+      amount: "$500.00",
+      status: "IN REVIEW",
+      rawId: "req-2305"
+    },
+    {
+      id: "#REQ-2306",
+      description: "Utility Bill - Water",
+      requestedBy: "Facility",
+      category: "Operational",
+      amount: "$120.00",
+      status: "IN REVIEW",
+      rawId: "req-2306"
+    },
+    {
+      id: "#REQ-2307",
+      description: "Stationery & Ink",
+      requestedBy: "Admin Unit",
+      category: "Operational",
+      amount: "$95.00",
+      status: "IN REVIEW",
+      rawId: "req-2307"
     }
+  ]
 
-    const sorted = Array.from(grouped.entries())
-      .map(([category, percentage]) => ({ category, percentage }))
-      .sort((a, b) => b.percentage - a.percentage)
-      .slice(0, 3)
-
-    const colorMap: Record<string, string> = {
-      operational: "#F97316",
-      programs: "#0EA5E9",
-      capital: "#22C55E",
-      other: "#94A3B8",
+  const recentActivity = [
+    {
+      id: "#REQ-2298",
+      status: "Paid",
+      description: "Generator Fuel",
+      amount: "₦150,000.00",
+      timeLabel: "Jan 22, 2024",
+      rawId: "req-2298"
+    },
+    {
+      id: "#REQ-2295",
+      status: "Approved",
+      description: "Sunday School Decor",
+      amount: "₦75,000.00",
+      timeLabel: "Jan 20, 2024",
+      rawId: "req-2295"
+    },
+    {
+      id: "#REQ-2292",
+      status: "Paid",
+      description: "Choir Uniform Repair",
+      amount: "₦30,000.00",
+      timeLabel: "Jan 19, 2024",
+      rawId: "req-2292"
     }
-    const defaultNames: Record<string, string> = {
-      operational: "Operational",
-      programs: "Programs",
-      capital: "Capital",
-      other: "Other",
-    }
-
-    const segments = sorted.map((item) => ({
-      label: defaultNames[item.category] ?? item.category,
-      percentage: Math.max(0, item.percentage),
-      color: colorMap[item.category] ?? colorMap.other,
-    }))
-
-    if (segments.length === 0) {
-      segments.push(
-        { label: "Operational", percentage: 0, color: colorMap.operational },
-        { label: "Programs", percentage: 0, color: colorMap.programs },
-        { label: "Capital", percentage: 0, color: colorMap.capital }
-      )
-    }
-
-    const conicResult = segments.reduce(
-      (acc, segment) => {
-        const end = Math.min(100, acc.cursor + segment.percentage)
-        return {
-          cursor: end,
-          stops: [...acc.stops, `${segment.color} ${acc.cursor}% ${end}%`],
-        }
-      },
-      { cursor: 0, stops: [] as string[] }
-    )
-    const stops =
-      conicResult.cursor < 100
-        ? [...conicResult.stops, `#E5E7EB ${conicResult.cursor}% 100%`]
-        : conicResult.stops
-
-    return {
-      segments,
-      background: `conic-gradient(${stops.join(",")})`,
-    }
-  }, [expenseItems])
+  ]
+  const expenseChart = {
+    segments: [
+      { label: "Operational", percentage: 78, color: "#F97316" },
+      { label: "Programs", percentage: 15, color: "#0EA5E9" },
+      { label: "Capital", percentage: 7, color: "#22C55E" }
+    ],
+    background: "conic-gradient(#F97316 0% 78%, #0EA5E9 78% 93%, #22C55E 93% 100%)"
+  }
 
   return (
     <div className="h-screen w-full bg-[#F9FAFB] font-sans antialiased text-[#111827] flex overflow-hidden">
-      {/* Mobile Sidebar Overlay */}
-      {isMobileMenuOpen && (
-        <div 
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
-          onClick={() => setIsMobileMenuOpen(false)}
-        />
-      )}
+      <BranchLeadPastorSidebar />
+      <RequisitionDetailsModal 
+        isOpen={selectedRequisitionId !== null} 
+        onClose={() => setSelectedRequisitionId(null)} 
+      />
 
-      {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-[260px] bg-white border-r border-[#EEF1F6] flex flex-col overflow-y-auto transition-transform duration-300 ease-in-out lg:static lg:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="px-5 py-6">
-          <div className="flex items-center justify-between gap-3 pb-8">
-            <div className="flex items-center gap-3">
-              <Image src="/images/icon-shepherdwatch.svg" alt="ShepherdWatch" width={28} height={28} />
-              <div>
-                <div className="text-[14px] font-bold text-[#111827] tracking-tight">ShepherdWatch</div>
-                <div className="text-[11px] font-semibold text-[#6B7280]">Lead Pastor View</div>
-              </div>
-            </div>
-            <button className="lg:hidden text-[#6B7280] hover:text-[#111827]" onClick={() => setIsMobileMenuOpen(false)}>
-              <X className="h-5 w-5" />
-            </button>
-          </div>
 
-          <nav className="space-y-1.5">
-            {/* Dashboard */}
-            <div className="flex items-center gap-3 rounded-[10px] px-3.5 py-3 text-[13px] text-[#6B7280] font-semibold hover:bg-[#F9FAFB] hover:text-[#111827] cursor-pointer transition-colors">
-              <LayoutDashboard className="h-[18px] w-[18px]" strokeWidth={2} />
-              Dashboard
-            </div>
-
-            {/* Financial Management (Expanded Dropdown) */}
-            <div className="rounded-[12px] bg-[#EFF6FF] p-2">
-              <div className="flex items-center justify-between px-2 py-1.5 mb-2 cursor-pointer">
-                <div className="flex items-center gap-3 text-[13px] text-[#2563EB] font-bold">
-                  <Wallet className="h-[18px] w-[18px]" strokeWidth={2.5} />
-                  Financial Management
-                </div>
-                <ChevronDown className="h-4 w-4 text-[#2563EB]" strokeWidth={2.5} />
-              </div>
-              <div className="flex flex-col space-y-1 border-l-2 border-[#DDE7EE] ml-[22px] pl-3 py-1">
-                <div className="text-[12px] font-semibold text-[#6B7280] hover:text-[#111827] py-1.5 cursor-pointer transition-colors">
-                  Income Tracking
-                </div>
-                <div className="text-[12px] font-semibold text-[#6B7280] hover:text-[#111827] py-1.5 cursor-pointer transition-colors">
-                  Expense Tracking
-                </div>
-                <div className="text-[12px] font-bold text-[#2563EB] py-1.5 cursor-pointer">
-                  Requisition
-                </div>
-              </div>
-            </div>
-
-            {/* Other Menu Items */}
-            <div className="flex items-center gap-3 rounded-[10px] px-3.5 py-3 text-[13px] text-[#6B7280] font-semibold hover:bg-[#F9FAFB] hover:text-[#111827] cursor-pointer transition-colors mt-2">
-              <Wallet className="h-[18px] w-[18px]" strokeWidth={2} />
-              Assets
-            </div>
-            <div className="flex items-center gap-3 rounded-[10px] px-3.5 py-3 text-[13px] text-[#6B7280] font-semibold hover:bg-[#F9FAFB] hover:text-[#111827] cursor-pointer transition-colors">
-              <ShieldCheck className="h-[18px] w-[18px]" strokeWidth={2} />
-              Budget
-            </div>
-            <div className="flex items-center gap-3 rounded-[10px] px-3.5 py-3 text-[13px] text-[#6B7280] font-semibold hover:bg-[#F9FAFB] hover:text-[#111827] cursor-pointer transition-colors">
-              <BarChart3 className="h-[18px] w-[18px]" strokeWidth={2} />
-              Compliance & Remittance
-            </div>
-          </nav>
-        </div>
-
-        <div className="mt-auto px-5 pb-6">
-          <div className="space-y-1.5 pt-6 border-t border-[#EEF1F6] text-[13px] font-semibold text-[#6B7280]">
-            <div className="flex items-center gap-3 px-3.5 py-3 rounded-[10px] hover:bg-[#F9FAFB] hover:text-[#111827] cursor-pointer transition-colors">
-              <ShieldCheck className="h-[18px] w-[18px]" />
-              Settings
-            </div>
-            <div className="flex items-center gap-3 px-3.5 py-3 rounded-[10px] hover:bg-[#F9FAFB] hover:text-[#111827] cursor-pointer transition-colors">
-              <Info className="h-[18px] w-[18px]" />
-              Help Center
-            </div>
-          </div>
-
-          <div className="mt-4 flex items-center gap-3 pt-6 border-t border-[#EEF1F6]">
-            <div className="h-10 w-10 rounded-full border border-[#E5E7EB] overflow-hidden bg-[#F9FAFB] shrink-0">
-              <Image src="/images/login%20page%20picture.jpg" alt="Alex" width={40} height={40} className="h-full w-full object-cover" />
-            </div>
-            <div className="min-w-0">
-              <div className="text-[13px] font-bold text-[#111827] truncate">{displayName}</div>
-              <div className="text-[11px] font-medium text-[#6B7280] truncate">{roleLabel}</div>
-            </div>
-          </div>
-        </div>
-      </aside>
 
       {/* Main Workspace */}
       <main className="flex-1 flex flex-col bg-[#F9FAFB] overflow-hidden min-w-0">
@@ -295,7 +219,7 @@ export default function Page() {
         <div className="flex-1 p-4 md:p-8 lg:p-10 overflow-y-auto w-full">
           {/* Top Header */}
           <div className="mb-8">
-            <h1 className="text-[24px] md:text-[32px] font-black text-[#111827] uppercase tracking-tighter leading-[32px] mb-2">REQUISITION</h1>
+            <h1 className="text-[24px] md:text-[32px] font-black text-[#111827] uppercase tracking-tighter leading-[32px] mb-2" style={{ fontFamily: '"Inter", sans-serif', fontWeight: 900 }}>REQUISITION</h1>
             <p className="text-[13px] font-medium text-[#6B7280]">Manage all requisitions approval.</p>
           </div>
 
@@ -317,21 +241,6 @@ export default function Page() {
 
               {/* Priority Cards */}
               <div className="flex flex-col gap-6">
-                {reqLoading && (
-                  <div className="rounded-[16px] border border-[#E5E7EB] bg-white shadow-sm p-6 text-[13px] font-semibold text-[#6B7280]">
-                    Loading priority requisitions...
-                  </div>
-                )}
-                {!reqLoading && reqError && (
-                  <div className="rounded-[16px] border border-[#FECACA] bg-[#FEF2F2] shadow-sm p-6 text-[13px] font-semibold text-rose-600">
-                    {reqError}
-                  </div>
-                )}
-                {!reqLoading && !reqError && priorityCards.length === 0 && (
-                  <div className="rounded-[16px] border border-[#E5E7EB] bg-white shadow-sm p-6 text-[13px] font-semibold text-[#6B7280]">
-                    No pending requisitions to review right now.
-                  </div>
-                )}
                 {priorityCards.map((card, index) => (
                   <div
                     key={card.rawId}
@@ -340,7 +249,7 @@ export default function Page() {
                     <div className="flex-1 p-6 md:p-8">
                       <div className="flex items-center justify-between mb-4">
                         <div className={`text-[11px] font-extrabold tracking-widest uppercase ${index === 0 ? "text-rose-500" : "text-orange-500"}`}>
-                          {index === 0 ? "CRITICAL - OVER-BUDGET" : "URGENT - OVER-BUDGET"}
+                          {index === 0 ? "CRITICAL: OVER-BUDGET" : "URGENT: OVER-BUDGET"}
                         </div>
                         <div className="text-[12px] font-semibold text-[#9CA3AF]">Requested: {card.timeLabel}</div>
                       </div>
@@ -348,7 +257,7 @@ export default function Page() {
                         {card.id} {card.description}
                       </h3>
                       <p className="text-[14px] text-[#6B7280] font-medium leading-relaxed max-w-[90%] mb-8">
-                        {card.description}
+                        {card.fullDescription}
                       </p>
                       
                       <div className="flex flex-col sm:flex-row sm:items-center gap-8 mb-8">
@@ -369,16 +278,15 @@ export default function Page() {
                           className="h-[44px] rounded-[8px] bg-[#2563EB] px-6 text-[14px] font-bold text-white shadow-md hover:bg-[#1D4ED8] transition-colors flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed">
                           <LockKeyhole className="h-4 w-4" /> {isApproving === card.rawId ? "Approving..." : "Review & Approve"}
                         </button>
-                        <button className="text-[14px] font-bold text-[#6B7280] hover:text-[#111827] transition-colors">
+                        <button 
+                          onClick={() => setSelectedRequisitionId(card.rawId)}
+                          className="text-[14px] font-bold text-[#6B7280] hover:text-[#111827] transition-colors"
+                        >
                           View Details
                         </button>
                       </div>
                     </div>
-                    <div className="w-full md:w-[220px] md:h-auto h-[200px] shrink-0 p-5 pl-0 hidden md:block">
-                      <div className="w-full h-full relative rounded-[12px] overflow-hidden bg-black">
-                        <Image src="/images/login%20page%20picture.jpg" alt="Requisition" fill className="object-cover opacity-80" />
-                      </div>
-                    </div>
+
                   </div>
                 ))}
               </div>
@@ -413,27 +321,6 @@ export default function Page() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#F3F4F6]">
-                        {reqLoading && (
-                          <tr>
-                            <td colSpan={5} className="px-6 py-6 text-center text-[13px] font-semibold text-[#6B7280]">
-                              Loading requisitions...
-                            </td>
-                          </tr>
-                        )}
-                        {!reqLoading && reqError && (
-                          <tr>
-                            <td colSpan={5} className="px-6 py-6 text-center text-[13px] font-semibold text-rose-500">
-                              {reqError}
-                            </td>
-                          </tr>
-                        )}
-                        {!reqLoading && !reqError && pendingRows.length === 0 && (
-                          <tr>
-                            <td colSpan={5} className="px-6 py-6 text-center text-[13px] font-semibold text-[#6B7280]">
-                              No pending requisitions available.
-                            </td>
-                          </tr>
-                        )}
                         {pendingRows.slice(0, 5).map((row) => (
                           <tr key={row.rawId} className="hover:bg-[#F9FAFB] transition-colors">
                             <td className="px-6 py-4">
@@ -476,7 +363,7 @@ export default function Page() {
                     <div className="absolute inset-[22px] rounded-full bg-white" />
                     <div className="absolute inset-0 flex flex-col items-center justify-center">
                       <span className="text-[12px] font-extrabold text-[#111827]">
-                        {expenseLoading ? "Updating..." : "Expense Mix"}
+                        Expense Mix
                       </span>
                     </div>
                   </div>
@@ -538,15 +425,6 @@ export default function Page() {
                 <h3 className="text-[15px] font-extrabold text-[#111827] tracking-tight mb-5">Recent Activity</h3>
                 
                 <div className="space-y-6 relative before:absolute before:inset-y-0 before:left-[11px] before:w-[2px] before:bg-[#F3F4F6]">
-                  {reqLoading && (
-                    <div className="text-[13px] font-semibold text-[#9CA3AF]">Loading activity...</div>
-                  )}
-                  {!reqLoading && reqError && (
-                    <div className="text-[13px] font-semibold text-rose-500">{reqError}</div>
-                  )}
-                  {!reqLoading && !reqError && recentActivity.length === 0 && (
-                    <div className="text-[13px] font-semibold text-[#9CA3AF]">No recent requisition activity yet.</div>
-                  )}
                   {recentActivity.map((item) => (
                     <div key={item.rawId} className="relative flex gap-4">
                       <div className="h-6 w-6 shrink-0 rounded-full bg-white flex items-center justify-center z-10 border-2 border-white">

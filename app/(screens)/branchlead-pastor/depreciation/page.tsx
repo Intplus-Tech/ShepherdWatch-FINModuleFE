@@ -2,6 +2,7 @@
 
 import Image from "next/image"
 import { useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useAuth } from "@/components/auth/AuthProvider"
@@ -23,6 +24,7 @@ import {
   TrendingDown,
   Menu
 } from "lucide-react"
+import BranchLeadPastorSidebar from "@/components/navigation/BranchLeadPastorSidebar"
 
 const categoryData: Array<{ category: string; method: string; methodColor: string; cost: string; openingNbv: string; currentDepr: string; closingNbv: string }> = []
 
@@ -34,6 +36,7 @@ type ScheduleItem = {
 
 
 export default function DepreciationPage() {
+  const router = useRouter()
   const { user } = useAuth()
   const displayName = user?.name || user?.email || "User"
   const roleLabel = user?.role ? String(user.role).replace(/_/g, " ") : "Lead Pastor"
@@ -149,69 +152,7 @@ export default function DepreciationPage() {
       className="min-h-screen bg-[#F7F9FC] text-sm flex overflow-hidden lg:flex-row flex-col"
       style={{ fontFamily: '"Public Sans", sans-serif' }}
     >
-      {/* Sidebar */}
-      <aside className="w-[260px] border-r border-[#EEF1F6] bg-white flex-col justify-between hidden lg:flex flex-shrink-0 z-20">
-        <div className="p-6">
-          <div className="flex items-center gap-3 mb-10">
-            <div className="bg-[#EEF2FF] p-1.5 rounded-lg flex items-center justify-center">
-              <Image src="/images/icon-shepherdwatch.svg" alt="Logo" width={22} height={22} className="brightness-100" />
-            </div>
-            <div>
-              <div className="text-[15px] font-bold text-[#111827] leading-none tracking-tight">ShepherdWatch</div>
-              <div className="text-[11px] text-[#9CA3AF] font-medium mt-1">Lead Pastor View</div>
-            </div>
-          </div>
-
-          <nav className="space-y-1.5">
-            {[
-              { label: "Dashboard", icon: LayoutDashboard },
-              { label: "Financial Management", icon: FolderKanban, hasDropdown: true },
-              { label: "Assets", icon: Wallet, active: true },
-              { label: "Budget", icon: ShieldCheck },
-              { label: "Compliance & Remittance", icon: BarChart3 },
-            ].map((item) => {
-              const Icon = item.icon
-              return (
-                <div
-                  key={item.label}
-                  className={`flex items-center justify-between rounded-[8px] px-3.5 py-3 text-[13px] font-bold cursor-pointer transition-colors ${
-                    item.active ? "bg-[#EEF2FF] text-[#3B5BDB]" : "text-[#475569] hover:bg-gray-50 hover:text-[#111827]"
-                  }`}
-                >
-                  <div className="flex items-center gap-3.5">
-                    <Icon className="h-[18px] w-[18px] stroke-[2]" />
-                    {item.label}
-                  </div>
-                  {item.hasDropdown && <ChevronDown className="h-4 w-4 stroke-[2]" />}
-                </div>
-              )
-            })}
-          </nav>
-        </div>
-
-        <div className="p-6 border-t border-[#EEF1F6]">
-          <div className="space-y-1.5 mb-6">
-            <div className="flex items-center gap-3.5 rounded-[8px] px-3.5 py-3 text-[13px] font-bold text-[#475569] hover:bg-gray-50 cursor-pointer transition-colors">
-              <Settings className="h-[18px] w-[18px] stroke-[2]" />
-              Settings
-            </div>
-            <div className="flex items-center gap-3.5 rounded-[8px] px-3.5 py-3 text-[13px] font-bold text-[#475569] hover:bg-gray-50 cursor-pointer transition-colors">
-              <HelpCircle className="h-[18px] w-[18px] stroke-[2]" />
-              Help Center
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3.5 px-3.5">
-            <div className="h-10 w-10 rounded-full overflow-hidden bg-gray-100 ring-2 ring-white shrink-0">
-              <img src="/images/Beared%20Guy02-min%201.jpg" alt="Profile avatar" className="h-full w-full object-cover" />
-            </div>
-            <div>
-              <div className="text-[14px] font-extrabold text-[#111827]">{displayName}</div>
-              <div className="text-[11px] text-[#94A3B8] font-bold mt-0.5">{roleLabel}</div>
-            </div>
-          </div>
-        </div>
-      </aside>
+      <BranchLeadPastorSidebar />
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col h-screen overflow-hidden relative w-full bg-[#F7F9FC]">
@@ -244,7 +185,10 @@ export default function DepreciationPage() {
             
             {/* Header Titles */}
             <div className="mb-8">
-              <button className="flex items-center gap-1 text-[13.5px] font-bold text-[#3B5BDB] hover:text-[#2e4ac0] transition-colors mb-5 w-fit">
+              <button 
+                onClick={() => router.push("/branchlead-pastor/asset-register")}
+                className="flex items-center gap-1 text-[13.5px] font-bold text-[#3B5BDB] hover:text-[#2e4ac0] transition-colors mb-5 w-fit"
+              >
                 <ArrowLeft className="h-[18px] w-[18px] stroke-[2.5]" />
                 Back
               </button>

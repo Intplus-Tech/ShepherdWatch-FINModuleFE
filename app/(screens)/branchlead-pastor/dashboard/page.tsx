@@ -213,7 +213,7 @@ export default function Page() {
         <nav className="px-4 py-2 mt-2 space-y-1.5">
           {[
             { label: "Dashboard", icon: LayoutDashboard, href: "/branchlead-pastor/dashboard" },
-            { label: "Financial Management", icon: FileText, href: "/branchlead-pastor/financial-management" },
+            { label: "Financial Management", icon: FileText, href: "/branchlead-pastor/financial-management/income-tracking" },
             { label: "Assets", icon: Wrench, href: "/branchlead-pastor/assets" },
             { label: "Budget", icon: Wallet, href: "/branchlead-pastor/budget" },
             { label: "Compliance & Remittance", icon: ShieldCheck, href: "/branchlead-pastor/compliance-remittance" },

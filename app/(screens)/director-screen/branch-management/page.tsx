@@ -963,17 +963,21 @@ export default function Page() {
                     onChange={(event) => setBranchRegion(event.target.value)}
                     onBlur={() => setBranchTouched((prev) => ({ ...prev, region: true }))}
                   />
-                  <Input
-                    className={`h-10 rounded-md bg-white text-[12px] text-[#6B7280] ${
+                  <select
+                    className={`h-10 rounded-md bg-white px-2 text-[12px] text-[#6B7280] ${
                       branchTouched.branchType && !branchType.trim()
                         ? "border-rose-300 focus-visible:ring-rose-200"
                         : "border-[#E5E7EB]"
                     }`}
-                    placeholder="Branch type"
                     value={branchType}
                     onChange={(event) => setBranchType(event.target.value)}
                     onBlur={() => setBranchTouched((prev) => ({ ...prev, branchType: true }))}
-                  />
+                  >
+                    <option value="">Select branch type</option>
+                    <option value="parish">Parish</option>
+                    <option value="area">Area</option>
+                    <option value="zone">Zone</option>
+                  </select>
                   <Input
                     className="h-10 rounded-md bg-white text-[12px] text-[#6B7280] border-[#E5E7EB]"
                     placeholder="Currency (optional)"

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
+import { applyAuthCookies, executeWithRefreshRetry } from "@/lib/backend-refresh";
 
 function getBackendBranchesSummaryUrl(): string {
   const baseUrl = process.env.BACKEND_API_URL?.replace(/\/+$/, "");
@@ -19,22 +19,16 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const accessToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value;
-    if (!accessToken) {
-      return applyCors(
-        NextResponse.json({ success: false, message: "Unauthenticated" }, { status: 401 }),
-        req
-      );
-    }
-
-    const backendRes = await fetch(getBackendBranchesSummaryUrl(), {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${accessToken}`,
-      },
-      cache: "no-store",
-    });
+    const { res: backendRes, refreshedTokens } = await executeWithRefreshRetry(req, (token) =>
+      fetch(getBackendBranchesSummaryUrl(), {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        cache: "no-store",
+      })
+    );
 
     const responseText = await backendRes.text();
     const contentType = backendRes.headers.get("content-type") ?? "";
@@ -43,7 +37,9 @@ export async function GET(req: NextRequest) {
     if (isJson) {
       try {
         const responseData = responseText ? JSON.parse(responseText) : null;
-        return applyCors(NextResponse.json(responseData, { status: backendRes.status }), req);
+        const response = NextResponse.json(responseData, { status: backendRes.status });
+        applyAuthCookies(response, refreshedTokens);
+        return applyCors(response, req);
       } catch {
         return applyCors(
           NextResponse.json(
@@ -55,13 +51,12 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    return applyCors(
-      new NextResponse(responseText, {
-        status: backendRes.status,
-        headers: contentType ? { "Content-Type": contentType } : undefined,
-      }),
-      req
-    );
+    const response = new NextResponse(responseText, {
+      status: backendRes.status,
+      headers: contentType ? { "Content-Type": contentType } : undefined,
+    });
+    applyAuthCookies(response, refreshedTokens);
+    return applyCors(response, req);
   } catch (error) {
     console.error("Branches summary proxy error:", error);
     return applyCors(

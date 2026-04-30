@@ -24,6 +24,7 @@ import {
   User,
   Menu
 } from "lucide-react"
+import BranchLeadPastorSidebar from "@/components/navigation/BranchLeadPastorSidebar"
 
 type AssetRow = {
   id: string
@@ -168,69 +169,7 @@ export default function AssetRegisterPage() {
       className="min-h-screen bg-[#F7F9FC] text-sm flex overflow-hidden lg:flex-row flex-col"
       style={{ fontFamily: '"Public Sans", sans-serif' }}
     >
-      {/* Sidebar */}
-      <aside className="w-[260px] border-r border-[#EEF1F6] bg-white flex-col justify-between hidden lg:flex flex-shrink-0">
-        <div className="p-6">
-          <div className="flex items-center gap-3 mb-10">
-            <div className="bg-[#EEF2FF] p-1.5 rounded-lg flex items-center justify-center">
-              <Image src="/images/icon-shepherdwatch.svg" alt="Logo" width={22} height={22} className="brightness-100" />
-            </div>
-            <div>
-              <div className="text-[15px] font-bold text-[#111827] leading-none tracking-tight">ShepherdWatch</div>
-              <div className="text-[11px] text-[#9CA3AF] font-medium mt-1">Lead Pastor View</div>
-            </div>
-          </div>
-
-          <nav className="space-y-1.5">
-            {[
-              { label: "Dashboard", icon: LayoutDashboard },
-              { label: "Financial Management", icon: FolderKanban, hasDropdown: true },
-              { label: "Assets", icon: Wallet, active: true },
-              { label: "Budget", icon: ShieldCheck },
-              { label: "Operational Performance", icon: BarChart3 },
-            ].map((item) => {
-              const Icon = item.icon
-              return (
-                <div
-                  key={item.label}
-                  className={`flex items-center justify-between rounded-[10px] px-3.5 py-3 text-[13px] font-semibold cursor-pointer transition-colors ${
-                    item.active ? "bg-[#EEF2FF] text-[#3B5BDB]" : "text-[#6B7280] hover:bg-gray-50 hover:text-gray-900"
-                  }`}
-                >
-                  <div className="flex items-center gap-3.5">
-                    <Icon className="h-[18px] w-[18px]" />
-                    {item.label}
-                  </div>
-                  {item.hasDropdown && <ChevronDown className="h-4 w-4" />}
-                </div>
-              )
-            })}
-          </nav>
-        </div>
-
-        <div className="p-6 border-t border-[#EEF1F6]">
-          <div className="space-y-1.5 mb-6">
-            <div className="flex items-center gap-3.5 rounded-[10px] px-3.5 py-3 text-[13px] font-semibold text-[#6B7280] hover:bg-gray-50 cursor-pointer">
-              <Settings className="h-[18px] w-[18px]" />
-              Settings
-            </div>
-            <div className="flex items-center gap-3.5 rounded-[10px] px-3.5 py-3 text-[13px] font-semibold text-[#6B7280] hover:bg-gray-50 cursor-pointer">
-              <HelpCircle className="h-[18px] w-[18px]" />
-              Help Center
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3.5 px-3.5">
-            <div className="h-10 w-10 rounded-full overflow-hidden bg-gray-100 ring-2 ring-white">
-              <img src="/images/Beared%20Guy02-min%201.jpg" alt="Profile avatar" className="h-full w-full object-cover" />
-            </div>
-            <div>
-              <div className="text-[14px] font-bold text-[#111827]">{displayName}</div>
-              <div className="text-[12px] text-[#9CA3AF] font-medium">{roleLabel}</div>
-            </div>
-          </div>
-        </div>
-      </aside>
+      <BranchLeadPastorSidebar />
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col h-screen overflow-hidden relative w-full bg-white lg:bg-[#F7F9FC]">

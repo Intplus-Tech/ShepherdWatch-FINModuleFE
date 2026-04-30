@@ -19,9 +19,11 @@ import {
   Info,
   Menu,
   X,
-  Plus
+  Plus,
+  FileText
 } from "lucide-react"
 
+import Link from "next/link"
 import { useAuth } from "@/components/auth/AuthProvider"
 import { useTransactions } from "@/components/hooks/useTransactions"
 import { TransactionCreateModal } from "@/components/financial/TransactionCreateModal"
@@ -44,8 +46,16 @@ export default function Page() {
     new Intl.NumberFormat("en-NG", {
       style: "currency",
       currency: "NGN",
-      maximumFractionDigits: 2,
+      maximumFractionDigits: 0,
     }).format(value)
+
+  const formatDate = (dateStr: string) => {
+    return new Date(dateStr).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric"
+    })
+  }
 
   return (
     <div className="h-screen w-full bg-white antialiased text-[#111827] flex overflow-hidden" style={{ fontFamily: "'Public Sans', sans-serif" }}>
@@ -80,48 +90,49 @@ export default function Page() {
             </button>
           </div>
 
-          <nav className="space-y-1.5">
+          <nav className="space-y-1.5 flex-1">
             {/* Dashboard */}
-            <div className="flex items-center gap-3 rounded-[10px] px-3.5 py-3 text-[13px] text-[#6B7280] font-semibold hover:bg-[#F9FAFB] hover:text-[#111827] cursor-pointer transition-colors">
-              <LayoutDashboard className="h-[18px] w-[18px]" strokeWidth={2} />
+            <Link href="/branchlead-pastor/dashboard" className="flex items-center gap-3 rounded-[10px] px-3.5 py-3 text-[13px] text-[#6B7280] font-semibold hover:bg-[#F9FAFB] hover:text-[#111827] cursor-pointer transition-colors">
+              <LayoutDashboard className="h-4.5 w-4.5" strokeWidth={2} />
               Dashboard
-            </div>
+            </Link>
 
-            {/* Financial Management (Expanded Dropdown) */}
-            <div className="rounded-[12px] bg-[#EFF6FF] p-2">
-              <div className="flex items-center justify-between px-2 py-1.5 mb-2 cursor-pointer">
-                <div className="flex items-center gap-3 text-[13px] text-[#2563EB] font-bold">
-                  <Wallet className="h-[18px] w-[18px]" strokeWidth={2.5} />
+            {/* Financial Management (Expanded) */}
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center justify-between rounded-[10px] px-3.5 py-3 text-[13px] bg-[#EFF6FF] text-[#2563EB] font-bold cursor-pointer transition-colors">
+                <div className="flex items-center gap-3">
+                  <FileText className="h-4.5 w-4.5" strokeWidth={2.5} />
                   Financial Management
                 </div>
-                <ChevronDown className="h-4 w-4 text-[#2563EB]" strokeWidth={2.5} />
+                <ChevronDown className="h-4 w-4" strokeWidth={2.5} />
               </div>
-              <div className="flex flex-col space-y-1 border-l-2 border-[#DDE7EE] ml-[22px] pl-3 py-1">
-                <div className="text-[12px] font-semibold text-[#6B7280] hover:text-[#111827] py-1.5 cursor-pointer transition-colors">
-                  Income Tracking
-                </div>
-                <div className="text-[12px] font-bold text-[#2563EB] py-1.5 cursor-pointer">
-                  Expense Tracking
-                </div>
-                <div className="text-[12px] font-semibold text-[#6B7280] hover:text-[#111827] py-1.5 cursor-pointer transition-colors">
-                  Requisition
-                </div>
+              
+              {/* Expanded Sub-items */}
+              <div className="flex flex-col gap-1 pl-11 pr-3 py-1">
+                <Link href="/branchlead-pastor/financial-management/income-tracking" className="block text-[13px] font-semibold text-[#6B7280] hover:text-[#111827] py-2 cursor-pointer transition-colors">Income Tracking</Link>
+                <Link href="/branchlead-pastor/financial-management/expense-tracking" className="block text-[13px] font-bold text-[#2563EB] py-2 cursor-pointer">Expense Tracking</Link>
+                <Link href="/branchlead-pastor/financial-management/requisition" className="block text-[13px] font-semibold text-[#6B7280] hover:text-[#111827] py-2 cursor-pointer transition-colors">Requisition</Link>
               </div>
             </div>
 
-            {/* Other Menu Items */}
-            <div className="flex items-center gap-3 rounded-[10px] px-3.5 py-3 text-[13px] text-[#6B7280] font-semibold hover:bg-[#F9FAFB] hover:text-[#111827] cursor-pointer transition-colors mt-2">
-              <Wallet className="h-[18px] w-[18px]" strokeWidth={2} />
-              Assets
-            </div>
-            <div className="flex items-center gap-3 rounded-[10px] px-3.5 py-3 text-[13px] text-[#6B7280] font-semibold hover:bg-[#F9FAFB] hover:text-[#111827] cursor-pointer transition-colors">
-              <ShieldCheck className="h-[18px] w-[18px]" strokeWidth={2} />
-              Budget
-            </div>
-            <div className="flex items-center gap-3 rounded-[10px] px-3.5 py-3 text-[13px] text-[#6B7280] font-semibold hover:bg-[#F9FAFB] hover:text-[#111827] cursor-pointer transition-colors">
-              <BarChart3 className="h-[18px] w-[18px]" strokeWidth={2} />
-              Compliance & Remittance
-            </div>
+            {/* Other Nav Items */}
+            {[
+              { label: "Assets", icon: Wallet, href: "/branchlead-pastor/assets" },
+              { label: "Budget", icon: ShieldCheck, href: "/branchlead-pastor/budget" },
+              { label: "Compliance & Remittance", icon: BarChart3, href: "/branchlead-pastor/compliance-remittance" },
+            ].map((item) => {
+              const Icon = item.icon
+              return (
+                <Link
+                  key={item.label}
+                  href={item.href}
+                  className="flex items-center gap-3 rounded-[10px] px-3.5 py-3 text-[13px] text-[#6B7280] font-semibold hover:bg-[#F9FAFB] hover:text-[#111827] cursor-pointer transition-colors"
+                >
+                  <Icon className="h-4.5 w-4.5" strokeWidth={2} />
+                  {item.label}
+                </Link>
+              )
+            })}
           </nav>
         </div>
 
@@ -180,7 +191,7 @@ export default function Page() {
           {/* Top Header */}
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between mb-8">
             <div>
-              <h1 className="text-[24px] md:text-[32px] font-extrabold text-[#111827] uppercase tracking-tighter leading-none mb-2">EXPENSE TRACKING</h1>
+              <h1 className="text-[24px] md:text-[32px] font-black text-[#111827] uppercase tracking-tighter leading-none mb-2" style={{ fontFamily: '"Inter", sans-serif', fontWeight: 900 }}>EXPENSE TRACKING</h1>
               <p className="text-[13px] md:text-[14px] font-medium text-[#6B7280]">Monitor and verify all financial outflows for the branch.</p>
             </div>
             <div className="flex items-center gap-3">
@@ -320,7 +331,7 @@ export default function Page() {
                         return (
                           <tr key={tx.id} className="hover:bg-[#F9FAFB] transition-colors">
                             <td className="px-6 py-5 text-[14px] font-semibold text-[#111827]">
-                              {tx.date ? new Date(tx.date).toLocaleDateString() : "—"}
+                              {tx.date ? formatDate(tx.date) : "—"}
                             </td>
                             <td className="px-5 py-5 text-[14px] font-extrabold text-[#111827]">{tx.description || "N/A"}</td>
                             <td className="px-5 py-5">
@@ -330,13 +341,13 @@ export default function Page() {
                             </td>
                             <td className="px-5 py-5 text-[15px] font-extrabold text-[#111827] tracking-tight">{formatCurrency(tx.amount)}</td>
                             <td className="px-5 py-5">
-                              {isVerified ? (
-                                <span className="inline-flex text-[11px] font-bold text-[#059669] uppercase tracking-widest">
-                                  VERIFIED
-                                </span>
-                              ) : (
+                              {String(tx.status ?? "").toUpperCase() === "PENDING" ? (
                                 <span className="inline-flex text-[11px] font-bold text-orange-500 uppercase tracking-widest">
                                   PENDING
+                                </span>
+                              ) : (
+                                <span className="inline-flex text-[11px] font-bold text-[#059669] uppercase tracking-widest">
+                                  {tx.status ? String(tx.status).toUpperCase() : "APPROVED"}
                                 </span>
                               )}
                             </td>

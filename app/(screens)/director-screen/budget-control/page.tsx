@@ -1,6 +1,7 @@
 "use client"
 
 import { Fragment, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import SidebarNav from "@/components/navigation/SidebarNav"
 import {
   ArrowLeft,
@@ -23,6 +24,7 @@ const bigText = "text-[14.36px] leading-[22.33px] font-bold"
 const smallText = "text-[11.17px] leading-[15.95px] font-semibold"
 
 export default function Page() {
+  const router = useRouter()
   const { user } = useAuth()
   const { data: controlData, loading, error } = useBudgetControlDashboard()
   const { approving, approveError, processApprovalAction } = useBudgetApproval()
@@ -198,9 +200,12 @@ export default function Page() {
             </div>
           </div>
 
-          <div className={`mt-6 flex items-center gap-2 ${smallText} text-[#6B7280]`}>
+          <button 
+            onClick={() => router.push("/director-screen/budgeting")}
+            className={`mt-6 flex items-center gap-2 ${smallText} text-[#6B7280] hover:text-[#111827] transition-colors`}
+          >
             <ArrowLeft className="h-4 w-4" /> Back
-          </div>
+          </button>
 
           <div className="mt-2 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>

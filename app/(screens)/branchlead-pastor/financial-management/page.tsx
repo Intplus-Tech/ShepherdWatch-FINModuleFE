@@ -490,7 +490,7 @@ export default function MaintenanceManagementPage() {
           <nav className="space-y-2">
             {[
               { label: "Dashboard", icon: LayoutDashboard, href: "/branchlead-pastor/dashboard" },
-              { label: "Maintenance Management", icon: FolderKanban, hasDropdown: true, href: "/branchlead-pastor/financial-management" },
+              { label: "Maintenance Management", icon: FolderKanban, hasDropdown: true, href: "/branchlead-pastor/financial-management/income-tracking" },
               { label: "Assets", icon: Wallet, href: "/branchlead-pastor/assets" },
               { label: "Budget", icon: ShieldCheck, href: "/branchlead-pastor/budget" },
               { label: "Compliance & Remittance", icon: BarChart3, href: "/branchlead-pastor/compliance-remittance" },

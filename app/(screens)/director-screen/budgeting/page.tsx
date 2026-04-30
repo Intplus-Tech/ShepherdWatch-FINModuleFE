@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import SidebarNav from "@/components/navigation/SidebarNav"
 import {
   ChevronDown,
@@ -22,6 +23,7 @@ import { Edit3, ShieldCheck } from "lucide-react"
 
 
 export default function Page() {
+  const router = useRouter()
   const { user } = useAuth()
   const [bva, setBva] = useState<{ totalBudgeted: number; totalActual: number; categories: Array<Record<string, any>> } | null>(null)
   const [bvaLoading, setBvaLoading] = useState(false)
@@ -268,7 +270,10 @@ export default function Page() {
                       <p className="text-[13px] text-[#9CA3AF] mt-1">Detailed Budget vs. Actual (BVA) analysis across all streams.</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-3 mt-4 md:mt-0">
-                      <button className="flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-3.5 py-2 text-[12px] font-bold text-[#4B5563] shadow-sm hover:bg-gray-50 transition-colors">
+                      <button 
+                        onClick={() => router.push("/director-screen/budget-control")}
+                        className="flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-3.5 py-2 text-[12px] font-bold text-[#4B5563] shadow-sm hover:bg-gray-50 transition-colors"
+                      >
                         Budget Control
                       </button>
                       <button className="flex items-center gap-2 rounded-md bg-[#3B5BDB] px-4 py-2 text-[12px] font-bold text-white shadow-sm hover:bg-blue-700 ml-1 transition-colors">

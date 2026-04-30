@@ -3,28 +3,26 @@ import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 import { isCsrfValid } from "@/lib/csrf";
 
-function getRequiredEnv(name: "BACKEND_API_URL"): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`${name} is not configured`);
-  }
-  return value;
+function getBackendRegionUrl(regionId: string): string | null {
+  const baseUrl = process.env.BACKEND_API_URL?.replace(/\/+$/, "");
+  if (baseUrl) return `${baseUrl}/api/v1/core/regions/${encodeURIComponent(regionId)}`;
+  
+  const loginUrl = process.env.BACKEND_LOGIN_URL;
+  if (!loginUrl) return null;
+  if (loginUrl.includes("/auth/login")) return loginUrl.replace("/auth/login", `/core/regions/${encodeURIComponent(regionId)}`);
+  if (loginUrl.endsWith("/login")) return loginUrl.replace(/\/login$/, `/core/regions/${encodeURIComponent(regionId)}`);
+  return null;
 }
 
-function buildBackendRegionUrl(regionId: string): string {
-  const baseUrl = getRequiredEnv("BACKEND_API_URL");
-  if (process.env.NODE_ENV === "production" && baseUrl.startsWith("http://")) {
-    throw new Error("BACKEND_API_URL must use https in production");
-  }
-  return `${baseUrl}/api/v1/core/regions/${encodeURIComponent(regionId)}`;
-}
-
-function buildBackendRegionStatusUrl(regionId: string): string {
-  const baseUrl = getRequiredEnv("BACKEND_API_URL");
-  if (process.env.NODE_ENV === "production" && baseUrl.startsWith("http://")) {
-    throw new Error("BACKEND_API_URL must use https in production");
-  }
-  return `${baseUrl}/api/v1/regions/${encodeURIComponent(regionId)}/status`;
+function getBackendRegionStatusUrl(regionId: string): string | null {
+  const baseUrl = process.env.BACKEND_API_URL?.replace(/\/+$/, "");
+  if (baseUrl) return `${baseUrl}/api/v1/regions/${encodeURIComponent(regionId)}/status`;
+  
+  const loginUrl = process.env.BACKEND_LOGIN_URL;
+  if (!loginUrl) return null;
+  if (loginUrl.includes("/auth/login")) return loginUrl.replace("/auth/login", `/regions/${encodeURIComponent(regionId)}/status`);
+  if (loginUrl.endsWith("/login")) return loginUrl.replace(/\/login$/, `/regions/${encodeURIComponent(regionId)}/status`);
+  return null;
 }
 
 export async function GET(req: NextRequest, context: { params: { regionId: string } }) {
@@ -48,7 +46,13 @@ export async function GET(req: NextRequest, context: { params: { regionId: strin
     }
 
     const regionId = context.params.regionId;
-    const backendUrl = buildBackendRegionUrl(regionId);
+    const backendUrl = getBackendRegionUrl(regionId);
+    if (!backendUrl) {
+      return applyCors(
+        NextResponse.json({ success: false, message: "Backend URL not configured" }, { status: 500 }),
+        req
+      );
+    }
     const backendResponse = await fetch(backendUrl, {
       method: "GET",
       headers: {
@@ -111,7 +115,13 @@ export async function PUT(req: NextRequest, context: { params: { regionId: strin
     }
 
     const regionId = context.params.regionId;
-    const backendUrl = buildBackendRegionUrl(regionId);
+    const backendUrl = getBackendRegionUrl(regionId);
+    if (!backendUrl) {
+      return applyCors(
+        NextResponse.json({ success: false, message: "Backend URL not configured" }, { status: 500 }),
+        req
+      );
+    }
     const body = await req.json().catch(() => null);
 
     const backendResponse = await fetch(backendUrl, {
@@ -178,7 +188,13 @@ export async function PATCH(req: NextRequest, context: { params: { regionId: str
     }
 
     const regionId = context.params.regionId;
-    const backendUrl = buildBackendRegionStatusUrl(regionId);
+    const backendUrl = getBackendRegionStatusUrl(regionId);
+    if (!backendUrl) {
+      return applyCors(
+        NextResponse.json({ success: false, message: "Backend URL not configured" }, { status: 500 }),
+        req
+      );
+    }
     const body = await req.json().catch(() => null);
 
     const backendResponse = await fetch(backendUrl, {

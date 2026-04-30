@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 import { isCsrfValid } from "@/lib/csrf";
 import { applyAuthCookies, executeWithRefreshRetry } from "@/lib/backend-refresh";
@@ -34,22 +33,38 @@ type CreateBranchPayload = {
   currency?: "NGN" | "USD" | "GBP" | "EUR"
 }
 
+function normalizeBranchType(raw: unknown): CreateBranchPayload["branchType"] | null {
+  const value = String(raw ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_")
+
+  if (!value) return null
+
+  if (["parish", "parishes", "church", "branch"].includes(value)) return "parish"
+  if (["area", "areas", "district"].includes(value)) return "area"
+  if (["zone", "zones", "region"].includes(value)) return "zone"
+  return null
+}
+
 function normalizeCreateBranchPayload(body: unknown): CreateBranchPayload | null {
   if (!body || typeof body !== "object") return null
   const source = body as Record<string, unknown>
   const name = String(source.name ?? "").trim()
-  const branchTypeRaw = String(source.branchType ?? "").toLowerCase()
+  const branchType = normalizeBranchType(
+    source.branchType ?? source.branch_type ?? source.type ?? source.category
+  )
   const region = String(source.region ?? "").trim()
   const address = String(source.address ?? "").trim()
   const leadPastorId = String(source.leadPastorId ?? "").trim()
   const assignedAccountantId = String(source.assignedAccountantId ?? "").trim()
   const currencyRaw = String(source.currency ?? "").toUpperCase()
 
-  if (!name || !["parish", "area", "zone"].includes(branchTypeRaw)) return null
+  if (!name || !branchType) return null
 
   const payload: CreateBranchPayload = {
     name,
-    branchType: branchTypeRaw as CreateBranchPayload["branchType"],
+    branchType,
   }
   if (region) payload.region = region
   if (address) payload.address = address
@@ -134,14 +149,6 @@ export async function POST(req: NextRequest) {
   if (!isCsrfValid(req)) {
     return applyCors(
       NextResponse.json({ success: false, message: "CSRF token invalid" }, { status: 403 }),
-      req
-    );
-  }
-
-  const accessToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value;
-  if (!accessToken) {
-    return applyCors(
-      NextResponse.json({ success: false, message: "Unauthorized. Please log in again." }, { status: 401 }),
       req
     );
   }

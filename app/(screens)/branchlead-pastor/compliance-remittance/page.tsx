@@ -126,7 +126,7 @@ export default function ComplianceRemittancePage() {
           <nav className="space-y-1.5 flex-1">
             {[
               { label: "Dashboard", icon: LayoutDashboard, href: "/branchlead-pastor/dashboard" },
-              { label: "Financial Management", icon: BarChart3, hasChevron: true, href: "/branchlead-pastor/financial-management" },
+              { label: "Financial Management", icon: BarChart3, hasChevron: true, href: "/branchlead-pastor/financial-management/income-tracking" },
               { label: "Assets", icon: Building2, href: "/branchlead-pastor/assets" },
               { label: "Budget", icon: Wallet, href: "/branchlead-pastor/budget" },
               { label: "Compliance & Remittance", icon: ShieldCheck, href: "/branchlead-pastor/compliance-remittance" },
