@@ -13,7 +13,7 @@ function getRequiredEnv(name: "BACKEND_API_URL"): string {
 
 export async function POST(
   req: NextRequest,
-  context: { params: { requisitionId: string } }
+  context: { params: Promise<{ requisitionId: string }> }
 ) {
   try {
     if (!isOriginAllowed(req)) {
@@ -44,7 +44,7 @@ export async function POST(
       )
     }
 
-    const requisitionId = context.params.requisitionId
+    const requisitionId = (await context.params).requisitionId
     const baseUrl = getRequiredEnv("BACKEND_API_URL")
     if (process.env.NODE_ENV === "production" && baseUrl.startsWith("http://")) {
       throw new Error("BACKEND_API_URL must use https in production")

@@ -19,7 +19,7 @@ function buildBackendUrl(coaId: string): string {
   return `${baseUrl.replace(/\/+$/, "")}/api/v1/chart-of-accounts/${coaId}`
 }
 
-export async function GET(req: NextRequest, context: { params: { coaId: string } }) {
+export async function GET(req: NextRequest, context: { params: Promise<{ coaId: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(
@@ -36,7 +36,7 @@ export async function GET(req: NextRequest, context: { params: { coaId: string }
       )
     }
 
-    const coaId = context.params.coaId
+    const coaId = (await context.params).coaId
     if (!coaId) {
       return applyCors(
         NextResponse.json({ success: false, message: "COA ID is required" }, { status: 400 }),
@@ -74,7 +74,7 @@ export async function GET(req: NextRequest, context: { params: { coaId: string }
   }
 }
 
-export async function PATCH(req: NextRequest, context: { params: { coaId: string } }) {
+export async function PATCH(req: NextRequest, context: { params: Promise<{ coaId: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(
@@ -98,7 +98,7 @@ export async function PATCH(req: NextRequest, context: { params: { coaId: string
       )
     }
 
-    const coaId = context.params.coaId
+    const coaId = (await context.params).coaId
     if (!coaId) {
       return applyCors(
         NextResponse.json({ success: false, message: "COA ID is required" }, { status: 400 }),
@@ -166,7 +166,7 @@ export async function PATCH(req: NextRequest, context: { params: { coaId: string
   }
 }
 
-export async function DELETE(req: NextRequest, context: { params: { coaId: string } }) {
+export async function DELETE(req: NextRequest, context: { params: Promise<{ coaId: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(
@@ -190,7 +190,7 @@ export async function DELETE(req: NextRequest, context: { params: { coaId: strin
       )
     }
 
-    const coaId = context.params.coaId
+    const coaId = (await context.params).coaId
     if (!coaId) {
       return applyCors(
         NextResponse.json({ success: false, message: "COA ID is required" }, { status: 400 }),

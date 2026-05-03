@@ -19,7 +19,7 @@ function buildBackendUrl(requisitionId: string): string {
   return `${baseUrl.replace(/\/+$/, "")}/api/v1/requisitions/${requisitionId}/approve`
 }
 
-export async function PATCH(req: NextRequest, context: { params: { requisitionId: string } }) {
+export async function PATCH(req: NextRequest, context: { params: Promise<{ requisitionId: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(
@@ -43,7 +43,7 @@ export async function PATCH(req: NextRequest, context: { params: { requisitionId
       )
     }
 
-    const requisitionId = context.params.requisitionId
+    const requisitionId = (await context.params).requisitionId
     if (!requisitionId) {
       return applyCors(
         NextResponse.json({ success: false, message: "Requisition ID is required" }, { status: 400 }),

@@ -5,10 +5,10 @@ const BACKEND_URL = process.env.BACKEND_LOGIN_URL || "https://shw-fin-b-c.onrend
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { userId: string } }
+  { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
-    const { userId } = params;
+    const { userId  } = await params;
     if (!userId) {
       return NextResponse.json({ message: "User ID is required" }, { status: 400 });
     }

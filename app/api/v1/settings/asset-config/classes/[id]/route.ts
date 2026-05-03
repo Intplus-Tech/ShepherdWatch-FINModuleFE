@@ -10,7 +10,7 @@ function getRequiredEnv(name: "BACKEND_API_URL"): string {
   return value
 }
 
-export async function PUT(req: NextRequest, context: { params: { id: string } }) {
+export async function PUT(req: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(
@@ -100,7 +100,7 @@ export async function PUT(req: NextRequest, context: { params: { id: string } })
   }
 }
 
-export async function DELETE(req: NextRequest, context: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(

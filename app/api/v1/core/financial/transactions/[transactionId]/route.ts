@@ -19,7 +19,7 @@ function buildBackendUrl(transactionId: string): string {
   return `${baseUrl.replace(/\/+$/, "")}/api/v1/core/financial/transactions/${transactionId}`
 }
 
-export async function DELETE(req: NextRequest, context: { params: { transactionId: string } }) {
+export async function DELETE(req: NextRequest, context: { params: Promise<{ transactionId: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(
@@ -43,7 +43,7 @@ export async function DELETE(req: NextRequest, context: { params: { transactionI
       )
     }
 
-    const transactionId = context.params.transactionId
+    const transactionId = (await context.params).transactionId
     if (!transactionId) {
       return applyCors(
         NextResponse.json({ success: false, message: "Transaction ID is required" }, { status: 400 }),

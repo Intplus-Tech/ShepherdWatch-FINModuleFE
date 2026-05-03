@@ -18,7 +18,7 @@ function buildBackendUrl(deductionId: string): string {
   return `${baseUrl.replace(/\/+$/, "")}/api/v1/compliance/deductions/${deductionId}/remit`
 }
 
-export async function PATCH(req: NextRequest, context: { params: { deductionId: string } }) {
+export async function PATCH(req: NextRequest, context: { params: Promise<{ deductionId: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(
@@ -35,7 +35,7 @@ export async function PATCH(req: NextRequest, context: { params: { deductionId: 
       )
     }
 
-    const deductionId = context.params.deductionId
+    const deductionId = (await context.params).deductionId
     if (!deductionId) {
       return applyCors(
         NextResponse.json({ success: false, message: "Deduction ID is required" }, { status: 400 }),

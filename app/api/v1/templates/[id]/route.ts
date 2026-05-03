@@ -22,7 +22,7 @@ function getBackendTemplateUrl(id: string): string | null {
   return null;
 }
 
-export async function PATCH(req: NextRequest, context: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, context: { params: Promise<{ id: string }> }) {
   const accessToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value;
   if (!accessToken) {
     return applyCors(
@@ -81,7 +81,7 @@ export async function PATCH(req: NextRequest, context: { params: { id: string } 
   );
 }
 
-export async function DELETE(req: NextRequest, context: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, context: { params: Promise<{ id: string }> }) {
   const accessToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value;
   if (!accessToken) {
     return applyCors(

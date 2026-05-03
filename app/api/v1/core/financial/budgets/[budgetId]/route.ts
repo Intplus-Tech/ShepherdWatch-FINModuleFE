@@ -55,7 +55,7 @@ function normalizeUpdatePayload(body: unknown): UpdateBudgetPayload | null {
   return Object.keys(payload).length > 0 ? payload : null
 }
 
-export async function GET(req: NextRequest, context: { params: { budgetId: string } }) {
+export async function GET(req: NextRequest, context: { params: Promise<{ budgetId: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(
@@ -72,7 +72,7 @@ export async function GET(req: NextRequest, context: { params: { budgetId: strin
       )
     }
 
-    const budgetId = context.params.budgetId
+    const budgetId = (await context.params).budgetId
     if (!budgetId) {
       return applyCors(
         NextResponse.json({ success: false, message: "Budget ID is required." }, { status: 400 }),
@@ -110,7 +110,7 @@ export async function GET(req: NextRequest, context: { params: { budgetId: strin
   }
 }
 
-export async function PATCH(req: NextRequest, context: { params: { budgetId: string } }) {
+export async function PATCH(req: NextRequest, context: { params: Promise<{ budgetId: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(
@@ -134,7 +134,7 @@ export async function PATCH(req: NextRequest, context: { params: { budgetId: str
       )
     }
 
-    const budgetId = context.params.budgetId
+    const budgetId = (await context.params).budgetId
     if (!budgetId) {
       return applyCors(
         NextResponse.json({ success: false, message: "Budget ID is required." }, { status: 400 }),

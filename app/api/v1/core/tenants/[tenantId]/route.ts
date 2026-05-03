@@ -31,7 +31,7 @@ function buildBackendTenantStatusUrl(tenantId: string, search: string): string {
   return url.toString();
 }
 
-export async function PUT(req: NextRequest, context: { params: { tenantId: string } }) {
+export async function PUT(req: NextRequest, context: { params: Promise<{ tenantId: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(
@@ -58,7 +58,7 @@ export async function PUT(req: NextRequest, context: { params: { tenantId: strin
       );
     }
 
-    const tenantId = context.params.tenantId;
+    const tenantId = (await context.params).tenantId;
     const backendUrl = buildBackendTenantUrl(tenantId);
     const body = await req.json().catch(() => null);
 
@@ -98,7 +98,7 @@ export async function PUT(req: NextRequest, context: { params: { tenantId: strin
   }
 }
 
-export async function GET(req: NextRequest, context: { params: { tenantId: string } }) {
+export async function GET(req: NextRequest, context: { params: Promise<{ tenantId: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(
@@ -118,7 +118,7 @@ export async function GET(req: NextRequest, context: { params: { tenantId: strin
       );
     }
 
-    const tenantId = context.params.tenantId;
+    const tenantId = (await context.params).tenantId;
     const backendUrl = buildBackendTenantUrl(tenantId);
     const backendResponse = await fetch(backendUrl, {
       method: "GET",
@@ -154,7 +154,7 @@ export async function GET(req: NextRequest, context: { params: { tenantId: strin
   }
 }
 
-export async function PATCH(req: NextRequest, context: { params: { tenantId: string } }) {
+export async function PATCH(req: NextRequest, context: { params: Promise<{ tenantId: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(
@@ -181,7 +181,7 @@ export async function PATCH(req: NextRequest, context: { params: { tenantId: str
       );
     }
 
-    const tenantId = context.params.tenantId;
+    const tenantId = (await context.params).tenantId;
     const backendUrl = buildBackendTenantStatusUrl(tenantId, req.nextUrl.search);
     const body = await req.json().catch(() => null);
 

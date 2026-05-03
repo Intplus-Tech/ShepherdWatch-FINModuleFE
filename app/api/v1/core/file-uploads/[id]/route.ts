@@ -10,7 +10,7 @@ function getRequiredEnv(name: "BACKEND_API_URL"): string {
   return value
 }
 
-export async function GET(req: NextRequest, context: { params: { id: string } }) {
+export async function GET(req: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(
@@ -32,7 +32,7 @@ export async function GET(req: NextRequest, context: { params: { id: string } })
 
     const baseUrl = getRequiredEnv("BACKEND_API_URL")
     const url = `${baseUrl.replace(/\/+$/, "")}/api/v1/file-uploads/${encodeURIComponent(
-      context.params.id
+      (await context.params).id
     )}`
 
     const backendResponse = await fetch(url, {
@@ -71,7 +71,7 @@ export async function GET(req: NextRequest, context: { params: { id: string } })
   }
 }
 
-export async function PATCH(req: NextRequest, context: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(
@@ -93,7 +93,7 @@ export async function PATCH(req: NextRequest, context: { params: { id: string } 
 
     const baseUrl = getRequiredEnv("BACKEND_API_URL")
     const url = `${baseUrl.replace(/\/+$/, "")}/api/v1/file-uploads/${encodeURIComponent(
-      context.params.id
+      (await context.params).id
     )}`
 
     const incomingFormData = await req.formData()
@@ -139,7 +139,7 @@ export async function PATCH(req: NextRequest, context: { params: { id: string } 
   }
 }
 
-export async function DELETE(req: NextRequest, context: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(
@@ -161,7 +161,7 @@ export async function DELETE(req: NextRequest, context: { params: { id: string }
 
     const baseUrl = getRequiredEnv("BACKEND_API_URL")
     const url = `${baseUrl.replace(/\/+$/, "")}/api/v1/file-uploads/${encodeURIComponent(
-      context.params.id
+      (await context.params).id
     )}`
 
     const backendResponse = await fetch(url, {

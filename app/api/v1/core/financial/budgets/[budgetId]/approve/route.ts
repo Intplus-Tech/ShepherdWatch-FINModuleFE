@@ -19,7 +19,7 @@ function buildBackendUrl(budgetId: string): string {
   return `${baseUrl.replace(/\/+$/, "")}/api/v1/budgets/${budgetId}/approve`
 }
 
-export async function PATCH(req: NextRequest, context: { params: { budgetId: string } }) {
+export async function PATCH(req: NextRequest, context: { params: Promise<{ budgetId: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(
@@ -43,7 +43,7 @@ export async function PATCH(req: NextRequest, context: { params: { budgetId: str
       )
     }
 
-    const budgetId = context.params.budgetId
+    const budgetId = (await context.params).budgetId
     if (!budgetId) {
       return applyCors(
         NextResponse.json({ success: false, message: "Budget ID is required." }, { status: 400 }),

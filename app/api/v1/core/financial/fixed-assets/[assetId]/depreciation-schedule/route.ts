@@ -24,7 +24,7 @@ function buildBackendScheduleUrl(assetId: string, search: string): string {
   return url.toString()
 }
 
-export async function GET(req: NextRequest, context: { params: { assetId: string } }) {
+export async function GET(req: NextRequest, context: { params: Promise<{ assetId: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(
@@ -44,7 +44,7 @@ export async function GET(req: NextRequest, context: { params: { assetId: string
       )
     }
 
-    const assetId = context.params.assetId
+    const assetId = (await context.params).assetId
     if (!assetId) {
       return applyCors(
         NextResponse.json({ success: false, message: "Asset ID is required" }, { status: 400 }),

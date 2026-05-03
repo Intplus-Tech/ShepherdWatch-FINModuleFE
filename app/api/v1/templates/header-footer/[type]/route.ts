@@ -22,7 +22,7 @@ function getBackendHeaderFooterTypeUrl(type: string): string | null {
   return null;
 }
 
-export async function GET(req: NextRequest, context: { params: { type: string } }) {
+export async function GET(req: NextRequest, context: { params: Promise<{ type: string }> }) {
   const accessToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value;
   if (!accessToken) {
     return applyCors(

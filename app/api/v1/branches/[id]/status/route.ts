@@ -25,7 +25,7 @@ function normalizeStatusPayload(body: unknown): UpdateBranchStatusPayload | null
   return { status: status as UpdateBranchStatusPayload["status"] }
 }
 
-export async function PATCH(req: NextRequest, context: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(
@@ -49,7 +49,7 @@ export async function PATCH(req: NextRequest, context: { params: { id: string } 
       );
     }
 
-    const branchId = context.params.id;
+    const branchId = (await context.params).id;
     if (!branchId) {
       return applyCors(
         NextResponse.json({ success: false, message: "Branch ID is required" }, { status: 400 }),

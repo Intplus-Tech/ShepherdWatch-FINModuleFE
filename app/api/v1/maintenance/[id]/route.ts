@@ -12,7 +12,7 @@ function getRequiredEnv(name: "BACKEND_API_URL"): string {
 
 export async function PATCH(
   req: NextRequest,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     if (!isOriginAllowed(req)) {
@@ -36,7 +36,7 @@ export async function PATCH(
       )
     }
 
-    const recordId = context.params.id
+    const recordId = (await context.params).id
     if (!recordId) {
       return applyCors(
         NextResponse.json(

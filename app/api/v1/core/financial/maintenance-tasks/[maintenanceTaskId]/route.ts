@@ -19,7 +19,7 @@ function buildBackendUrl(maintenanceTaskId: string): string {
   return `${baseUrl.replace(/\/+$/, "")}/api/v1/core/financial/maintenance-tasks/${maintenanceTaskId}`
 }
 
-export async function DELETE(req: NextRequest, context: { params: { maintenanceTaskId: string } }) {
+export async function DELETE(req: NextRequest, context: { params: Promise<{ maintenanceTaskId: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(
@@ -43,7 +43,7 @@ export async function DELETE(req: NextRequest, context: { params: { maintenanceT
       )
     }
 
-    const maintenanceTaskId = context.params.maintenanceTaskId
+    const maintenanceTaskId = (await context.params).maintenanceTaskId
     if (!maintenanceTaskId) {
       return applyCors(
         NextResponse.json({ success: false, message: "Maintenance task ID is required" }, { status: 400 }),

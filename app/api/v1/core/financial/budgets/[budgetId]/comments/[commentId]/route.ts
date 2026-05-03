@@ -21,7 +21,7 @@ function buildBackendUrl(budgetId: string, commentId: string): string {
 
 export async function DELETE(
   req: NextRequest,
-  context: { params: { budgetId: string; commentId: string } }
+  context: { params: Promise<{ budgetId: string; commentId: string }> }
 ) {
   try {
     if (!isOriginAllowed(req)) {

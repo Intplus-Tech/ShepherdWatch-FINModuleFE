@@ -21,7 +21,7 @@ function buildBackendApproveUrl(budgetEntryId: string): string {
 
 export async function POST(
   req: NextRequest,
-  context: { params: { budgetEntryId: string } }
+  context: { params: Promise<{ budgetEntryId: string }> }
 ) {
   try {
     if (!isOriginAllowed(req)) {

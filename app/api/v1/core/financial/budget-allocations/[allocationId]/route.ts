@@ -49,7 +49,7 @@ function normalizePayload(body: unknown): UpdateBudgetAllocationPayload | null {
   return Object.keys(payload).length > 0 ? payload : null
 }
 
-export async function GET(req: NextRequest, context: { params: { allocationId: string } }) {
+export async function GET(req: NextRequest, context: { params: Promise<{ allocationId: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(
@@ -66,7 +66,7 @@ export async function GET(req: NextRequest, context: { params: { allocationId: s
       )
     }
 
-    const allocationId = context.params.allocationId
+    const allocationId = (await context.params).allocationId
     if (!allocationId) {
       return applyCors(
         NextResponse.json({ success: false, message: "Allocation ID is required." }, { status: 400 }),
@@ -104,7 +104,7 @@ export async function GET(req: NextRequest, context: { params: { allocationId: s
   }
 }
 
-export async function PATCH(req: NextRequest, context: { params: { allocationId: string } }) {
+export async function PATCH(req: NextRequest, context: { params: Promise<{ allocationId: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(
@@ -128,7 +128,7 @@ export async function PATCH(req: NextRequest, context: { params: { allocationId:
       )
     }
 
-    const allocationId = context.params.allocationId
+    const allocationId = (await context.params).allocationId
     if (!allocationId) {
       return applyCors(
         NextResponse.json({ success: false, message: "Allocation ID is required." }, { status: 400 }),

@@ -5,7 +5,7 @@ import { getRequiredEnv } from "@/lib/env"
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     if (!isOriginAllowed(req)) {
@@ -71,7 +71,7 @@ export async function GET(
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     if (!isOriginAllowed(req)) {

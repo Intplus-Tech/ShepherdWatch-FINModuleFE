@@ -62,7 +62,7 @@ function normalizePayload(body: unknown): UpdateBankAccountPayload | null {
   return Object.keys(payload).length > 0 ? payload : null
 }
 
-export async function GET(req: NextRequest, context: { params: { bankAccountId: string } }) {
+export async function GET(req: NextRequest, context: { params: Promise<{ bankAccountId: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(
@@ -79,7 +79,7 @@ export async function GET(req: NextRequest, context: { params: { bankAccountId: 
       )
     }
 
-    const bankAccountId = context.params.bankAccountId
+    const bankAccountId = (await context.params).bankAccountId
     if (!bankAccountId) {
       return applyCors(
         NextResponse.json({ success: false, message: "Bank account ID is required." }, { status: 400 }),
@@ -117,7 +117,7 @@ export async function GET(req: NextRequest, context: { params: { bankAccountId: 
   }
 }
 
-export async function PATCH(req: NextRequest, context: { params: { bankAccountId: string } }) {
+export async function PATCH(req: NextRequest, context: { params: Promise<{ bankAccountId: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(
@@ -141,7 +141,7 @@ export async function PATCH(req: NextRequest, context: { params: { bankAccountId
       )
     }
 
-    const bankAccountId = context.params.bankAccountId
+    const bankAccountId = (await context.params).bankAccountId
     if (!bankAccountId) {
       return applyCors(
         NextResponse.json({ success: false, message: "Bank account ID is required." }, { status: 400 }),

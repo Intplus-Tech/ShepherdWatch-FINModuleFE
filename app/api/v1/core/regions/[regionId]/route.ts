@@ -25,7 +25,7 @@ function getBackendRegionStatusUrl(regionId: string): string | null {
   return null;
 }
 
-export async function GET(req: NextRequest, context: { params: { regionId: string } }) {
+export async function GET(req: NextRequest, context: { params: Promise<{ regionId: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(
@@ -45,7 +45,7 @@ export async function GET(req: NextRequest, context: { params: { regionId: strin
       );
     }
 
-    const regionId = context.params.regionId;
+    const regionId = (await context.params).regionId;
     const backendUrl = getBackendRegionUrl(regionId);
     if (!backendUrl) {
       return applyCors(
@@ -87,7 +87,7 @@ export async function GET(req: NextRequest, context: { params: { regionId: strin
   }
 }
 
-export async function PUT(req: NextRequest, context: { params: { regionId: string } }) {
+export async function PUT(req: NextRequest, context: { params: Promise<{ regionId: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(
@@ -114,7 +114,7 @@ export async function PUT(req: NextRequest, context: { params: { regionId: strin
       );
     }
 
-    const regionId = context.params.regionId;
+    const regionId = (await context.params).regionId;
     const backendUrl = getBackendRegionUrl(regionId);
     if (!backendUrl) {
       return applyCors(
@@ -160,7 +160,7 @@ export async function PUT(req: NextRequest, context: { params: { regionId: strin
   }
 }
 
-export async function PATCH(req: NextRequest, context: { params: { regionId: string } }) {
+export async function PATCH(req: NextRequest, context: { params: Promise<{ regionId: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(
@@ -187,7 +187,7 @@ export async function PATCH(req: NextRequest, context: { params: { regionId: str
       );
     }
 
-    const regionId = context.params.regionId;
+    const regionId = (await context.params).regionId;
     const backendUrl = getBackendRegionStatusUrl(regionId);
     if (!backendUrl) {
       return applyCors(

@@ -19,7 +19,7 @@ function buildBackendUrl(budgetProposalId: string): string {
   return `${baseUrl.replace(/\/+$/, "")}/api/v1/core/financial/budget-proposals/${budgetProposalId}/submit`
 }
 
-export async function POST(req: NextRequest, context: { params: { budgetProposalId: string } }) {
+export async function POST(req: NextRequest, context: { params: Promise<{ budgetProposalId: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest, context: { params: { budgetProposal
       )
     }
 
-    const budgetProposalId = context.params.budgetProposalId
+    const budgetProposalId = (await context.params).budgetProposalId
     if (!budgetProposalId) {
       return applyCors(
         NextResponse.json({ success: false, message: "Budget proposal ID is required" }, { status: 400 }),

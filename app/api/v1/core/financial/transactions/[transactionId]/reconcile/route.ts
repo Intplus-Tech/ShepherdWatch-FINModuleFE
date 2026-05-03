@@ -21,7 +21,7 @@ function buildBackendReconcileUrl(transactionId: string): string {
 
 export async function POST(
   req: NextRequest,
-  context: { params: { transactionId: string } }
+  context: { params: Promise<{ transactionId: string }> }
 ) {
   try {
     if (!isOriginAllowed(req)) {

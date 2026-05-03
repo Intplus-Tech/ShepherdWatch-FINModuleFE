@@ -19,7 +19,7 @@ function buildBackendUrl(budgetId: string): string {
   return `${baseUrl.replace(/\/+$/, "")}/api/v1/budgets/${budgetId}/comments`
 }
 
-export async function GET(req: NextRequest, context: { params: { budgetId: string } }) {
+export async function GET(req: NextRequest, context: { params: Promise<{ budgetId: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(
@@ -80,7 +80,7 @@ export async function GET(req: NextRequest, context: { params: { budgetId: strin
   }
 }
 
-export async function POST(req: NextRequest, context: { params: { budgetId: string } }) {
+export async function POST(req: NextRequest, context: { params: Promise<{ budgetId: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(

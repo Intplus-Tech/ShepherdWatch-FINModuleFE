@@ -60,7 +60,7 @@ function normalizeUpdateBranchPayload(body: unknown): UpdateBranchPayload | null
   return Object.keys(payload).length > 0 ? payload : null
 }
 
-export async function GET(req: NextRequest, context: { params: { id: string } }) {
+export async function GET(req: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(
@@ -80,7 +80,7 @@ export async function GET(req: NextRequest, context: { params: { id: string } })
       );
     }
 
-    const branchId = context.params.id;
+    const branchId = (await context.params).id;
     const backendUrl = getBackendTenantUrl(branchId);
 
     const backendResponse = await fetch(backendUrl, {
@@ -123,7 +123,7 @@ export async function GET(req: NextRequest, context: { params: { id: string } })
   }
 }
 
-export async function PATCH(req: NextRequest, context: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(
@@ -150,7 +150,7 @@ export async function PATCH(req: NextRequest, context: { params: { id: string } 
       );
     }
 
-    const branchId = context.params.id;
+    const branchId = (await context.params).id;
     const backendUrl = getBackendTenantUrl(branchId);
     
     const body = await req.json().catch(() => null);

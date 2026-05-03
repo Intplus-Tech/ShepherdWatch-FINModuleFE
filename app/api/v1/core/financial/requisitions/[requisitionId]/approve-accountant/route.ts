@@ -21,7 +21,7 @@ function buildBackendApproveUrl(requisitionId: string): string {
 
 export async function POST(
   req: NextRequest,
-  context: { params: { requisitionId: string } }
+  context: { params: Promise<{ requisitionId: string }> }
 ) {
   try {
     if (!isOriginAllowed(req)) {

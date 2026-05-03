@@ -67,7 +67,7 @@ function normalizePayload(body: unknown): UpdateBudgetTemplatePayload | null {
   return Object.keys(payload).length > 0 ? payload : null
 }
 
-export async function GET(req: NextRequest, context: { params: { templateId: string } }) {
+export async function GET(req: NextRequest, context: { params: Promise<{ templateId: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(
@@ -84,7 +84,7 @@ export async function GET(req: NextRequest, context: { params: { templateId: str
       )
     }
 
-    const templateId = context.params.templateId
+    const templateId = (await context.params).templateId
     if (!templateId) {
       return applyCors(
         NextResponse.json({ success: false, message: "Template ID is required." }, { status: 400 }),
@@ -122,7 +122,7 @@ export async function GET(req: NextRequest, context: { params: { templateId: str
   }
 }
 
-export async function PATCH(req: NextRequest, context: { params: { templateId: string } }) {
+export async function PATCH(req: NextRequest, context: { params: Promise<{ templateId: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(
@@ -146,7 +146,7 @@ export async function PATCH(req: NextRequest, context: { params: { templateId: s
       )
     }
 
-    const templateId = context.params.templateId
+    const templateId = (await context.params).templateId
     if (!templateId) {
       return applyCors(
         NextResponse.json({ success: false, message: "Template ID is required." }, { status: 400 }),
@@ -198,7 +198,7 @@ export async function PATCH(req: NextRequest, context: { params: { templateId: s
   }
 }
 
-export async function DELETE(req: NextRequest, context: { params: { templateId: string } }) {
+export async function DELETE(req: NextRequest, context: { params: Promise<{ templateId: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(
@@ -222,7 +222,7 @@ export async function DELETE(req: NextRequest, context: { params: { templateId: 
       )
     }
 
-    const templateId = context.params.templateId
+    const templateId = (await context.params).templateId
     if (!templateId) {
       return applyCors(
         NextResponse.json({ success: false, message: "Template ID is required." }, { status: 400 }),

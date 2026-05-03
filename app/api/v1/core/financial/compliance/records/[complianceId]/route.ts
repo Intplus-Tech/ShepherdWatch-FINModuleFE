@@ -19,7 +19,7 @@ function buildBackendUrl(complianceId: string): string {
   return `${baseUrl.replace(/\/+$/, "")}/api/v1/core/financial/compliance/records/${complianceId}`
 }
 
-export async function PUT(req: NextRequest, context: { params: { complianceId: string } }) {
+export async function PUT(req: NextRequest, context: { params: Promise<{ complianceId: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(
@@ -43,7 +43,7 @@ export async function PUT(req: NextRequest, context: { params: { complianceId: s
       )
     }
 
-    const complianceId = context.params.complianceId
+    const complianceId = (await context.params).complianceId
     if (!complianceId) {
       return applyCors(
         NextResponse.json({ success: false, message: "Compliance ID is required" }, { status: 400 }),
@@ -84,7 +84,7 @@ export async function PUT(req: NextRequest, context: { params: { complianceId: s
   }
 }
 
-export async function DELETE(req: NextRequest, context: { params: { complianceId: string } }) {
+export async function DELETE(req: NextRequest, context: { params: Promise<{ complianceId: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
       return applyCors(
@@ -108,7 +108,7 @@ export async function DELETE(req: NextRequest, context: { params: { complianceId
       )
     }
 
-    const complianceId = context.params.complianceId
+    const complianceId = (await context.params).complianceId
     if (!complianceId) {
       return applyCors(
         NextResponse.json({ success: false, message: "Compliance ID is required" }, { status: 400 }),

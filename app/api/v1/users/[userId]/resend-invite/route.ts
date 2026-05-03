@@ -10,7 +10,7 @@ function getBackendUrl(userId: string) {
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { userId: string } }
+  { params }: { params: Promise<{ userId: string }> }
 ) {
   if (!isOriginAllowed(req)) {
     return applyCors(
