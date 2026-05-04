@@ -2,25 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 import { isCsrfValid } from "@/lib/csrf";
 import { applyAuthCookies, executeWithRefreshRetry } from "@/lib/backend-refresh";
+import { getBackendUrl } from "@/lib/backend-auth-url";
 
 function getBackendBranchesUrl(): string | null {
-  const baseUrl = process.env.BACKEND_API_URL?.replace(/\/+$/, "");
-  if (baseUrl) {
-    return `${baseUrl}/api/v1/branches`;
-  }
-
-  const loginUrl = process.env.BACKEND_LOGIN_URL;
-  if (!loginUrl) return null;
-
-  if (loginUrl.includes("/auth/login")) {
-    return loginUrl.replace("/auth/login", "/branches");
-  }
-
-  if (loginUrl.endsWith("/login")) {
-    return loginUrl.replace(/\/login$/, "/branches");
-  }
-
-  return null;
+  return getBackendUrl("api/v1/branches");
 }
 
 type CreateBranchPayload = {

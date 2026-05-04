@@ -1,25 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config";
 import { applyCors, getCorsHeaders } from "@/lib/cors";
+import { getBackendUrl } from "@/lib/backend-auth-url";
 
 function getBackendHeaderFooterTypeUrl(type: string): string | null {
-  const baseUrl = process.env.BACKEND_API_URL?.replace(/\/+$/, "");
-  if (baseUrl) {
-    return `${baseUrl}/templates/header-footer/${type}`;
-  }
-
-  const loginUrl = process.env.BACKEND_LOGIN_URL;
-  if (!loginUrl) return null;
-
-  if (loginUrl.includes("/auth/login")) {
-    return loginUrl.replace("/auth/login", `/templates/header-footer/${type}`);
-  }
-
-  if (loginUrl.endsWith("/login")) {
-    return loginUrl.replace(/\/login$/, `/templates/header-footer/${type}`);
-  }
-
-  return null;
+  return getBackendUrl(`templates/header-footer/${type}`);
 }
 
 export async function GET(req: NextRequest, context: { params: Promise<{ type: string }> }) {

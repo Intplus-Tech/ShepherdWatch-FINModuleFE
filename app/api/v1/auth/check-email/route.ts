@@ -1,29 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
+import { getBackendUrl } from "@/lib/backend-auth-url";
 
 function getBackendCheckEmailUrls(): string[] {
-  const urls: string[] = [];
-  const baseRaw = process.env.BACKEND_API_URL?.trim();
-  if (baseRaw) {
-    const base = baseRaw.replace(/\/+$/, "");
-    if (base.endsWith("/api/v1")) {
-      urls.push(`${base}/auth/check-email`);
-    } else {
-      urls.push(`${base}/api/v1/auth/check-email`);
-      urls.push(`${base}/auth/check-email`);
-    }
-  }
-
-  const loginUrl = process.env.BACKEND_LOGIN_URL?.trim();
-  if (loginUrl) {
-    if (loginUrl.includes("/auth/login")) {
-      urls.push(loginUrl.replace("/auth/login", "/auth/check-email"));
-    }
-    if (loginUrl.endsWith("/login")) {
-      urls.push(loginUrl.replace(/\/login$/, "/check-email"));
-    }
-  }
-
+  const urls = [
+    getBackendUrl("api/v1/auth/check-email"),
+    getBackendUrl("auth/check-email"),
+  ].filter((u): u is string => Boolean(u));
   return Array.from(new Set(urls));
 }
 

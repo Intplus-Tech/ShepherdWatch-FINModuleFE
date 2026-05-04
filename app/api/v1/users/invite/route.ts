@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 import { applyAuthCookies, executeWithRefreshRetry } from "@/lib/backend-refresh";
+import { getBackendUrl } from "@/lib/backend-auth-url";
 
-function getBackendUrl() {
-  const loginUrl = process.env.BACKEND_LOGIN_URL;
-  if (!loginUrl) return null;
-  // Replace auth/login with core/users/invite
-  return loginUrl.replace("/auth/login", "/core/users/invite");
+function getBackendUserUrl() {
+  return getBackendUrl("core/users/invite");
 }
 
 export async function POST(req: NextRequest) {
@@ -14,7 +12,7 @@ export async function POST(req: NextRequest) {
     return applyCors(NextResponse.json({ success: false, message: "Invalid request origin" }, { status: 403 }), req);
   }
 
-  const backendUrl = getBackendUrl();
+  const backendUrl = getBackendUserUrl();
   if (!backendUrl) {
     return applyCors(NextResponse.json({ success: false, message: "Backend URL not configured" }, { status: 500 }), req);
   }

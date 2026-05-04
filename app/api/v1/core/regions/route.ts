@@ -2,30 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 import { isCsrfValid } from "@/lib/csrf";
 import { applyAuthCookies, executeWithRefreshRetry } from "@/lib/backend-refresh";
+import { getBackendUrl } from "@/lib/backend-auth-url";
 
 function getBackendRegionsUrl(search?: string): string | null {
-  let url = "";
-  const baseUrl = process.env.BACKEND_API_URL?.replace(/\/+$/, "");
-  if (baseUrl) {
-    url = `${baseUrl}/api/v1/core/regions`;
-  } else {
-    const loginUrl = String(process.env.BACKEND_LOGIN_URL ?? "").trim();
-    if (!loginUrl) return null;
-    if (loginUrl.includes("/api/v1/auth/login")) {
-      url = loginUrl.replace("/api/v1/auth/login", "/api/v1/core/regions");
-    } else if (loginUrl.includes("/auth/login")) {
-      url = loginUrl.replace("/auth/login", "/api/v1/core/regions");
-    } else if (loginUrl.endsWith("/login")) {
-      url = loginUrl.replace(/\/login$/, "/api/v1/core/regions");
-    } else {
-      return null;
-    }
-  }
-
-  if (search) {
-    url += search;
-  }
-  return url;
+  const url = getBackendUrl("api/v1/core/regions");
+  if (!url) return null;
+  return search ? `${url}${search}` : url;
 }
 
 export async function GET(req: NextRequest) {

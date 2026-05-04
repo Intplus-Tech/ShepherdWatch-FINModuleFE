@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-
-const BACKEND_URL = process.env.BACKEND_LOGIN_URL || "https://shw-fin-b-c.onrender.com";
+import { getBackendUrl } from "@/lib/backend-auth-url";
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,9 +11,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ message: "Unauthorized: No valid session found." }, { status: 401 });
     }
 
+    const backendUrl = getBackendUrl("api/v1/core/tenants");
+    if (!backendUrl) {
+      return NextResponse.json({ message: "Backend URL not configured" }, { status: 500 });
+    }
+
     const { searchParams } = new URL(request.url);
     const queryString = searchParams.toString();
-    const url = `${BACKEND_URL}/api/v1/core/tenants${queryString ? `?${queryString}` : ""}`;
+    const url = `${backendUrl}${queryString ? `?${queryString}` : ""}`;
 
     const response = await fetch(url, {
       method: "GET",

@@ -2,27 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 import { isCsrfValid } from "@/lib/csrf";
+import { getBackendUrl } from "@/lib/backend-auth-url";
 
 function getBackendRegionUrl(regionId: string): string | null {
-  const baseUrl = process.env.BACKEND_API_URL?.replace(/\/+$/, "");
-  if (baseUrl) return `${baseUrl}/api/v1/core/regions/${encodeURIComponent(regionId)}`;
-  
-  const loginUrl = process.env.BACKEND_LOGIN_URL;
-  if (!loginUrl) return null;
-  if (loginUrl.includes("/auth/login")) return loginUrl.replace("/auth/login", `/core/regions/${encodeURIComponent(regionId)}`);
-  if (loginUrl.endsWith("/login")) return loginUrl.replace(/\/login$/, `/core/regions/${encodeURIComponent(regionId)}`);
-  return null;
+  return getBackendUrl(`api/v1/core/regions/${encodeURIComponent(regionId)}`);
 }
 
 function getBackendRegionStatusUrl(regionId: string): string | null {
-  const baseUrl = process.env.BACKEND_API_URL?.replace(/\/+$/, "");
-  if (baseUrl) return `${baseUrl}/api/v1/regions/${encodeURIComponent(regionId)}/status`;
-  
-  const loginUrl = process.env.BACKEND_LOGIN_URL;
-  if (!loginUrl) return null;
-  if (loginUrl.includes("/auth/login")) return loginUrl.replace("/auth/login", `/regions/${encodeURIComponent(regionId)}/status`);
-  if (loginUrl.endsWith("/login")) return loginUrl.replace(/\/login$/, `/regions/${encodeURIComponent(regionId)}/status`);
-  return null;
+  return getBackendUrl(`api/v1/regions/${encodeURIComponent(regionId)}/status`);
 }
 
 export async function GET(req: NextRequest, context: { params: Promise<{ regionId: string }> }) {

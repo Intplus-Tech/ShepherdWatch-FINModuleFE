@@ -7,6 +7,7 @@ import {
   REMEMBER_ME_COOKIE,
 } from "@/lib/auth-config";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
+import { getBackendLoginUrl } from "@/lib/backend-auth-url";
 
 type LoginPayload = {
   email: string;
@@ -21,26 +22,6 @@ function normalizeLoginPayload(body: unknown): LoginPayload | null {
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   if (!emailOk || !password.trim()) return null;
   return { email, password };
-}
-
-function getBackendLoginUrl(): string | null {
-  const explicit = String(process.env.BACKEND_LOGIN_URL ?? "").trim().replace(/\/+$/, "");
-  if (explicit) {
-    if (explicit.includes("/api/v1/auth/login")) {
-      return explicit;
-    }
-    if (explicit.includes("/auth/login")) {
-      return explicit.replace(/\/auth\/login$/, "/api/v1/auth/login");
-    }
-    if (explicit.endsWith("/login")) {
-      return explicit.replace(/\/login$/, "/api/v1/auth/login");
-    }
-  }
-
-  const baseRaw = String(process.env.BACKEND_API_URL ?? "").trim();
-  if (!baseRaw) return null;
-  const base = baseRaw.replace(/\/+$/, "").replace(/\/api-docs(?:\/.*)?$/i, "").replace(/\/api\/v1$/i, "");
-  return `${base}/api/v1/auth/login`;
 }
 
 function pickToken(source: unknown, keys: string[]): string {

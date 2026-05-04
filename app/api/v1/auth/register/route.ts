@@ -1,42 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { REMEMBER_ME_COOKIE } from "@/lib/auth-config";
-import { getAuthEndpoint } from "@/lib/backend-auth-url";
+import { getBackendRegisterUrl, getBackendUrl } from "@/lib/backend-auth-url";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 
 const AUTH_REQUEST_TIMEOUT_MS = 30000;
 
 function getBackendRegisterUrls(): string[] {
   const urls: string[] = [];
-  const explicit = process.env.BACKEND_REGISTER_URL?.trim().replace(/\/+$/, "");
-  if (explicit) {
-    urls.push(explicit);
-  }
-
-  const derived = getAuthEndpoint("register");
-  if (derived) {
-    urls.push(derived);
-    if (derived.includes("/api/v1/auth/register")) {
-      urls.push(derived.replace("/api/v1/auth/register", "/api/v1/identity/auth/register"));
-    } else if (derived.includes("/api/v1/identity/auth/register")) {
-      urls.push(derived.replace("/api/v1/identity/auth/register", "/api/v1/auth/register"));
-    }
-  }
-
-  const fallbackBase = process.env.BACKEND_API_URL?.trim();
-  if (fallbackBase) {
-    const normalized = fallbackBase.replace(/\/+$/, "").replace(/\/api-docs(?:\/.*)?$/i, "");
-    if (normalized) {
-      if (normalized.endsWith("/api/v1")) {
-        urls.push(`${normalized}/auth/register`);
-        urls.push(`${normalized}/identity/auth/register`);
-      } else {
-        urls.push(`${normalized}/api/v1/auth/register`);
-        urls.push(`${normalized}/api/v1/identity/auth/register`);
-      }
-      urls.push(`${normalized}/auth/register`);
-    }
-  }
-
+  const primary = getBackendRegisterUrl();
+  if (primary) urls.push(primary);
+  const identity = getBackendUrl("api/v1/identity/auth/register");
+  if (identity) urls.push(identity);
   return Array.from(new Set(urls));
 }
 

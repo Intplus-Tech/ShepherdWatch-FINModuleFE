@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { applyAuthCookies, executeWithRefreshRetry } from "@/lib/backend-refresh";
-
-const BACKEND_URL = process.env.BACKEND_LOGIN_URL || "https://shw-fin-b-c.onrender.com";
+import { getBackendUrl } from "@/lib/backend-auth-url";
 
 export async function PUT(
   request: NextRequest,
@@ -20,8 +19,13 @@ export async function PUT(
       return NextResponse.json({ message: "Status is required" }, { status: 400 });
     }
 
+    const backendUrl = getBackendUrl(`api/v1/core/users/${userId}/status`);
+    if (!backendUrl) {
+      return NextResponse.json({ message: "Backend URL not configured" }, { status: 500 });
+    }
+
     const { res: backendRes, refreshedTokens } = await executeWithRefreshRetry(request, (token) =>
-      fetch(`${BACKEND_URL.replace("/auth/login", "")}/api/v1/core/users/${userId}/status`, {
+      fetch(backendUrl, {
         method: "PUT",
         headers: {
           "Authorization": `Bearer ${token}`,

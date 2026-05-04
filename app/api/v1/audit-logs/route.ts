@@ -1,25 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
+import { getBackendUrl } from "@/lib/backend-auth-url";
 
 function getBackendAuditLogsUrl(): string | null {
-  const baseUrl = process.env.BACKEND_API_URL?.replace(/\/+$/, "");
-  if (baseUrl) {
-    return `${baseUrl}/api/v1/audit-logs`;
-  }
-
-  const loginUrl = process.env.BACKEND_LOGIN_URL;
-  if (!loginUrl) return null;
-
-  if (loginUrl.includes("/auth/login")) {
-    return loginUrl.replace("/auth/login", "/audit-logs");
-  }
-
-  if (loginUrl.endsWith("/login")) {
-    return loginUrl.replace(/\/login$/, "/audit-logs");
-  }
-
-  return null;
+  return getBackendUrl("api/v1/audit-logs");
 }
 
 function buildQuery(searchParams: URLSearchParams): string {

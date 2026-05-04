@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
+import { getBackendUrl } from "@/lib/backend-auth-url";
 
-function getBackendUrl(userId: string) {
-  const loginUrl = process.env.BACKEND_LOGIN_URL;
-  if (!loginUrl) return null;
-  return loginUrl.replace("/auth/login", `/core/users/${userId}/activate`);
+function getBackendUserUrl(userId: string) {
+  return getBackendUrl(`core/users/${userId}/activate`);
 }
 
 export async function PUT(
@@ -27,7 +26,7 @@ export async function PUT(
     );
   }
 
-  const backendUrl = getBackendUrl(params.userId);
+  const backendUrl = getBackendUserUrl(params.userId);
   if (!backendUrl) {
     return applyCors(
       NextResponse.json({ success: false, message: "Backend URL not configured" }, { status: 500 }),

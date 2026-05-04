@@ -8,24 +8,9 @@ import {
   REFRESH_TOKEN_MAX_AGE_SECONDS,
 } from "@/lib/auth-config";
 import { refreshAccessToken } from "@/lib/backend-refresh";
+import { getBackendLoginUrl } from "@/lib/backend-auth-url";
 
 const ACCESS_TOKEN_TTL_MS = ACCESS_TOKEN_MAX_AGE_SECONDS * 1000;
-
-function getBackendLoginUrl(): string | null {
-  const explicit = String(process.env.BACKEND_LOGIN_URL ?? "").trim().replace(/\/+$/, "");
-  if (explicit) {
-    if (explicit.includes("/api/v1/auth/login")) return explicit;
-    if (explicit.includes("/auth/login")) return explicit.replace(/\/auth\/login$/, "/api/v1/auth/login");
-    if (explicit.endsWith("/login")) return explicit.replace(/\/login$/, "/api/v1/auth/login");
-  }
-  const baseRaw = String(process.env.BACKEND_API_URL ?? "").trim();
-  if (!baseRaw) return null;
-  const base = baseRaw
-    .replace(/\/+$/, "")
-    .replace(/\/api-docs(?:\/.*)?$/i, "")
-    .replace(/\/api\/v1$/i, "");
-  return `${base}/api/v1/auth/login`;
-}
 
 function pickToken(source: unknown, keys: string[]): string {
   if (!source || typeof source !== "object") return "";

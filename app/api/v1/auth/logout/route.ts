@@ -1,25 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { BACKEND_REFRESH_TOKEN_COOKIE, BACKEND_TOKEN_COOKIE } from "@/lib/auth-config";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
+import { getBackendUrl } from "@/lib/backend-auth-url";
 
 function getBackendLogoutUrl(): string | null {
-  const baseUrl = process.env.BACKEND_API_URL?.replace(/\/+$/, "");
-  if (baseUrl) {
-    return `${baseUrl}/api/v1/auth/logout`;
-  }
-
-  const loginUrl = process.env.BACKEND_LOGIN_URL;
-  if (!loginUrl) return null;
-
-  if (loginUrl.includes("/auth/login")) {
-    return loginUrl.replace("/auth/login", "/auth/logout");
-  }
-
-  if (loginUrl.endsWith("/login")) {
-    return loginUrl.replace(/\/login$/, "/logout");
-  }
-
-  return null;
+  return getBackendUrl("api/v1/auth/logout");
 }
 
 function parseRefreshTokenBody(body: unknown): string | null {

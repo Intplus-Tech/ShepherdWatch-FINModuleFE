@@ -156,7 +156,6 @@ Create a local `.env` file in the repo root.
 ### Required
 
 ```env
-BACKEND_LOGIN_URL=https://your-backend-domain/api/v1/auth/login
 BACKEND_API_URL=https://your-backend-domain
 JWT_SECRET=replace-with-a-long-random-secret
 ```
@@ -164,6 +163,8 @@ JWT_SECRET=replace-with-a-long-random-secret
 ### Optional
 
 ```env
+# Only set when the backend exposes auth at non-standard paths.
+BACKEND_LOGIN_URL=https://your-backend-domain/api/v1/auth/login
 BACKEND_REGISTER_URL=https://your-backend-domain/api/v1/auth/register
 FRONTEND_ORIGIN=http://localhost:3000,https://your-frontend-domain
 AUTH_ISSUER=shepherdwatch-finmodule
@@ -172,8 +173,8 @@ AUTH_AUDIENCE=shepherdwatch-web
 
 ### Important Notes
 
-- Prefer setting **`BACKEND_LOGIN_URL`** to a full auth login endpoint.
-- `lib/backend-auth-url.ts` derives sibling endpoints (`register`, `verify-email`, `refresh-token`, etc.) from that value.
+- `BACKEND_API_URL` is the canonical backend base URL; all proxy routes derive endpoints from it via `getBackendUrl()` in `lib/backend-auth-url.ts`.
+- `BACKEND_LOGIN_URL` / `BACKEND_REGISTER_URL` are **optional overrides** retained for backward compatibility when the auth endpoints live at non-standard paths.
 - If `BACKEND_API_URL` accidentally includes `/api-docs`, resolver logic strips it.
 - Never commit production secrets.
 
@@ -236,10 +237,10 @@ These are frontend routes consumed by UI components:
 
 ### URL Resolution Strategy
 
-`lib/backend-auth-url.ts`:
-1. If `BACKEND_LOGIN_URL` is present, derive sibling endpoint from it.
-2. Else fallback to sanitized `BACKEND_API_URL`.
-3. Some routes additionally attempt fallback candidates for resiliency.
+`lib/backend-auth-url.ts` exposes `getBackendUrl(path)` which resolves a backend URL by:
+1. Sanitizing `BACKEND_API_URL` (stripping trailing slashes and `/api-docs`).
+2. Joining the requested path onto the sanitized base.
+3. For auth-specific endpoints (`getBackendLoginUrl`, `getBackendRegisterUrl`), preferring `BACKEND_LOGIN_URL` / `BACKEND_REGISTER_URL` overrides when set, otherwise falling back to the sanitized base.
 
 ### Failover Behavior
 
