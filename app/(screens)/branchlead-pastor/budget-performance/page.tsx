@@ -1,8 +1,10 @@
 "use client"
 
+export const dynamic = "force-dynamic"
+
 import BudgetPage from "../budget/page"
 import { useBudgetDetailedPerformance } from "@/components/hooks/useBudgetDetailedPerformance"
-import { useEffect, useMemo } from "react"
+import { Suspense, useEffect, useMemo } from "react"
 import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import {
@@ -16,7 +18,7 @@ import {
   TrendingDown,
 } from "lucide-react"
 
-export default function Page() {
+function PageInner() {
   const searchParams = useSearchParams()
   const selectedBudgetId = searchParams.get("id")
   const { data, loading: bvaLoading, error: bvaError, fetchDetailedPerformance } = useBudgetDetailedPerformance(selectedBudgetId)
@@ -255,5 +257,14 @@ export default function Page() {
         </div>
       </div>
     </div>
+  )
+}
+
+
+export default function Page() {
+  return (
+    <Suspense fallback={null}>
+      <PageInner />
+    </Suspense>
   )
 }

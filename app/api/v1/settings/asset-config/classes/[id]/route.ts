@@ -33,7 +33,7 @@ export async function PUT(req: NextRequest, context: { params: Promise<{ id: str
       )
     }
 
-    const { id } = context.params
+    const { id } = await context.params
     if (!id) {
       return applyCors(
         NextResponse.json({ success: false, message: "Missing class id" }, { status: 400 }),
@@ -123,7 +123,7 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ id: 
       )
     }
 
-    const { id } = context.params
+    const { id } = await context.params
     if (!id) {
       return applyCors(
         NextResponse.json({ success: false, message: "Missing class id" }, { status: 400 }),

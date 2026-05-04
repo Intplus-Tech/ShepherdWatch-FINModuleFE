@@ -49,7 +49,8 @@ export async function GET(
       )
     }
 
-    const backendUrl = buildBackendRoleUrl(params.roleId, req.nextUrl.search)
+    const { roleId } = await params
+    const backendUrl = buildBackendRoleUrl(roleId, req.nextUrl.search)
     const backendResponse = await fetch(backendUrl, {
       method: "GET",
       headers: {
@@ -120,7 +121,8 @@ export async function PUT(
       )
     }
 
-    const backendUrl = buildBackendRoleUrl(params.roleId, "")
+    const { roleId } = await params
+    const backendUrl = buildBackendRoleUrl(roleId, "")
     const body = await req.json().catch(() => null)
 
     const backendResponse = await fetch(backendUrl, {
@@ -200,7 +202,8 @@ export async function PATCH(
       throw new Error("BACKEND_API_URL must use https in production")
     }
 
-    const backendUrl = `${baseUrl.replace(/\/+$/, "")}/api/v1/roles/${params.roleId}/status`
+    const { roleId } = await params
+    const backendUrl = `${baseUrl.replace(/\/+$/, "")}/api/v1/roles/${roleId}/status`
     const body = await req.json().catch(() => null)
 
     const backendResponse = await fetch(backendUrl, {

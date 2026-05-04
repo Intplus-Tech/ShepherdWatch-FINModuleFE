@@ -75,9 +75,9 @@ export default function SignInForm() {
         method: "GET",
         cache: "no-store",
       })
-      const data = await parseApiResponse(res)
+      const data = await parseApiResponse(res) as { message?: string; data?: { validationSkipped?: boolean; exists?: boolean } } | null
       if (!res.ok) {
-        throw new Error((data as { message?: string } | null)?.message || "Unable to validate email.")
+        throw new Error(data?.message || "Unable to validate email.")
       }
 
       if (data?.data?.validationSkipped) {

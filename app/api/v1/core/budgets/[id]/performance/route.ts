@@ -29,7 +29,8 @@ export async function GET(
     const baseUrl = getRequiredEnv("BACKEND_API_URL")
     
     // Bind tightly targeting /api/v1/budgets/{id}/performance
-    const url = `${baseUrl.replace(/\/+$/, "")}/api/v1/budgets/${params.id}/performance`
+    const { id } = await params
+    const url = `${baseUrl.replace(/\/+$/, "")}/api/v1/budgets/${id}/performance`
 
     const backendResponse = await fetch(url, {
       method: "GET",

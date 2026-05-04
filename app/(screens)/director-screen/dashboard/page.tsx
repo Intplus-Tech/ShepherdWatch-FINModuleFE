@@ -440,7 +440,8 @@ export default function Page() {
                 )}
                 {!trendsError && trendData?.series?.length ? (
                   <div className="flex items-end justify-between h-full gap-2">
-                    {trendData.series.slice(0, 12).map((point: Record<string, unknown>, index: number) => {
+                    {trendData.series.slice(0, 12).map((rawPoint, index: number) => {
+                      const point = rawPoint as unknown as Record<string, unknown>
                       const label =
                         (typeof point?.label === "string" && point.label) ||
                         (typeof point?.period === "string" && point.period) ||

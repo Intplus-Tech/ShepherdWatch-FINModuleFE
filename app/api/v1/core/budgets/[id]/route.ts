@@ -31,7 +31,8 @@ export async function GET(
     
     // Explicitly binding params.id safely enforcing standard URL structure limits
     const queryString = searchParams.toString()
-    const url = `${baseUrl.replace(/\/+$/, "")}/api/v1/budgets/${params.id}${queryString ? `?${queryString}` : ""}`
+    const { id } = await params
+    const url = `${baseUrl.replace(/\/+$/, "")}/api/v1/budgets/${id}${queryString ? `?${queryString}` : ""}`
 
     const backendResponse = await fetch(url, {
       method: "GET",
@@ -98,7 +99,8 @@ export async function PATCH(
     }
 
     const baseUrl = getRequiredEnv("BACKEND_API_URL")
-    const url = `${baseUrl.replace(/\/+$/, "")}/api/v1/budgets/${params.id}`
+    const { id } = await params
+    const url = `${baseUrl.replace(/\/+$/, "")}/api/v1/budgets/${id}`
 
     const backendResponse = await fetch(url, {
       method: "PATCH",

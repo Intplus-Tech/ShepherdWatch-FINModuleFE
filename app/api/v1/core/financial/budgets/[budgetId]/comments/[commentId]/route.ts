@@ -46,7 +46,7 @@ export async function DELETE(
       )
     }
 
-    const { budgetId, commentId } = context.params
+    const { budgetId, commentId } = await context.params
     if (!budgetId || !commentId) {
       return applyCors(
         NextResponse.json({ success: false, message: "Budget ID and comment ID are required." }, { status: 400 }),

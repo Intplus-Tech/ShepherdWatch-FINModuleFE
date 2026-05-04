@@ -1,6 +1,8 @@
 "use client"
 
-import React, { useEffect, useState } from "react"
+export const dynamic = "force-dynamic"
+
+import React, { Suspense, useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import BudgetPage from "../budget/page"
 import { X, Info, Paperclip, Send, Trash2 } from "lucide-react"
@@ -32,7 +34,7 @@ function getCsrfToken() {
   return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
 }
 
-export default function CommunicationPage() {
+function CommunicationPageInner() {
   const [message, setMessage] = useState("")
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
@@ -249,5 +251,14 @@ export default function CommunicationPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+
+export default function CommunicationPage() {
+  return (
+    <Suspense fallback={null}>
+      <CommunicationPageInner />
+    </Suspense>
   )
 }

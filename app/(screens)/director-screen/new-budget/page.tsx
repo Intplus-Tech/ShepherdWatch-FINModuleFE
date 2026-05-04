@@ -1,6 +1,8 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+export const dynamic = "force-dynamic"
+
+import { Suspense, useEffect, useMemo, useState } from "react"
 import Image from "next/image"
 import { useSearchParams } from "next/navigation"
 import SidebarNav from "@/components/navigation/SidebarNav"
@@ -57,7 +59,7 @@ function makeLineItem(): LineItemForm {
   }
 }
 
-export default function Page() {
+function PageInner() {
   const searchParams = useSearchParams()
   const [templateName, setTemplateName] = useState("")
   const [description, setDescription] = useState("")
@@ -586,5 +588,14 @@ export default function Page() {
         </div>
       </main>
     </div>
+  )
+}
+
+
+export default function Page() {
+  return (
+    <Suspense fallback={null}>
+      <PageInner />
+    </Suspense>
   )
 }

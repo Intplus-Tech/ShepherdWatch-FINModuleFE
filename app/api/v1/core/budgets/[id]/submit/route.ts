@@ -26,7 +26,8 @@ export async function PATCH(
     const baseUrl = getRequiredEnv("BACKEND_API_URL")
     
     // Explicit binding to /api/v1/budgets/{id}/submit
-    const url = `${baseUrl.replace(/\/+$/, "")}/api/v1/budgets/${params.id}/submit`
+    const { id } = await params
+    const url = `${baseUrl.replace(/\/+$/, "")}/api/v1/budgets/${id}/submit`
 
     const backendResponse = await fetch(url, {
       method: "PATCH",

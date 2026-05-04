@@ -26,7 +26,7 @@ export async function PUT(
     );
   }
 
-  const backendUrl = getBackendUserUrl(params.userId);
+  const backendUrl = getBackendUserUrl((await params).userId);
   if (!backendUrl) {
     return applyCors(
       NextResponse.json({ success: false, message: "Backend URL not configured" }, { status: 500 }),

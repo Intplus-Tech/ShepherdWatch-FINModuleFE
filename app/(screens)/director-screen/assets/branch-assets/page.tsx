@@ -1,5 +1,7 @@
 "use client"
 
+export const dynamic = "force-dynamic"
+
 import React, { useState, useEffect, Suspense } from "react"
 import Image from "next/image"
 import Link from "next/link"
@@ -103,7 +105,7 @@ function ModalContainer() {
   )
 }
 
-export default function Page() {
+function PageInner() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const { user, logout } = useAuth()
   const router = useRouter()
@@ -463,5 +465,14 @@ export default function Page() {
         <ModalContainer />
       </Suspense>
     </div>
+  )
+}
+
+
+export default function Page() {
+  return (
+    <Suspense fallback={null}>
+      <PageInner />
+    </Suspense>
   )
 }

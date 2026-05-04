@@ -36,7 +36,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ budgetI
       )
     }
 
-    const { budgetId } = context.params
+    const { budgetId } = await context.params
     if (!budgetId) {
       return applyCors(
         NextResponse.json({ success: false, message: "Budget ID is required." }, { status: 400 }),
@@ -104,7 +104,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ budget
       )
     }
 
-    const { budgetId } = context.params
+    const { budgetId } = await context.params
     if (!budgetId) {
       return applyCors(
         NextResponse.json({ success: false, message: "Budget ID is required." }, { status: 400 }),

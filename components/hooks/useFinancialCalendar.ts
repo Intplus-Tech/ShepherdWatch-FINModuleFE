@@ -55,20 +55,23 @@ export function useFinancialCalendar(options: Options = {}) {
           throw new Error(payload?.message ?? "Unable to fetch financial calendar.")
         }
 
-        const raw = Array.isArray(payload?.data)
+        const raw: unknown[] = Array.isArray(payload?.data)
           ? payload.data
           : Array.isArray(payload)
             ? payload
             : []
 
-        const mapped = raw.map((item: Record<string, unknown>) => ({
-          type: String(item?.type ?? "event"),
-          date: String(item?.date ?? ""),
-          title: String(item?.title ?? "Financial Event"),
-          amount: toNumber(item?.amount),
-          status: String(item?.status ?? "pending"),
-          resourceId: String(item?.resourceId ?? ""),
-        }))
+        const mapped: FinancialCalendarEvent[] = raw.map((rawItem) => {
+          const item = (rawItem ?? {}) as Record<string, unknown>
+          return {
+            type: String(item?.type ?? "event"),
+            date: String(item?.date ?? ""),
+            title: String(item?.title ?? "Financial Event"),
+            amount: toNumber(item?.amount),
+            status: String(item?.status ?? "pending"),
+            resourceId: String(item?.resourceId ?? ""),
+          }
+        })
 
         if (isMounted) {
           setEvents(

@@ -16,7 +16,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
     );
   }
 
-  const { id } = context.params;
+  const { id } = await context.params;
   const backendUrl = getBackendTemplateUrl(id);
   if (!backendUrl) {
     return applyCors(
@@ -75,7 +75,7 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ id: 
     );
   }
 
-  const { id } = context.params;
+  const { id } = await context.params;
   const backendUrl = getBackendTemplateUrl(id);
   if (!backendUrl) {
     return applyCors(

@@ -52,7 +52,7 @@ export async function POST(
       )
     }
 
-    const { budgetEntryId } = context.params
+    const { budgetEntryId } = await context.params
     if (!budgetEntryId) {
       return applyCors(
         NextResponse.json({ success: false, message: "Budget entry ID required" }, { status: 400 }),

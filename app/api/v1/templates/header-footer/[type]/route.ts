@@ -16,7 +16,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ type: s
     );
   }
 
-  const { type } = context.params;
+  const { type } = await context.params;
   const backendUrl = getBackendHeaderFooterTypeUrl(type);
   if (!backendUrl) {
     return applyCors(

@@ -52,7 +52,7 @@ export async function POST(
       )
     }
 
-    const { requisitionId } = context.params
+    const { requisitionId } = await context.params
     if (!requisitionId) {
       return applyCors(
         NextResponse.json({ success: false, message: "Requisition ID required" }, { status: 400 }),
