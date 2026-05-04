@@ -6,6 +6,11 @@ export interface IncomeExpenseTrendItem {
   expenses: number
 }
 
+export interface IncomeExpenseTrendData {
+  series: IncomeExpenseTrendItem[]
+  trendDirection?: string
+}
+
 interface UseIncomeExpenseTrendProps {
   branchId?: string
   startDate?: string
@@ -15,7 +20,7 @@ interface UseIncomeExpenseTrendProps {
 export function useIncomeExpenseTrend(initialProps?: UseIncomeExpenseTrendProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [trendData, setTrendData] = useState<IncomeExpenseTrendItem[]>([])
+  const [trendData, setTrendData] = useState<IncomeExpenseTrendData | null>(null)
 
   const fetchTrend = useCallback(
     async (props: UseIncomeExpenseTrendProps = {}) => {
@@ -36,8 +41,12 @@ export function useIncomeExpenseTrend(initialProps?: UseIncomeExpenseTrendProps)
         }
         
         const series = Array.isArray(data?.data) ? data.data : []
-        setTrendData(series as IncomeExpenseTrendItem[])
-        return series as IncomeExpenseTrendItem[]
+        const result: IncomeExpenseTrendData = {
+          series: series as IncomeExpenseTrendItem[],
+          trendDirection: typeof data?.trendDirection === "string" ? data.trendDirection : undefined,
+        }
+        setTrendData(result)
+        return result
       } catch (err: any) {
         setError(err.message || "An error occurred fetching trend data")
         throw err

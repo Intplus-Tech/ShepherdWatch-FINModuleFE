@@ -332,14 +332,14 @@ export default function Page() {
                         <td className="px-6 py-4 font-medium text-[#111827]">{row.name}</td>
                         <td className="px-6 py-3">
                           <Dropdown 
-                            value={row.defaultDepreciationMethod || row.depreciationMethod || "straight_line"} 
+                            value={row.defaultDepreciationMethod || "straight_line"} 
                             options={methodOptions} 
                             onChange={() => {}} 
                             isOpen={openDropdownId === (row._id || row.name)}
                             setIsOpen={(open) => setOpenDropdownId(open ? (row._id || row.name || null) : null)}
                           />
                         </td>
-                        <td className="px-6 py-4 font-medium text-[#4B5563]">{row.defaultUsefulLifeYears || row.usefulLifeYears || "N/A"}</td>
+                        <td className="px-6 py-4 font-medium text-[#4B5563]">{row.defaultUsefulLifeYears || "N/A"}</td>
                         <td className="px-6 py-4 font-medium text-[#4B5563]">
                           {(row.residualValuePercent ?? row.defaultResidualValuePercent ?? 0)}%
                         </td>
