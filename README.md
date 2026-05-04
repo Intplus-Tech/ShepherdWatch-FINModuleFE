@@ -39,7 +39,7 @@ This app provides:
 - **Forms & Validation:** react-hook-form + zod
 - **Auth token handling:** httpOnly cookies + backend JWT/refresh tokens
 - **Linting:** ESLint 9
-- **Containerization:** Multi-stage Docker build (`node:20-alpine`)
+- **Deployment:** Vercel (managed Next.js hosting)
 
 ---
 
@@ -337,24 +337,12 @@ npm run build
 
 ### Vercel
 
-`vercel.json`:
+This project deploys to Vercel as a native Next.js app. Configuration in `vercel.json`:
 - install: `npm ci`
 - build: `npm run build`
 - output: `.next`
 
-### Docker
-
-`Dockerfile` uses multi-stage build:
-1. Install deps
-2. Build Next.js with standalone output
-3. Run minimal runtime image with non-root user
-
-Run locally:
-
-```bash
-docker build -t shepherdwatch-finmodule-fe .
-docker run -p 3000:3000 --env-file .env shepherdwatch-finmodule-fe
-```
+Push to the configured branch (e.g. `main`) and Vercel will build and deploy automatically. Set required environment variables (see `.env.example`) in the Vercel project settings.
 
 ---
 
