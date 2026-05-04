@@ -16,6 +16,14 @@ export type AuthUser = {
     id?: string;
     name?: string;
   };
+  branchId?: string;
+  branch?: {
+    id?: string;
+    name?: string;
+  };
+  avatar?: string;
+  phone?: string;
+  phoneNumber?: string;
 };
 
 type AuthContextValue = {
