@@ -76,20 +76,25 @@ export default function NewRequisitionPage() {
     [user]
   )
   const branchId = useMemo(
-    () =>
-      String(
-        (user as unknown as BranchIdentity)?.branchId &&
-          typeof (user as unknown as BranchIdentity).branchId === "object"
-          ? (user as unknown as BranchIdentity).branchId?._id ??
-            (user as unknown as BranchIdentity).branchId?.id ??
-            (user as unknown as BranchIdentity).tenantId ??
-            (user as unknown as BranchIdentity).tenant?.id ??
+    () => {
+      const identity = user as unknown as BranchIdentity | undefined
+      const rawBranchId = identity?.branchId
+      if (rawBranchId && typeof rawBranchId === "object") {
+        return String(
+          rawBranchId._id ??
+            rawBranchId.id ??
+            identity?.tenantId ??
+            identity?.tenant?.id ??
             ""
-          : (user as unknown as BranchIdentity)?.branchId ??
-            (user as unknown as BranchIdentity)?.tenantId ??
-            (user as unknown as BranchIdentity)?.tenant?.id ??
+        )
+      }
+      return String(
+        rawBranchId ??
+          identity?.tenantId ??
+          identity?.tenant?.id ??
           ""
-      ),
+      )
+    },
     [user]
   )
 

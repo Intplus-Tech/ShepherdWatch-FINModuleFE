@@ -147,7 +147,7 @@ export default function RequisitionsHub() {
                     }`
                   : reason || "Update recorded.",
               timeLabel: timestamp
-                ? new Date(timestamp).toLocaleString()
+                ? new Date(timestamp as string | number | Date).toLocaleString()
                 : "—",
               tone,
             }
