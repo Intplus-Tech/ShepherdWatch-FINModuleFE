@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import { Inter, Geist_Mono, Public_Sans } from "next/font/google";
-// @ts-expect-error global CSS import without type declarations
 import "./globals.css";
 import { AuthProvider } from "@/components/auth/AuthProvider";
 import { ToastProvider } from "@/components/ui/toast";
 import { ReactQueryProvider } from "@/components/providers/ReactQueryProvider";
+import { SessionProviderWrapper } from "@/components/providers/SessionProviderWrapper";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -34,11 +34,13 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${publicSans.className} antialiased`}>
-        <ReactQueryProvider>
-          <AuthProvider>
-          <ToastProvider>{children}</ToastProvider>
-        </AuthProvider>
-        </ReactQueryProvider>
+        <SessionProviderWrapper>
+          <ReactQueryProvider>
+            <AuthProvider>
+              <ToastProvider>{children}</ToastProvider>
+            </AuthProvider>
+          </ReactQueryProvider>
+        </SessionProviderWrapper>
       </body>
     </html>
   );
