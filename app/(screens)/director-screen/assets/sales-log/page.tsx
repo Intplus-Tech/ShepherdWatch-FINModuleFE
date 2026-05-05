@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 "use client"
 
 import React, { useState, useEffect, Suspense } from "react"
@@ -90,7 +91,7 @@ function ModalContainer({ onSuccess }: { onSuccess: () => void }) {
       try {
         setLoading(true)
         setErrorMessage(null)
-        const res = await fetch(`/api/v1/core/financial/fixed-assets/${assetId}`, {
+        const res = await fetch(`${API_V1}/financial/fixed-assets/${assetId}`, {
           method: "GET",
           credentials: "include",
         })
@@ -153,7 +154,7 @@ function ModalContainer({ onSuccess }: { onSuccess: () => void }) {
 
       let res: Response
       if (mode === "edit" && assetId) {
-        res = await fetch(`/api/v1/core/financial/fixed-assets/${assetId}`, {
+        res = await fetch(`${API_V1}/financial/fixed-assets/${assetId}`, {
           method: "PATCH",
           credentials: "include",
           headers: {
@@ -163,7 +164,7 @@ function ModalContainer({ onSuccess }: { onSuccess: () => void }) {
           body: JSON.stringify(body),
         })
       } else if (assetId) {
-        res = await fetch(`/api/v1/core/financial/fixed-assets/${assetId}/dispose`, {
+        res = await fetch(`${API_V1}/financial/fixed-assets/${assetId}/dispose`, {
           method: "POST",
           credentials: "include",
           headers: {
@@ -200,7 +201,7 @@ function ModalContainer({ onSuccess }: { onSuccess: () => void }) {
       setDeleting(true)
       setErrorMessage(null)
       const csrfToken = getCsrfToken()
-      const res = await fetch(`/api/v1/core/financial/fixed-assets/${assetId}`, {
+      const res = await fetch(`${API_V1}/financial/fixed-assets/${assetId}`, {
         method: "DELETE",
         credentials: "include",
         headers: {
@@ -275,7 +276,7 @@ function PageInner() {
       setLoading(true)
       setError(null)
 
-      const response = await fetch(`/api/v1/core/financial/fixed-assets`, {
+      const response = await fetch(`${API_V1}/financial/fixed-assets`, {
         method: "GET",
         credentials: "include",
       })
@@ -349,7 +350,7 @@ function PageInner() {
     try {
       setDeletingId(row.id)
       const csrfToken = getCsrfToken()
-      const res = await fetch(`/api/v1/core/financial/fixed-assets/${row.id}`, {
+      const res = await fetch(`${API_V1}/financial/fixed-assets/${row.id}`, {
         method: "DELETE",
         credentials: "include",
         headers: { "X-CSRF-Token": csrfToken },

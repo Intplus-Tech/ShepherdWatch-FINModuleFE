@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 "use client"
 
 import { useEffect, useState } from "react"
@@ -147,7 +148,7 @@ export default function Page() {
 
     setSaving(true)
     try {
-      const res = await fetch("/api/v1/settings/statutory-config", {
+      const res = await fetch(`${API_V1}/settings/statutory-config`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

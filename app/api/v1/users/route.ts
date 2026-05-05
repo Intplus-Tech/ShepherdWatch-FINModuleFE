@@ -1,10 +1,11 @@
+import { API_V1 } from "@/lib/api";
 import { NextRequest, NextResponse } from "next/server";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 import { applyAuthCookies, executeWithRefreshRetry } from "@/lib/backend-refresh";
 import { getBackendUrl } from "@/lib/backend-auth-url";
 
 function getBackendUserUrl() {
-  return getBackendUrl("api/v1/users");
+  return getBackendUrl(`${API_V1}/users`);
 }
 
 export async function GET(req: NextRequest) {

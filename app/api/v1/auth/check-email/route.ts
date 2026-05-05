@@ -1,10 +1,11 @@
+import { API_V1 } from "@/lib/api";
 import { NextRequest, NextResponse } from "next/server";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 import { getBackendUrl } from "@/lib/backend-auth-url";
 
 function getBackendCheckEmailUrls(): string[] {
   const urls = [
-    getBackendUrl("api/v1/auth/check-email"),
+    getBackendUrl(`${API_V1}/auth/check-email`),
     getBackendUrl("auth/check-email"),
   ].filter((u): u is string => Boolean(u));
   return Array.from(new Set(urls));

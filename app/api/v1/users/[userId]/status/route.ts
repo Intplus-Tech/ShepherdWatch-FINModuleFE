@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { NextRequest, NextResponse } from "next/server";
 import { applyAuthCookies, executeWithRefreshRetry } from "@/lib/backend-refresh";
 import { getBackendUrl } from "@/lib/backend-auth-url";
@@ -35,7 +36,7 @@ export async function PUT(
       );
     }
 
-    const backendUrl = getBackendUrl(`api/v1/users/${userId}/${action}`);
+    const backendUrl = getBackendUrl(`${API_V1}/users/${userId}/${action}`);
     if (!backendUrl) {
       return NextResponse.json({ message: "Backend URL not configured" }, { status: 500 });
     }

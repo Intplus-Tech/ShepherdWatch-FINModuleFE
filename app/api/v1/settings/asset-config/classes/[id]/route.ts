@@ -2,13 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config"
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors"
 
-function getRequiredEnv(name: "BACKEND_API_URL"): string {
-  const value = process.env[name]
-  if (!value) {
-    throw new Error(`${name} is not configured`)
-  }
-  return value
-}
+import { getBackendApiUrl } from "@/lib/env"
+
 
 export async function PUT(req: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
@@ -52,13 +47,10 @@ export async function PUT(req: NextRequest, context: { params: Promise<{ id: str
       )
     }
 
-    const baseUrl = getRequiredEnv("BACKEND_API_URL")
-    if (process.env.NODE_ENV === "production" && baseUrl.startsWith("http://")) {
-      throw new Error("BACKEND_API_URL must use https in production")
-    }
+    const baseUrl = getBackendApiUrl();
 
     const url = new URL(
-      `${baseUrl.replace(/\/+$/, "")}/api/v1/settings/asset-config/classes/${id}`
+      `${baseUrl}/settings/asset-config/classes/${id}`
     )
 
     const backendResponse = await fetch(url.toString(), {
@@ -131,13 +123,10 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ id: 
       )
     }
 
-    const baseUrl = getRequiredEnv("BACKEND_API_URL")
-    if (process.env.NODE_ENV === "production" && baseUrl.startsWith("http://")) {
-      throw new Error("BACKEND_API_URL must use https in production")
-    }
+    const baseUrl = getBackendApiUrl();
 
     const url = new URL(
-      `${baseUrl.replace(/\/+$/, "")}/api/v1/settings/asset-config/classes/${id}`
+      `${baseUrl}/settings/asset-config/classes/${id}`
     )
 
     const backendResponse = await fetch(url.toString(), {

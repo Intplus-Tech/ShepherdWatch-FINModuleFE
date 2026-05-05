@@ -1,10 +1,11 @@
+import { API_V1 } from "@/lib/api";
 import { NextRequest, NextResponse } from "next/server";
 import { BACKEND_REFRESH_TOKEN_COOKIE, BACKEND_TOKEN_COOKIE } from "@/lib/auth-config";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 import { getBackendUrl } from "@/lib/backend-auth-url";
 
 function getBackendLogoutUrl(): string | null {
-  return getBackendUrl("api/v1/auth/logout");
+  return getBackendUrl(`${API_V1}/auth/logout`);
 }
 
 function parseRefreshTokenBody(body: unknown): string | null {

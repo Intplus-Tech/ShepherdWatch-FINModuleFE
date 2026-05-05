@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 "use client"
 
 import React, { useEffect, useMemo, useState } from "react"
@@ -122,7 +123,7 @@ export default function LogisticsRepairsPage() {
           order: "asc",
         })
 
-        const response = await fetch(`/api/v1/maintenance?${params.toString()}`, {
+        const response = await fetch(`${API_V1}/maintenance?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         })
@@ -190,7 +191,7 @@ export default function LogisticsRepairsPage() {
           endDate: formatDateParam(currentMonthEnd),
         })
 
-        const response = await fetch(`/api/v1/maintenance/schedule?${params.toString()}`, {
+        const response = await fetch(`${API_V1}/maintenance/schedule?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         })
@@ -435,7 +436,7 @@ export default function LogisticsRepairsPage() {
       if (completeForm.cost) payload.cost = Number(completeForm.cost)
       if (completeForm.notes) payload.notes = completeForm.notes
 
-      const response = await fetch(`/api/v1/maintenance/${recordId}/complete`, {
+      const response = await fetch(`${API_V1}/maintenance/${recordId}/complete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -476,7 +477,7 @@ export default function LogisticsRepairsPage() {
         throw new Error("Maintenance record ID is missing.")
       }
 
-      const response = await fetch(`/api/v1/maintenance/${recordId}`, {
+      const response = await fetch(`${API_V1}/maintenance/${recordId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

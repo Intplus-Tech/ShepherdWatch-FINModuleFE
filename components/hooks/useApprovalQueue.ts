@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { useState, useCallback } from "react"
 
 export interface ApprovalQueueStatus {
@@ -32,7 +33,7 @@ export function useApprovalQueue(initialProps?: UseApprovalQueueProps) {
         const qs = new URLSearchParams()
         if (mergedProps.branchId) qs.set("branchId", mergedProps.branchId)
 
-        const res = await fetch(`/api/v1/core/dashboard/approval-queue?${qs.toString()}`)
+        const res = await fetch(`${API_V1}/dashboard/approval-queue?${qs.toString()}`)
         const payload = await res.json().catch(() => null)
         
         if (!res.ok) {

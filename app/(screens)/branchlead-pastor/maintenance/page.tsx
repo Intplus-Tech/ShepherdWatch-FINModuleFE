@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 "use client"
 
 import Image from "next/image"
@@ -89,7 +90,7 @@ export default function MaintenanceManagementPage() {
 
     try {
       const csrfToken = getCsrfToken()
-      const response = await fetch(`/api/v1/core/financial/maintenance-tasks/${taskId}`, {
+      const response = await fetch(`${API_V1}/financial/maintenance-tasks/${taskId}`, {
         method: "DELETE",
         headers: { "x-csrf-token": csrfToken },
         credentials: "include",
@@ -134,7 +135,7 @@ export default function MaintenanceManagementPage() {
           limit: "50",
         })
 
-        const response = await fetch(`/api/v1/maintenance/history?${params.toString()}`, {
+        const response = await fetch(`${API_V1}/maintenance/history?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         })
@@ -192,7 +193,7 @@ export default function MaintenanceManagementPage() {
         setAlertsError(null)
         const params = new URLSearchParams({ branchId })
 
-        const response = await fetch(`/api/v1/maintenance/alerts?${params.toString()}`, {
+        const response = await fetch(`${API_V1}/maintenance/alerts?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         })
@@ -318,7 +319,7 @@ export default function MaintenanceManagementPage() {
           endDate: formatDateParam(end),
         })
 
-        const response = await fetch(`/api/v1/maintenance/schedule?${params.toString()}`, {
+        const response = await fetch(`${API_V1}/maintenance/schedule?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         })
@@ -446,7 +447,7 @@ export default function MaintenanceManagementPage() {
     setVerifyError(null)
     setVerifyingId(recordId)
     try {
-      const response = await fetch(`/api/v1/maintenance/${recordId}/verify`, {
+      const response = await fetch(`${API_V1}/maintenance/${recordId}/verify`, {
         method: "POST",
         credentials: "include",
       })

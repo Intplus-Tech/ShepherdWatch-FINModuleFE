@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 "use client"
 
 import { Suspense, useEffect, useMemo, useState } from "react"
@@ -112,7 +113,7 @@ function PageInner() {
       setCoaLoading(true)
       setCoaError(null)
       try {
-        const response = await fetch("/api/v1/core/financial/coa?page=1&limit=200", {
+        const response = await fetch(`${API_V1}/financial/coa?page=1&limit=200`, {
           method: "GET",
           credentials: "include",
         })
@@ -195,7 +196,7 @@ function PageInner() {
 
     setLoadingTemplate(true)
     try {
-      const response = await fetch(`/api/v1/core/financial/budget-templates/${encodeURIComponent(id)}`, {
+      const response = await fetch(`${API_V1}/financial/budget-templates/${encodeURIComponent(id)}`, {
         method: "GET",
         credentials: "include",
       })
@@ -251,8 +252,8 @@ function PageInner() {
       const isUpdate = Boolean(activeTemplateId)
       const response = await fetch(
         isUpdate
-          ? `/api/v1/core/financial/budget-templates/${encodeURIComponent(activeTemplateId ?? "")}`
-          : "/api/v1/core/financial/budget-templates",
+          ? `${API_V1}/financial/budget-templates/${encodeURIComponent(activeTemplateId ?? "")}`
+          : `${API_V1}/financial/budget-templates`,
         {
         method: isUpdate ? "PATCH" : "POST",
         headers: {
@@ -300,7 +301,7 @@ function PageInner() {
 
     setDeleting(true)
     try {
-      const response = await fetch(`/api/v1/core/financial/budget-templates/${encodeURIComponent(id)}`, {
+      const response = await fetch(`${API_V1}/financial/budget-templates/${encodeURIComponent(id)}`, {
         method: "DELETE",
         headers: {
           "x-csrf-token": getCsrfToken(),

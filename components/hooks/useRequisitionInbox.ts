@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { useEffect, useMemo, useState } from "react"
 import { useAuth } from "@/components/auth/AuthProvider"
 import { RequisitionDocument, RequisitionItem } from "@/components/hooks/useRequisitions"
@@ -83,7 +84,7 @@ export function useRequisitionInbox(options: UseRequisitionInboxOptions = {}) {
         params.set("limit", String(options.limit ?? 20))
         if (branchId) params.set("branchId", branchId)
 
-        const response = await fetch(`/api/v1/core/financial/requisitions/inbox?${params.toString()}`, {
+        const response = await fetch(`${API_V1}/financial/requisitions/inbox?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         })

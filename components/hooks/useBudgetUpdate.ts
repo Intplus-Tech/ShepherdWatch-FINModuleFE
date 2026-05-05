@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { useCallback, useState } from "react"
 import { useAuth } from "@/components/auth/AuthProvider"
 
@@ -33,7 +34,7 @@ export function useBudgetUpdate() {
     setSuccess(false)
     
     try {
-      const response = await fetch(`/api/v1/core/financial/budgets/${id}`, {
+      const response = await fetch(`${API_V1}/financial/budgets/${id}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",

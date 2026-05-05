@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 "use client"
 
 import React, { useEffect, useMemo, useState } from "react"
@@ -79,7 +80,7 @@ export default function Page() {
         setScheduleLoading(true)
         setScheduleError(null)
 
-        const assetsResponse = await fetch("/api/v1/core/financial/fixed-assets", {
+        const assetsResponse = await fetch(`${API_V1}/financial/fixed-assets`, {
           method: "GET",
           credentials: "include",
         })
@@ -101,7 +102,7 @@ export default function Page() {
         }
 
         const scheduleResponse = await fetch(
-          `/api/v1/core/financial/fixed-assets/${assetId}/depreciation-schedule?granularity=yearly&periods=10`,
+          `${API_V1}/financial/fixed-assets/${assetId}/depreciation-schedule?granularity=yearly&periods=10`,
           {
             method: "GET",
             credentials: "include",

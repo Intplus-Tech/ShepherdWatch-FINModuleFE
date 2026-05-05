@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { useEffect, useState } from "react"
 
 export type StatutoryConfig = {
@@ -26,7 +27,7 @@ export function useStatutoryConfig() {
       setError(null)
 
       try {
-        const response = await fetch("/api/v1/settings/statutory-config", {
+        const response = await fetch(`${API_V1}/settings/statutory-config`, {
           method: "GET",
           credentials: "include",
         })

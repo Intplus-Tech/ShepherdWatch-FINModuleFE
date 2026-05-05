@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { useEffect, useState } from "react"
 
 export type AssetClassConfig = {
@@ -38,7 +39,7 @@ export function useAssetConfig() {
       setError(null)
 
       try {
-        const response = await fetch("/api/v1/settings/asset-config", {
+        const response = await fetch(`${API_V1}/settings/asset-config`, {
           method: "GET",
           credentials: "include",
         })

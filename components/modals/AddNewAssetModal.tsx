@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 "use client"
 
 import React, { useState, useRef } from "react"
@@ -24,7 +25,7 @@ export default function AddNewAssetModal({ isOpen, onClose }: AddNewAssetModalPr
       formData.append("file", file)
       formData.append("folder", "assets")
       
-      const response = await axios.post("/api/v1/core/file-uploads", formData, {
+      const response = await axios.post(`${API_V1}/file-uploads`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
         withCredentials: true,
       })

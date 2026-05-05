@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 "use client"
 
 import { useState } from "react"
@@ -46,7 +47,7 @@ export default function VerifyEmailForm() {
     setSuccessMessage(null)
     setResendMessage(null)
     try {
-      const res = await fetch("/api/v1/auth/verify-email", {
+      const res = await fetch(`${API_V1}/auth/verify-email`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(values),

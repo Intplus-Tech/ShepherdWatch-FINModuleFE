@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthEndpoint } from "@/lib/backend-auth-url";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
@@ -8,10 +9,10 @@ function getBackendVerifyEmailUrls(): string[] {
   const verifyUrl = getAuthEndpoint("verify-email");
   if (verifyUrl) {
     urls.push(verifyUrl);
-    if (verifyUrl.includes("/api/v1/auth/verify-email")) {
-      urls.push(verifyUrl.replace("/api/v1/auth/verify-email", "/api/v1/identity/auth/verify-email"));
-    } else if (verifyUrl.includes("/api/v1/identity/auth/verify-email")) {
-      urls.push(verifyUrl.replace("/api/v1/identity/auth/verify-email", "/api/v1/auth/verify-email"));
+    if (verifyUrl.includes(`${API_V1}/auth/verify-email`)) {
+      urls.push(verifyUrl.replace(`${API_V1}/auth/verify-email`, `${API_V1}/identity/auth/verify-email`));
+    } else if (verifyUrl.includes(`${API_V1}/identity/auth/verify-email`)) {
+      urls.push(verifyUrl.replace(`${API_V1}/identity/auth/verify-email`, `${API_V1}/auth/verify-email`));
     }
   }
 
@@ -19,12 +20,12 @@ function getBackendVerifyEmailUrls(): string[] {
   if (fallbackBase) {
     const normalized = fallbackBase.replace(/\/+$/, "").replace(/\/api-docs(?:\/.*)?$/i, "");
     if (normalized) {
-      if (normalized.endsWith("/api/v1")) {
+      if (normalized.endsWith(`${API_V1}`)) {
         urls.push(`${normalized}/auth/verify-email`);
         urls.push(`${normalized}/identity/auth/verify-email`);
       } else {
-        urls.push(`${normalized}/api/v1/auth/verify-email`);
-        urls.push(`${normalized}/api/v1/identity/auth/verify-email`);
+        urls.push(`${normalized}${API_V1}/auth/verify-email`);
+        urls.push(`${normalized}${API_V1}/identity/auth/verify-email`);
       }
     }
   }

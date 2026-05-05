@@ -1,9 +1,10 @@
+import { API_V1 } from "@/lib/api";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import axios, { AxiosError } from "axios";
 
 async function tryRefreshSession(): Promise<boolean> {
   try {
-    const res = await fetch("/api/v1/auth/refresh-token", {
+    const res = await fetch(`${API_V1}/auth/refresh-token`, {
       method: "POST",
       credentials: "include",
     });
@@ -96,7 +97,7 @@ export function useAssetOverview(options: { enabled?: boolean; branchId?: string
     placeholderData: keepPreviousData,
     queryFn: async () => {
       const res = await requestWithAuthRecovery(() =>
-        axios.get("/api/v1/assets/overview", {
+        axios.get(`${API_V1}/assets/overview`, {
           withCredentials: true,
           params: branchId ? { branchId } : undefined,
         })
@@ -128,7 +129,7 @@ export function useDepreciationAnalysis(options: { enabled?: boolean; branchId?:
     placeholderData: keepPreviousData,
     queryFn: async () => {
       const res = await requestWithAuthRecovery(() =>
-        axios.get("/api/v1/assets/depreciation-analysis", {
+        axios.get(`${API_V1}/assets/depreciation-analysis`, {
           withCredentials: true,
           params: branchId ? { branchId } : undefined,
         })

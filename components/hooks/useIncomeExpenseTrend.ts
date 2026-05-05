@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { useState, useCallback } from "react"
 
 export interface IncomeExpenseTrendItem {
@@ -33,7 +34,7 @@ export function useIncomeExpenseTrend(initialProps?: UseIncomeExpenseTrendProps)
         if (mergedProps.startDate) qs.set("startDate", mergedProps.startDate)
         if (mergedProps.endDate) qs.set("endDate", mergedProps.endDate)
 
-        const res = await fetch(`/api/v1/core/dashboard/income-expense-trend?${qs.toString()}`)
+        const res = await fetch(`${API_V1}/dashboard/income-expense-trend?${qs.toString()}`)
         const data = await res.json().catch(() => null)
         
         if (!res.ok) {

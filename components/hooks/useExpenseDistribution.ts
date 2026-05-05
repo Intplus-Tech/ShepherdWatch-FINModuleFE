@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { useEffect, useMemo, useState } from "react"
 import { useAuth } from "@/components/auth/AuthProvider"
 
@@ -44,8 +45,8 @@ export function useExpenseDistribution(options: Options = {}) {
         if (options.fiscalYear) params.set("fiscalYear", String(options.fiscalYear))
         const query = params.toString()
         const url = query
-          ? `/api/v1/core/dashboard/expense-distribution?${query}`
-          : "/api/v1/core/dashboard/expense-distribution"
+          ? `${API_V1}/dashboard/expense-distribution?${query}`
+          : `${API_V1}/dashboard/expense-distribution`
         const response = await fetch(url, { method: "GET", credentials: "include" })
         const payload = await response.json().catch(() => null)
         if (!response.ok) {

@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 function sanitizeBaseUrl(raw?: string | null): string | null {
   const value = String(raw ?? "").trim();
   if (!value) return null;
@@ -9,7 +10,7 @@ function sanitizeBaseUrl(raw?: string | null): string | null {
 }
 
 /**
- * Resolve the backend origin (no trailing slash, no /api/v1, no /api-docs).
+ * Resolve the backend origin (no trailing slash, no ${API_V1}, no /api-docs).
  * Prefers BACKEND_API_URL, falls back to deriving it from BACKEND_LOGIN_URL
  * for backward compatibility with older configs.
  */
@@ -48,11 +49,11 @@ export function getBackendUrl(path: string): string | null {
 export function getBackendLoginUrl(): string | null {
   const explicit = String(process.env.BACKEND_LOGIN_URL ?? "").trim().replace(/\/+$/, "");
   if (explicit) {
-    if (explicit.includes("/api/v1/auth/login")) return explicit;
-    if (explicit.includes("/auth/login")) return explicit.replace(/\/auth\/login$/, "/api/v1/auth/login");
-    if (explicit.endsWith("/login")) return explicit.replace(/\/login$/, "/api/v1/auth/login");
+    if (explicit.includes(`${API_V1}/auth/login`)) return explicit;
+    if (explicit.includes("/auth/login")) return explicit.replace(/\/auth\/login$/, `${API_V1}/auth/login`);
+    if (explicit.endsWith("/login")) return explicit.replace(/\/login$/, `${API_V1}/auth/login`);
   }
-  return getBackendUrl("api/v1/auth/login");
+  return getBackendUrl(`${API_V1}/auth/login`);
 }
 
 /**
@@ -62,7 +63,7 @@ export function getBackendLoginUrl(): string | null {
 export function getBackendRegisterUrl(): string | null {
   const explicit = String(process.env.BACKEND_REGISTER_URL ?? "").trim().replace(/\/+$/, "");
   if (explicit) return explicit;
-  return getBackendUrl("api/v1/auth/register");
+  return getBackendUrl(`${API_V1}/auth/register`);
 }
 
 export function getAuthEndpoint(path: string): string | null {
@@ -70,9 +71,9 @@ export function getAuthEndpoint(path: string): string | null {
   if (!cleanPath) return null;
 
   if (cleanPath === "me" || cleanPath === "session") {
-    return getBackendUrl("api/v1/users/profile");
+    return getBackendUrl(`${API_V1}/users/profile`);
   }
 
-  return getBackendUrl(`api/v1/auth/${cleanPath}`);
+  return getBackendUrl(`${API_V1}/auth/${cleanPath}`);
 }
 

@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 "use client"
 
 import { Fragment, useMemo, useState } from "react"
@@ -147,7 +148,7 @@ export default function Page() {
 
     try {
       const params = new URLSearchParams({ tenantId })
-      const response = await fetch(`/api/v1/core/export/budget-entries?${params.toString()}`, {
+      const response = await fetch(`${API_V1}/export/budget-entries?${params.toString()}`, {
         method: "GET",
         credentials: "include",
       })

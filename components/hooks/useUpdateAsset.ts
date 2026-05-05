@@ -1,10 +1,11 @@
+import { API_V1 } from "@/lib/api";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import axios, { AxiosError } from "axios";
 import type { AssetDetail } from "./useAsset";
 
 async function tryRefreshSession(): Promise<boolean> {
   try {
-    const res = await fetch("/api/v1/auth/refresh-token", {
+    const res = await fetch(`${API_V1}/auth/refresh-token`, {
       method: "POST",
       credentials: "include",
     });
@@ -35,7 +36,7 @@ export function useUpdateAsset(assetId: string | undefined | null) {
     mutationFn: async (payload: UpdateAssetPayload) => {
       if (!assetId) throw new Error("Missing asset id");
       const res = await requestWithAuthRecovery(() =>
-        axios.patch(`/api/v1/assets/${assetId}`, payload, { withCredentials: true })
+        axios.patch(`${API_V1}/assets/${assetId}`, payload, { withCredentials: true })
       );
       return res.data;
     },

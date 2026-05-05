@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { useState, useCallback } from "react"
 
 export interface BankAccount {
@@ -36,7 +37,7 @@ export function useBankBalances(initialProps?: UseBankBalancesProps) {
         const qs = new URLSearchParams()
         if (mergedProps.branchId) qs.set("branchId", mergedProps.branchId)
 
-        const res = await fetch(`/api/v1/core/dashboard/bank-balances?${qs.toString()}`)
+        const res = await fetch(`${API_V1}/dashboard/bank-balances?${qs.toString()}`)
         const payload = await res.json().catch(() => null)
         
         if (!res.ok) {

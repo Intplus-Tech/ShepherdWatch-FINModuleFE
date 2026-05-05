@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 "use client"
 
 import SidebarNav from "@/components/navigation/SidebarNav"
@@ -85,7 +86,7 @@ export default function Page() {
   const handleExport = async () => {
     setIsExporting(true)
     try {
-      const url = new URL("/api/v1/users/export", window.location.origin)
+      const url = new URL(`${API_V1}/users/export`, window.location.origin)
       if (debouncedSearch) url.searchParams.append("search", debouncedSearch)
 
       const res = await fetch(url.toString())

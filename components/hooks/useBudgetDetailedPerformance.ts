@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { useCallback, useState } from "react"
 
 export interface BudgetPerformanceSummary {
@@ -47,7 +48,7 @@ export function useBudgetDetailedPerformance(budgetId?: string | null) {
     setError(null)
     
     try {
-      const response = await fetch(`/api/v1/core/financial/budgets/${id}/performance`, {
+      const response = await fetch(`${API_V1}/financial/budgets/${id}/performance`, {
         credentials: "include",
       })
       const payload = await response.json().catch(() => null)

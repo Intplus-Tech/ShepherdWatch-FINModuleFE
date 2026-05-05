@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
@@ -69,7 +70,7 @@ export default function Page() {
           periodStart,
           periodEnd,
         })
-        const response = await fetch(`/api/v1/core/financial/reports/bva?${params.toString()}`, {
+        const response = await fetch(`${API_V1}/financial/reports/bva?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         })
@@ -176,7 +177,7 @@ export default function Page() {
 
     try {
       const params = new URLSearchParams({ tenantId })
-      const response = await fetch(`/api/v1/core/export/budget-entries?${params.toString()}`, {
+      const response = await fetch(`${API_V1}/export/budget-entries?${params.toString()}`, {
         method: "GET",
         credentials: "include",
       })

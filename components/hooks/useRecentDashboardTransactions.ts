@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { useEffect, useMemo, useState } from "react"
 import { useAuth } from "@/components/auth/AuthProvider"
 
@@ -61,7 +62,7 @@ export function useRecentDashboardTransactions(options: Options = {}) {
         if (branchId) params.set("branchId", branchId)
         params.set("limit", String(limit))
 
-        const response = await fetch(`/api/v1/core/dashboard/recent-transactions?${params.toString()}`, {
+        const response = await fetch(`${API_V1}/dashboard/recent-transactions?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         })

@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 "use client"
 
 import { useEffect, useRef, useState } from "react"
@@ -38,7 +39,7 @@ export default function BranchesDropdown({
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch("/api/v1/branches?page=1&limit=20", { credentials: "include" })
+      const res = await fetch(`${API_V1}/branches?page=1&limit=20`, { credentials: "include" })
       const data = await res.json().catch(() => null)
       if (!res.ok) {
         throw new Error(data?.message || "Unable to load branches")

@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 "use client"
 import { useState } from "react"
 
@@ -53,7 +54,7 @@ export default function Page() {
     setApproveSuccess(null)
     try {
       const csrfToken = getCsrfToken()
-      const res = await fetch(`/api/v1/core/financial/requisitions/${id}/approve`, {
+      const res = await fetch(`${API_V1}/financial/requisitions/${id}/approve`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",

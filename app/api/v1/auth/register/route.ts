@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { NextRequest, NextResponse } from "next/server";
 import { REMEMBER_ME_COOKIE } from "@/lib/auth-config";
 import { getBackendRegisterUrl, getBackendUrl } from "@/lib/backend-auth-url";
@@ -9,7 +10,7 @@ function getBackendRegisterUrls(): string[] {
   const urls: string[] = [];
   const primary = getBackendRegisterUrl();
   if (primary) urls.push(primary);
-  const identity = getBackendUrl("api/v1/identity/auth/register");
+  const identity = getBackendUrl(`${API_V1}/identity/auth/register`);
   if (identity) urls.push(identity);
   return Array.from(new Set(urls));
 }

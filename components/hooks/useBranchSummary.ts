@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { useEffect, useMemo, useState } from "react"
 import { useAuth } from "@/components/auth/AuthProvider"
 
@@ -38,7 +39,7 @@ export function useBranchSummary(options: Options = {}) {
         const params = new URLSearchParams()
         if (branchId) params.set("branchId", branchId)
         const query = params.toString()
-        const url = query ? `/api/v1/branches/summary?${query}` : "/api/v1/branches/summary"
+        const url = query ? `${API_V1}/branches/summary?${query}` : `${API_V1}/branches/summary`
         const response = await fetch(url, { method: "GET", credentials: "include" })
         const payload = await response.json().catch(() => null)
         if (!response.ok) {

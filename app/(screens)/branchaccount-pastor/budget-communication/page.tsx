@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 "use client"
 
 import React, { Suspense, useEffect, useState } from "react"
@@ -67,7 +68,7 @@ function CommunicationPageInner() {
     setDeleteError(null)
     try {
       const response = await fetch(
-        `/api/v1/core/financial/budgets/${encodeURIComponent(budgetId)}/comments/${encodeURIComponent(commentId)}`,
+        `${API_V1}/financial/budgets/${encodeURIComponent(budgetId)}/comments/${encodeURIComponent(commentId)}`,
         {
           method: "DELETE",
           headers: {
@@ -103,7 +104,7 @@ function CommunicationPageInner() {
     setPosting(true)
     setPostError(null)
     try {
-      const response = await fetch(`/api/v1/core/financial/budgets/${encodeURIComponent(budgetId)}/comments`, {
+      const response = await fetch(`${API_V1}/financial/budgets/${encodeURIComponent(budgetId)}/comments`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

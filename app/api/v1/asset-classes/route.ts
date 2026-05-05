@@ -7,6 +7,7 @@ import {
 } from "@/lib/auth-config";
 import { getAuthEndpoint } from "@/lib/backend-auth-url";
 
+import { getBackendApiUrl } from "@/lib/env"
 type TokenPair = {
   accessToken: string;
   refreshToken?: string;
@@ -29,9 +30,9 @@ type AssetClassCreateLegacyBody = {
 };
 
 function getBackendUrl(): string | null {
-  const baseUrl = process.env.BACKEND_API_URL?.replace(/\/+$/, "");
+  const baseUrl = getBackendApiUrl();
   if (baseUrl) {
-    return `${baseUrl}/api/v1/asset-classes`;
+    return `${baseUrl}/asset-classes`;
   }
   return null;
 }

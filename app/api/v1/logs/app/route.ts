@@ -2,13 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config"
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors"
 
-function getRequiredEnv(name: "BACKEND_API_URL"): string {
-  const value = process.env[name]
-  if (!value) {
-    throw new Error(`${name} is not configured`)
-  }
-  return value
-}
+import { getBackendApiUrl } from "@/lib/env"
+
 
 export async function GET(req: NextRequest) {
   try {
@@ -33,15 +28,12 @@ export async function GET(req: NextRequest) {
       )
     }
 
-    const baseUrl = getRequiredEnv("BACKEND_API_URL")
-    if (process.env.NODE_ENV === "production" && baseUrl.startsWith("http://")) {
-      throw new Error("BACKEND_API_URL must use https in production")
-    }
+    const baseUrl = getBackendApiUrl();
 
-    const url = new URL(`${baseUrl.replace(/\/+$/, "")}/api/v1/logs/app`)
-    const reqUrl = new URL(req.url)
-    reqUrl.searchParams.forEach((value, key) => {
-      url.searchParams.set(key, value)
+    const url = new URL(`${baseUrl}/logs/app`)
+    const searchParams = req.nextUrl.searchParams
+    searchParams.forEach((value, key) => {
+      url.searchParams.append(key, value)
     })
 
     const backendResponse = await fetch(url.toString(), {
@@ -60,7 +52,7 @@ export async function GET(req: NextRequest) {
         NextResponse.json(
           {
             success: false,
-            message: payload?.message ?? "Unable to load application logs",
+            message: payload?.message ?? "Unable to fetch app logs",
           },
           { status: backendResponse.status || 502 }
         ),
@@ -70,7 +62,7 @@ export async function GET(req: NextRequest) {
 
     return applyCors(NextResponse.json(payload, { status: 200 }), req)
   } catch (error) {
-    console.error("App logs proxy error:", error)
+    console.error("Get app logs proxy error:", error)
     return applyCors(
       NextResponse.json(
         { success: false, message: "Internal server error" },

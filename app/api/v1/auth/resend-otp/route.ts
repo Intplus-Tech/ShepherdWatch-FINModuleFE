@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthEndpoint } from "@/lib/backend-auth-url";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
@@ -13,7 +14,7 @@ function getBackendResendOtpUrls(): string[] {
   if (fallbackBase) {
     const normalized = fallbackBase.replace(/\/+$/, "").replace(/\/api-docs(?:\/.*)?$/i, "");
     if (normalized) {
-      urls.push(normalized.endsWith("/api/v1") ? `${normalized}/auth/resend-otp` : `${normalized}/api/v1/auth/resend-otp`);
+      urls.push(normalized.endsWith(`${API_V1}`) ? `${normalized}/auth/resend-otp` : `${normalized}${API_V1}/auth/resend-otp`);
       urls.push(`${normalized}/auth/resend-otp`);
     }
   }

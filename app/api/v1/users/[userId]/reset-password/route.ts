@@ -1,10 +1,11 @@
+import { API_V1 } from "@/lib/api";
 import { NextRequest, NextResponse } from "next/server";
 import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 import { getBackendUrl } from "@/lib/backend-auth-url";
 
 function getBackendUserUrl(userId: string) {
-  return getBackendUrl(`api/v1/users/${userId}/reset-password`);
+  return getBackendUrl(`${API_V1}/users/${userId}/reset-password`);
 }
 
 export async function POST(

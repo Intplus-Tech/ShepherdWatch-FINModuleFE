@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { useState, useCallback } from "react"
 
 export type ExchangeRate = {
@@ -24,7 +25,7 @@ export function useExchangeRates() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch("/api/v1/core/exchange-rates", {
+      const res = await fetch(`${API_V1}/exchange-rates`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -50,7 +51,7 @@ export function useExchangeRates() {
       if (fromCurrency) qs.set("fromCurrency", fromCurrency)
       if (toCurrency) qs.set("toCurrency", toCurrency)
 
-      const res = await fetch(`/api/v1/core/exchange-rates/latest?${qs.toString()}`)
+      const res = await fetch(`${API_V1}/exchange-rates/latest?${qs.toString()}`)
       const data = await res.json().catch(() => null)
       if (!res.ok) {
         throw new Error(data?.message || "Failed to fetch latest exchange rate.")
@@ -74,7 +75,7 @@ export function useExchangeRates() {
       if (params.fromCurrency) qs.set("fromCurrency", params.fromCurrency)
       if (params.toCurrency) qs.set("toCurrency", params.toCurrency)
 
-      const res = await fetch(`/api/v1/core/exchange-rates?${qs.toString()}`)
+      const res = await fetch(`${API_V1}/exchange-rates?${qs.toString()}`)
       const data = await res.json().catch(() => null)
       if (!res.ok) {
         throw new Error(data?.message || "Failed to list exchange rates.")

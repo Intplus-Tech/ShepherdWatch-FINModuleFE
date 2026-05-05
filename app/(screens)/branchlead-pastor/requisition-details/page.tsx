@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 "use client"
 
 import { useMemo, useState } from "react"
@@ -70,7 +71,7 @@ export default function Page() {
 
     try {
       const csrfToken = getCsrfToken()
-      const response = await fetch(`/api/v1/core/financial/requisitions/${requisitionId}/override`, {
+      const response = await fetch(`${API_V1}/financial/requisitions/${requisitionId}/override`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",

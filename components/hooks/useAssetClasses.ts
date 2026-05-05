@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { keepPreviousData, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import axios, { AxiosError } from "axios";
 
@@ -55,7 +56,7 @@ type UpdateAssetClassPayload = {
 
 async function tryRefreshSession(): Promise<boolean> {
   try {
-    const res = await fetch("/api/v1/auth/refresh-token", {
+    const res = await fetch(`${API_V1}/auth/refresh-token`, {
       method: "POST",
       credentials: "include",
     });
@@ -96,7 +97,7 @@ export function useAssetClasses(options: UseAssetClassesOptions = {}) {
     placeholderData: keepPreviousData,
     queryFn: async () => {
       const res = await requestWithAuthRecovery(() =>
-        axios.get('/api/v1/asset-classes', {
+        axios.get(`${API_V1}/asset-classes`, {
           withCredentials: true,
           params: {
             page,
@@ -118,7 +119,7 @@ export function useAssetClasses(options: UseAssetClassesOptions = {}) {
       defaultResidualValuePercent?: number;
     }) => {
       const res = await requestWithAuthRecovery(() =>
-        axios.post('/api/v1/asset-classes', payload, { withCredentials: true })
+        axios.post(`${API_V1}/asset-classes`, payload, { withCredentials: true })
       );
       return res.data;
     },
@@ -182,7 +183,7 @@ export function useAssetClassById(assetClassId: string | null) {
     queryFn: async () => {
       const id = String(assetClassId).trim();
       const res = await requestWithAuthRecovery(() =>
-        axios.get(`/api/v1/asset-classes/${encodeURIComponent(id)}`, { withCredentials: true })
+        axios.get(`${API_V1}/asset-classes/${encodeURIComponent(id)}`, { withCredentials: true })
       );
 
       const record = asRecord(res.data);
@@ -217,7 +218,7 @@ export function useUpdateAssetClass() {
       }
 
       const res = await requestWithAuthRecovery(() =>
-        axios.patch(`/api/v1/asset-classes/${encodeURIComponent(id)}`, payload, {
+        axios.patch(`${API_V1}/asset-classes/${encodeURIComponent(id)}`, payload, {
           withCredentials: true,
         })
       );

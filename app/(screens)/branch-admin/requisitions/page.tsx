@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 "use client"
 
 import React, { useEffect, useMemo, useState } from "react"
@@ -72,7 +73,7 @@ export default function RequisitionsHub() {
 
       try {
         const params = new URLSearchParams({ page: "1", limit: "20", search: "Requisition" })
-        const response = await fetch(`/api/v1/audit-logs?${params.toString()}`, {
+        const response = await fetch(`${API_V1}/audit-logs?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         })
@@ -276,7 +277,7 @@ export default function RequisitionsHub() {
 
     try {
       const csrfToken = getCsrfToken()
-      const response = await fetch(`/api/v1/core/financial/requisitions/${reqId}`, {
+      const response = await fetch(`${API_V1}/financial/requisitions/${reqId}`, {
         method: "DELETE",
         headers: { "x-csrf-token": csrfToken },
         credentials: "include",
@@ -301,7 +302,7 @@ export default function RequisitionsHub() {
 
     try {
       const csrfToken = getCsrfToken()
-      const response = await fetch(`/api/v1/core/financial/requisitions/${reqId}/submit`, {
+      const response = await fetch(`${API_V1}/financial/requisitions/${reqId}/submit`, {
         method: "PATCH",
         headers: {
           "x-csrf-token": csrfToken,
@@ -363,7 +364,7 @@ export default function RequisitionsHub() {
     setEditSuccess(null)
     try {
       const csrfToken = getCsrfToken()
-      const response = await fetch(`/api/v1/core/financial/requisitions/${editingReqId}`, {
+      const response = await fetch(`${API_V1}/financial/requisitions/${editingReqId}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",

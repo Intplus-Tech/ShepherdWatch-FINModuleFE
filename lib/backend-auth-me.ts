@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { getAuthEndpoint } from "@/lib/backend-auth-url";
 
 const ME_REQUEST_TIMEOUT_MS = 8000;
@@ -13,9 +14,9 @@ export function getBackendMeUrls(): string[] {
     urls.push(url);
 
     // Some deployments expose /users/profile while others expose /auth/*.
-    if (url.includes("/api/v1/users/profile")) {
-      urls.push(url.replace("/api/v1/users/profile", "/api/v1/auth/me"));
-      urls.push(url.replace("/api/v1/users/profile", "/api/v1/auth/profile"));
+    if (url.includes(`${API_V1}/users/profile`)) {
+      urls.push(url.replace(`${API_V1}/users/profile`, `${API_V1}/auth/me`));
+      urls.push(url.replace(`${API_V1}/users/profile`, `${API_V1}/auth/profile`));
     }
   }
 
@@ -23,14 +24,14 @@ export function getBackendMeUrls(): string[] {
   if (fallbackBase) {
     const normalized = fallbackBase.replace(/\/+$/, "").replace(/\/api-docs(?:\/.*)?$/i, "");
     if (normalized) {
-      if (normalized.endsWith("/api/v1")) {
+      if (normalized.endsWith(`${API_V1}`)) {
         urls.push(`${normalized}/auth/me`);
         urls.push(`${normalized}/auth/profile`);
         urls.push(`${normalized}/users/profile`);
       } else {
-        urls.push(`${normalized}/api/v1/auth/me`);
-        urls.push(`${normalized}/api/v1/auth/profile`);
-        urls.push(`${normalized}/api/v1/users/profile`);
+        urls.push(`${normalized}${API_V1}/auth/me`);
+        urls.push(`${normalized}${API_V1}/auth/profile`);
+        urls.push(`${normalized}${API_V1}/users/profile`);
       }
     }
   }

@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 "use client"
 
 import React, { useMemo, useState } from "react"
@@ -208,7 +209,7 @@ export default function AssetsHubPage() {
     try {
       const csrfToken = getCsrfToken()
       const assetCode = `GEN-${String(Date.now()).slice(-4)}`
-      const response = await fetch("/api/v1/core/financial/fixed-assets", {
+      const response = await fetch(`${API_V1}/financial/fixed-assets`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

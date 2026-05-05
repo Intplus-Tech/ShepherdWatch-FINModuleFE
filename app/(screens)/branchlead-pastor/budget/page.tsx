@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 "use client"
 
 import React, { useEffect, useMemo, useState } from "react"
@@ -221,7 +222,7 @@ export default function Page() {
       const csrfToken = getCsrfToken()
       await Promise.all(
         entryIds.map(async (entryId) => {
-          const response = await fetch(`/api/v1/core/financial/budget-entries/${entryId}/approve`, {
+          const response = await fetch(`${API_V1}/financial/budget-entries/${entryId}/approve`, {
             method: "POST",
             headers: { "x-csrf-token": csrfToken },
             credentials: "include",
@@ -251,7 +252,7 @@ export default function Page() {
 
     try {
       const params = new URLSearchParams({ tenantId })
-      const response = await fetch(`/api/v1/core/export/budget-entries?${params.toString()}`, {
+      const response = await fetch(`${API_V1}/export/budget-entries?${params.toString()}`, {
         method: "GET",
         credentials: "include",
       })

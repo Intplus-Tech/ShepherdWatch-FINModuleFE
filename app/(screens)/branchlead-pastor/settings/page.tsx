@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 "use client"
 
 import React, { useEffect, useMemo, useState } from "react"
@@ -37,14 +38,14 @@ export default function SettingsPage() {
 
   useEffect(() => {
     const loadProfile = async () => {
-      let res = await fetch("/api/v1/auth/me", { credentials: "include" })
+      let res = await fetch(`${API_V1}/auth/me`, { credentials: "include" })
       if (res.status === 401) {
-        const refreshRes = await fetch("/api/v1/auth/refresh-token", {
+        const refreshRes = await fetch(`${API_V1}/auth/refresh-token`, {
           method: "POST",
           credentials: "include",
         })
         if (refreshRes.ok) {
-          res = await fetch("/api/v1/auth/me", { credentials: "include" })
+          res = await fetch(`${API_V1}/auth/me`, { credentials: "include" })
         }
       }
       const data = await res.json().catch(() => null)

@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { useState, useCallback } from 'react'
 
 export type FileUploadResponse = {
@@ -55,7 +56,7 @@ export function useFileUpload(): UseFileUploadReturn {
         if (folder) formData.append("folder", folder)
         if (branchId) formData.append("branchId", branchId)
 
-        const res = await fetch("/api/v1/core/file-uploads", {
+        const res = await fetch(`${API_V1}/file-uploads`, {
           method: "POST",
           body: formData,
         })
@@ -89,7 +90,7 @@ export function useFileUpload(): UseFileUploadReturn {
     if (params.folder) searchParams.set("folder", params.folder)
 
     const query = searchParams.toString()
-    const res = await fetch(`/api/v1/core/file-uploads${query ? `?${query}` : ""}`, {
+    const res = await fetch(`${API_V1}/file-uploads${query ? `?${query}` : ""}`, {
       method: "GET",
     })
 
@@ -106,7 +107,7 @@ export function useFileUpload(): UseFileUploadReturn {
 
   const getFileById = useCallback(async (id: string): Promise<FileUploadResponse> => {
     setError(null)
-    const res = await fetch(`/api/v1/core/file-uploads/${encodeURIComponent(id)}`, {
+    const res = await fetch(`${API_V1}/file-uploads/${encodeURIComponent(id)}`, {
       method: "GET",
     })
 
@@ -128,7 +129,7 @@ export function useFileUpload(): UseFileUploadReturn {
       const formData = new FormData()
       formData.append("file", file)
 
-      const res = await fetch(`/api/v1/core/file-uploads/${encodeURIComponent(id)}`, {
+      const res = await fetch(`${API_V1}/file-uploads/${encodeURIComponent(id)}`, {
         method: "PATCH",
         body: formData,
       })
@@ -154,7 +155,7 @@ export function useFileUpload(): UseFileUploadReturn {
     setUploading(true)
     setError(null)
     try {
-      const res = await fetch(`/api/v1/core/file-uploads/${encodeURIComponent(id)}`, {
+      const res = await fetch(`${API_V1}/file-uploads/${encodeURIComponent(id)}`, {
         method: "DELETE",
       })
 

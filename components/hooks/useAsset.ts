@@ -1,9 +1,10 @@
+import { API_V1 } from "@/lib/api";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import axios, { AxiosError } from "axios";
 
 async function tryRefreshSession(): Promise<boolean> {
   try {
-    const res = await fetch("/api/v1/auth/refresh-token", {
+    const res = await fetch(`${API_V1}/auth/refresh-token`, {
       method: "POST",
       credentials: "include",
     });
@@ -91,7 +92,7 @@ export function useAsset(assetId: string | undefined | null, options: { enabled?
     placeholderData: keepPreviousData,
     queryFn: async () => {
       const res = await requestWithAuthRecovery(() =>
-        axios.get(`/api/v1/assets/${assetId}`, { withCredentials: true })
+        axios.get(`${API_V1}/assets/${assetId}`, { withCredentials: true })
       );
       return extractAsset(res.data);
     },

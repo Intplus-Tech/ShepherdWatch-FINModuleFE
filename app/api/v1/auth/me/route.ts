@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { NextRequest, NextResponse } from "next/server";
 import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config";
 import { fetchBackendMe, getBackendMeUrls } from "@/lib/backend-auth-me";
@@ -28,16 +29,16 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    console.debug(`[/api/v1/auth/me] backendUrls: ${backendUrls.length}, token length: ${accessToken.length}`);
+    console.debug(`[${API_V1}/auth/me] backendUrls: ${backendUrls.length}, token length: ${accessToken.length}`);
     const backendRes = await fetchBackendMe(accessToken);
     if (!backendRes) {
-      console.warn(`[/api/v1/auth/me] No backend response`);
+      console.warn(`[${API_V1}/auth/me] No backend response`);
       return applyCors(
         NextResponse.json({ success: false, message: "Backend unavailable - continuing with cookie auth" }, { status: 200 }),
         req
       );
     }
-    console.debug(`[/api/v1/auth/me] backend status: ${backendRes.status}`);
+    console.debug(`[${API_V1}/auth/me] backend status: ${backendRes.status}`);
 
     const responseText = await backendRes.text();
     const contentType = backendRes.headers.get("content-type") ?? "";

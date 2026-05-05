@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { NextRequest, NextResponse } from "next/server"
 import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config"
 import { fetchBackendMe, getBackendMeUrls } from "@/lib/backend-auth-me"
@@ -19,7 +20,7 @@ export async function GET(req: NextRequest) {
 
   if (!backendResponse) {
     return applyCors(
-      NextResponse.json({ message: "Unable to resolve /api/v1/auth/me endpoint" }, { status: 502 }),
+      NextResponse.json({ message: "Unable to resolve ${API_V1}/auth/me endpoint" }, { status: 502 }),
       req
     )
   }

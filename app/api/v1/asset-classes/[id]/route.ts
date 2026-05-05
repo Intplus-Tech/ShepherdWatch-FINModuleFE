@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 
+import { getBackendApiUrl } from "@/lib/env"
 function getBackendAssetClassUrl(id: string): string | null {
-  const baseUrl = process.env.BACKEND_API_URL?.replace(/\/+$/, "");
+  const baseUrl = getBackendApiUrl();
   if (!baseUrl) return null;
-  return `${baseUrl}/api/v1/asset-classes/${encodeURIComponent(id)}`;
+  return `${baseUrl}/asset-classes/${encodeURIComponent(id)}`;
 }
 
 export async function GET(req: NextRequest, context: { params: Promise<{ id: string }> }) {

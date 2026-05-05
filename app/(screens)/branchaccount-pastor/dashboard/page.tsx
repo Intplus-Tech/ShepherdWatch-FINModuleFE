@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
@@ -80,7 +81,7 @@ export default function Page() {
     setPaymentError(null)
     setPaymentSuccess(null)
     try {
-      const response = await fetch(`/api/v1/core/financial/requisitions/${id}/pay`, {
+      const response = await fetch(`${API_V1}/financial/requisitions/${id}/pay`, {
         method: "PATCH",
         headers: { "x-csrf-token": getCsrfToken() },
         credentials: "include",
@@ -327,7 +328,7 @@ export default function Page() {
 
         <p className="flex items-center gap-2 text-xs text-[#6B7280]">
           <AlertCircle className="h-3.5 w-3.5" />
-          Data sourced from `/api/v1/core/dashboard` and `/api/v1/requisitions/inbox`.
+          Data sourced from `${API_V1}/dashboard` and `${API_V1}/requisitions/inbox`.
         </p>
       </div>
     </div>

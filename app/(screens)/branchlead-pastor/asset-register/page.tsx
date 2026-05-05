@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 "use client"
 
 import Image from "next/image"
@@ -107,7 +108,7 @@ export default function AssetRegisterPage() {
           params.set("category", categoryParam)
         }
 
-        const response = await fetch(`/api/v1/core/financial/fixed-assets?${params.toString()}`, {
+        const response = await fetch(`${API_V1}/financial/fixed-assets?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         })

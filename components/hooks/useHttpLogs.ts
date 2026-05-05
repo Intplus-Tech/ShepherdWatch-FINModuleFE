@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { useEffect, useState, useCallback } from "react"
 
 export type HttpLogItem = {
@@ -52,7 +53,7 @@ export function useHttpLogs(filters: HttpLogsFilters = {}) {
       if (filters.startDate) queryParams.append("startDate", filters.startDate)
       if (filters.endDate) queryParams.append("endDate", filters.endDate)
       
-      const res = await fetch(`/api/v1/core/logs/http?${queryParams.toString()}`, {
+      const res = await fetch(`${API_V1}/logs/http?${queryParams.toString()}`, {
         method: "GET",
         credentials: "include",
       })

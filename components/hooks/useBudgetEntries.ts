@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { useEffect, useMemo, useState } from "react"
 import { useAuth } from "@/components/auth/AuthProvider"
 
@@ -50,7 +51,7 @@ export function useBudgetEntries() {
           throw new Error("Tenant context is missing.")
         }
 
-        const url = `/api/v1/core/financial/budget-entries?tenantId=${encodeURIComponent(
+        const url = `${API_V1}/financial/budget-entries?tenantId=${encodeURIComponent(
           tenantId
         )}&periodStart=${encodeURIComponent(start)}&periodEnd=${encodeURIComponent(end)}`
 

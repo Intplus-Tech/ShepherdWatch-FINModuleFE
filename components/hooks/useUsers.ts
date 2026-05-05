@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 
@@ -14,7 +15,7 @@ export function useUsers(params: UseUsersParams = {}) {
   return useQuery({
     queryKey: ['users', params],
     queryFn: async () => {
-      const response = await axios.get('/api/v1/users', { params });
+      const response = await axios.get(`${API_V1}/users`, { params });
       return response.data;
     },
   });
@@ -25,7 +26,7 @@ export function useToggleUserStatus() {
 
   return useMutation({
     mutationFn: async ({ userId, status }: { userId: string; status: string }) => {
-      const response = await axios.put(`/api/v1/users/${userId}/status`, { status });
+      const response = await axios.put(`${API_V1}/users/${userId}/status`, { status });
       return response.data;
     },
     onSuccess: () => {
@@ -48,7 +49,7 @@ export function useInviteUser() {
 
   return useMutation({
     mutationFn: async (payload: InviteUserPayload) => {
-      const response = await axios.post('/api/v1/users/invite', payload);
+      const response = await axios.post(`${API_V1}/users/invite`, payload);
       return response.data;
     },
     onSuccess: () => {
@@ -61,7 +62,7 @@ export function useBranches() {
   return useQuery({
     queryKey: ['branches'],
     queryFn: async () => {
-      const res = await fetch('/api/v1/branches?page=1&limit=100', { credentials: 'include' });
+      const res = await fetch(`${API_V1}/branches?page=1&limit=100`, { credentials: 'include' });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
         throw new Error(data?.message || "Failed to load branches");

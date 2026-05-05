@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 "use client"
 
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react"
@@ -73,7 +74,7 @@ function BudgetCommunicationInner() {
     setSending(true)
     try {
       const response = await fetch(
-        `/api/v1/core/financial/budgets/${encodeURIComponent(budgetId)}/comments`,
+        `${API_V1}/financial/budgets/${encodeURIComponent(budgetId)}/comments`,
         {
           method: "POST",
           headers: {

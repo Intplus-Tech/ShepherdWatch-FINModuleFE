@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { useEffect, useMemo, useState } from "react"
 import { useAuth } from "@/components/auth/AuthProvider"
 
@@ -70,7 +71,7 @@ export function useBudgetControlDashboard() {
       try {
         const query = new URLSearchParams({ fiscalYear })
         if (tenantId) query.set("branchId", tenantId)
-        const response = await fetch(`/api/v1/core/financial/budgets/control?${query.toString()}`, {
+        const response = await fetch(`${API_V1}/financial/budgets/control?${query.toString()}`, {
           method: "GET",
           credentials: "include",
         })

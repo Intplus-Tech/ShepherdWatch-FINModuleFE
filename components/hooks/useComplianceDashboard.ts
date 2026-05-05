@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { useCallback, useState } from "react"
 
 export type ComplianceDashboardByType = {
@@ -50,7 +51,7 @@ export function useComplianceDashboard() {
       if (query.month !== undefined) params.set("month", String(query.month))
       if (query.fiscalYear !== undefined) params.set("fiscalYear", String(query.fiscalYear))
 
-      const response = await fetch(`/api/v1/core/financial/compliance/dashboard?${params.toString()}`, {
+      const response = await fetch(`${API_V1}/financial/compliance/dashboard?${params.toString()}`, {
         method: "GET",
         credentials: "include",
       })

@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 import { applyAuthCookies, executeWithRefreshRetry } from "@/lib/backend-refresh";
 
+import { getBackendApiUrl } from "@/lib/env"
 function getBackendBranchesSummaryUrl(): string {
-  const baseUrl = process.env.BACKEND_API_URL?.replace(/\/+$/, "");
+  const baseUrl = getBackendApiUrl();
   if (!baseUrl) {
     throw new Error("BACKEND_API_URL is not configured");
   }
-  return `${baseUrl}/api/v1/branches/summary`;
+  return `${baseUrl}/branches/summary`;
 }
 
 export async function GET(req: NextRequest) {

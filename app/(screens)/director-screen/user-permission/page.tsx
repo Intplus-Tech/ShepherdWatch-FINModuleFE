@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 "use client"
 
 import React, { useEffect, useMemo, useState } from "react"
@@ -113,11 +114,11 @@ export default function Page() {
 
       try {
         const [permissionsResponse, rolesResponse] = await Promise.all([
-          fetch("/api/v1/permissions/matrix", {
+          fetch(`${API_V1}/permissions/matrix`, {
             method: "GET",
             credentials: "include",
           }),
-          fetch("/api/v1/core/roles", {
+          fetch(`${API_V1}/roles`, {
             method: "GET",
             credentials: "include",
           }),
@@ -409,7 +410,7 @@ export default function Page() {
           actions: Array.from(actions),
         })),
       }))
-      const res = await fetch("/api/v1/permissions/matrix", {
+      const res = await fetch(`${API_V1}/permissions/matrix`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -441,7 +442,7 @@ export default function Page() {
     setMatrixSaveMessage(null)
     setMatrixResetting(true)
     try {
-      const res = await fetch("/api/v1/permissions/matrix/reset", {
+      const res = await fetch(`${API_V1}/permissions/matrix/reset`, {
         method: "POST",
         headers: {
           "X-CSRF-Token": getCsrfToken(),
@@ -481,7 +482,7 @@ export default function Page() {
       setRoleError(null)
 
       try {
-        const response = await fetch(`/api/v1/core/roles/${selectedRoleId}`, {
+        const response = await fetch(`${API_V1}/roles/${selectedRoleId}`, {
           method: "GET",
           credentials: "include",
         })
@@ -728,7 +729,7 @@ export default function Page() {
 
                         try {
                           const response = await fetch(
-                            `/api/v1/core/roles/${selectedRoleId}`,
+                            `${API_V1}/roles/${selectedRoleId}`,
                             {
                               method: "PUT",
                               credentials: "include",

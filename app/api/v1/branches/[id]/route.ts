@@ -3,12 +3,13 @@ import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 import { isCsrfValid } from "@/lib/csrf";
 
+import { getBackendApiUrl } from "@/lib/env"
 function getBackendTenantUrl(id: string): string {
-  const baseUrl = process.env.BACKEND_API_URL?.replace(/\/+$/, "");
+  const baseUrl = getBackendApiUrl();
   if (!baseUrl) {
     throw new Error("BACKEND_API_URL is not configured");
   }
-  return `${baseUrl}/api/v1/branches/${encodeURIComponent(id)}`;
+  return `${baseUrl}/branches/${encodeURIComponent(id)}`;
 }
 
 type UpdateBranchPayload = {

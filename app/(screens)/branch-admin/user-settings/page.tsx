@@ -1,5 +1,6 @@
 "use client";
 
+import { API_V1 } from "@/lib/api";
 import React, { useState, useEffect } from "react";
 import { Inter } from "next/font/google";
 import Link from "next/link";
@@ -46,7 +47,7 @@ export default function UserSettingsPage() {
   const { data: selectedSession, isLoading: sessionDetailsLoading, error: sessionDetailsErrorObj } = useQuery({
     queryKey: ['session', selectedSessionId],
     queryFn: async () => {
-      const res = await axios.get(`/api/v1/sessions/${selectedSessionId}`);
+      const res = await axios.get(`${API_V1}/sessions/${selectedSessionId}`);
       return res.data?.data;
     },
     enabled: !!selectedSessionId
@@ -133,14 +134,14 @@ export default function UserSettingsPage() {
 
   useEffect(() => {
     const loadProfile = async () => {
-      let res = await fetch("/api/v1/auth/me", { credentials: "include" });
+      let res = await fetch(`${API_V1}/auth/me`, { credentials: "include" });
       if (res.status === 401) {
-        const refreshRes = await fetch("/api/v1/auth/refresh-token", {
+        const refreshRes = await fetch(`${API_V1}/auth/refresh-token`, {
           method: "POST",
           credentials: "include",
         });
         if (refreshRes.ok) {
-          res = await fetch("/api/v1/auth/me", { credentials: "include" });
+          res = await fetch(`${API_V1}/auth/me`, { credentials: "include" });
         }
       }
 
@@ -180,7 +181,7 @@ export default function UserSettingsPage() {
       if (templateForm.branchId) {
         payload.branchId = templateForm.branchId;
       }
-      const res = await fetch("/api/v1/templates", {
+      const res = await fetch(`${API_V1}/templates`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -216,7 +217,7 @@ export default function UserSettingsPage() {
         description: purposeForm.description,
         isActive: purposeForm.isActive,
       };
-      const res = await fetch("/api/v1/templates/purposes", {
+      const res = await fetch(`${API_V1}/templates/purposes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -243,7 +244,7 @@ export default function UserSettingsPage() {
     setPurposesLoading(true);
     setPurposesError(null);
     try {
-      const res = await fetch("/api/v1/templates/purposes?page=1&limit=20");
+      const res = await fetch(`${API_V1}/templates/purposes?page=1&limit=20`);
       const data = await res.json().catch(() => null);
       if (!res.ok) {
         throw new Error(data?.message || "Unable to load purposes");
@@ -260,7 +261,7 @@ export default function UserSettingsPage() {
     setPurposeDetailsLoading(true);
     setPurposeDetailsError(null);
     try {
-      const res = await fetch(`/api/v1/templates/purposes/${id}`);
+      const res = await fetch(`${API_V1}/templates/purposes/${id}`);
       const data = await res.json().catch(() => null);
       if (!res.ok) {
         throw new Error(data?.message || "Unable to load purpose");
@@ -285,7 +286,7 @@ export default function UserSettingsPage() {
     setUpdatingPurpose(true);
     setPurposeDetailsError(null);
     try {
-      const res = await fetch(`/api/v1/templates/purposes/${selectedPurpose._id}`, {
+      const res = await fetch(`${API_V1}/templates/purposes/${selectedPurpose._id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(purposeEdit),
@@ -309,7 +310,7 @@ export default function UserSettingsPage() {
     setDeletingPurposeId(id);
     setPurposeDetailsError(null);
     try {
-      const res = await fetch(`/api/v1/templates/purposes/${id}`, { method: "DELETE" });
+      const res = await fetch(`${API_V1}/templates/purposes/${id}`, { method: "DELETE" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(data.message || "Unable to delete purpose");
@@ -335,7 +336,7 @@ export default function UserSettingsPage() {
     if (templateFilters.branchId) params.set("branchId", templateFilters.branchId);
     if (templateFilters.isActive) params.set("isActive", templateFilters.isActive);
     try {
-      const res = await fetch(`/api/v1/templates?${params.toString()}`);
+      const res = await fetch(`${API_V1}/templates?${params.toString()}`);
       const data = await res.json().catch(() => null);
       if (!res.ok) {
         throw new Error(data?.message || "Unable to load templates");
@@ -365,7 +366,7 @@ export default function UserSettingsPage() {
     setTemplateUpdating(true);
     setTemplateEditError(null);
     try {
-      const res = await fetch(`/api/v1/templates/${selectedTemplate._id}`, {
+      const res = await fetch(`${API_V1}/templates/${selectedTemplate._id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -397,7 +398,7 @@ export default function UserSettingsPage() {
     setDeletingTemplateId(id);
     setTemplateEditError(null);
     try {
-      const res = await fetch(`/api/v1/templates/${id}`, { method: "DELETE" });
+      const res = await fetch(`${API_V1}/templates/${id}`, { method: "DELETE" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(data.message || "Unable to delete template");
@@ -418,7 +419,7 @@ export default function UserSettingsPage() {
     setHeaderFooterMessage(null);
     setHeaderFooterError(null);
     try {
-      const res = await fetch("/api/v1/templates/header-footer", {
+      const res = await fetch(`${API_V1}/templates/header-footer`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -444,7 +445,7 @@ export default function UserSettingsPage() {
     setHeaderFootersLoading(true);
     setHeaderFootersError(null);
     try {
-      const res = await fetch("/api/v1/templates/header-footer");
+      const res = await fetch(`${API_V1}/templates/header-footer`);
       const data = await res.json().catch(() => null);
       if (!res.ok) {
         throw new Error(data?.message || "Unable to load header/footer");
@@ -459,7 +460,7 @@ export default function UserSettingsPage() {
 
   const fetchActiveHeaderFooter = async (type: "header" | "footer") => {
     try {
-      const res = await fetch(`/api/v1/templates/header-footer/${type}`);
+      const res = await fetch(`${API_V1}/templates/header-footer/${type}`);
       const data = await res.json().catch(() => null);
       if (!res.ok) {
         throw new Error(data?.message || `Unable to load ${type}`);

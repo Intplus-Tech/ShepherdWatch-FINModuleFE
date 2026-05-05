@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 "use client"
 
 import { useEffect, useState } from "react"
@@ -263,7 +264,7 @@ export default function Page() {
   const { data: selectedSession, isLoading: sessionDetailsLoading, error: sessionDetailsErrorObj } = useQuery({
     queryKey: ['session', selectedSessionId],
     queryFn: async () => {
-      const res = await axios.get(`/api/v1/sessions/${selectedSessionId}`);
+      const res = await axios.get(`${API_V1}/sessions/${selectedSessionId}`);
       return res.data?.data;
     },
     enabled: !!selectedSessionId
@@ -461,7 +462,7 @@ export default function Page() {
       if (templateForm.branchId) {
         payload.branchId = templateForm.branchId
       }
-      const res = await fetch("/api/v1/templates", {
+      const res = await fetch(`${API_V1}/templates`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -496,7 +497,7 @@ export default function Page() {
     if (templateFilters.branchId) params.set("branchId", templateFilters.branchId)
     if (templateFilters.isActive) params.set("isActive", templateFilters.isActive)
     try {
-      const res = await fetch(`/api/v1/templates?${params.toString()}`)
+      const res = await fetch(`${API_V1}/templates?${params.toString()}`)
       const data = await res.json().catch(() => null)
       if (!res.ok) {
         throw new Error(data?.message || "Unable to load templates")
@@ -526,7 +527,7 @@ export default function Page() {
     setTemplateUpdating(true)
     setTemplateEditError(null)
     try {
-      const res = await fetch(`/api/v1/templates/${selectedTemplate._id}`, {
+      const res = await fetch(`${API_V1}/templates/${selectedTemplate._id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -558,7 +559,7 @@ export default function Page() {
     setDeletingTemplateId(id)
     setTemplateEditError(null)
     try {
-      const res = await fetch(`/api/v1/templates/${id}`, { method: "DELETE" })
+      const res = await fetch(`${API_V1}/templates/${id}`, { method: "DELETE" })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         throw new Error(data.message || "Unable to delete template")
@@ -586,7 +587,7 @@ export default function Page() {
     if (auditFilters.endDate) params.set("endDate", auditFilters.endDate)
     if (auditFilters.search) params.set("search", auditFilters.search)
     try {
-      const res = await fetch(`/api/v1/audit-logs?${params.toString()}`)
+      const res = await fetch(`${API_V1}/audit-logs?${params.toString()}`)
       const data = await res.json().catch(() => null)
       if (!res.ok) {
         throw new Error(data?.message || "Unable to load audit logs")
@@ -609,7 +610,7 @@ export default function Page() {
     if (auditFilters.endDate) params.set("endDate", auditFilters.endDate)
     if (auditFilters.search) params.set("search", auditFilters.search)
     try {
-      const res = await fetch(`/api/v1/audit-logs/export?${params.toString()}`)
+      const res = await fetch(`${API_V1}/audit-logs/export?${params.toString()}`)
       const data = await res.json().catch(() => null)
       if (!res.ok) {
         throw new Error(data?.message || "Unable to export audit logs")
@@ -634,7 +635,7 @@ export default function Page() {
     setAuditDetailLoading(true)
     setAuditDetailError(null)
     try {
-      const res = await fetch(`/api/v1/audit-logs/${encodeURIComponent(id)}`)
+      const res = await fetch(`${API_V1}/audit-logs/${encodeURIComponent(id)}`)
       const data = await res.json().catch(() => null)
       if (!res.ok) {
         throw new Error(data?.message || "Unable to load audit log details")
@@ -652,7 +653,7 @@ export default function Page() {
     setHeaderFooterMessage(null)
     setHeaderFooterError(null)
     try {
-      const res = await fetch("/api/v1/templates/header-footer", {
+      const res = await fetch(`${API_V1}/templates/header-footer`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -685,7 +686,7 @@ export default function Page() {
         description: purposeForm.description,
         isActive: purposeForm.isActive,
       }
-      const res = await fetch("/api/v1/templates/purposes", {
+      const res = await fetch(`${API_V1}/templates/purposes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -712,7 +713,7 @@ export default function Page() {
     setPurposesLoading(true)
     setPurposesError(null)
     try {
-      const res = await fetch("/api/v1/templates/purposes?page=1&limit=20")
+      const res = await fetch(`${API_V1}/templates/purposes?page=1&limit=20`)
       const data = await res.json().catch(() => null)
       if (!res.ok) {
         throw new Error(data?.message || "Unable to load purposes")
@@ -729,7 +730,7 @@ export default function Page() {
     setPurposeDetailsLoading(true)
     setPurposeDetailsError(null)
     try {
-      const res = await fetch(`/api/v1/templates/purposes/${id}`)
+      const res = await fetch(`${API_V1}/templates/purposes/${id}`)
       const data = await res.json().catch(() => null)
       if (!res.ok) {
         throw new Error(data?.message || "Unable to load purpose")
@@ -754,7 +755,7 @@ export default function Page() {
     setUpdatingPurpose(true)
     setPurposeDetailsError(null)
     try {
-      const res = await fetch(`/api/v1/templates/purposes/${selectedPurpose._id}`, {
+      const res = await fetch(`${API_V1}/templates/purposes/${selectedPurpose._id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(purposeEdit),
@@ -778,7 +779,7 @@ export default function Page() {
     setDeletingPurposeId(id)
     setPurposeDetailsError(null)
     try {
-      const res = await fetch(`/api/v1/templates/purposes/${id}`, { method: "DELETE" })
+      const res = await fetch(`${API_V1}/templates/purposes/${id}`, { method: "DELETE" })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         throw new Error(data.message || "Unable to delete purpose")
@@ -798,7 +799,7 @@ export default function Page() {
     setHeaderFootersLoading(true)
     setHeaderFootersError(null)
     try {
-      const res = await fetch("/api/v1/templates/header-footer")
+      const res = await fetch(`${API_V1}/templates/header-footer`)
       const data = await res.json().catch(() => null)
       if (!res.ok) {
         throw new Error(data?.message || "Unable to load header/footer")
@@ -813,7 +814,7 @@ export default function Page() {
 
   const fetchActiveHeaderFooter = async (type: "header" | "footer") => {
     try {
-      const res = await fetch(`/api/v1/templates/header-footer/${type}`)
+      const res = await fetch(`${API_V1}/templates/header-footer/${type}`)
       const data = await res.json().catch(() => null)
       if (!res.ok) {
         throw new Error(data?.message || `Unable to load ${type}`)
@@ -841,7 +842,7 @@ export default function Page() {
       params.set("endDate", isoEnd)
     }
     try {
-      const res = await fetch(`/api/v1/logs/app?${params.toString()}`)
+      const res = await fetch(`${API_V1}/logs/app?${params.toString()}`)
       const data = await res.json().catch(() => null)
       if (!res.ok) {
         throw new Error(data?.message || "Unable to load application logs")
@@ -874,7 +875,7 @@ export default function Page() {
       params.set("endDate", isoEnd)
     }
     try {
-      const res = await fetch(`/api/v1/core/logs/http?${params.toString()}`)
+      const res = await fetch(`${API_V1}/logs/http?${params.toString()}`)
       const data = await res.json().catch(() => null)
       if (!res.ok) {
         throw new Error(data?.message || "Unable to load http logs")
@@ -924,7 +925,7 @@ export default function Page() {
 
     setBudgetSaving(true)
     try {
-      const res = await fetch("/api/v1/settings/budget-config", {
+      const res = await fetch(`${API_V1}/settings/budget-config`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -953,7 +954,7 @@ export default function Page() {
     setBudgetSaveError(null)
     setBudgetSaving(true)
     try {
-      const res = await fetch("/api/v1/settings/budget-config/reset", {
+      const res = await fetch(`${API_V1}/settings/budget-config/reset`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       })

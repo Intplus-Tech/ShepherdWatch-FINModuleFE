@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { useCallback, useState } from "react"
 import { useAuth } from "@/components/auth/AuthProvider"
 
@@ -26,7 +27,7 @@ export function useBudgetSubmit() {
     setSubmitSuccess(false)
     
     try {
-      const response = await fetch(`/api/v1/core/financial/budgets/${id}/submit`, {
+      const response = await fetch(`${API_V1}/financial/budgets/${id}/submit`, {
         method: "PATCH",
         headers: {
           "x-csrf-token": getCsrfToken(),

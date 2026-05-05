@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 "use client"
 
 import Image from "next/image"
@@ -82,7 +83,7 @@ export default function DepreciationPage() {
         setScheduleLoading(true)
         setScheduleError(null)
 
-        const assetsResponse = await fetch("/api/v1/core/financial/fixed-assets", {
+        const assetsResponse = await fetch(`${API_V1}/financial/fixed-assets`, {
           method: "GET",
           credentials: "include",
         })
@@ -144,7 +145,7 @@ export default function DepreciationPage() {
         }
 
         const scheduleResponse = await fetch(
-          `/api/v1/core/financial/fixed-assets/${assetId}/depreciation-schedule?granularity=yearly&periods=10`,
+          `${API_V1}/financial/fixed-assets/${assetId}/depreciation-schedule?granularity=yearly&periods=10`,
           {
             method: "GET",
             credentials: "include",

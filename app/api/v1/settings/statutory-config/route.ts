@@ -2,13 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config"
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors"
 
-function getRequiredEnv(name: "BACKEND_API_URL"): string {
-  const value = process.env[name]
-  if (!value) {
-    throw new Error(`${name} is not configured`)
-  }
-  return value
-}
+import { getBackendApiUrl } from "@/lib/env"
+
 
 export async function GET(req: NextRequest) {
   try {
@@ -33,12 +28,9 @@ export async function GET(req: NextRequest) {
       )
     }
 
-    const baseUrl = getRequiredEnv("BACKEND_API_URL")
-    if (process.env.NODE_ENV === "production" && baseUrl.startsWith("http://")) {
-      throw new Error("BACKEND_API_URL must use https in production")
-    }
+    const baseUrl = getBackendApiUrl();
 
-    const url = new URL(`${baseUrl.replace(/\/+$/, "")}/api/v1/settings/statutory-config`)
+    const url = new URL(`${baseUrl}/settings/statutory-config`)
 
     const backendResponse = await fetch(url.toString(), {
       method: "GET",
@@ -111,12 +103,9 @@ export async function PUT(req: NextRequest) {
       )
     }
 
-    const baseUrl = getRequiredEnv("BACKEND_API_URL")
-    if (process.env.NODE_ENV === "production" && baseUrl.startsWith("http://")) {
-      throw new Error("BACKEND_API_URL must use https in production")
-    }
+    const baseUrl = getBackendApiUrl();
 
-    const url = new URL(`${baseUrl.replace(/\/+$/, "")}/api/v1/settings/statutory-config`)
+    const url = new URL(`${baseUrl}/settings/statutory-config`)
 
     const backendResponse = await fetch(url.toString(), {
       method: "PUT",

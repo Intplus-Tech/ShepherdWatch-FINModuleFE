@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { NextRequest } from "next/server";
 import { corsOptions, proxyRequest } from "@/lib/proxy";
 
@@ -7,7 +8,7 @@ export async function GET(
 ) {
   const { assetId } = await params;
   return proxyRequest(req, {
-    path: `api/v1/assets/${assetId}`,
+    path: `${API_V1}/assets/${assetId}`,
     method: "GET",
   });
 }
@@ -18,7 +19,7 @@ export async function PATCH(
 ) {
   const { assetId } = await params;
   return proxyRequest(req, {
-    path: `api/v1/assets/${assetId}`,
+    path: `${API_V1}/assets/${assetId}`,
     method: "PATCH",
   });
 }

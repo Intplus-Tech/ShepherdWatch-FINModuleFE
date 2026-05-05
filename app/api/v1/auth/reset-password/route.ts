@@ -1,9 +1,10 @@
+import { API_V1 } from "@/lib/api";
 import { NextRequest, NextResponse } from "next/server";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 import { getBackendUrl } from "@/lib/backend-auth-url";
 
 function getBackendResetPasswordUrl(): string | null {
-  return getBackendUrl("api/v1/auth/reset-password");
+  return getBackendUrl(`${API_V1}/auth/reset-password`);
 }
 
 type ResetPasswordPayload = {

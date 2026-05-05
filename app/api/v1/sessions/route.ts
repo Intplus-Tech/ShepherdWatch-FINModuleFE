@@ -1,10 +1,11 @@
+import { API_V1 } from "@/lib/api";
 import { NextRequest, NextResponse } from "next/server";
 import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 import { getBackendUrl } from "@/lib/backend-auth-url";
 
 function getBackendSessionsUrl(): string | null {
-  return getBackendUrl("api/v1/sessions");
+  return getBackendUrl(`${API_V1}/sessions`);
 }
 
 function parsePositiveInt(value: string | null): string | null {

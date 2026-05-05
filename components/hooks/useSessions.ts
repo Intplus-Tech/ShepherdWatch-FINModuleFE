@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
 
@@ -7,7 +8,7 @@ export function useSessions(selectedSessionId: string | null) {
   const sessionsQuery = useQuery({
     queryKey: ['sessions'],
     queryFn: async () => {
-      const res = await axios.get('/api/v1/sessions?page=1&limit=20');
+      const res = await axios.get(`${API_V1}/sessions?page=1&limit=20`);
       return res.data?.data?.data ?? [];
     }
   });
@@ -15,7 +16,7 @@ export function useSessions(selectedSessionId: string | null) {
   const sessionDetailsQuery = useQuery({
     queryKey: ['session', selectedSessionId],
     queryFn: async () => {
-      const res = await axios.get(`/api/v1/sessions/${selectedSessionId}`);
+      const res = await axios.get(`${API_V1}/sessions/${selectedSessionId}`);
       return res.data?.data;
     },
     enabled: !!selectedSessionId
@@ -23,7 +24,7 @@ export function useSessions(selectedSessionId: string | null) {
 
   const revokeAllMutation = useMutation({
     mutationFn: async (currentSessionId: string | null) => {
-      const res = await axios.post("/api/v1/sessions/revoke-all", currentSessionId ? { currentSessionId } : {});
+      const res = await axios.post(`${API_V1}/sessions/revoke-all`, currentSessionId ? { currentSessionId } : {});
       return res.data;
     },
     onSuccess: (data, currentSessionId) => {
@@ -39,7 +40,7 @@ export function useSessions(selectedSessionId: string | null) {
 
   const revokeMutation = useMutation({
     mutationFn: async (sessionId: string) => {
-      const res = await axios.patch(`/api/v1/sessions/${sessionId}/revoke`);
+      const res = await axios.patch(`${API_V1}/sessions/${sessionId}/revoke`);
       return res.data;
     },
     onSuccess: (data, sessionId) => {

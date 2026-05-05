@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { useState, useCallback } from "react"
 
 export interface BudgetHierarchicalItem {
@@ -53,7 +54,7 @@ export function useBudgetControl(initialProps?: UseBudgetControlProps) {
         if (mergedProps.branchId) qs.set("branchId", mergedProps.branchId)
         if (mergedProps.fiscalYear) qs.set("fiscalYear", mergedProps.fiscalYear.toString())
 
-        const res = await fetch(`/api/v1/core/financial/budgets/control?${qs.toString()}`, {
+        const res = await fetch(`${API_V1}/financial/budgets/control?${qs.toString()}`, {
           credentials: "include",
         })
         const payload = await res.json().catch(() => null)

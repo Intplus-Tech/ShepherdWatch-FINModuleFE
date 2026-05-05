@@ -3,13 +3,8 @@ import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 import { isCsrfValid } from "@/lib/csrf";
 
-function getRequiredEnv(name: "BACKEND_API_URL"): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`${name} is not configured`);
-  }
-  return value;
-}
+import { getBackendApiUrl } from "@/lib/env"
+
 
 type UpdateBranchStatusPayload = {
   status: "active" | "review" | "suspended" | "onboarding"
@@ -57,10 +52,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
       );
     }
 
-    const baseUrl = getRequiredEnv("BACKEND_API_URL");
-    if (process.env.NODE_ENV === "production" && baseUrl.startsWith("http://")) {
-      throw new Error("BACKEND_API_URL must use https in production");
-    }
+    const baseUrl = getBackendApiUrl();
 
     const body = await req.json().catch(() => null);
     const payloadToSend = normalizeStatusPayload(body)
@@ -76,7 +68,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
         req
       );
     }
-    const backendUrl = `${baseUrl.replace(/\/+$/, "")}/api/v1/branches/${encodeURIComponent(branchId)}/status`;
+    const backendUrl = `${baseUrl}/branches/${encodeURIComponent(branchId)}/status`;
 
     const backendResponse = await fetch(backendUrl, {
       method: "PATCH",

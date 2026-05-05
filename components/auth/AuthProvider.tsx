@@ -1,5 +1,6 @@
 "use client";
 
+import { API_V1 } from "@/lib/api";
 import React, { createContext, useCallback, useContext, useMemo } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
 import type { Session } from "next-auth";
@@ -134,7 +135,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     // Best-effort backend logout to clear server-side state / cookies.
-    await fetch("/api/v1/auth/logout", { method: "POST", credentials: "include" }).catch(() => null);
+    await fetch(`${API_V1}/auth/logout`, { method: "POST", credentials: "include" }).catch(() => null);
     await signOut({ redirect: false });
   }, []);
 
@@ -147,7 +148,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const changePassword = useCallback(
     async (payload: { currentPassword: string; newPassword: string }) => {
-      const res = await fetch("/api/v1/auth/change-password", {
+      const res = await fetch(`${API_V1}/auth/change-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -162,7 +163,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const forgotPassword = useCallback(async (email: string) => {
-    const res = await fetch("/api/v1/auth/forgot-password", {
+    const res = await fetch(`${API_V1}/auth/forgot-password`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
@@ -176,7 +177,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const resendOtp = useCallback(
     async (payload: { email: string; purpose: "email_verification" | "password_reset" }) => {
-      const res = await fetch("/api/v1/auth/resend-otp", {
+      const res = await fetch(`${API_V1}/auth/resend-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -192,7 +193,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const updateProfile = useCallback(
     async (payload: { firstName?: string; lastName?: string; phone?: string; avatar?: string }) => {
-      const res = await fetch("/api/v1/auth/profile", {
+      const res = await fetch(`${API_V1}/auth/profile`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

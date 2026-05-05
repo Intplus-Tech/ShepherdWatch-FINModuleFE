@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 "use client"
 
 import Image from "next/image"
@@ -49,7 +50,7 @@ export default function Page() {
       try {
         setLoading(true)
         setError(null)
-        const res = await fetch("/api/v1/core/financial/fixed-assets", { credentials: "include" })
+        const res = await fetch(`${API_V1}/financial/fixed-assets`, { credentials: "include" })
         const payload = await res.json().catch(() => null)
         if (!res.ok) throw new Error(payload?.message ?? "Unable to load assets.")
         const list = payload?.data?.content ?? payload?.data ?? payload?.content ?? []

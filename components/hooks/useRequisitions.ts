@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { useEffect, useMemo, useState } from "react"
 import { useAuth } from "@/components/auth/AuthProvider"
 
@@ -143,8 +144,8 @@ export function useRequisitions(options: UseRequisitionsOptions = {}) {
 
         const query = params.toString()
         const url = query
-          ? `/api/v1/core/financial/requisitions?${query}`
-          : "/api/v1/core/financial/requisitions"
+          ? `${API_V1}/financial/requisitions?${query}`
+          : `${API_V1}/financial/requisitions`
 
         const response = await fetch(url, {
           method: "GET",

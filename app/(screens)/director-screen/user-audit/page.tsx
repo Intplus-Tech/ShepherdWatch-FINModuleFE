@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 "use client"
 
 import React from "react"
@@ -59,11 +60,11 @@ export default function Page() {
     const loadPermissions = async () => {
       try {
         const [permissionsResponse, rolesResponse] = await Promise.all([
-          fetch("/api/v1/core/roles/permissions", {
+          fetch(`${API_V1}/roles/permissions`, {
             method: "GET",
             credentials: "include",
           }),
-          fetch("/api/v1/core/roles", {
+          fetch(`${API_V1}/roles`, {
             method: "GET",
             credentials: "include",
           }),
@@ -124,7 +125,7 @@ export default function Page() {
 
       try {
         const params = new URLSearchParams({ page: "1", limit: "20" })
-        const response = await fetch(`/api/v1/audit-logs?${params.toString()}`, {
+        const response = await fetch(`${API_V1}/audit-logs?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         })
@@ -249,7 +250,7 @@ export default function Page() {
     setAuditDetailLoading(true)
     setAuditDetailError(null)
     try {
-      const response = await fetch(`/api/v1/audit-logs/${encodeURIComponent(auditId)}`, {
+      const response = await fetch(`${API_V1}/audit-logs/${encodeURIComponent(auditId)}`, {
         method: "GET",
         credentials: "include",
         cache: "no-store",
@@ -293,7 +294,7 @@ export default function Page() {
       }
       if (searchText) params.set("search", searchText)
 
-      const response = await fetch(`/api/v1/audit-logs/export?${params.toString()}`, {
+      const response = await fetch(`${API_V1}/audit-logs/export?${params.toString()}`, {
         method: "GET",
         credentials: "include",
         cache: "no-store",

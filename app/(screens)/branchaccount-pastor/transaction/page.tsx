@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 "use client"
 
 import React, { useEffect, useMemo, useState } from "react"
@@ -194,7 +195,7 @@ export default function Page() {
 
     try {
       const csrfToken = getCsrfToken()
-      const response = await fetch(`/api/v1/core/financial/transactions/${selectedTransactionId}/verify`, {
+      const response = await fetch(`${API_V1}/financial/transactions/${selectedTransactionId}/verify`, {
         method: "POST",
         headers: { "x-csrf-token": csrfToken },
         credentials: "include",
@@ -218,7 +219,7 @@ export default function Page() {
 
     try {
       const csrfToken = getCsrfToken()
-      const response = await fetch(`/api/v1/core/financial/transactions/${selectedTransactionId}/reconcile`, {
+      const response = await fetch(`${API_V1}/financial/transactions/${selectedTransactionId}/reconcile`, {
         method: "POST",
         headers: { "x-csrf-token": csrfToken },
         credentials: "include",
@@ -242,7 +243,7 @@ export default function Page() {
 
     try {
       const csrfToken = getCsrfToken()
-      const response = await fetch(`/api/v1/core/financial/transactions/${transactionId}`, {
+      const response = await fetch(`${API_V1}/financial/transactions/${transactionId}`, {
         method: "DELETE",
         headers: { "x-csrf-token": csrfToken },
         credentials: "include",
@@ -274,7 +275,7 @@ export default function Page() {
     setParseResults([])
 
     try {
-      const response = await fetch("/api/v1/core/financial/bank-statement/parse-email", {
+      const response = await fetch(`${API_V1}/financial/bank-statement/parse-email`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -312,7 +313,7 @@ export default function Page() {
         startDate,
         endDate,
       })
-      const response = await fetch(`/api/v1/core/financial/export/transactions?${params.toString()}`, {
+      const response = await fetch(`${API_V1}/financial/export/transactions?${params.toString()}`, {
         method: "GET",
         credentials: "include",
       })
@@ -355,8 +356,8 @@ export default function Page() {
 
       try {
         const url = tenantId
-          ? `/api/v1/core/financial/coa/tree?branchId=${encodeURIComponent(tenantId)}`
-          : "/api/v1/core/financial/coa/tree"
+          ? `${API_V1}/financial/coa/tree?branchId=${encodeURIComponent(tenantId)}`
+          : `${API_V1}/financial/coa/tree`
 
         const coaResponse = await fetch(url, {
           method: "GET",

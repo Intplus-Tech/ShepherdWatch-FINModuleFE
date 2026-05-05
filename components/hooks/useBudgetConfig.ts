@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { useEffect, useState } from "react"
 
 export type BudgetConfig = {
@@ -26,7 +27,7 @@ export function useBudgetConfig() {
       setError(null)
 
       try {
-        const response = await fetch("/api/v1/settings/budget-config", {
+        const response = await fetch(`${API_V1}/settings/budget-config`, {
           method: "GET",
           credentials: "include",
         })

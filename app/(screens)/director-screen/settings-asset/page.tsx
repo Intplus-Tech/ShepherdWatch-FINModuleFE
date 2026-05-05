@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
@@ -100,7 +101,7 @@ export default function Page() {
 
     setSaving(true)
     try {
-      const res = await fetch("/api/v1/settings/asset-config", {
+      const res = await fetch(`${API_V1}/settings/asset-config`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

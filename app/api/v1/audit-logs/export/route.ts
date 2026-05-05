@@ -1,10 +1,11 @@
+import { API_V1 } from "@/lib/api";
 import { NextRequest, NextResponse } from "next/server";
 import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 import { getBackendUrl } from "@/lib/backend-auth-url";
 
 function getBackendAuditLogsExportUrl(): string | null {
-  return getBackendUrl("api/v1/audit-logs/export");
+  return getBackendUrl(`${API_V1}/audit-logs/export`);
 }
 
 function buildQuery(searchParams: URLSearchParams): string {

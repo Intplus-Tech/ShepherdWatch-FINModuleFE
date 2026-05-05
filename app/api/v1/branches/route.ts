@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { NextRequest, NextResponse } from "next/server";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 import { isCsrfValid } from "@/lib/csrf";
@@ -5,7 +6,7 @@ import { applyAuthCookies, executeWithRefreshRetry } from "@/lib/backend-refresh
 import { getBackendUrl } from "@/lib/backend-auth-url";
 
 function getBackendBranchesUrl(): string | null {
-  return getBackendUrl("api/v1/branches");
+  return getBackendUrl(`${API_V1}/branches`);
 }
 
 type CreateBranchPayload = {

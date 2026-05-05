@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { useEffect, useMemo, useState } from "react"
 import { useAuth } from "@/components/auth/AuthProvider"
 
@@ -63,8 +64,8 @@ export function useTransactions(options: UseTransactionsOptions = {}) {
         if (options.type) params.set("type", options.type)
         const query = params.toString()
         const url = query
-          ? `/api/v1/core/financial/transactions?${query}`
-          : "/api/v1/core/financial/transactions"
+          ? `${API_V1}/financial/transactions?${query}`
+          : `${API_V1}/financial/transactions`
 
         const response = await fetch(url, {
           method: "GET",

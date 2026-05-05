@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { useEffect, useMemo, useState } from "react"
 import { useAuth } from "@/components/auth/AuthProvider"
 
@@ -52,8 +53,8 @@ export function useBudgetVsActuals(options: Options = {}) {
         if (options.period) params.set("period", options.period)
         const query = params.toString()
         const url = query
-          ? `/api/v1/core/dashboard/budget-vs-actuals?${query}`
-          : "/api/v1/core/dashboard/budget-vs-actuals"
+          ? `${API_V1}/dashboard/budget-vs-actuals?${query}`
+          : `${API_V1}/dashboard/budget-vs-actuals`
         const response = await fetch(url, { method: "GET", credentials: "include" })
         const payload = await response.json().catch(() => null)
         if (!response.ok) {

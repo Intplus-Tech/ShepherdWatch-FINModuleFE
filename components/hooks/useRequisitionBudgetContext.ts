@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { useEffect, useMemo, useState } from "react"
 
 export type RequisitionBudgetContext = {
@@ -38,7 +39,7 @@ export function useRequisitionBudgetContext(requisitionId?: string) {
       setLoading(true)
       setError(null)
       try {
-        const response = await fetch(`/api/v1/core/financial/requisitions/${id}/budget-context`, {
+        const response = await fetch(`${API_V1}/financial/requisitions/${id}/budget-context`, {
           method: "GET",
           credentials: "include",
         })

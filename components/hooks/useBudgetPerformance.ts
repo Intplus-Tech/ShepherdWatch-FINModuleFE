@@ -1,3 +1,4 @@
+import { API_V1 } from "@/lib/api";
 import { useState, useCallback } from "react"
 
 export interface BudgetItem {
@@ -37,7 +38,7 @@ export function useBudgetPerformance(initialProps?: UseBudgetPerformanceProps) {
         if (mergedProps.startDate) qs.set("startDate", mergedProps.startDate)
         if (mergedProps.endDate) qs.set("endDate", mergedProps.endDate)
 
-        const res = await fetch(`/api/v1/core/dashboard/budget-performance?${qs.toString()}`)
+        const res = await fetch(`${API_V1}/dashboard/budget-performance?${qs.toString()}`)
         const data = await res.json().catch(() => null)
         
         if (!res.ok) {

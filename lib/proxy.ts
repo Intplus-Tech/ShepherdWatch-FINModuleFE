@@ -5,7 +5,7 @@ import { applyAuthCookies, executeWithRefreshRetry } from "@/lib/backend-refresh
 import { getBackendUrl } from "@/lib/backend-auth-url";
 
 type ProxyOptions = {
-  /** Backend path under base URL, e.g. "api/v1/transactions/summary". */
+  /** Backend path under base URL, e.g. `${API_V1}/transactions/summary`. */
   path: string;
   /** HTTP method to forward. */
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";

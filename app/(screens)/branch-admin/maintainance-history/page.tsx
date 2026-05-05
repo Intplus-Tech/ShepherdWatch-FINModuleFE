@@ -1,5 +1,6 @@
 "use client";
 
+import { API_V1 } from "@/lib/api";
 import React, { useEffect, useMemo, useState } from "react";
 import { Inter } from "next/font/google";
 import { useRouter } from "next/navigation";
@@ -79,7 +80,7 @@ export default function MaintenanceHistoryModalPage() {
           limit: "50",
         });
 
-        const response = await fetch(`/api/v1/maintenance/history?${params.toString()}`, {
+        const response = await fetch(`${API_V1}/maintenance/history?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         });
@@ -153,7 +154,7 @@ export default function MaintenanceHistoryModalPage() {
     setVerifyError(null);
     setVerifyingId(recordId);
     try {
-      const response = await fetch(`/api/v1/maintenance/${recordId}/verify`, {
+      const response = await fetch(`${API_V1}/maintenance/${recordId}/verify`, {
         method: "POST",
         credentials: "include",
       });
