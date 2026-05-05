@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 import { applyAuthCookies, executeWithRefreshRetry } from "@/lib/backend-refresh";
-import { resolveBranchIdFromSession } from "@/lib/resolve-branch-id";
+import { extractBranchIdFromJwt } from "@/lib/jwt-claims";
 
 function getBackendUrl(searchParams: URLSearchParams): string {
   const baseUrl = process.env.BACKEND_API_URL?.replace(/\/+$/, "");
@@ -23,9 +23,9 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
 
-    const { res: backendRes, refreshedTokens } = await executeWithRefreshRetry(req, async (token) => {
+    const { res: backendRes, refreshedTokens } = await executeWithRefreshRetry(req, (token) => {
       if (!searchParams.get("branchId")) {
-        const fallbackBranchId = await resolveBranchIdFromSession(token);
+        const fallbackBranchId = extractBranchIdFromJwt(token);
         if (fallbackBranchId) searchParams.set("branchId", fallbackBranchId);
       }
       const backendUrl = getBackendUrl(searchParams);
