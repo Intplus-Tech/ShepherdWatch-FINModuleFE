@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 import { applyAuthCookies, executeWithRefreshRetry } from "@/lib/backend-refresh";
+import { extractBranchIdFromJwt } from "@/lib/jwt-claims";
 
 function getBackendUrl(searchParams: URLSearchParams): string {
   const baseUrl = process.env.BACKEND_API_URL?.replace(/\/+$/, "");
@@ -21,18 +22,22 @@ export async function GET(req: NextRequest) {
     }
 
     const { searchParams } = new URL(req.url);
-    const backendUrl = getBackendUrl(searchParams);
 
-    const { res: backendRes, refreshedTokens } = await executeWithRefreshRetry(req, (token) =>
-      fetch(backendUrl, {
+    const { res: backendRes, refreshedTokens } = await executeWithRefreshRetry(req, (token) => {
+      if (!searchParams.get("branchId")) {
+        const fallbackBranchId = extractBranchIdFromJwt(token);
+        if (fallbackBranchId) searchParams.set("branchId", fallbackBranchId);
+      }
+      const backendUrl = getBackendUrl(searchParams);
+      return fetch(backendUrl, {
         method: "GET",
         headers: {
           Accept: "application/json",
           Authorization: `Bearer ${token}`,
         },
         cache: "no-store",
-      })
-    );
+      });
+    });
 
     const responseText = await backendRes.text();
     const contentType = backendRes.headers.get("content-type") ?? "";
