@@ -2,12 +2,56 @@
 
 import React from "react";
 import { Inter } from "next/font/google";
+import { useRouter, useSearchParams } from "next/navigation";
 import { X, TrendingDown, Plus, Info, ArrowUpRight, Trash2 } from "lucide-react";
 import AssetsHubPage from "../asset/page";
+import { useAsset, type AssetDetail } from "@/components/hooks/useAsset";
+import { formatCurrency } from "@/lib/format";
 
 const inter = Inter({ subsets: ["latin"] });
 
+function getString(obj: AssetDetail | null | undefined, ...keys: string[]): string {
+  if (!obj) return "";
+  for (const k of keys) {
+    const v = (obj as unknown as Record<string, unknown>)[k];
+    if (typeof v === "string" && v.trim()) return v;
+    if (typeof v === "number" && Number.isFinite(v)) return String(v);
+  }
+  return "";
+}
+
+function getNumber(obj: AssetDetail | null | undefined, ...keys: string[]): number | null {
+  if (!obj) return null;
+  for (const k of keys) {
+    const v = (obj as unknown as Record<string, unknown>)[k];
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+    if (typeof v === "string" && v.trim() && !Number.isNaN(Number(v))) return Number(v);
+  }
+  return null;
+}
+
 export default function FinancialImpactModalPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const assetId = searchParams.get("id");
+  const { asset } = useAsset(assetId);
+
+  const headerName = getString(asset, "name", "assetName") || "—";
+  const headerCategory = getString(asset, "assetClassName", "category", "assetType") || "—";
+  const headerCondition = getString(asset, "condition") || "—";
+  const headerLocation = getString(asset, "location") || "—";
+  const headerId = getString(asset, "id", "_id") || assetId || "";
+
+  const purchaseValue = getNumber(asset, "purchaseValue", "cost", "unitCost");
+  const currentValue = getNumber(asset, "currentValue", "nbv");
+  const totalDepreciation = purchaseValue != null && currentValue != null ? purchaseValue - currentValue : null;
+  const economicLife = getNumber(asset, "usefulLifeYears", "economicLife", "usefulLife");
+
+  const handleClose = () => {
+    if (typeof window !== "undefined" && window.history.length > 1) router.back();
+    else router.push("/branch-admin/asset");
+  };
+
   return (
     <div className={`relative min-h-[100dvh] w-full ${inter.className} antialiased`}>
       {/* Blurred Background Page */}
@@ -28,21 +72,21 @@ export default function FinancialImpactModalPage() {
           <div className="px-6 sm:px-8 py-5 flex items-start justify-between bg-white">
             <div className="flex flex-col gap-2">
               <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                <h2 className="text-[#111827] text-[20px] sm:text-[22px] font-[900] leading-tight tracking-tight">Dell OptiPlex 7090</h2>
+                <h2 className="text-[#111827] text-[20px] sm:text-[22px] font-[900] leading-tight tracking-tight">{headerName}</h2>
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="px-2.5 py-1 bg-[#EFF6FF] text-[#2563EB] text-[11px] font-[800] uppercase tracking-wider rounded-[6px]">
-                    IT Equipment
+                    {headerCategory}
                   </div>
                   <div className="px-2.5 py-1 bg-[#FEF9C3] text-[#CA8A04] text-[11px] font-[800] uppercase tracking-wider rounded-[6px]">
-                    Fair Condition
+                    {headerCondition} Condition
                   </div>
                 </div>
               </div>
               <p className="text-[#64748B] text-[13.5px] font-[500] tracking-wide">
-                Asset ID: <span className="font-[700] text-[#475569]">#EQ-2041</span> • Main Office - Desk 4
+                Asset ID: <span className="font-[700] text-[#475569]">#{headerId || "—"}</span> • {headerLocation}
               </p>
             </div>
-            <button className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors shrink-0 text-[#9CA3AF]">
+            <button onClick={handleClose} className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors shrink-0 text-[#9CA3AF]">
               <X className="h-5 w-5 stroke-[2px]" />
             </button>
           </div>
@@ -71,22 +115,22 @@ export default function FinancialImpactModalPage() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="bg-white border border-[#EEF1F6] rounded-[10px] p-4 flex flex-col shadow-sm">
                 <span className="text-[#64748B] text-[10.5px] font-[800] uppercase tracking-widest mb-1.5">PURCHASE PRICE</span>
-                <span className="text-[#111827] text-[17px] sm:text-[18px] font-[800] tracking-tight">₦ 450,000.00</span>
+                <span className="text-[#111827] text-[17px] sm:text-[18px] font-[800] tracking-tight">{purchaseValue != null ? formatCurrency(purchaseValue, { currency: "NGN" }) : "—"}</span>
               </div>
               
               <div className="bg-white border border-[#EEF1F6] rounded-[10px] p-4 flex flex-col shadow-sm">
                 <span className="text-[#64748B] text-[10.5px] font-[800] uppercase tracking-widest mb-1.5">NET BOOK VALUE</span>
-                <span className="text-[#2563EB] text-[17px] sm:text-[18px] font-[800] tracking-tight">₦ 285,500.00</span>
+                <span className="text-[#2563EB] text-[17px] sm:text-[18px] font-[800] tracking-tight">{currentValue != null ? formatCurrency(currentValue, { currency: "NGN" }) : "—"}</span>
               </div>
               
               <div className="bg-white border border-[#EEF1F6] rounded-[10px] p-4 flex flex-col shadow-sm">
                 <span className="text-[#64748B] text-[10.5px] font-[800] uppercase tracking-widest mb-1.5">TOTAL DEPRECIATION</span>
-                <span className="text-[#EF4444] text-[17px] sm:text-[18px] font-[800] tracking-tight">₦ 164,500.00</span>
+                <span className="text-[#EF4444] text-[17px] sm:text-[18px] font-[800] tracking-tight">{totalDepreciation != null ? formatCurrency(totalDepreciation, { currency: "NGN" }) : "—"}</span>
               </div>
               
               <div className="bg-white border border-[#EEF1F6] rounded-[10px] p-4 flex flex-col shadow-sm">
                 <span className="text-[#64748B] text-[10.5px] font-[800] uppercase tracking-widest mb-1.5">ECONOMIC LIFE</span>
-                <span className="text-[#111827] text-[17px] sm:text-[18px] font-[800] tracking-tight">5 Years</span>
+                <span className="text-[#111827] text-[17px] sm:text-[18px] font-[800] tracking-tight">{economicLife != null ? `${economicLife} Years` : "—"}</span>
               </div>
             </div>
 
