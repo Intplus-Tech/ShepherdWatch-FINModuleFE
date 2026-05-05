@@ -2,6 +2,7 @@
 
 import React from "react";
 import { Inter } from "next/font/google";
+import { withSuspense } from "@/lib/withSuspense";
 import { useRouter, useSearchParams } from "next/navigation";
 import { X, Truck, Box, Monitor, Trash2 } from "lucide-react";
 import AssetsHubPage from "../asset/page";
@@ -19,7 +20,7 @@ function getString(obj: AssetDetail | null | undefined, ...keys: string[]): stri
   return "";
 }
 
-export default function MaintenanceLogModalPage() {
+function MaintenanceLogModalPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const assetId = searchParams.get("id");
@@ -298,3 +299,6 @@ export default function MaintenanceLogModalPage() {
     </div>
   );
 }
+
+const MaintenanceLogModalPage = withSuspense(MaintenanceLogModalPageInner);
+export default MaintenanceLogModalPage;

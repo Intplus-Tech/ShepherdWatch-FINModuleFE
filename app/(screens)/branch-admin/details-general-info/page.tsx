@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { Suspense } from "react";
 import { Inter } from "next/font/google";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -48,7 +48,7 @@ function getNumber(asset: AssetDetail | null, ...keys: string[]): number | null 
   return null;
 }
 
-export default function DetailsGeneralInfoModalPage() {
+function DetailsGeneralInfoModalPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const assetId = searchParams.get("id") ?? searchParams.get("assetId");
@@ -393,5 +393,13 @@ export default function DetailsGeneralInfoModalPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function DetailsGeneralInfoModalPage() {
+  return (
+    <Suspense fallback={null}>
+      <DetailsGeneralInfoModalPageInner />
+    </Suspense>
   );
 }

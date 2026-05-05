@@ -1,7 +1,5 @@
 "use client"
 
-export const dynamic = "force-dynamic"
-
 import BudgetPage from "../budget/page"
 import { useBudgetDetailedPerformance } from "@/components/hooks/useBudgetDetailedPerformance"
 import { Suspense, useEffect, useMemo } from "react"

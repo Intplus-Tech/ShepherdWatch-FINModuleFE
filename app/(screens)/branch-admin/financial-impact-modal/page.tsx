@@ -2,6 +2,7 @@
 
 import React from "react";
 import { Inter } from "next/font/google";
+import { withSuspense } from "@/lib/withSuspense";
 import { useRouter, useSearchParams } from "next/navigation";
 import { X, TrendingDown, Plus, Info, ArrowUpRight, Trash2 } from "lucide-react";
 import AssetsHubPage from "../asset/page";
@@ -30,7 +31,7 @@ function getNumber(obj: AssetDetail | null | undefined, ...keys: string[]): numb
   return null;
 }
 
-export default function FinancialImpactModalPage() {
+function FinancialImpactModalPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const assetId = searchParams.get("id");
@@ -371,3 +372,6 @@ export default function FinancialImpactModalPage() {
     </div>
   );
 }
+
+const FinancialImpactModalPage = withSuspense(FinancialImpactModalPageInner);
+export default FinancialImpactModalPage;

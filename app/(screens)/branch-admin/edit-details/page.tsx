@@ -2,6 +2,7 @@
 
 import React from "react";
 import { Inter } from "next/font/google";
+import { withSuspense } from "@/lib/withSuspense";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   X,
@@ -37,7 +38,7 @@ function toDateInputValue(raw: string): string {
   return d.toISOString().slice(0, 10);
 }
 
-export default function EditAssetDetailsModalPage() {
+function EditAssetDetailsModalPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const assetId = searchParams.get("id") ?? searchParams.get("assetId");
@@ -315,3 +316,5 @@ export default function EditAssetDetailsModalPage() {
     </div>
   );
 }
+const EditAssetDetailsModalPage = withSuspense(EditAssetDetailsModalPageInner);
+export default EditAssetDetailsModalPage;
