@@ -4,7 +4,7 @@ import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 import { getBackendUrl } from "@/lib/backend-auth-url";
 
 function getBackendUserUrl() {
-  return getBackendUrl("core/users/export");
+  return getBackendUrl("api/v1/users/export");
 }
 
 export async function GET(req: NextRequest) {
@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
     const data = await backendRes.json();
 
     return applyCors(NextResponse.json(data, { status: 200 }), req);
-  } catch (error) {
+  } catch {
     return applyCors(
       NextResponse.json({ success: false, message: "Server error occurred while exporting users" }, { status: 502 }),
       req

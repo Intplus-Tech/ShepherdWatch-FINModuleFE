@@ -4,7 +4,7 @@ import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 import { getBackendUrl } from "@/lib/backend-auth-url";
 
 function getBackendUserUrl() {
-  return getBackendUrl("core/users/profile");
+  return getBackendUrl("api/v1/users/profile");
 }
 
 export async function GET(req: NextRequest) {

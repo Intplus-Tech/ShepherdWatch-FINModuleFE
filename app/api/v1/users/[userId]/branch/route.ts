@@ -4,7 +4,7 @@ import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 import { getBackendUrl } from "@/lib/backend-auth-url";
 
 function getBackendUserUrl(userId: string) {
-  return getBackendUrl(`core/users/${userId}/branch`);
+  return getBackendUrl(`api/v1/users/${userId}/branch`);
 }
 
 export async function PUT(

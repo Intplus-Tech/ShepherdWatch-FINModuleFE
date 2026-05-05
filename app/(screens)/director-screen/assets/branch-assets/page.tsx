@@ -30,6 +30,7 @@ import BranchesDropdown from "@/components/navigation/BranchesDropdown"
 import AssetDetailsModal, { AssetDetails } from "@/components/modals/AssetDetailsModal"
 import RecordAssetSaleModal, { AssetSaleDetails } from "@/components/modals/RecordAssetSaleModal"
 import AddNewAssetModal from "@/components/modals/AddNewAssetModal"
+import { useAssetOverview } from "@/components/hooks/useAssetOverview"
 
 const navItems = [
   { label: "Dashboard", href: "/director-screen/dashboard", icon: LayoutDashboard },
@@ -124,68 +125,34 @@ function PageInner() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const {
+    items: overviewItems,
+    isLoading: overviewLoading,
+    error: overviewError,
+  } = useAssetOverview()
+
   useEffect(() => {
-    let isMounted = true
+    setLoading(overviewLoading)
+    setError(overviewError)
 
-    const fetchAssets = async () => {
-      try {
-        setLoading(true)
-        setError(null)
+    const formatCurrency = (amount: number) =>
+      new Intl.NumberFormat("en-NG", {
+        style: "currency",
+        currency: "NGN",
+        maximumFractionDigits: 0,
+      }).format(amount)
 
-        const response = await fetch(`/api/v1/core/financial/fixed-assets`, {
-          method: "GET",
-          credentials: "include",
-        })
-        const payload = await response.json().catch(() => null)
-        if (!response.ok) {
-          throw new Error(payload?.message ?? "Unable to load assets.")
-        }
+    const mapped = (overviewItems ?? []).map((asset: any) => ({
+      branch: asset?.branchName ?? asset?.branch ?? asset?.tenantId ?? "All Branches",
+      name: asset?.name ?? asset?.assetName ?? asset?.description ?? "Unnamed Asset",
+      category: asset?.category ?? "General",
+      cost: formatCurrency(Number(asset?.cost ?? asset?.purchaseValue ?? asset?.value ?? 0)),
+      nbv: formatCurrency(Number(asset?.nbv ?? asset?.currentValue ?? asset?.purchaseValue ?? 0)),
+      status: asset?.status ?? "Active",
+    }))
 
-        const data =
-          payload?.data?.content ??
-          payload?.data ??
-          payload?.content ??
-          []
-        
-        const formatCurrency = (amount: number) =>
-          new Intl.NumberFormat("en-NG", {
-            style: "currency",
-            currency: "NGN",
-            maximumFractionDigits: 0,
-          }).format(amount)
-
-        const mapped = (Array.isArray(data) ? data : []).map((asset) => {
-          return {
-            branch: asset?.tenantId ?? "All Branches",
-            name: asset?.name ?? asset?.description ?? asset?.assetName ?? "Unnamed Asset",
-            category: asset?.category ?? "General",
-            cost: formatCurrency(Number(asset?.purchaseValue || asset?.value || 0)),
-            nbv: formatCurrency(Number(asset?.currentValue || asset?.purchaseValue || 0)),
-            status: asset?.status ?? "Active",
-          }
-        })
-
-        if (isMounted) {
-          setAssets(mapped)
-        }
-      } catch (err) {
-        if (isMounted) {
-          setAssets([])
-          setError(err instanceof Error ? err.message : "Unable to load assets.")
-        }
-      } finally {
-        if (isMounted) {
-          setLoading(false)
-        }
-      }
-    }
-
-    fetchAssets()
-
-    return () => {
-      isMounted = false
-    }
-  }, [])
+    setAssets(mapped)
+  }, [overviewItems, overviewLoading, overviewError])
 
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">

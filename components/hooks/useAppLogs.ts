@@ -46,7 +46,7 @@ export function useAppLogs(filters: AppLogsFilters = {}) {
       if (filters.startDate) queryParams.append("startDate", filters.startDate)
       if (filters.endDate) queryParams.append("endDate", filters.endDate)
       
-      const res = await fetch(`/api/v1/core/logs/app?${queryParams.toString()}`, {
+      const res = await fetch(`/api/v1/logs/app?${queryParams.toString()}`, {
         method: "GET",
         credentials: "include",
       })

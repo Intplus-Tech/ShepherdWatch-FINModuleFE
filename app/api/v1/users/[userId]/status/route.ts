@@ -19,7 +19,23 @@ export async function PUT(
       return NextResponse.json({ message: "Status is required" }, { status: 400 });
     }
 
-    const backendUrl = getBackendUrl(`api/v1/core/users/${userId}/status`);
+    // Backend exposes /activate and /deactivate (not /status). Route accordingly.
+    const normalized = String(status).toLowerCase();
+    const action =
+      normalized === "active" || normalized === "activate" || normalized === "enabled"
+        ? "activate"
+        : normalized === "inactive" || normalized === "deactivate" || normalized === "disabled" || normalized === "suspended"
+          ? "deactivate"
+          : null;
+
+    if (!action) {
+      return NextResponse.json(
+        { message: `Unsupported status value: ${status}` },
+        { status: 400 }
+      );
+    }
+
+    const backendUrl = getBackendUrl(`api/v1/users/${userId}/${action}`);
     if (!backendUrl) {
       return NextResponse.json({ message: "Backend URL not configured" }, { status: 500 });
     }
@@ -31,7 +47,6 @@ export async function PUT(
           "Authorization": `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ status }),
       })
     );
 

@@ -4,7 +4,7 @@ import { applyAuthCookies, executeWithRefreshRetry } from "@/lib/backend-refresh
 import { getBackendUrl } from "@/lib/backend-auth-url";
 
 function getBackendUserUrl() {
-  return getBackendUrl("core/users/invite");
+  return getBackendUrl("api/v1/users/invite");
 }
 
 export async function POST(req: NextRequest) {
@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
 
     applyAuthCookies(response, refreshedTokens);
     return applyCors(response, req);
-  } catch (error) {
+  } catch {
     return applyCors(
       NextResponse.json({ success: false, message: "Server error occurred while inviting user" }, { status: 502 }),
       req

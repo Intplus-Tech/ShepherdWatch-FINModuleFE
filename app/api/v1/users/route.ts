@@ -4,7 +4,7 @@ import { applyAuthCookies, executeWithRefreshRetry } from "@/lib/backend-refresh
 import { getBackendUrl } from "@/lib/backend-auth-url";
 
 function getBackendUserUrl() {
-  return getBackendUrl("core/users");
+  return getBackendUrl("api/v1/users");
 }
 
 export async function GET(req: NextRequest) {
