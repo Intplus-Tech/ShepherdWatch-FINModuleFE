@@ -952,17 +952,27 @@ export default function Page() {
                     onChange={(event) => setBranchAddress(event.target.value)}
                     onBlur={() => setBranchTouched((prev) => ({ ...prev, address: true }))}
                   />
-                  <Input
-                    className={`h-10 rounded-md bg-white text-[12px] text-[#6B7280] ${
+                  <select
+                    aria-label="Region"
+                    className={`h-10 rounded-md border bg-white px-2 text-[12px] text-[#6B7280] ${
                       branchTouched.region && !branchRegion.trim()
                         ? "border-rose-300 focus-visible:ring-rose-200"
                         : "border-[#E5E7EB]"
                     }`}
-                    placeholder="Region"
                     value={branchRegion}
                     onChange={(event) => setBranchRegion(event.target.value)}
                     onBlur={() => setBranchTouched((prev) => ({ ...prev, region: true }))}
-                  />
+                    disabled={regionOptionsLoading}
+                  >
+                    <option value="">
+                      {regionOptionsLoading ? "Loading regions..." : "Select region"}
+                    </option>
+                    {branchRegionOptions.map((region) => (
+                      <option key={region.id} value={region.id}>
+                        {region.name}
+                      </option>
+                    ))}
+                  </select>
                   <select
                     className={`h-10 rounded-md bg-white px-2 text-[12px] text-[#6B7280] ${
                       branchTouched.branchType && !branchType.trim()

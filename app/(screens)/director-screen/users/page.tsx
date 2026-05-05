@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import {  Input } from "@/components/ui/input"
 import { useState, useEffect } from "react"
 import { useUsers, useToggleUserStatus } from "@/components/hooks/useUsers"
+import { SkeletonTable } from "@/components/ui/skeleton"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { 
@@ -223,7 +224,9 @@ export default function Page() {
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={6} className="py-6 text-center text-[#9CA3AF]">Loading users...</td>
+                      <td colSpan={6} className="py-4 px-4">
+                        <SkeletonTable rows={5} columns={6} />
+                      </td>
                     </tr>
                   ) : users.length === 0 ? (
                     <tr>

@@ -25,9 +25,11 @@ import {
   Check
 } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter } from "next/navigation"
 import BranchesDropdown from "@/components/navigation/BranchesDropdown"
 import { useAssetClasses } from "@/components/hooks/useAssetClasses"
+import { SkeletonTable } from "@/components/ui/skeleton"
+import { useModalParam } from "@/components/hooks/useModalParam"
 import NewAssetCategoryModal from "@/components/modals/NewAssetCategoryModal"
 
 const navItems = [
@@ -99,14 +101,12 @@ function Dropdown({
 }
 
 function ModalContainer() {
-  const searchParams = useSearchParams()
-  const router = useRouter()
-  const isModalOpen = searchParams.get('modal') === 'new-asset-category'
+  const { isOpen, close } = useModalParam('new-asset-category')
 
   return (
     <NewAssetCategoryModal 
-      isOpen={isModalOpen} 
-      onClose={() => router.replace('/director-screen/assets')} 
+      isOpen={isOpen} 
+      onClose={close} 
     />
   )
 }
@@ -312,8 +312,8 @@ function PageInner() {
                 <tbody className="divide-y divide-[#EEF1F6]">
                   {loading ? (
                     <tr>
-                      <td colSpan={4} className="px-6 py-8 text-center text-[13px] text-[#6B7280]">
-                        Loading asset policies...
+                      <td colSpan={4} className="px-6 py-4">
+                        <SkeletonTable rows={5} columns={4} />
                       </td>
                     </tr>
                   ) : error ? (

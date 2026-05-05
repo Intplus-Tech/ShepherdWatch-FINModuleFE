@@ -90,6 +90,7 @@ export default function Dashboard() {
       requisitions.map((item, index) => {
         const status = (item.currentStatus ?? "pending").replace(/_/g, " ")
         return {
+          realId: item.id,
           id: item.reference ? `#${item.reference}` : `#${item.id.slice(0, 8).toUpperCase()}`,
           iconColor: index % 2 === 0 ? "text-blue-500" : "text-orange-500",
           iconBg: index % 2 === 0 ? "bg-blue-50" : "bg-orange-50",
@@ -297,7 +298,11 @@ export default function Dashboard() {
                 )}
                 {!inboxLoading &&
                   recentRequisitions.map((req, idx) => (
-                  <div key={idx} className="flex flex-col p-4 bg-white hover:bg-[#F8FAFC] transition-colors relative group">
+                  <div
+                    key={idx}
+                    onClick={() => router.push(`/branch-admin/request-modal?id=${encodeURIComponent(req.realId)}`)}
+                    className="flex flex-col p-4 bg-white hover:bg-[#F8FAFC] transition-colors relative group cursor-pointer"
+                  >
                     <div className="flex justify-between items-start mb-3">
                       <div className="flex flex-col gap-1">
                         <div className="text-[13px] font-[800] text-[#111827]">{req.id}</div>
@@ -318,7 +323,7 @@ export default function Dashboard() {
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-end border-t border-gray-100 pt-3 relative">
+                    <div className="flex items-center justify-end border-t border-gray-100 pt-3 relative" onClick={(e) => e.stopPropagation()}>
                       <button className="h-9 w-9 rounded-[8px] flex items-center justify-center text-[#9CA3AF] bg-gray-50 hover:bg-gray-100 hover:text-[#4B5563] transition-colors">
                         {req.action === 'edit' && <Edit2 className="h-4.5 w-4.5" />}
                         {req.action === 'view' && <Eye className="h-4.5 w-4.5" />}
@@ -365,7 +370,11 @@ export default function Dashboard() {
                     )}
                     {!inboxLoading &&
                       recentRequisitions.map((req, idx) => (
-                      <tr key={idx} className="hover:bg-[#F8FAFC] transition-colors bg-white group">
+                      <tr
+                        key={idx}
+                        onClick={() => router.push(`/branch-admin/request-modal?id=${encodeURIComponent(req.realId)}`)}
+                        className="hover:bg-[#F8FAFC] transition-colors bg-white group cursor-pointer"
+                      >
                         <td className="py-4 px-6">
                           <div className="text-[13px] font-[800] text-[#111827]">{req.id}</div>
                         </td>
@@ -388,7 +397,7 @@ export default function Dashboard() {
                             {req.status}
                           </span>
                         </td>
-                        <td className="py-4 px-6 text-right relative">
+                        <td className="py-4 px-6 text-right relative" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-end">
                             <button className="h-8 w-8 rounded-[8px] flex items-center justify-center text-[#9CA3AF] hover:bg-gray-100 hover:text-[#4B5563] transition-colors relative">
                               {req.action === 'edit' && <Edit2 className="h-4 w-4" />}

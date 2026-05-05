@@ -37,10 +37,22 @@ export default function Page() {
   const [page, setPage] = useState(1);
   const { transactions: allTransactions, pagination, loading, error, refresh } = useTransactions({ page, limit: 20 });
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<"all" | "operational" | "programs" | "capital" | "unverified">("all");
 
-  const transactions = allTransactions.filter(tx => 
+  const expenseTransactions = allTransactions.filter(tx =>
     (tx.flowType ?? "").toUpperCase() === "OUTFLOW" || Number(tx.amount) < 0
   );
+
+  const transactions = expenseTransactions.filter((tx) => {
+    if (activeTab === "all") return true;
+    const category = String(tx.category ?? tx.coaName ?? "").toLowerCase();
+    const status = String(tx.status ?? "").toUpperCase();
+    if (activeTab === "operational") return category.includes("operational") || category.includes("operations") || category.includes("admin");
+    if (activeTab === "programs") return category.includes("program") || category.includes("ministry");
+    if (activeTab === "capital") return category.includes("capital") || category.includes("project") || category.includes("asset");
+    if (activeTab === "unverified") return !(status.includes("VERIFIED") || status === "APPROVED");
+    return true;
+  });
 
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat("en-NG", {
@@ -280,12 +292,28 @@ export default function Page() {
 
           {/* Navigation Tabs */}
           <div className="flex flex-wrap items-center gap-8 border-b border-[#E5E7EB] mb-6 px-1">
-            <button className="pb-3 border-b-[3px] border-[#2563EB] text-[14px] font-bold text-[#2563EB]">All Expense</button>
-            <button className="pb-3 border-b-[3px] border-transparent text-[14px] font-bold text-[#6B7280] hover:text-[#111827] transition-colors">Operational</button>
-            <button className="pb-3 border-b-[3px] border-transparent text-[14px] font-bold text-[#6B7280] hover:text-[#111827] transition-colors">Programs</button>
-            <button className="pb-3 border-b-[3px] border-transparent text-[14px] font-bold text-[#6B7280] hover:text-[#111827] transition-colors">Capital</button>
-            
-            <button className="pb-3 border-b-[3px] border-transparent text-[14px] font-bold text-[#6B7280] hover:text-[#111827] transition-colors flex items-center gap-2">
+            {([
+              { key: "all", label: "All Expense" },
+              { key: "operational", label: "Operational" },
+              { key: "programs", label: "Programs" },
+              { key: "capital", label: "Capital" },
+            ] as const).map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveTab(tab.key)}
+                aria-label={`${tab.label} tab`}
+                className={`pb-3 border-b-[3px] text-[14px] font-bold transition-colors ${activeTab === tab.key ? "border-[#2563EB] text-[#2563EB]" : "border-transparent text-[#6B7280] hover:text-[#111827]"}`}
+              >
+                {tab.label}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setActiveTab("unverified")}
+              aria-label="Unverified tab"
+              className={`pb-3 border-b-[3px] text-[14px] font-bold transition-colors flex items-center gap-2 ${activeTab === "unverified" ? "border-[#2563EB] text-[#2563EB]" : "border-transparent text-[#6B7280] hover:text-[#111827]"}`}
+            >
               Unverified <span className="rounded-[6px] bg-orange-50 px-2 py-0.5 text-[10px] font-extrabold text-orange-600">₦25k</span>
             </button>
           </div>

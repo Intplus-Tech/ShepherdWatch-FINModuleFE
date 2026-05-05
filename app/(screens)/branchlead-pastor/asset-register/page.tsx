@@ -1,6 +1,7 @@
 "use client"
 
 import Image from "next/image"
+import { useRouter } from "next/navigation"
 import { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -41,6 +42,7 @@ type AssetRow = {
 
 
 export default function AssetRegisterPage() {
+  const router = useRouter()
   const { user } = useAuth()
   const displayName = user?.name || user?.email || "User"
   const roleLabel = user?.role ? String(user.role).replace(/_/g, " ") : "Lead Pastor"
@@ -212,11 +214,17 @@ export default function AssetRegisterPage() {
                   <p className="text-[14px] text-gray-500 mt-2 font-medium">Detailed directory of church properties and equipment.</p>
                 </div>
                 <div className="flex flex-col sm:flex-row items-center gap-3 bg-white sm:bg-transparent p-4 sm:p-0 rounded-xl sm:rounded-none">
-                  <Button className="w-full sm:w-auto bg-[#EF4444] hover:bg-[#DC2626] text-white px-6 h-11 rounded-[8px] font-bold shadow-sm text-[13px]">
+                  <Button
+                    onClick={() => router.push("/branchlead-pastor/depreciation")}
+                    className="w-full sm:w-auto bg-[#EF4444] hover:bg-[#DC2626] text-white px-6 h-11 rounded-[8px] font-bold shadow-sm text-[13px]"
+                  >
                     Asset Depreciation
                   </Button>
-                  <Button className="w-full sm:w-auto bg-[#EF4444] hover:bg-[#DC2626] text-white px-6 h-11 rounded-[8px] font-bold shadow-sm text-[13px]">
-                    Asset Depreciation
+                  <Button
+                    onClick={() => router.push("/branchlead-pastor/maintenance")}
+                    className="w-full sm:w-auto bg-[#3B5BDB] hover:bg-[#2e4ac0] text-white px-6 h-11 rounded-[8px] font-bold shadow-sm text-[13px]"
+                  >
+                    Maintenance Schedule
                   </Button>
                 </div>
               </div>

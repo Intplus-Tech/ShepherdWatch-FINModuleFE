@@ -31,6 +31,9 @@ export default function Page() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
+  const [batchProgress, setBatchProgress] = useState<{ processed: number; total: number; failed: number } | null>(null)
+  const [batchSuccess, setBatchSuccess] = useState<string | null>(null)
+  const [rowActioningId, setRowActioningId] = useState<string | null>(null)
 
   const tenantId = useMemo(
     () => user?.tenantId ?? user?.tenant?.id ?? "",
@@ -85,27 +88,53 @@ export default function Page() {
 
   const selectedCount = useMemo(() => selectedIds.size, [selectedIds])
 
+  const runBatch = async (
+    budgetIds: string[],
+    status: "approved" | "rejected",
+    label: string,
+  ) => {
+    if (budgetIds.length === 0) return
+    setBatchSuccess(null)
+    setBatchProgress({ processed: 0, total: budgetIds.length, failed: 0 })
+    let failed = 0
+    for (let i = 0; i < budgetIds.length; i++) {
+      const ok = await processApprovalAction(budgetIds[i], status)
+      if (!ok) failed++
+      setBatchProgress({ processed: i + 1, total: budgetIds.length, failed })
+    }
+    const succeeded = budgetIds.length - failed
+    if (failed === 0) {
+      setBatchSuccess(`${label}: ${succeeded} of ${budgetIds.length} budget(s) processed successfully.`)
+    } else {
+      setBatchSuccess(`${label}: ${succeeded} succeeded, ${failed} failed.`)
+    }
+    setSelectedIds(new Set())
+  }
+
   const approveAllBudgets = async () => {
     const budgetIds = controlData.items
       .map((item) => String(item.id ?? ""))
       .filter(Boolean)
-
-    if (budgetIds.length === 0) return
-
-    for (const budgetId of budgetIds) {
-      const ok = await processApprovalAction(budgetId, "approved")
-      if (!ok) break
-    }
+    await runBatch(budgetIds, "approved", "Approve All")
   }
 
   const approveSelectedBudgets = async () => {
-    const budgetIds = Array.from(selectedIds)
-    if (budgetIds.length === 0) return
+    await runBatch(Array.from(selectedIds), "approved", "Approve Selected")
+  }
 
-    for (const budgetId of budgetIds) {
-      const ok = await processApprovalAction(budgetId, "approved")
-      if (!ok) break
+  const rejectSelectedBudgets = async () => {
+    await runBatch(Array.from(selectedIds), "rejected", "Reject Selected")
+  }
+
+  const handleRowAction = async (id: string, status: "approved" | "rejected") => {
+    if (!id) return
+    setRowActioningId(id)
+    setBatchSuccess(null)
+    const ok = await processApprovalAction(id, status)
+    if (ok) {
+      setBatchSuccess(`Budget ${status === "approved" ? "approved" : "rejected"} successfully.`)
     }
+    setRowActioningId(null)
   }
 
   const handleExport = async () => {
@@ -241,6 +270,28 @@ export default function Page() {
           {exportError && (
             <div className="mt-3 text-[12px] font-semibold text-rose-500">
               {exportError}
+            </div>
+          )}
+          {batchSuccess && (
+            <div className="mt-3 text-[12px] font-semibold text-emerald-600">
+              {batchSuccess}
+            </div>
+          )}
+          {batchProgress && batchProgress.processed < batchProgress.total && (
+            <div className="mt-3">
+              <div className="flex items-center justify-between text-[11px] font-medium text-[#4B5563] mb-1">
+                <span>Processing batch...</span>
+                <span>
+                  {batchProgress.processed} of {batchProgress.total}
+                  {batchProgress.failed > 0 ? ` (${batchProgress.failed} failed)` : ""}
+                </span>
+              </div>
+              <div className="h-2 rounded-full bg-[#EEF1F6]">
+                <div
+                  className="h-2 rounded-full bg-[#3B5BDB] transition-all"
+                  style={{ width: `${(batchProgress.processed / batchProgress.total) * 100}%` }}
+                />
+              </div>
             </div>
           )}
 
@@ -419,8 +470,24 @@ export default function Page() {
 
                         <td className="py-3 px-4 text-right text-[#9CA3AF]">
                           <div className="flex items-center justify-end gap-2">
-                            <X className="h-3 w-3" />
-                            <Check className="h-3 w-3 text-[#3B5BDB]" />
+                            <button
+                              type="button"
+                              onClick={() => handleRowAction(branch.id, "rejected")}
+                              disabled={approving || rowActioningId === branch.id}
+                              aria-label={`Reject ${branch.name}`}
+                              className="rounded p-1 text-rose-500 hover:bg-rose-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRowAction(branch.id, "approved")}
+                              disabled={approving || rowActioningId === branch.id}
+                              aria-label={`Approve ${branch.name}`}
+                              className="rounded p-1 text-[#3B5BDB] hover:bg-[#E9EEFF] disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <Check className="h-3 w-3" />
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -487,7 +554,14 @@ export default function Page() {
             <div className={`flex items-center gap-4 rounded-full bg-[#111827] px-4 py-2 text-white ${smallText}`}>
               <span>{selectedCount} Items Selected</span>
 
-              <button className="text-[#9CA3AF]">Reject</button>
+              <button
+                type="button"
+                onClick={rejectSelectedBudgets}
+                disabled={approving || selectedIds.size === 0}
+                className="text-[#9CA3AF] hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {approving ? "Working..." : "Reject"}
+              </button>
 
               <button
                 onClick={approveSelectedBudgets}

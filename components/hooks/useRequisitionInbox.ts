@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { useAuth } from "@/components/auth/AuthProvider"
-import { RequisitionItem } from "@/components/hooks/useRequisitions"
+import { RequisitionDocument, RequisitionItem } from "@/components/hooks/useRequisitions"
 
 type UseRequisitionInboxOptions = {
   page?: number
@@ -106,6 +106,33 @@ export function useRequisitionInbox(options: UseRequisitionInboxOptions = {}) {
             const lastName = readString(requestedBy.lastName, createdBy.lastName)
             const fullName = `${firstName} ${lastName}`.trim()
 
+            const vendor = asRecord(item.preferredVendor ?? item.vendor)
+            const vendorName = readString(
+              vendor.name,
+              vendor.vendorName,
+              item.preferredVendorName,
+              item.vendorName
+            )
+            const vendorTier = readString(vendor.tier, vendor.rating, item.vendorTier)
+
+            const rawDocuments = Array.isArray(item.documents)
+              ? item.documents
+              : Array.isArray(item.attachments)
+                ? item.attachments
+                : Array.isArray(item.supportingDocuments)
+                  ? item.supportingDocuments
+                  : []
+            const documents: RequisitionDocument[] = rawDocuments
+              .map((rawDoc: unknown) => {
+                const doc = asRecord(rawDoc)
+                return {
+                  name: readString(doc.name, doc.fileName, doc.title, doc.label),
+                  size: readString(doc.size, doc.fileSize),
+                  url: readString(doc.url, doc.href, doc.link),
+                }
+              })
+              .filter((doc) => doc.name)
+
             return {
               id: readString(item.id, item._id, item.requisitionId),
               amount: readNumber(item.amount, item.totalAmount),
@@ -115,6 +142,9 @@ export function useRequisitionInbox(options: UseRequisitionInboxOptions = {}) {
               justification: readString(item.justification, item.reason, item.description),
               reference: readString(item.reference, item.code, item.requisitionCode, item.requestCode),
               requestedBy: readString(fullName, requestedBy.name, item.requesterName, createdBy.name),
+              preferredVendor: vendorName,
+              vendorTier,
+              documents: documents.length ? documents : undefined,
             } as RequisitionItem
           })
           .filter((item) => item.id)

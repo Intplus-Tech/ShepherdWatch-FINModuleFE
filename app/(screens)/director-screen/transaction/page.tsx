@@ -110,6 +110,8 @@ export default function Page() {
   const [verifyError, setVerifyError] = useState<string | null>(null)
   const [reconciling, setReconciling] = useState(false)
   const [reconcileError, setReconcileError] = useState<string | null>(null)
+  const [flagging, setFlagging] = useState(false)
+  const [flagError, setFlagError] = useState<string | null>(null)
   const [selectedTransactionId, setSelectedTransactionId] = useState<string>("")
   const [coaOptions, setCoaOptions] = useState<Array<{ id: string; label: string }>>([])
   const [selectedCoaId, setSelectedCoaId] = useState<string>("")
@@ -241,6 +243,30 @@ export default function Page() {
       setReconcileError(err instanceof Error ? err.message : "Unable to reconcile transaction.")
     } finally {
       setReconciling(false)
+    }
+  }
+
+  const handleFlag = async () => {
+    if (!selectedTransactionId) return
+    setFlagging(true)
+    setFlagError(null)
+
+    try {
+      const csrfToken = getCsrfToken()
+      const response = await fetch(`/api/v1/core/financial/transactions/${selectedTransactionId}/flag`, {
+        method: "POST",
+        headers: { "x-csrf-token": csrfToken },
+        credentials: "include",
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Unable to flag transaction.")
+      }
+      refreshTransactions()
+    } catch (err) {
+      setFlagError(err instanceof Error ? err.message : "Unable to flag transaction.")
+    } finally {
+      setFlagging(false)
     }
   }
 
@@ -1084,8 +1110,19 @@ export default function Page() {
                     )}
                     <div className="flex items-center gap-3">
                       <button className="flex-1 rounded-lg border border-[#E5E7EB] py-3 text-[14px] font-bold text-[#4B5563] hover:bg-gray-50 transition-colors">Split</button>
-                      <button className="flex-1 rounded-lg border border-rose-100 bg-white py-3 text-[14px] font-bold text-rose-500 hover:bg-rose-50 transition-colors">Ignore</button>
+                      <button
+                        onClick={handleFlag}
+                        disabled={flagging || !selectedTransactionId}
+                        className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-rose-100 bg-white py-3 text-[14px] font-bold text-rose-500 hover:bg-rose-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        <Flag className="h-4 w-4" strokeWidth={2.5} /> {flagging ? "Flagging..." : "Flag"}
+                      </button>
                     </div>
+                    {flagError && (
+                      <div className="text-[12px] font-semibold text-rose-500">
+                        {flagError}
+                      </div>
+                    )}
                   </div>
 
                 </div>

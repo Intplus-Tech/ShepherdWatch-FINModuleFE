@@ -5,12 +5,19 @@ export type AssetClassConfig = {
   name?: string
   usefulLifeYears?: number
   depreciationMethod?: string
+  salvageValuePercent?: number
+  nonDepreciable?: boolean
 }
 
 export type AssetConfig = {
   depreciationMethod?: string
   defaultUsefulLifeYears?: number
   capitalizationThreshold?: number
+  globalSalvageValuePercent?: number
+  disposalApprovalRequired?: boolean
+  disposalApprovalThreshold?: number
+  lastPolicyReviewAt?: string
+  lastPolicyReviewBy?: string
   classes?: AssetClassConfig[]
 }
 
@@ -49,6 +56,11 @@ export function useAssetConfig() {
             depreciationMethod: config.depreciationMethod,
             defaultUsefulLifeYears: config.defaultUsefulLifeYears,
             capitalizationThreshold: config.capitalizationThreshold,
+            globalSalvageValuePercent: config.globalSalvageValuePercent,
+            disposalApprovalRequired: config.disposalApprovalRequired,
+            disposalApprovalThreshold: config.disposalApprovalThreshold,
+            lastPolicyReviewAt: config.lastPolicyReviewAt,
+            lastPolicyReviewBy: config.lastPolicyReviewBy,
             classes: Array.isArray(config.classes) ? config.classes : [],
           })
         }

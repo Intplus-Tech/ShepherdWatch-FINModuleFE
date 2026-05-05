@@ -100,6 +100,7 @@ export default function Page() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [approvingAll, setApprovingAll] = useState(false)
   const [approveError, setApproveError] = useState<string | null>(null)
+  const [showApproveConfirm, setShowApproveConfirm] = useState(false)
   const { entries, loading, error } = useBudgetEntries()
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
@@ -210,9 +211,9 @@ export default function Page() {
     return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
   }
 
-  const approveAllEntries = async () => {
+  const approveAllEntries = async (): Promise<boolean> => {
     const entryIds = entries.map((entry) => entry.id).filter(Boolean)
-    if (entryIds.length === 0) return
+    if (entryIds.length === 0) return false
     setApprovingAll(true)
     setApproveError(null)
 
@@ -231,8 +232,10 @@ export default function Page() {
           }
         })
       )
+      return true
     } catch (err) {
       setApproveError(err instanceof Error ? err.message : "Unable to approve budget entry.")
+      return false
     } finally {
       setApprovingAll(false)
     }
@@ -365,7 +368,11 @@ export default function Page() {
                 <ChevronDown className="ml-2 h-4 w-4 text-[#9CA3AF]" />
               </Button>
               <Button
-                onClick={approveAllEntries}
+                onClick={() => {
+                  if (entries.length === 0) return
+                  setApproveError(null)
+                  setShowApproveConfirm(true)
+                }}
                 disabled={approvingAll || entries.length === 0}
                 variant="outline"
                 className="h-[38px] rounded-[10px] border-[#E5E7EB] bg-[#F9FAFB] px-4 text-[13px] font-bold text-[#9CA3AF] hover:bg-[#F9FAFB] disabled:opacity-60 disabled:cursor-not-allowed"
@@ -638,6 +645,40 @@ export default function Page() {
           </div>
         </main>
       </div>
+
+      {showApproveConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-[16px] bg-white p-6 shadow-xl">
+            <h2 className="text-[18px] font-extrabold text-[#111827]">Approve New Budget</h2>
+            <p className="mt-2 text-[13px] text-[#4B5563] leading-relaxed">
+              You are about to approve {entries.length} budget {entries.length === 1 ? "entry" : "entries"}. This action cannot be undone. Are you sure you want to continue?
+            </p>
+            {approveError && (
+              <p className="mt-3 text-[12px] font-semibold text-rose-500">{approveError}</p>
+            )}
+            <div className="mt-6 flex justify-end gap-3">
+              <Button
+                variant="outline"
+                disabled={approvingAll}
+                onClick={() => setShowApproveConfirm(false)}
+                className="h-10 rounded-[10px] border-[#E5E7EB] bg-white px-4 text-[13px] font-bold text-[#374151]"
+              >
+                Cancel
+              </Button>
+              <Button
+                disabled={approvingAll}
+                onClick={async () => {
+                  const ok = await approveAllEntries()
+                  if (ok) setShowApproveConfirm(false)
+                }}
+                className="h-10 rounded-[10px] bg-[#3B5BDB] px-4 text-[13px] font-bold text-white shadow hover:bg-blue-700"
+              >
+                {approvingAll ? "Approving..." : "Confirm Approval"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from "react"
 import { useAuth } from "@/components/auth/AuthProvider"
 
+export type RequisitionDocument = {
+  name: string
+  size?: string
+  url?: string
+}
+
 export type RequisitionItem = {
   id: string
   amount: number
@@ -11,6 +17,9 @@ export type RequisitionItem = {
   justification?: string
   reference?: string
   requestedBy?: string
+  preferredVendor?: string
+  vendorTier?: string
+  documents?: RequisitionDocument[]
 }
 
 type UseRequisitionsOptions = {

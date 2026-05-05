@@ -40,10 +40,23 @@ export default function Page() {
   const [page, setPage] = useState(1);
   const { transactions: allTransactions, pagination, loading, error, refresh } = useTransactions({ page, limit: 20 });
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<"all" | "tithes" | "offerings" | "capital" | "forex" | "unverified">("all");
 
-  const transactions = allTransactions.filter(tx => 
+  const incomeTransactions = allTransactions.filter(tx =>
     (tx.flowType ?? "").toUpperCase() === "INFLOW" || Number(tx.amount) > 0
   );
+
+  const transactions = incomeTransactions.filter((tx) => {
+    if (activeTab === "all") return true;
+    const category = String(tx.category ?? tx.coaName ?? "").toLowerCase();
+    const status = String(tx.status ?? "").toUpperCase();
+    if (activeTab === "tithes") return category.includes("tithe");
+    if (activeTab === "offerings") return category.includes("offering");
+    if (activeTab === "capital") return category.includes("capital") || category.includes("project");
+    if (activeTab === "forex") return category.includes("forex") || String((tx as { currency?: string }).currency ?? "").toUpperCase() !== "NGN";
+    if (activeTab === "unverified") return !(status.includes("VERIFIED") || status === "APPROVED");
+    return true;
+  });
 
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat("en-NG", {
@@ -191,15 +204,36 @@ export default function Page() {
 
           {/* Navigation Tabs */}
           <div className="flex flex-wrap items-center gap-8 border-b border-[#E5E7EB] mb-6 px-1">
-            <button className="pb-3 border-b-[3px] border-[#2563EB] text-[14px] font-bold text-[#2563EB]">All Transactions</button>
-            <button className="pb-3 border-b-[3px] border-transparent text-[14px] font-bold text-[#6B7280] hover:text-[#111827] transition-colors">Tithes</button>
-            <button className="pb-3 border-b-[3px] border-transparent text-[14px] font-bold text-[#6B7280] hover:text-[#111827] transition-colors">Offerings</button>
-            <button className="pb-3 border-b-[3px] border-transparent text-[14px] font-bold text-[#6B7280] hover:text-[#111827] transition-colors">Capital Projects</button>
-
-            <button className="pb-3 border-b-[3px] border-transparent text-[14px] font-bold text-[#6B7280] hover:text-[#111827] transition-colors flex items-center gap-2">
+            {([
+              { key: "all", label: "All Transactions" },
+              { key: "tithes", label: "Tithes" },
+              { key: "offerings", label: "Offerings" },
+              { key: "capital", label: "Capital Projects" },
+            ] as const).map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveTab(tab.key)}
+                aria-label={`${tab.label} tab`}
+                className={`pb-3 border-b-[3px] text-[14px] font-bold transition-colors ${activeTab === tab.key ? "border-[#2563EB] text-[#2563EB]" : "border-transparent text-[#6B7280] hover:text-[#111827]"}`}
+              >
+                {tab.label}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setActiveTab("forex")}
+              aria-label="Forex tab"
+              className={`pb-3 border-b-[3px] text-[14px] font-bold transition-colors flex items-center gap-2 ${activeTab === "forex" ? "border-[#2563EB] text-[#2563EB]" : "border-transparent text-[#6B7280] hover:text-[#111827]"}`}
+            >
               Forex <span className="rounded-[6px] bg-[#EFF6FF] px-2 py-0.5 text-[10px] font-extrabold text-[#2563EB]">$500</span>
             </button>
-            <button className="pb-3 border-b-[3px] border-transparent text-[14px] font-bold text-[#6B7280] hover:text-[#111827] transition-colors flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setActiveTab("unverified")}
+              aria-label="Unverified tab"
+              className={`pb-3 border-b-[3px] text-[14px] font-bold transition-colors flex items-center gap-2 ${activeTab === "unverified" ? "border-[#2563EB] text-[#2563EB]" : "border-transparent text-[#6B7280] hover:text-[#111827]"}`}
+            >
               Unverified <span className="rounded-[6px] bg-orange-50 px-2 py-0.5 text-[10px] font-extrabold text-orange-600">₦25k</span>
             </button>
           </div>

@@ -90,6 +90,88 @@ export default function Page() {
     }
   }
 
+  const handleRequestAlternativeQuote = async () => {
+    setSubmitError(null)
+    setSubmitSuccess(null)
+    const requisitionId = selectedRequisition?.id
+    if (!requisitionId) {
+      setSubmitError("Unable to resolve requisition for alternative quote request.")
+      return
+    }
+    const reason = typeof window !== "undefined"
+      ? window.prompt("Reason for requesting an alternative quote (optional):") ?? ""
+      : ""
+
+    setSubmitting(true)
+    try {
+      const csrfToken = getCsrfToken()
+      const response = await fetch(
+        `/api/v1/core/financial/requisitions/${requisitionId}/request-alternative-quote`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-csrf-token": csrfToken,
+          },
+          credentials: "include",
+          body: JSON.stringify({ reason: reason.trim() }),
+        }
+      )
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Unable to request alternative quote.")
+      }
+      setSubmitSuccess("Alternative quote request sent.")
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "Unable to request alternative quote.")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleDeclineRequisition = async () => {
+    setSubmitError(null)
+    setSubmitSuccess(null)
+    const requisitionId = selectedRequisition?.id
+    if (!requisitionId) {
+      setSubmitError("Unable to resolve requisition to decline.")
+      return
+    }
+    const reason = typeof window !== "undefined"
+      ? window.prompt("Reason for declining this requisition:") ?? ""
+      : ""
+    if (!reason.trim()) {
+      setSubmitError("A reason is required to decline a requisition.")
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      const csrfToken = getCsrfToken()
+      const response = await fetch(
+        `/api/v1/core/financial/requisitions/${requisitionId}/decline`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-csrf-token": csrfToken,
+          },
+          credentials: "include",
+          body: JSON.stringify({ reason: reason.trim() }),
+        }
+      )
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Unable to decline requisition.")
+      }
+      setSubmitSuccess("Requisition declined.")
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "Unable to decline requisition.")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
  return (
  <div className="min-h-screen bg-[#1f1f1f] p-6">
  <div className="mx-auto w-full max-w-[1200px] rounded-[20px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.25)] overflow-hidden">
@@ -203,11 +285,11 @@ export default function Page() {
  <ShieldCheck className="h-3.5 w-3.5" />
  {submitting ? "Authorizing..." : "Authorize Override"}
  </Button>
- <Button variant="outline" size="sm" className="h-8 w-full rounded-[8px] border-[#E5E7EB] bg-white text-[9px] text-[#6B7280]">
+ <Button variant="outline" size="sm" onClick={handleRequestAlternativeQuote} disabled={submitting} className="h-8 w-full rounded-[8px] border-[#E5E7EB] bg-white text-[9px] text-[#6B7280] disabled:opacity-60 disabled:cursor-not-allowed">
  <ChevronRight className="h-3.5 w-3.5" />
  Request Alternative Quote
  </Button>
- <Button variant="outline" size="sm" className="h-8 w-full rounded-[8px] border-rose-200 bg-rose-50 text-[9px] text-rose-600">
+ <Button variant="outline" size="sm" onClick={handleDeclineRequisition} disabled={submitting} className="h-8 w-full rounded-[8px] border-rose-200 bg-rose-50 text-[9px] text-rose-600 disabled:opacity-60 disabled:cursor-not-allowed">
  Decline Requisition
  </Button>
  </div>
@@ -233,7 +315,11 @@ export default function Page() {
  </div>
  <div>
  <div className="font-semibold text-[#111827]">Preferred Vendor</div>
- <div>SoundMaster Pro (Via Verified Platinum)</div>
+ <div>
+ {selectedRequisition?.preferredVendor
+ ? `${selectedRequisition.preferredVendor}${selectedRequisition.vendorTier ? ` (${selectedRequisition.vendorTier})` : ""}`
+ : "No preferred vendor specified"}
+ </div>
  </div>
  </div>
  <div className="flex items-center gap-3 rounded-[12px] border border-[#EEF1F6] bg-white px-4 py-3 text-[9px] text-[#6B7280]">
@@ -242,7 +328,23 @@ export default function Page() {
  </div>
  <div>
  <div className="font-semibold text-[#111827]">Supporting Documents</div>
- <div>Technical_Quote_Audio_Y3.pdf 1.2MB</div>
+ {selectedRequisition?.documents && selectedRequisition.documents.length > 0 ? (
+ <ul className="space-y-0.5">
+ {selectedRequisition.documents.map((doc, idx) => (
+ <li key={`${doc.name}-${idx}`}>
+ {doc.url ? (
+ <a href={doc.url} target="_blank" rel="noopener noreferrer" className="text-[#3B5BDB] hover:underline">
+ {doc.name}{doc.size ? ` ${doc.size}` : ""}
+ </a>
+ ) : (
+ <span>{doc.name}{doc.size ? ` ${doc.size}` : ""}</span>
+ )}
+ </li>
+ ))}
+ </ul>
+ ) : (
+ <div>No documents attached</div>
+ )}
  </div>
  </div>
  </div>

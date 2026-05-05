@@ -26,7 +26,7 @@ import {
 } from "lucide-react"
 import BranchLeadPastorSidebar from "@/components/navigation/BranchLeadPastorSidebar"
 
-const categoryData: Array<{ category: string; method: string; methodColor: string; cost: string; openingNbv: string; currentDepr: string; closingNbv: string }> = []
+type CategoryRow = { category: string; method: string; methodColor: string; cost: string; openingNbv: string; currentDepr: string; closingNbv: string }
 
 type ScheduleItem = {
   label: string
@@ -43,6 +43,7 @@ export default function DepreciationPage() {
   const [scheduleItems, setScheduleItems] = useState<ScheduleItem[]>([])
   const [scheduleLoading, setScheduleLoading] = useState(false)
   const [scheduleError, setScheduleError] = useState<string | null>(null)
+  const [categoryData, setCategoryData] = useState<CategoryRow[]>([])
 
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat("en-NG", {
@@ -95,7 +96,47 @@ export default function DepreciationPage() {
           assetsPayload?.data ??
           assetsPayload?.content ??
           []
-        const firstAsset = Array.isArray(assetList) ? assetList[0] : null
+        const assets = Array.isArray(assetList) ? assetList : []
+
+        // Aggregate by category for the Category-wise Depreciation table
+        if (isMounted) {
+          const methodColorMap: Record<string, string> = {
+            "Straight Line": "bg-[#EEF2FF] text-[#3B5BDB]",
+            "Reducing Balance": "bg-[#FEF3C7] text-[#D97706]",
+            "Units of Production": "bg-[#DCFCE7] text-[#15803D]",
+          }
+          const groups = new Map<string, { cost: number; openingNbv: number; currentDepr: number; closingNbv: number; method: string }>()
+          for (const asset of assets) {
+            const a = asset as Record<string, unknown>
+            const category = (typeof a.category === "string" && a.category) || "General"
+            const cost = Number(a.purchaseValue ?? a.cost ?? a.acquisitionCost ?? 0) || 0
+            const closingNbv = Number(a.currentValue ?? a.netBookValue ?? a.bookValue ?? cost) || 0
+            const currentDepr = Number(a.currentYearDepreciation ?? a.accumulatedDepreciation ?? Math.max(cost - closingNbv, 0)) || 0
+            const openingNbv = Number(a.openingNbv ?? closingNbv + currentDepr) || 0
+            const method = (typeof a.depreciationMethod === "string" && a.depreciationMethod) || "Straight Line"
+            const existing = groups.get(category)
+            if (existing) {
+              existing.cost += cost
+              existing.openingNbv += openingNbv
+              existing.currentDepr += currentDepr
+              existing.closingNbv += closingNbv
+            } else {
+              groups.set(category, { cost, openingNbv, currentDepr, closingNbv, method })
+            }
+          }
+          const rows: CategoryRow[] = Array.from(groups.entries()).map(([category, agg]) => ({
+            category,
+            method: agg.method,
+            methodColor: methodColorMap[agg.method] ?? "bg-[#F1F5F9] text-[#475569]",
+            cost: formatCurrency(agg.cost),
+            openingNbv: formatCurrency(agg.openingNbv),
+            currentDepr: formatCurrency(agg.currentDepr),
+            closingNbv: formatCurrency(agg.closingNbv),
+          }))
+          setCategoryData(rows)
+        }
+
+        const firstAsset = assets[0] ?? null
         const assetId = firstAsset?.id ?? firstAsset?.assetId
 
         if (!assetId) {

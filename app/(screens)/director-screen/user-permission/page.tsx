@@ -6,6 +6,7 @@ import SidebarNav from "@/components/navigation/SidebarNav"
 import ScreenHeader from "@/components/navigation/ScreenHeader"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { SkeletonTable } from "@/components/ui/skeleton"
 import {
   Filter,
   History,
@@ -390,6 +391,12 @@ export default function Page() {
     return false
   }, [matrixState, payload])
 
+  const getCsrfToken = () => {
+    if (typeof document === "undefined") return ""
+    const match = document.cookie.match(/(?:^|; )csrf_token=([^;]+)/)
+    return match ? decodeURIComponent(match[1]) : ""
+  }
+
   const handleSaveMatrix = async () => {
     setMatrixSaveError(null)
     setMatrixSaveMessage(null)
@@ -404,7 +411,11 @@ export default function Page() {
       }))
       const res = await fetch("/api/v1/permissions/matrix", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": getCsrfToken(),
+        },
+        credentials: "include",
         body: JSON.stringify({ matrix }),
       })
       const data = await res.json().catch(() => ({}))
@@ -432,6 +443,10 @@ export default function Page() {
     try {
       const res = await fetch("/api/v1/permissions/matrix/reset", {
         method: "POST",
+        headers: {
+          "X-CSRF-Token": getCsrfToken(),
+        },
+        credentials: "include",
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -938,8 +953,8 @@ export default function Page() {
 
             <div className="mt-4 overflow-x-auto rounded-[12px] border border-[#EEF1F6]">
               {isLoading ? (
-                <div className="px-6 py-10 text-center text-[12px] text-[#6B7280]">
-                  Loading permissions matrix...
+                <div className="px-6 py-6">
+                  <SkeletonTable rows={6} columns={5} />
                 </div>
               ) : errorMessage ? (
                 <div className="px-6 py-10 text-center text-[12px] text-rose-600">

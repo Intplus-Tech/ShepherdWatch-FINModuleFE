@@ -31,6 +31,7 @@ import AssetDetailsModal, { AssetDetails } from "@/components/modals/AssetDetail
 import RecordAssetSaleModal, { AssetSaleDetails } from "@/components/modals/RecordAssetSaleModal"
 import AddNewAssetModal from "@/components/modals/AddNewAssetModal"
 import { useAssetOverview } from "@/components/hooks/useAssetOverview"
+import { useModalParam } from "@/components/hooks/useModalParam"
 
 const navItems = [
   { label: "Dashboard", href: "/director-screen/dashboard", icon: LayoutDashboard },
@@ -43,14 +44,48 @@ const navItems = [
   { label: "Settings", href: "/director-screen/settings", icon: Settings },
 ]
 
-function ModalContainer() {
-  const searchParams = useSearchParams()
-  const router = useRouter()
-  const isDetailsModalOpen = searchParams.get('modal') === 'asset-details'
-  const isRecordSaleModalOpen = searchParams.get('modal') === 'record-sale'
-  const isAddAssetModalOpen = searchParams.get('modal') === 'add-asset'
+type RawAsset = Record<string, unknown> & { id?: string; _id?: string }
 
-  // Placeholder mock data that perfectly matches the uploaded design for demonstration purposes
+function ModalContainer({ rawAssets = [] }: { rawAssets?: RawAsset[] }) {
+  const searchParams = useSearchParams()
+  const { isOpen: isDetailsModalOpen, close: closeDetails } = useModalParam('asset-details')
+  const { isOpen: isRecordSaleModalOpen, close: closeRecordSale } = useModalParam('record-sale')
+  const { isOpen: isAddAssetModalOpen, close: closeAddAsset } = useModalParam('add-asset')
+  const selectedAssetId = searchParams.get('assetId') ?? ''
+
+  const formatNgn = (n: unknown) =>
+    new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(Number(n ?? 0))
+  const formatDate = (value: unknown): string => {
+    if (!value) return ''
+    const d = new Date(String(value))
+    return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+  }
+
+  const selectedRaw = rawAssets.find((a) => String(a.id ?? a._id ?? '') === selectedAssetId)
+  const selectedAsset: AssetDetails | null = selectedRaw
+    ? {
+        name: String(selectedRaw.name ?? selectedRaw.assetName ?? selectedRaw.description ?? 'Asset'),
+        location: String(selectedRaw.location ?? selectedRaw.branchName ?? selectedRaw.branch ?? ''),
+        category: String(selectedRaw.category ?? 'General'),
+        cost: formatNgn(selectedRaw.cost ?? selectedRaw.purchaseValue ?? selectedRaw.value),
+        purchaseDate: formatDate(selectedRaw.purchaseDate ?? selectedRaw.acquisitionDate),
+        depreciationMethod: String(selectedRaw.depreciationMethod ?? 'Straight Line'),
+        usefulLife: selectedRaw.usefulLife ? `${selectedRaw.usefulLife} years` : '',
+        residualValue: selectedRaw.residualValue ? formatNgn(selectedRaw.residualValue) : '',
+        accumulatedDepreciation: formatNgn(selectedRaw.accumulatedDepreciation),
+        currentNBV: formatNgn(selectedRaw.nbv ?? selectedRaw.currentValue),
+        history: Array.isArray(selectedRaw.history)
+          ? (selectedRaw.history as Array<Record<string, unknown>>).map((h, i) => ({
+              yearNumber: String(h.yearNumber ?? `Year ${i + 1}`),
+              year: String(h.year ?? ''),
+              amount: formatNgn(h.amount),
+              isYTD: Boolean(h.isYTD),
+            }))
+          : [],
+      }
+    : null
+
+  // Placeholder mock data fallback used when no asset is selected
   const mockAsset: AssetDetails = {
     name: "Toyota Hiace Bus",
     location: "Maryland, Lagos",
@@ -90,17 +125,17 @@ function ModalContainer() {
     <>
       <AssetDetailsModal 
         isOpen={isDetailsModalOpen} 
-        onClose={() => router.push('/director-screen/assets/branch-assets')}
-        asset={mockAsset}
+        onClose={closeDetails}
+        asset={selectedAsset ?? mockAsset}
       />
       <RecordAssetSaleModal 
         isOpen={isRecordSaleModalOpen} 
-        onClose={() => router.push('/director-screen/assets/branch-assets')}
+        onClose={closeRecordSale}
         saleDetails={mockSale}
       />
       <AddNewAssetModal
         isOpen={isAddAssetModalOpen}
-        onClose={() => router.push('/director-screen/assets/branch-assets')}
+        onClose={closeAddAsset}
       />
     </>
   )
@@ -122,6 +157,7 @@ function PageInner() {
   }
 
   const [assets, setAssets] = useState<any[]>([])
+  const [rawAssets, setRawAssets] = useState<RawAsset[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -143,6 +179,7 @@ function PageInner() {
       }).format(amount)
 
     const mapped = (overviewItems ?? []).map((asset: any) => ({
+      id: String(asset?.id ?? asset?._id ?? ''),
       branch: asset?.branchName ?? asset?.branch ?? asset?.tenantId ?? "All Branches",
       name: asset?.name ?? asset?.assetName ?? asset?.description ?? "Unnamed Asset",
       category: asset?.category ?? "General",
@@ -152,6 +189,7 @@ function PageInner() {
     }))
 
     setAssets(mapped)
+    setRawAssets((overviewItems ?? []) as RawAsset[])
   }, [overviewItems, overviewLoading, overviewError])
 
   return (
@@ -367,7 +405,11 @@ function PageInner() {
                     </tr>
                   ) : (
                     assets.map((row, idx) => (
-                      <tr key={idx}>
+                      <tr
+                        key={row.id || idx}
+                        onClick={() => row.id && router.push(`/director-screen/assets/branch-assets?modal=asset-details&assetId=${encodeURIComponent(row.id)}`)}
+                        className={row.id ? 'cursor-pointer hover:bg-[#F8FAFC] transition-colors' : ''}
+                      >
                         <td className="px-6 py-4 font-medium text-[#4B5563]">{row.branch}</td>
                         <td className="px-6 py-4 font-[700] text-[#111827]">{row.name}</td>
                         <td className="px-6 py-4 font-medium text-[#9CA3AF]">{row.category}</td>
@@ -429,7 +471,7 @@ function PageInner() {
       </main>
       
       <Suspense fallback={null}>
-        <ModalContainer />
+        <ModalContainer rawAssets={rawAssets} />
       </Suspense>
     </div>
   )

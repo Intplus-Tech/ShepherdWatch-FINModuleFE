@@ -35,6 +35,8 @@ import {
   LogOut,
 } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
+import { useAssetOverview, type AssetOverviewItem } from "@/components/hooks/useAssetOverview"
+import { formatCurrency } from "@/lib/format"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -138,6 +140,52 @@ export default function AssetsHubPage() {
     () => user?.tenantId ?? user?.tenant?.id ?? "",
     [user]
   )
+
+  const { items: assetItems, isLoading: assetsLoading } = useAssetOverview({ branchId: tenantId })
+
+  const { liveCurrentAssets, liveNonCurrentAssets } = useMemo(() => {
+    const isCurrent = (cat?: string) => {
+      const c = (cat ?? "").toLowerCase()
+      return c.includes("cash") || c.includes("supplies") || c.includes("imprest") || c.includes("inventory") || c.includes("stock")
+    }
+    const mapItem = (item: AssetOverviewItem) => {
+      const id = String(item.assetCode ?? item.id ?? item._id ?? "")
+      const name = String(item.name ?? item.assetName ?? "Unnamed asset")
+      const category = String(item.category ?? "Uncategorized")
+      const valueRaw = item.currentValue ?? item.nbv ?? item.value ?? item.purchaseValue ?? item.cost
+      const valuation = typeof valueRaw === "number" ? formatCurrency(valueRaw, { currency: "NGN" }) : "\u2014"
+      const status = String(item.status ?? "")
+      const condition =
+        status.toLowerCase() === "active" ? "Good"
+        : status.toLowerCase() === "requires_repair" || status.toLowerCase() === "repair" ? "Requires Repair"
+        : status.toLowerCase() === "excellent" ? "Excellent"
+        : status || "Good"
+      return { assetId: id, name, category, valuation, condition, raw: item }
+    }
+    const current: ReturnType<typeof mapItem>[] = []
+    const nonCurrent: (ReturnType<typeof mapItem> & { actionType: string })[] = []
+    for (const item of assetItems) {
+      const mapped = mapItem(item)
+      if (isCurrent(mapped.category)) {
+        current.push(mapped)
+      } else {
+        const actionType =
+          mapped.condition === "Requires Repair" ? "Repair"
+          : mapped.condition === "Fair" ? "Update"
+          : "None"
+        nonCurrent.push({ ...mapped, actionType })
+      }
+    }
+    return { liveCurrentAssets: current, liveNonCurrentAssets: nonCurrent }
+  }, [assetItems])
+
+  const displayCurrentAssets = liveCurrentAssets.length > 0 ? liveCurrentAssets : currentAssets
+  const displayNonCurrentAssets = liveNonCurrentAssets.length > 0 ? liveNonCurrentAssets : nonCurrentAssets
+
+  const handleAssetRowClick = (assetId: string) => {
+    if (!assetId) return
+    router.push(`/branch-admin/details-general-info?id=${encodeURIComponent(assetId)}`)
+  }
 
   const getCsrfToken = () => {
     if (typeof document === "undefined") return ""
@@ -528,8 +576,15 @@ export default function AssetsHubPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#EEF1F6]">
-                        {currentAssets.map((asset, idx) => (
-                          <tr key={idx} className="group hover:bg-[#F8FAFC] transition-colors">
+                        {assetsLoading && liveCurrentAssets.length === 0 && (
+                          <tr><td colSpan={5} className="py-6 px-5 text-[12px] text-[#6B7280]">Loading assets\u2026</td></tr>
+                        )}
+                        {displayCurrentAssets.map((asset, idx) => (
+                          <tr
+                            key={asset.assetId || idx}
+                            onClick={() => handleAssetRowClick(asset.assetId)}
+                            className="group hover:bg-[#F8FAFC] transition-colors cursor-pointer"
+                          >
                             <td className="py-4 px-5">
                               <div className="flex flex-col gap-1">
                                 <div className="text-[13px] font-[800] text-[#2563EB]">{asset.assetId}</div>
@@ -545,7 +600,7 @@ export default function AssetsHubPage() {
                             <td className="py-4 px-2">
                               <ConditionBadge condition={asset.condition} />
                             </td>
-                            <td className="py-4 px-5 text-right relative">
+                            <td className="py-4 px-5 text-right relative" onClick={(e) => e.stopPropagation()}>
                               <button onClick={() => setOpenActionId(openActionId === asset.assetId ? null : asset.assetId)} className="text-[#9CA3AF] hover:text-[#4B5563] transition-colors p-1 rounded-md hover:bg-gray-100 float-right">
                                 <MoreVertical className="h-4.5 w-4.5" />
                               </button>
@@ -601,8 +656,15 @@ export default function AssetsHubPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#EEF1F6]">
-                        {nonCurrentAssets.map((asset, idx) => (
-                          <tr key={idx} className="group hover:bg-[#F8FAFC] transition-colors">
+                        {assetsLoading && liveNonCurrentAssets.length === 0 && (
+                          <tr><td colSpan={5} className="py-6 px-5 text-[12px] text-[#6B7280]">Loading assets\u2026</td></tr>
+                        )}
+                        {displayNonCurrentAssets.map((asset, idx) => (
+                          <tr
+                            key={asset.assetId || idx}
+                            onClick={() => handleAssetRowClick(asset.assetId)}
+                            className="group hover:bg-[#F8FAFC] transition-colors cursor-pointer"
+                          >
                             <td className="py-4 px-5">
                               <div className="flex flex-col gap-1">
                                 <div className="text-[13px] font-[800] text-[#2563EB]">{asset.assetId}</div>
@@ -618,7 +680,7 @@ export default function AssetsHubPage() {
                             <td className="py-4 px-2">
                               <ConditionBadge condition={asset.condition} />
                             </td>
-                            <td className="py-4 px-5 text-right">
+                            <td className="py-4 px-5 text-right" onClick={(e) => e.stopPropagation()}>
                               {asset.actionType === "Update" && (
                                 <button className="inline-flex items-center gap-1.5 h-[32px] px-3 border border-[#E5E7EB] bg-white text-[12px] font-[800] text-[#4B5563] rounded-[6px] hover:bg-gray-50 transition-colors shadow-sm float-right">
                                   <PenLine className="h-3.5 w-3.5 text-[#6B7280]" strokeWidth={2.5} />

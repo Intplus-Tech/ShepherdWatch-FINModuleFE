@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { Inter } from "next/font/google";
+import { useRouter } from "next/navigation";
 import { X, Plus, Trash2, Zap, CalendarDays, Wrench, RotateCw, CheckCircle2 } from "lucide-react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import AssetsHubPage from "../asset/page";
@@ -22,6 +23,7 @@ type MaintenanceRecord = {
 };
 
 export default function MaintenanceHistoryModalPage() {
+  const router = useRouter();
   const { user } = useAuth();
   const [historyRecords, setHistoryRecords] = useState<MaintenanceRecord[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -237,7 +239,11 @@ export default function MaintenanceHistoryModalPage() {
               
               <div className="flex items-center justify-between mb-8">
                 <h3 className="text-[#111827] text-[11px] font-[800] uppercase tracking-widest leading-none">Service History Timeline</h3>
-                <button className="h-[38px] px-5 rounded-[8px] bg-[#2563EB] flex items-center justify-center gap-2 text-[12.5px] font-[800] text-white hover:bg-[#1D4ED8] transition-colors shadow-sm shrink-0">
+                <button
+                  type="button"
+                  onClick={() => router.push("/branch-admin/maintainace-log-modal")}
+                  className="h-[38px] px-5 rounded-[8px] bg-[#2563EB] flex items-center justify-center gap-2 text-[12.5px] font-[800] text-white hover:bg-[#1D4ED8] transition-colors shadow-sm shrink-0"
+                >
                   <Plus className="h-[15px] w-[15px] stroke-[3px]" />
                   Add Maintenance Record
                 </button>

@@ -30,11 +30,13 @@ import { useAuth } from "@/components/auth/AuthProvider"
 import { useRouter } from "next/navigation"
 import BranchesDropdown from "@/components/navigation/BranchesDropdown"
 import { useDashboardOverview } from "@/components/hooks/useDashboardOverview"
+import { SkeletonStatGrid } from "@/components/ui/skeleton"
 import { useIncomeExpenseTrend } from "@/components/hooks/useIncomeExpenseTrend"
 import { useIncomeDistribution } from "@/components/hooks/useIncomeDistribution"
 import { useBudgetVsActuals } from "@/components/hooks/useBudgetVsActuals"
 import { useBranchSummary } from "@/components/hooks/useBranchSummary"
 import { useRecentDashboardTransactions } from "@/components/hooks/useRecentDashboardTransactions"
+import { sectionsToCsv, downloadCsv } from "@/lib/export-csv"
 
 const kpiIcons = [Banknote, CreditCard, BuildingIcon, MapPin]
 const kpiIconStyles = [
@@ -156,6 +158,55 @@ export default function Page() {
       }
     })
   }, [rawTransactions])
+
+  const [isExporting, setIsExporting] = useState(false)
+
+  const handleExport = () => {
+    setIsExporting(true)
+    try {
+      const stamp = new Date().toISOString().split("T")[0]
+      const overviewRows = overview
+        ? [
+            { metric: "Total Income", value: overview.totalIncome ?? 0 },
+            { metric: "Total Expenses", value: overview.totalExpenses ?? 0 },
+            { metric: "Net Position", value: overview.netPosition ?? 0 },
+            { metric: "Active Branches", value: activeBranchesCount ?? 0 },
+          ]
+        : []
+
+      const incomeRows = incomeItems.map((item) => ({
+        category: item.category ?? "",
+        accountName: item.accountName ?? "",
+        totalAmount: Number(item.totalAmount ?? 0),
+        percentage: Number(item.percentage ?? 0),
+      }))
+
+      const trendRows = (trendData?.series ?? []).map((entry) => ({
+        period: entry.month ?? "",
+        income: Number(entry.income ?? 0),
+        expense: Number(entry.expenses ?? 0),
+      }))
+
+      const transactionRows = rawTransactions.map((tx) => ({
+        date: tx.transactionDate ?? "",
+        branch: tx.branchName ?? "",
+        account: tx.accountName ?? tx.transactionType ?? "",
+        amount: Number(tx.amount ?? 0),
+        status: tx.status ?? "",
+      }))
+
+      const sections = [
+        { title: "Dashboard Overview", rows: overviewRows },
+        { title: "Income Distribution", rows: incomeRows },
+        { title: "Income vs Expense Trend", rows: trendRows },
+        { title: "Recent Transactions", rows: transactionRows },
+      ]
+      const csv = sectionsToCsv(sections)
+      downloadCsv(`director-dashboard_${stamp}.csv`, csv)
+    } finally {
+      setIsExporting(false)
+    }
+  }
 
   const statCards = useMemo(() => {
     if (!overview) return []
@@ -389,22 +440,29 @@ export default function Page() {
                 <button className="rounded px-3 py-1.5 text-[11px] font-bold text-[#9CA3AF] hover:text-[#4B5563]">EUR</button>
               </div>
 
-              <button className="flex items-center justify-center sm:justify-start gap-2 rounded-md bg-[#3B5BDB] px-4 py-2 text-[12px] font-medium text-white shadow hover:bg-blue-700 w-full sm:w-auto sm:ml-2">
+              <button
+                type="button"
+                onClick={handleExport}
+                disabled={isExporting}
+                className="flex items-center justify-center sm:justify-start gap-2 rounded-md bg-[#3B5BDB] px-4 py-2 text-[12px] font-medium text-white shadow hover:bg-blue-700 w-full sm:w-auto sm:ml-2 disabled:opacity-70 disabled:cursor-not-allowed"
+              >
                 <Download className="h-4 w-4" />
-                Export
+                {isExporting ? "Exporting..." : "Export"}
               </button>
             </div>
           </div>
 
           {/* Stat Cards */}
+          {analyticsLoading ? (
+            <div className="mb-6">
+              <SkeletonStatGrid count={4} />
+            </div>
+          ) : (
           <div className="mb-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            {analyticsLoading && (
-              <div className="col-span-full text-[12px] font-medium text-[#6B7280]">Loading analytics...</div>
-            )}
             {analyticsError && (
               <div className="col-span-full text-[12px] font-medium text-[#EF4444]">{analyticsError}</div>
             )}
-            {!analyticsLoading && !analyticsError && statCards.length === 0 && (
+            {!analyticsError && statCards.length === 0 && (
               <div className="col-span-full text-[12px] font-medium text-[#6B7280]">No analytics data available.</div>
             )}
             {statCards.map((card, i) => {
@@ -439,6 +497,7 @@ export default function Page() {
               )
             })}
           </div>
+          )}
 
           {/* Charts Row */}
           <div className="mb-6 grid grid-cols-1 gap-5 lg:grid-cols-3">

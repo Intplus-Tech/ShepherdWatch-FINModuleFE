@@ -716,7 +716,7 @@ export default function Page() {
                   <div className="mt-3 sm:mt-4">
 
                     <div className="text-[15px] xs:text-[16px] xl:text-[20px] font-bold text-[#111827] tracking-tight leading-tight mb-1 truncate">{formatCurrency(totals.income)}</div>
-                    <div className="text-[10px] sm:text-[11px] font-bold text-[#10B981] tracking-wide truncate">+5.2% vs Last Year</div>
+                    <div className="text-[10px] sm:text-[11px] font-medium text-[#6B7280] tracking-wide truncate">{entries.filter((e) => e.type === "INCOME").length} income line{entries.filter((e) => e.type === "INCOME").length === 1 ? "" : "s"}</div>
 
                   </div>
 
@@ -741,7 +741,7 @@ export default function Page() {
                   <div className="mt-3 sm:mt-4">
 
                     <div className="text-[15px] xs:text-[16px] xl:text-[20px] font-bold text-[#111827] tracking-tight leading-tight mb-1 truncate">{formatCurrency(totals.expense)}</div>
-                    <div className="text-[10px] sm:text-[11px] font-medium text-[#6B7280] tracking-wide truncate">84% of Income</div>
+                    <div className="text-[10px] sm:text-[11px] font-medium text-[#6B7280] tracking-wide truncate">{totals.income > 0 ? `${Math.round((totals.expense / totals.income) * 100)}% of Income` : "No income recorded"}</div>
 
                   </div>
 
@@ -791,7 +791,7 @@ export default function Page() {
                   <div className="mt-3 sm:mt-4">
 
                     <div className="text-[15px] xs:text-[16px] xl:text-[20px] font-bold text-[#111827] tracking-tight leading-tight mb-1 truncate">{formatCurrency(totals.surplus)}</div>
-                    <div className="text-[10px] sm:text-[11px] font-bold text-[#10B981] tracking-wide truncate">Healthy buffer</div>
+                    <div className={`text-[10px] sm:text-[11px] font-bold tracking-wide truncate ${totals.surplus >= 0 ? "text-[#10B981]" : "text-rose-600"}`}>{totals.surplus >= 0 ? "Positive surplus" : "Deficit"}</div>
 
                   </div>
 
