@@ -96,7 +96,7 @@ export default function NewAssetCategoryModal({ isOpen, onClose }: NewAssetCateg
 
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <label className="text-[12px] font-medium text-[#344054]">Asset Class Name</label>
+              <label className="text-[12px] font-medium text-[#344054]">Company Name</label>
               <input
                 type="text"
                 value={name}

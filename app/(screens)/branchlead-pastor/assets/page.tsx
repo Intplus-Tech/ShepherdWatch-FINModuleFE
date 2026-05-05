@@ -204,7 +204,7 @@ export default function Page() {
                   Asset Register
                 </Button>
                 <Button
-                  onClick={() => router.push("/branchlead-pastor/financial-management")}
+                  onClick={() => router.push("/branchlead-pastor/maintenance")}
                   className="w-full sm:w-auto bg-[#FF4646] hover:bg-[#e63e3e] text-white px-6 h-11 rounded-[10px] font-bold shadow-sm text-[13px]"
                 >
                   Maintenance Schedule

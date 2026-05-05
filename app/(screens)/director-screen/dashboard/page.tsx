@@ -31,7 +31,9 @@ import { useRouter } from "next/navigation"
 import BranchesDropdown from "@/components/navigation/BranchesDropdown"
 import { useDashboardOverview } from "@/components/hooks/useDashboardOverview"
 import { useIncomeExpenseTrend } from "@/components/hooks/useIncomeExpenseTrend"
-import { useExpenseDistribution } from "@/components/hooks/useExpenseDistribution"
+import { useIncomeDistribution } from "@/components/hooks/useIncomeDistribution"
+import { useBudgetVsActuals } from "@/components/hooks/useBudgetVsActuals"
+import { useBranchSummary } from "@/components/hooks/useBranchSummary"
 import { useRecentDashboardTransactions } from "@/components/hooks/useRecentDashboardTransactions"
 
 const kpiIcons = [Banknote, CreditCard, BuildingIcon, MapPin]
@@ -75,7 +77,10 @@ export default function Page() {
 
   const { overview, loading: analyticsLoading, error: analyticsError, fetchOverview } = useDashboardOverview()
   const { trendData, error: trendsError, fetchTrend } = useIncomeExpenseTrend()
-  const { items: expenseItems, loading: expenseLoading } = useExpenseDistribution({ branchId: tenantId })
+  const { items: incomeItems, loading: incomeLoading } = useIncomeDistribution({ branchId: tenantId })
+  const { series: budgetActualsSeries, loading: budgetActualsLoading, error: budgetActualsError } = useBudgetVsActuals({ branchId: tenantId, period: "Q1" })
+  const { summary: branchSummary } = useBranchSummary({ branchId: tenantId })
+  const activeBranchesCount = branchSummary.activeBranches
   const {
     transactions: rawTransactions,
     loading: txLoading,
@@ -91,6 +96,15 @@ export default function Page() {
 
   const formatNumber = (value: number) =>
     new Intl.NumberFormat("en-NG", { maximumFractionDigits: 0 }).format(value)
+
+  const formatCurrencyAbbrev = (value: number) => {
+    const abs = Math.abs(value)
+    const sign = value < 0 ? "-" : ""
+    if (abs >= 1_000_000_000) return `${sign}\u20A6${(abs / 1_000_000_000).toFixed(2)}B`
+    if (abs >= 1_000_000) return `${sign}\u20A6${(abs / 1_000_000).toFixed(2)}M`
+    if (abs >= 1_000) return `${sign}\u20A6${(abs / 1_000).toFixed(1)}K`
+    return formatCurrency(value)
+  }
 
   useEffect(() => {
     if (tenantId) fetchOverview({ branchId: tenantId })
@@ -111,19 +125,28 @@ export default function Page() {
     })
   }
 
+  const categoryPalette = (label: string): { bg: string; color: string } => {
+    const key = label.toLowerCase()
+    if (key.includes("tithe")) return { bg: "bg-blue-50", color: "text-blue-600" }
+    if (key.includes("building") || key.includes("project")) return { bg: "bg-purple-50", color: "text-purple-600" }
+    if (key.includes("donation") || key.includes("offering")) return { bg: "bg-emerald-50", color: "text-emerald-600" }
+    if (key.includes("missions") || key.includes("welfare")) return { bg: "bg-amber-50", color: "text-amber-600" }
+    return { bg: "bg-slate-50", color: "text-slate-600" }
+  }
+
   const transactions = React.useMemo(() => {
     return rawTransactions.map((tx, idx) => {
-      const flowType = (tx.flowType ?? tx.transactionType ?? "").toUpperCase()
-      const isPositive = flowType === "INFLOW" || flowType === "INCOME" || tx.amount >= 0
       const status = (tx.status ?? "PENDING").toUpperCase()
       const isFlagged = status.includes("FLAG")
+      const typeLabel = tx.accountName || tx.transactionType || "General"
+      const palette = categoryPalette(typeLabel)
       return {
         id: tx.id ?? `tx-${idx}`,
         date: formatDateLabel(tx.transactionDate),
         branch: tx.branchName || "Branch Transaction",
-        type: tx.accountName || tx.transactionType || "General",
-        typeBg: isPositive ? "bg-blue-50" : "bg-emerald-50",
-        typeColor: isPositive ? "text-blue-600" : "text-emerald-600",
+        type: typeLabel,
+        typeBg: palette.bg,
+        typeColor: palette.color,
         amount: formatCurrency(tx.amount),
         status: isFlagged ? "Flagged" : "Pending",
         statusBg: isFlagged ? "bg-rose-100" : "bg-amber-100",
@@ -140,51 +163,59 @@ export default function Page() {
       {
         title: "Total Income",
         value: formatCurrency(overview.totalIncome ?? 0),
-        trend: "", trendText: "Global Overview", trendColor: "text-gray-400", isPositive: null,
+        trend: "", trendText: "vs last month", trendColor: "text-emerald-500", isPositive: null,
         icon: kpiIcons[0], iconBg: kpiIconStyles[0].iconBg, iconColor: kpiIconStyles[0].iconColor
       },
       {
         title: "Total Expenses",
         value: formatCurrency(overview.totalExpenses ?? 0),
-        trend: "", trendText: "Global Overview", trendColor: "text-gray-400", isPositive: null,
+        trend: "", trendText: "vs last month", trendColor: "text-rose-500", isPositive: null,
         icon: kpiIcons[1], iconBg: kpiIconStyles[1].iconBg, iconColor: kpiIconStyles[1].iconColor
       },
       {
-        title: "Net Position",
+        title: "Net Surplus",
         value: formatCurrency(overview.netPosition ?? 0),
-        trend: "", trendText: "Global Overview", trendColor: "text-gray-400", isPositive: null,
+        trend: "", trendText: "Healthy Margin", trendColor: "text-emerald-500", isPositive: null,
         icon: kpiIcons[2], iconBg: kpiIconStyles[2].iconBg, iconColor: kpiIconStyles[2].iconColor
       },
       {
-        title: "Pending Transactions",
-        value: formatNumber(overview.pendingTransactions ?? 0),
-        trend: "", trendText: "Action Required", trendColor: "text-[#F59E0B]", isPositive: null,
+        title: "Active Branches",
+        value: formatNumber(activeBranchesCount ?? 0),
+        trend: "", trendText: "Reporting Live Data", trendColor: "text-emerald-500", isPositive: null,
         icon: kpiIcons[3], iconBg: kpiIconStyles[3].iconBg, iconColor: kpiIconStyles[3].iconColor
-      },
-      {
-        title: "Active Budgets",
-        value: formatNumber(overview.activeBudgets ?? 0),
-        trend: "", trendText: "Active Tracking", trendColor: "text-emerald-500", isPositive: null,
-        icon: kpiIcons[0], iconBg: "bg-purple-50", iconColor: "text-purple-500"
       }
     ]
-  }, [overview])
+  }, [overview, activeBranchesCount])
 
-  const expenseChart = useMemo(() => {
-    const sorted = [...expenseItems]
+  const incomeChart = useMemo(() => {
+    const sorted = [...incomeItems]
       .sort((a, b) => b.percentage - a.percentage)
-      .slice(0, 3)
+      .slice(0, 5)
 
     const colorMap: Record<string, string> = {
-      operational: "#3B5BDB",
-      programs: "#8B5CF6",
-      capital: "#10B981",
+      tithe: "#3B5BDB",
+      tithes: "#3B5BDB",
+      offering: "#10B981",
+      offerings: "#10B981",
+      donation: "#10B981",
+      donations: "#10B981",
+      special: "#8B5CF6",
+      project: "#8B5CF6",
+      missions: "#F59E0B",
+      welfare: "#F59E0B",
       other: "#94A3B8",
     }
     const labelMap: Record<string, string> = {
-      operational: "Operational",
-      programs: "Programs",
-      capital: "Capital",
+      tithe: "Tithes",
+      tithes: "Tithes",
+      offering: "Offerings",
+      offerings: "Offerings",
+      donation: "Donations",
+      donations: "Donations",
+      special: "Special Project",
+      project: "Special Project",
+      missions: "Missions",
+      welfare: "Welfare",
       other: "Other",
     }
 
@@ -200,9 +231,9 @@ export default function Page() {
 
     if (segments.length === 0) {
       segments.push(
-        { label: "Operational", percentage: 0, amount: 0, color: colorMap.operational },
-        { label: "Programs", percentage: 0, amount: 0, color: colorMap.programs },
-        { label: "Capital", percentage: 0, amount: 0, color: colorMap.capital }
+        { label: "Tithes", percentage: 0, amount: 0, color: colorMap.tithes },
+        { label: "Offerings", percentage: 0, amount: 0, color: colorMap.offerings },
+        { label: "Special Project", percentage: 0, amount: 0, color: colorMap.special }
       )
     }
 
@@ -229,7 +260,7 @@ export default function Page() {
       totalAmount,
       background: `conic-gradient(${stops.join(",")})`,
     }
-  }, [expenseItems])
+  }, [incomeItems])
 
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
@@ -435,10 +466,44 @@ export default function Page() {
               </div>
               
               <div className="flex-1 relative w-full px-2 sm:px-6 pb-2 text-[11px] text-[#9CA3AF] font-medium min-h-[180px] sm:min-h-[220px]">
-                {trendsError && (
-                  <div className="text-[12px] font-medium text-[#EF4444]">{trendsError}</div>
+                {(trendsError || budgetActualsError) && (
+                  <div className="text-[12px] font-medium text-[#EF4444]">{budgetActualsError ?? trendsError}</div>
                 )}
-                {!trendsError && trendData?.series?.length ? (
+                {!budgetActualsError && budgetActualsSeries.length ? (
+                  (() => {
+                    const maxValue = Math.max(
+                      1,
+                      ...budgetActualsSeries.flatMap((p) => [p.budget, p.actual])
+                    )
+                    return (
+                      <div className="flex items-end justify-between h-full gap-3">
+                        {budgetActualsSeries.slice(0, 12).map((point, index) => {
+                          const budgetH = Math.round((point.budget / maxValue) * 160)
+                          const actualH = Math.round((point.actual / maxValue) * 160)
+                          return (
+                            <div key={`${point.label}-${index}`} className="flex flex-col items-center gap-2 flex-1">
+                              <div className="flex items-end gap-1 h-[160px]">
+                                <div
+                                  className="w-[10px] rounded-t-full bg-[#D1D5DB]"
+                                  style={{ height: `${Math.max(4, budgetH)}px` }}
+                                  title={`Budget: ${formatCurrency(point.budget)}`}
+                                />
+                                <div
+                                  className="w-[10px] rounded-t-full bg-[#3B5BDB]"
+                                  style={{ height: `${Math.max(4, actualH)}px` }}
+                                  title={`Actual: ${formatCurrency(point.actual)}`}
+                                />
+                              </div>
+                              <span>{point.label}</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )
+                  })()
+                ) : budgetActualsLoading ? (
+                  <div className="flex items-center justify-center h-full text-[12px] text-[#9CA3AF]">Loading chart...</div>
+                ) : !trendsError && trendData?.series?.length ? (
                   <div className="flex items-end justify-between h-full gap-2">
                     {trendData.series.slice(0, 12).map((rawPoint, index: number) => {
                       const point = rawPoint as unknown as Record<string, unknown>
@@ -470,23 +535,23 @@ export default function Page() {
             {/* Doughnut Chart */}
             <div className="col-span-1 flex flex-col items-center sm:items-start rounded-xl border border-[#EEF1F6] bg-white p-6 shadow-sm">
               <div className="w-full text-center sm:text-left">
-                <h3 className="text-[16px] font-bold text-[#111827]">Expense Distribution</h3>
-                <p className="text-[13px] text-[#3B5BDB] mt-1 mb-8">Verified spend by category</p>
+                <h3 className="text-[16px] font-bold text-[#111827]">Income Distribution</h3>
+                <p className="text-[13px] text-[#3B5BDB] mt-1 mb-8">Breakdown by category</p>
               </div>
               
               <div className="relative mx-auto h-[160px] w-[160px] sm:h-[180px] sm:w-[180px] mb-8 shrink-0">
-                <div className="h-full w-full rounded-full rotate-[-210deg]" style={{ background: expenseChart.background }} />
+                <div className="h-full w-full rounded-full rotate-[-210deg]" style={{ background: incomeChart.background }} />
                 <div className="absolute inset-[12px] rounded-full bg-white" />
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
                   <span className="text-[12px] text-[#6B7280] font-medium mb-1">Total</span>
                   <span className="text-[18px] font-bold text-[#3B5BDB]">
-                    {expenseLoading ? "Loading..." : formatCurrency(expenseChart.totalAmount || overview?.totalExpenses || 0)}
+                    {incomeLoading ? "Loading..." : formatCurrencyAbbrev(incomeChart.totalAmount || overview?.totalIncome || 0)}
                   </span>
                 </div>
               </div>
 
               <div className="flex flex-col gap-3 w-full">
-                {expenseChart.segments.map((segment) => (
+                {incomeChart.segments.map((segment) => (
                   <div key={segment.label} className="flex items-center justify-between text-[13px]">
                     <div className="flex items-center gap-2.5">
                       <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: segment.color }} />

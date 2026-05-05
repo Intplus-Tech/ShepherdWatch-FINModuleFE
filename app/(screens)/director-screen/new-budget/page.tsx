@@ -419,25 +419,58 @@ function PageInner() {
                 General Information
               </div>
               <div className="grid grid-cols-1 gap-6 px-6 py-6">
-                <div className="space-y-2">
-                  <div className="text-[13px] font-bold text-[#374151]">
-                    Template Name <span className="text-[#EF4444]">*</span>
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <div className="text-[13px] font-bold text-[#111827]">
+                      Template Name <span className="text-[#EF4444]">*</span>
+                    </div>
+                    <Input
+                      value={templateName}
+                      onChange={(event) => setTemplateName(event.target.value)}
+                      className="h-11 rounded-[6px] border-[#E5E7EB] bg-[#F9FAFB] text-[14px] placeholder:text-[#9CA3AF] shadow-sm"
+                      placeholder="e.g., FY2025 Urban Branch Standard"
+                    />
+                    <p className="text-[11px] text-[#6B7280]">Must be unique across the organization.</p>
                   </div>
-                  <Input
-                    value={templateName}
-                    onChange={(event) => setTemplateName(event.target.value)}
-                    className="h-11 rounded-[6px] border-[#E5E7EB] bg-[#F9FAFB] text-[14px] placeholder:text-[#9CA3AF] shadow-sm"
-                    placeholder="e.g., Standard Annual Budget"
-                  />
+                  <div className="space-y-2">
+                    <div className="text-[13px] font-bold text-[#111827]">
+                      Fiscal Year
+                    </div>
+                    <div className="relative">
+                      <select className="w-full h-11 appearance-none rounded-[6px] border border-[#E5E7EB] bg-[#F9FAFB] px-3 text-[14px] text-[#374151] shadow-sm focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]">
+                        <option>FY 2025</option>
+                      </select>
+                      <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+                        <ChevronDown className="h-4 w-4 text-[#6B7280]" />
+                      </div>
+                    </div>
+                  </div>
                 </div>
+
                 <div className="space-y-2">
-                  <div className="text-[13px] font-bold text-[#374151]">Description</div>
+                  <div className="text-[13px] font-bold text-[#111827]">Description</div>
                   <textarea
                     value={description}
                     onChange={(event) => setDescription(event.target.value)}
                     className="w-full flex min-h-[96px] rounded-[6px] border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-3 text-[14px] font-medium placeholder:text-[#9CA3AF] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB] resize-none shadow-sm"
-                    placeholder="Default budget template for all branches"
+                    placeholder="Add internal notes about this template structure..."
                   />
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[10px] border border-[#E5E7EB] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.02)] px-6 py-6">
+              <div className="space-y-2">
+                <div className="text-[13px] font-bold text-[#111827]">
+                  Branch Type <span className="text-[#EF4444]">*</span>
+                </div>
+                <div className="relative">
+                  <select className="w-full h-11 appearance-none rounded-[6px] border border-[#E5E7EB] bg-[#F9FAFB] px-3 text-[14px] text-[#9CA3AF] shadow-sm focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]">
+                    <option>.e.g. Established</option>
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+                    <ChevronDown className="h-4 w-4 text-[#6B7280]" />
+                  </div>
                 </div>
               </div>
             </div>
@@ -449,12 +482,20 @@ function PageInner() {
                     <Workflow className="h-5 w-5 text-[#3B5BDB]" />
                     Budget Structure
                   </div>
-                  <div className="mt-1 text-[14px] text-[#6B7280]">Configure line items grouped by chart of account.</div>
+                  <div className="mt-1 text-[14px] text-[#6B7280]">Configure line items grouped by category.</div>
                 </div>
-                <div className="flex items-center gap-2 text-[13px] font-semibold text-[#6B7280]">
-                  <button className="rounded-[6px] px-5 py-2.5 bg-[#EFF6FF] text-[#2563EB] shadow-[0_1px_2px_rgba(0,0,0,0.05)] border border-[#BFDBFE]">
-                    Operational
-                  </button>
+                <div className="flex items-center text-[13px] font-semibold">
+                  <div className="flex rounded-[6px] border border-[#E5E7EB] p-1 bg-[#F9FAFB]">
+                    <button className="rounded-[4px] px-5 py-1.5 bg-white shadow-sm text-[#111827] border border-[#E5E7EB]">
+                      Operational
+                    </button>
+                    <button className="rounded-[4px] px-5 py-1.5 text-[#6B7280] hover:text-[#111827]">
+                      Program
+                    </button>
+                    <button className="rounded-[4px] px-5 py-1.5 text-[#6B7280] hover:text-[#111827]">
+                      Capital
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -462,9 +503,9 @@ function PageInner() {
                 <div className="flex items-center justify-between rounded-[8px] bg-[#EFF6FF] px-4 py-3.5 border border-[#DBEAFE]">
                   <div className="flex items-center gap-2 font-bold text-[#1E40AF] text-[13px]">
                     <PieChart className="h-4 w-4" />
-                    Total Default Allocation:
+                    Operational Allocation Target:
                   </div>
-                  <div className="font-bold text-[#1E40AF] text-[14px]">{formatCurrency(totalAmount)}</div>
+                  <div className="font-bold text-[#1E40AF] text-[14px]">45% of Total Income</div>
                 </div>
 
                 <div className="mt-4 text-[12px]">
@@ -474,74 +515,134 @@ function PageInner() {
 
                 <div className="mt-4">
                   <table className="w-full text-[14px]">
-                    <thead className="bg-transparent text-[#6B7280] text-[12px] font-bold tracking-wider">
+                    <thead className="bg-transparent text-[#9CA3AF] text-[11px] font-[600] tracking-wider">
                       <tr className="border-b-2 border-[#E5E7EB]">
                         <th className="py-3 px-2 text-left w-[40px]">SORT</th>
-                        <th className="py-3 px-2 text-left">BUDGET HEAD</th>
-                        <th className="py-3 px-2 text-left">DESCRIPTION</th>
-                        <th className="py-3 px-2 text-left w-[180px]">DEFAULT AMOUNT</th>
+                        <th className="py-3 px-2 text-left">BUDGET HEAD NAME</th>
+                        <th className="py-3 px-2 text-left w-[220px]">ALLOCATION TYPE</th>
+                        <th className="py-3 px-2 text-left w-[180px]">DEFAULT VALUE</th>
                         <th className="py-3 px-2 text-center w-[80px]">ACTION</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {lineItems.map((row) => (
-                        <tr key={row.id} className="border-b border-[#E5E7EB] last:border-0 text-[#111827] hover:bg-[#F9FAFB]">
-                          <td className="py-4 px-2 text-[#9CA3AF]">
-                            <GripVertical className="h-4 w-4" />
-                          </td>
-                          <td className="py-4 px-2">
-                            <select
-                              value={row.chartOfAccountId}
-                              onChange={(event) => updateLineItem(row.id, "chartOfAccountId", event.target.value)}
-                              className="h-10 w-full rounded-[6px] border border-[#E5E7EB] bg-white px-3 text-[13px] text-[#374151] font-medium shadow-sm"
-                            >
-                              <option value="">Select chart of account</option>
-                              {coaOptions.map((coa) => (
-                                <option key={coa.id} value={coa.id}>
-                                  {coa.label}
-                                </option>
-                              ))}
+                      <tr className="border-b border-[#E5E7EB] text-[#111827] hover:bg-[#F9FAFB]">
+                        <td className="py-4 px-2 text-[#9CA3AF]">
+                          <GripVertical className="h-4 w-4" />
+                        </td>
+                        <td className="py-4 px-2 font-bold text-[13px]">
+                          Staff Salaries & Wages
+                        </td>
+                        <td className="py-4 px-2">
+                          <div className="relative">
+                            <select className="h-10 w-full appearance-none rounded-[6px] border border-[#E5E7EB] bg-white px-3 text-[13px] text-[#374151] font-medium shadow-sm">
+                              <option>Percentage (%)</option>
                             </select>
-                          </td>
-                          <td className="py-4 px-2">
-                            <Input
-                              value={row.description}
-                              onChange={(event) => updateLineItem(row.id, "description", event.target.value)}
-                              className="h-10 rounded-[6px] border-[#E5E7EB] bg-white text-[13px] shadow-sm"
-                              placeholder="Optional line-item note"
+                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+                              <ChevronDown className="h-4 w-4 text-[#9CA3AF]" />
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-4 px-2">
+                          <div className="relative">
+                            <input
+                              type="text"
+                              value="35"
+                              readOnly
+                              className="h-10 w-full rounded-[6px] border-[#E5E7EB] bg-white text-[13px] shadow-sm text-right pr-8"
                             />
-                          </td>
-                          <td className="py-4 px-2">
-                            <Input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={row.defaultAmount}
-                              onChange={(event) => updateLineItem(row.id, "defaultAmount", event.target.value)}
-                              className="h-10 rounded-[6px] border-[#E5E7EB] bg-white text-[13px] shadow-sm"
-                              placeholder="0.00"
+                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+                              <span className="text-[13px] text-[#6B7280]">%</span>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-4 px-2 text-center">
+                          <button className="inline-flex items-center justify-center text-[#9CA3AF] hover:text-[#EF4444] transition-colors outline-none bg-transparent border-transparent">
+                            <Trash2 className="h-[16px] w-[16px]" />
+                          </button>
+                        </td>
+                      </tr>
+                      <tr className="border-b border-[#E5E7EB] text-[#111827] hover:bg-[#F9FAFB]">
+                        <td className="py-4 px-2 text-[#9CA3AF]">
+                          <GripVertical className="h-4 w-4" />
+                        </td>
+                        <td className="py-4 px-2 font-bold text-[13px]">
+                          Facility Maintenance
+                        </td>
+                        <td className="py-4 px-2">
+                          <div className="relative">
+                            <select className="h-10 w-full appearance-none rounded-[6px] border border-[#E5E7EB] bg-white px-3 text-[13px] text-[#374151] font-medium shadow-sm">
+                              <option>Fixed Amount (N)</option>
+                            </select>
+                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+                              <ChevronDown className="h-4 w-4 text-[#9CA3AF]" />
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-4 px-2">
+                          <div className="relative flex items-center">
+                            <div className="absolute inset-y-0 left-0 flex items-center pl-3">
+                              <span className="text-[13px] text-[#6B7280]">₦</span>
+                            </div>
+                            <input
+                              type="text"
+                              value="1,200,000"
+                              readOnly
+                              className="h-10 w-full rounded-[6px] border-[#E5E7EB] bg-white text-[13px] shadow-sm text-right pr-3 pl-8"
                             />
-                          </td>
-                          <td className="py-4 px-2 text-center">
-                            <button
-                              onClick={() => removeLineItem(row.id)}
-                              className="inline-flex items-center justify-center text-[#9CA3AF] hover:text-[#EF4444] transition-colors outline-none bg-transparent border-transparent"
-                            >
-                              <Trash2 className="h-[18px] w-[18px]" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                          </div>
+                        </td>
+                        <td className="py-4 px-2 text-center">
+                          <button className="inline-flex items-center justify-center text-[#9CA3AF] hover:text-[#EF4444] transition-colors outline-none bg-transparent border-transparent">
+                            <Trash2 className="h-[16px] w-[16px]" />
+                          </button>
+                        </td>
+                      </tr>
+                      <tr className="border-b border-[#E5E7EB] text-[#111827] hover:bg-[#F9FAFB]">
+                        <td className="py-4 px-2 text-[#9CA3AF]">
+                          <GripVertical className="h-4 w-4" />
+                        </td>
+                        <td className="py-4 px-2 font-bold text-[13px]">
+                          Administrative Costs
+                        </td>
+                        <td className="py-4 px-2">
+                          <div className="relative">
+                            <select className="h-10 w-full appearance-none rounded-[6px] border border-[#E5E7EB] bg-white px-3 text-[13px] text-[#374151] font-medium shadow-sm">
+                              <option>Percentage (%)</option>
+                            </select>
+                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+                              <ChevronDown className="h-4 w-4 text-[#9CA3AF]" />
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-4 px-2">
+                          <div className="relative">
+                            <input
+                              type="text"
+                              value="10"
+                              readOnly
+                              className="h-10 w-full rounded-[6px] border-[#E5E7EB] bg-white text-[13px] shadow-sm text-right pr-8"
+                            />
+                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+                              <span className="text-[13px] text-[#6B7280]">%</span>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-4 px-2 text-center">
+                          <button className="inline-flex items-center justify-center text-[#9CA3AF] hover:text-[#EF4444] transition-colors outline-none bg-transparent border-transparent">
+                            <Trash2 className="h-[16px] w-[16px]" />
+                          </button>
+                        </td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
 
                 <button
                   onClick={addLineItem}
-                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-[6px] border border-dashed border-[#D1D5DB] bg-[#F9FAFB] hover:bg-[#F3F4F6] transition-colors py-3.5 text-[14px] font-bold text-[#6B7280]"
+                  className="mt-6 flex w-full items-center justify-center gap-2 rounded-[6px] border border-dashed border-[#3B5BDB] bg-white hover:bg-[#F3F4F6] transition-colors py-3.5 text-[14px] font-medium text-[#3B5BDB]"
                 >
                   <PlusCircle className="h-4 w-4" />
-                  Add Line Item
+                  Add Operational Line Item
                 </button>
               </div>
             </div>
@@ -551,9 +652,9 @@ function PageInner() {
         <div className="w-full bg-white mt-auto border-t-[0.89px] border-[#EEF1F6] h-[70.22px] px-6 lg:px-10 flex items-center">
           <div className="flex flex-col md:flex-row items-center justify-between w-full">
             <div>
-              <div className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wider">TOTAL DEFAULT ALLOCATION</div>
-              <div className="mt-0.5 text-[16px] leading-[24.89px] font-bold text-[#111827] flex items-center">
-                {formatCurrency(totalAmount)}
+              <div className="text-[11px] font-[600] text-[#9CA3AF] uppercase tracking-wider">TOTAL ALLOCATION</div>
+              <div className="mt-0.5 text-[15px] leading-[24.89px] font-bold text-[#111827] flex items-center gap-1">
+                45% <span className="text-[#9CA3AF] font-medium text-[14px]">+ ₦1,200,000</span>
               </div>
             </div>
             <div className="flex items-center gap-4 mt-4 md:mt-0">
@@ -562,26 +663,17 @@ function PageInner() {
               <Button
                 variant="outline"
                 onClick={resetForm}
-                className="h-10 px-8 rounded-[8px] border-[#E5E7EB] bg-white text-[13px] font-semibold text-[#374151] shadow-sm hover:bg-[#F9FAFB]"
+                className="h-[36px] px-6 rounded-[6px] border-[#E5E7EB] bg-white text-[13px] font-[600] text-[#374151] shadow-sm hover:bg-[#F9FAFB]"
               >
                 Cancel
               </Button>
               <Button
-                variant="outline"
-                onClick={handleDeleteTemplate}
-                disabled={deleting || !activeTemplateId}
-                className="h-10 px-6 rounded-[8px] border-rose-200 text-rose-600 hover:bg-rose-50 text-[13px] font-semibold shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                <XCircle className="h-4 w-4 mr-2" />
-                {deleting ? "Deleting..." : "Delete Template"}
-              </Button>
-              <Button
                 onClick={handleSaveTemplate}
                 disabled={submitting || deleting}
-                className="h-10 px-6 rounded-[8px] bg-[#2E90FA] hover:bg-[#1570EF] text-[13px] font-semibold text-white shadow-sm flex items-center gap-2 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                className="h-[36px] px-6 rounded-[6px] bg-[#1d8eed] hover:bg-[#1570EF] text-[13px] font-[600] text-white shadow-sm flex items-center gap-2 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <Save className="h-4 w-4" />
-                {submitting ? "Saving..." : activeTemplateId ? "Update Template" : "Save Template"}
+                Save & Next Branch
               </Button>
             </div>
           </div>
