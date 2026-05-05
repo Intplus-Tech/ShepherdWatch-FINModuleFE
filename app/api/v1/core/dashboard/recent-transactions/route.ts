@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from "next/server"
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors"
-import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config"
+import { applyAuthCookies, executeWithRefreshRetry } from "@/lib/backend-refresh"
+
+function getBackendUrl(searchParams: URLSearchParams): string {
+  const baseUrl = process.env.BACKEND_API_URL?.replace(/\/+$/, "")
+  if (!baseUrl) {
+    throw new Error("BACKEND_API_URL is not configured")
+  }
+  const queryString = searchParams.toString()
+  return `${baseUrl}/api/v1/dashboard/recent-transactions${queryString ? `?${queryString}` : ""}`
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -11,42 +20,47 @@ export async function GET(req: NextRequest) {
       )
     }
 
-    const backendToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value
-    if (!backendToken) {
-      return applyCors(
-        NextResponse.json({ success: false, message: "Unauthenticated" }, { status: 401 }),
-        req
-      )
-    }
-
     const { searchParams } = new URL(req.url)
-    const baseUrl = process.env.BACKEND_API_URL || ""
-    const queryString = searchParams.toString()
-    const backendUrl = `${baseUrl.replace(/\/+$/, "")}/api/v1/dashboard/recent-transactions${
-      queryString ? `?${queryString}` : ""
-    }`
+    const backendUrl = getBackendUrl(searchParams)
 
-    const backendResponse = await fetch(backendUrl, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${backendToken}`,
-        Accept: "application/json",
-      },
-      cache: "no-store",
-    })
+    const { res: backendRes, refreshedTokens } = await executeWithRefreshRetry(req, (token) =>
+      fetch(backendUrl, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+        },
+        cache: "no-store",
+      })
+    )
 
-    const payload = await backendResponse.json().catch(() => null)
-    if (!backendResponse.ok) {
-      return applyCors(
-        NextResponse.json(
-          { success: false, message: payload?.message ?? "Failed to fetch recent transactions" },
-          { status: backendResponse.status || 502 }
-        ),
-        req
-      )
+    const responseText = await backendRes.text()
+    const contentType = backendRes.headers.get("content-type") ?? ""
+    const isJson = contentType.includes("application/json")
+
+    if (isJson) {
+      try {
+        const responseData = responseText ? JSON.parse(responseText) : null
+        const response = NextResponse.json(responseData, { status: backendRes.status })
+        applyAuthCookies(response, refreshedTokens)
+        return applyCors(response, req)
+      } catch {
+        return applyCors(
+          NextResponse.json(
+            { success: false, message: "Invalid response received from recent transactions service" },
+            { status: 502 }
+          ),
+          req
+        )
+      }
     }
 
-    return applyCors(NextResponse.json(payload, { status: 200 }), req)
+    const response = new NextResponse(responseText, {
+      status: backendRes.status,
+      headers: contentType ? { "Content-Type": contentType } : undefined,
+    })
+    applyAuthCookies(response, refreshedTokens)
+    return applyCors(response, req)
   } catch (error) {
     console.error("Dashboard recent transactions proxy error:", error)
     return applyCors(
