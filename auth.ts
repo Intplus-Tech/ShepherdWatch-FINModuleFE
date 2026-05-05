@@ -209,12 +209,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
 
       // Need to refresh.
-      if (!token.refreshToken) {
+      const refreshToken = typeof token.refreshToken === "string" ? token.refreshToken : "";
+      if (!refreshToken) {
         token.error = "RefreshAccessTokenError";
         return token;
       }
 
-      const refreshed = await refreshAccessToken(token.refreshToken);
+      const refreshed = await refreshAccessToken(refreshToken);
       if (!refreshed?.accessToken) {
         token.error = "RefreshAccessTokenError";
         return token;
@@ -226,7 +227,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       delete token.error;
 
       // Keep legacy cookies in sync.
-      await syncBackendCookies(refreshed.accessToken, refreshed.refreshToken ?? token.refreshToken);
+      await syncBackendCookies(refreshed.accessToken, refreshed.refreshToken ?? refreshToken);
 
       return token;
     },

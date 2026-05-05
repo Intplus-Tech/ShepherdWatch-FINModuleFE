@@ -43,10 +43,10 @@ declare module "next-auth/jwt" {
   }
 }
 
-// `next-auth/jwt` only re-exports the `JWT` interface from `@auth/core/jwt`.
-// Augmenting the original module is required for the merged shape to apply
-// in callback parameters typed by `@auth/core` directly.
-declare module "@auth/jwt" {
+// `next-auth/jwt` re-exports the `JWT` interface from `@auth/core/jwt`.
+// Augmenting the original module is required for callback parameters typed by
+// `@auth/core` directly.
+declare module "@auth/core/jwt" {
   interface JWT {
     id?: string;
     email?: string;
@@ -62,7 +62,7 @@ declare module "@auth/jwt" {
 }
 
 // Same situation for User: `next-auth` callbacks reference `@auth/core/types#User`.
-declare module "@auth/types" {
+declare module "@auth/core/types" {
   interface User {
     id: string;
     email: string;
