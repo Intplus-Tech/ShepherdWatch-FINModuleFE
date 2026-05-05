@@ -40,10 +40,39 @@ const defaultItems: SidebarItem[] = [
   { label: "Settings", href: "/director-screen/settings", icon: Settings },
 ]
 
+const ROLE_LABELS: Record<string, string> = {
+  super_admin: "Super Admin",
+  admin: "Admin",
+  director: "Director",
+  regional_director: "Regional Director",
+  executive_director: "Executive Director",
+  global_director: "Global Director",
+  branch_admin: "Branch Officer",
+  branch_accountant: "Branch Accountant",
+  accountant: "Branch Accountant",
+  branch_pastor: "Branch Pastor",
+  lead_pastor: "Lead Pastor",
+  regional_pastor: "Regional Pastor",
+  pastor: "Pastor",
+  hr: "HR",
+  employee: "Employee",
+}
+
+function formatRoleLabel(role?: string | null): string {
+  if (!role) return ""
+  const key = String(role).trim().toLowerCase()
+  if (ROLE_LABELS[key]) return ROLE_LABELS[key]
+  return key
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ")
+}
+
 export default function SidebarNav({
   items = defaultItems,
   activeHref = "/director-screen/dashboard",
-  user = { name: "Rev. Thomas M.", role: "Director", avatarSrc: "/images/Beared%20Guy02-min%201.jpg" },
+  user,
   className,
 }: Readonly<{
   items?: SidebarItem[]
@@ -51,8 +80,22 @@ export default function SidebarNav({
   user?: SidebarUser
   className?: string
 }>) {
-  const { logout } = useAuth()
+  const { logout, user: authUser } = useAuth()
   const router = useRouter()
+
+  const resolvedName =
+    user?.name ??
+    [authUser?.firstName, authUser?.lastName].filter(Boolean).join(" ").trim() ||
+    authUser?.name ||
+    authUser?.email ||
+    ""
+  const resolvedRoleLabel = user?.role ?? formatRoleLabel(authUser?.role)
+  const resolvedAvatar = user?.avatarSrc ?? authUser?.avatar ?? "/images/Beared%20Guy02-min%201.jpg"
+  const resolvedUser: SidebarUser = {
+    name: resolvedName || "User",
+    role: resolvedRoleLabel,
+    avatarSrc: resolvedAvatar,
+  }
 
   const handleLogout = async () => {
     try {
@@ -76,7 +119,9 @@ export default function SidebarNav({
           <Image src="/images/icon-shepherdwatch.svg" alt="ShepherdWatch" width={22} height={22} />
           <div className="text-[13px] font-semibold text-[#1F2937] leading-none">ShepherdWatch</div>
         </div>
-        <span className="text-[10px] font-medium text-[#3B5BDB] ml-7">Super Admin</span>
+        {resolvedRoleLabel ? (
+          <span className="text-[10px] font-medium text-[#3B5BDB] ml-7">{resolvedRoleLabel}</span>
+        ) : null}
       </div>
 
       <nav className="flex-1 overflow-y-auto">
@@ -107,13 +152,13 @@ export default function SidebarNav({
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 overflow-hidden rounded-full border-2 border-white shadow-sm shrink-0">
-              {user.avatarSrc ? (
-                <Image src={user.avatarSrc} alt={user.name} width={40} height={40} className="h-full w-full object-cover" />
+              {resolvedUser.avatarSrc ? (
+                <Image src={resolvedUser.avatarSrc} alt={resolvedUser.name} width={40} height={40} className="h-full w-full object-cover" />
               ) : null}
             </div>
             <div className="flex flex-col">
-              <span className="text-[13px] font-bold text-[#111827]">{user.name}</span>
-              <span className="text-[11px] font-medium text-[#6B7280]">{user.role}</span>
+              <span className="text-[13px] font-bold text-[#111827]">{resolvedUser.name}</span>
+              <span className="text-[11px] font-medium text-[#6B7280]">{resolvedUser.role}</span>
             </div>
           </div>
           

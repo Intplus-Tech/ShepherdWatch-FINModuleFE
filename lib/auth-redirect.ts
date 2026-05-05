@@ -12,6 +12,7 @@ export function getDashboardPathForUser(input: DashboardTargetInput): string {
   const email = normalize(input.email);
 
   if (
+    role === "super_admin" ||
     role === "director" ||
     role === "regional_director" ||
     role === "executive_director" ||
@@ -34,7 +35,6 @@ export function getDashboardPathForUser(input: DashboardTargetInput): string {
   }
 
   if (
-    role === "super_admin" ||
     role === "branch_admin" ||
     role === "admin" ||
     role === "hr" ||
