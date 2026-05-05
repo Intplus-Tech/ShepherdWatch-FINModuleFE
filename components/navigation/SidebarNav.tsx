@@ -85,10 +85,10 @@ export default function SidebarNav({
 
   const resolvedName =
     user?.name ??
-    [authUser?.firstName, authUser?.lastName].filter(Boolean).join(" ").trim() ||
-    authUser?.name ||
-    authUser?.email ||
-    ""
+    ([authUser?.firstName, authUser?.lastName].filter(Boolean).join(" ").trim() ||
+      authUser?.name ||
+      authUser?.email ||
+      "")
   const resolvedRoleLabel = user?.role ?? formatRoleLabel(authUser?.role)
   const resolvedAvatar = user?.avatarSrc ?? authUser?.avatar ?? "/images/Beared%20Guy02-min%201.jpg"
   const resolvedUser: SidebarUser = {
@@ -110,7 +110,7 @@ export default function SidebarNav({
   return (
     <aside
       className={cn(
-        "w-65 min-h-screen bg-[#FAFBFF] border-r border-[#EEF1F6] px-6 pt-6 pb-5 flex flex-col",
+        "w-65 min-h-screen bg-[#FAFBFF] border-r border-[#EEF1F6] px-6 pt-6 pb-5 hidden xl:flex flex-col",
         className
       )}
     >
