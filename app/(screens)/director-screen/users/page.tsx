@@ -1,5 +1,6 @@
-import { API_V1 } from "@/lib/api";
 "use client"
+
+import { API_V1 } from "@/lib/api";
 
 import SidebarNav from "@/components/navigation/SidebarNav"
 import ScreenHeader from "@/components/navigation/ScreenHeader"

@@ -1,5 +1,6 @@
-import { API_V1 } from "@/lib/api";
 "use client"
+
+import { API_V1 } from "@/lib/api";
 
 import React from "react"
 import { useEffect, useMemo, useState } from "react"

@@ -1,5 +1,6 @@
-import { API_V1 } from "@/lib/api";
 "use client"
+
+import { API_V1 } from "@/lib/api";
 
 import React, { useEffect, useMemo, useState } from "react"
 import { Inter } from "next/font/google"
