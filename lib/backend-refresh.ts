@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getToken } from 'next-auth/jwt';
 import { ACCESS_TOKEN_MAX_AGE_SECONDS, BACKEND_REFRESH_TOKEN_COOKIE, BACKEND_TOKEN_COOKIE, REFRESH_TOKEN_MAX_AGE_SECONDS } from './auth-config';
 import { getAuthEndpoint } from './backend-auth-url';
 
@@ -17,6 +18,23 @@ function pickToken(source: unknown, keys: string[]): string {
     }
   }
   return '';
+}
+
+async function getNextAuthTokenPair(req: NextRequest): Promise<TokenPair | null> {
+  const secret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
+  const token = await getToken({
+    req,
+    ...(secret ? { secret } : {}),
+  }).catch(() => null);
+
+  const accessToken = pickToken(token, ['accessToken', 'access_token', 'token']);
+  if (!accessToken) return null;
+
+  const refreshToken = pickToken(token, ['refreshToken', 'refresh_token']);
+  return {
+    accessToken,
+    ...(refreshToken ? { refreshToken } : {}),
+  };
 }
 
 export async function refreshAccessToken(refreshToken: string): Promise<TokenPair | null> {
@@ -87,10 +105,23 @@ export async function executeWithRefreshRetry(
   executeRequest: (token: string) => Promise<Response>
 ): Promise<{ res: Response; refreshedTokens: TokenPair | null }> {
   let token = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value ?? '';
+  let refreshToken = req.cookies.get(BACKEND_REFRESH_TOKEN_COOKIE)?.value ?? '';
   let refreshedTokens: TokenPair | null = null;
 
+  if (!token || !refreshToken) {
+    const nextAuthTokens = await getNextAuthTokenPair(req);
+    if (!token) {
+      token = nextAuthTokens?.accessToken ?? '';
+    }
+    if (!refreshToken) {
+      refreshToken = nextAuthTokens?.refreshToken ?? '';
+    }
+    if (nextAuthTokens?.accessToken) {
+      refreshedTokens = nextAuthTokens;
+    }
+  }
+
   if (!token) {
-    const refreshToken = req.cookies.get(BACKEND_REFRESH_TOKEN_COOKIE)?.value ?? '';
     if (refreshToken) {
       refreshedTokens = await refreshAccessToken(refreshToken);
       token = refreshedTokens?.accessToken ?? '';
@@ -109,7 +140,6 @@ export async function executeWithRefreshRetry(
     return { res, refreshedTokens };
   }
 
-  const refreshToken = req.cookies.get(BACKEND_REFRESH_TOKEN_COOKIE)?.value ?? '';
   if (!refreshToken) {
     return { res, refreshedTokens };
   }
