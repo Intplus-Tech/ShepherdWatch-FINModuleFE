@@ -114,6 +114,8 @@ const normalizeRegion = (region: RegionApiItem, index: number): RegionCard => {
   }
 }
 
+const isMongoObjectId = (value: string) => /^[a-f\d]{24}$/i.test(value.trim())
+
 export default function Page() {
   const [regions, setRegions] = useState<RegionCard[]>([])
   const [loading, setLoading] = useState(true)
@@ -170,6 +172,7 @@ export default function Page() {
   const [branchEditLoading, setBranchEditLoading] = useState(false)
   const [showCreateBranch, setShowCreateBranch] = useState(false)
   const [branchName, setBranchName] = useState("")
+  const [branchCode, setBranchCode] = useState("")
   const [branchAddress, setBranchAddress] = useState("")
   const [branchRegion, setBranchRegion] = useState("")
   const [branchType, setBranchType] = useState("")
@@ -181,6 +184,7 @@ export default function Page() {
   const [regionOptionsLoading, setRegionOptionsLoading] = useState(false)
   const [branchTouched, setBranchTouched] = useState({
     name: false,
+    code: false,
     address: false,
     region: false,
     branchType: false,
@@ -564,6 +568,7 @@ export default function Page() {
   const handleCreateBranch = async () => {
     setBranchTouched({
       name: true,
+      code: true,
       address: true,
       region: true,
       branchType: true,
@@ -571,11 +576,23 @@ export default function Page() {
 
     if (
       !branchName.trim() ||
+      !branchCode.trim() ||
       !branchAddress.trim() ||
       !branchRegion.trim() ||
       !branchType.trim()
     ) {
       pushToast("Please fill in all required branch fields.", "error")
+      return
+    }
+
+    const leadPastorId = branchLeadPastorId.trim()
+    const assignedAccountantId = branchAccountantId.trim()
+    if (leadPastorId && !isMongoObjectId(leadPastorId)) {
+      pushToast("Lead pastor ID must be a valid 24-character ID.", "error")
+      return
+    }
+    if (assignedAccountantId && !isMongoObjectId(assignedAccountantId)) {
+      pushToast("Accountant ID must be a valid 24-character ID.", "error")
       return
     }
 
@@ -590,12 +607,13 @@ export default function Page() {
         credentials: "include",
         body: JSON.stringify({
           name: branchName.trim(),
+          code: branchCode.trim(),
           branchType,
           region: branchRegion.trim(),
           address: branchAddress.trim(),
-          leadPastorId: branchLeadPastorId.trim() || undefined,
-          assignedAccountantId: branchAccountantId.trim() || undefined,
-          currency: branchCurrency.trim() || undefined,
+          leadPastorId: leadPastorId || undefined,
+          assignedAccountantId: assignedAccountantId || undefined,
+          currency: branchCurrency || undefined,
         }),
       })
 
@@ -610,13 +628,14 @@ export default function Page() {
       pushToast("Branch created successfully.", "success")
       setShowCreateBranch(false)
       setBranchName("")
+      setBranchCode("")
       setBranchAddress("")
       setBranchRegion("")
       setBranchType("")
       setBranchCurrency("")
       setBranchLeadPastorId("")
       setBranchAccountantId("")
-      setBranchTouched({ name: false, address: false, region: false, branchType: false })
+      setBranchTouched({ name: false, code: false, address: false, region: false, branchType: false })
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to create branch"
       pushToast(message, "error")
@@ -945,6 +964,17 @@ export default function Page() {
                   />
                   <Input
                     className={`h-10 rounded-md bg-white text-[12px] text-[#6B7280] ${
+                      branchTouched.code && !branchCode.trim()
+                        ? "border-rose-300 focus-visible:ring-rose-200"
+                        : "border-[#E5E7EB]"
+                    }`}
+                    placeholder="Branch code"
+                    value={branchCode}
+                    onChange={(event) => setBranchCode(event.target.value)}
+                    onBlur={() => setBranchTouched((prev) => ({ ...prev, code: true }))}
+                  />
+                  <Input
+                    className={`h-10 rounded-md bg-white text-[12px] text-[#6B7280] ${
                       branchTouched.address && !branchAddress.trim()
                         ? "border-rose-300 focus-visible:ring-rose-200"
                         : "border-[#E5E7EB]"
@@ -976,6 +1006,7 @@ export default function Page() {
                     ))}
                   </select>
                   <select
+                    aria-label="Branch type"
                     className={`h-10 rounded-md bg-white px-2 text-[12px] text-[#6B7280] ${
                       branchTouched.branchType && !branchType.trim()
                         ? "border-rose-300 focus-visible:ring-rose-200"
@@ -986,16 +1017,22 @@ export default function Page() {
                     onBlur={() => setBranchTouched((prev) => ({ ...prev, branchType: true }))}
                   >
                     <option value="">Select branch type</option>
-                    <option value="parish">Parish</option>
-                    <option value="area">Area</option>
-                    <option value="zone">Zone</option>
+                    <option value="pioneer">Pioneer</option>
+                    <option value="growing">Growing</option>
+                    <option value="established">Established</option>
                   </select>
-                  <Input
-                    className="h-10 rounded-md bg-white text-[12px] text-[#6B7280] border-[#E5E7EB]"
-                    placeholder="Currency (optional)"
+                  <select
+                    aria-label="Currency"
+                    className="h-10 rounded-md border border-[#E5E7EB] bg-white px-2 text-[12px] text-[#6B7280]"
                     value={branchCurrency}
                     onChange={(event) => setBranchCurrency(event.target.value)}
-                  />
+                  >
+                    <option value="">Currency (optional)</option>
+                    <option value="NGN">NGN</option>
+                    <option value="USD">USD</option>
+                    <option value="GBP">GBP</option>
+                    <option value="EUR">EUR</option>
+                  </select>
                   <Input
                     className="h-10 rounded-md bg-white text-[12px] text-[#6B7280] border-[#E5E7EB]"
                     placeholder="Lead pastor ID (optional)"

@@ -11,7 +11,8 @@ function getBackendBranchesUrl(): string | null {
 
 type CreateBranchPayload = {
   name: string
-  branchType: "parish" | "area" | "zone"
+  code: string
+  branchType: "pioneer" | "growing" | "established"
   region?: string
   address?: string
   leadPastorId?: string
@@ -27,9 +28,9 @@ function normalizeBranchType(raw: unknown): CreateBranchPayload["branchType"] | 
 
   if (!value) return null
 
-  if (["parish", "parishes", "church", "branch"].includes(value)) return "parish"
-  if (["area", "areas", "district"].includes(value)) return "area"
-  if (["zone", "zones", "region"].includes(value)) return "zone"
+  if (["pioneer", "new", "startup", "start_up"].includes(value)) return "pioneer"
+  if (["growing", "growth"].includes(value)) return "growing"
+  if (["established", "mature", "stable"].includes(value)) return "established"
   return null
 }
 
@@ -37,6 +38,7 @@ function normalizeCreateBranchPayload(body: unknown): CreateBranchPayload | null
   if (!body || typeof body !== "object") return null
   const source = body as Record<string, unknown>
   const name = String(source.name ?? "").trim()
+  const code = String(source.code ?? source.branchCode ?? "").trim()
   const branchType = normalizeBranchType(
     source.branchType ?? source.branch_type ?? source.type ?? source.category
   )
@@ -46,10 +48,11 @@ function normalizeCreateBranchPayload(body: unknown): CreateBranchPayload | null
   const assignedAccountantId = String(source.assignedAccountantId ?? "").trim()
   const currencyRaw = String(source.currency ?? "").toUpperCase()
 
-  if (!name || !branchType) return null
+  if (!name || !code || !branchType) return null
 
   const payload: CreateBranchPayload = {
     name,
+    code,
     branchType,
   }
   if (region) payload.region = region
@@ -152,7 +155,7 @@ export async function POST(req: NextRequest) {
   if (!payload) {
     return applyCors(
       NextResponse.json(
-        { success: false, message: "Invalid payload. Required fields: name, branchType." },
+        { success: false, message: "Invalid payload. Required fields: name, code, branchType." },
         { status: 400 }
       ),
       req
