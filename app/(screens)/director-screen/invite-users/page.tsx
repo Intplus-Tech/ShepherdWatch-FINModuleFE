@@ -18,6 +18,17 @@ import { useInviteUser, useBranches } from "@/components/hooks/useUsers"
 const labelText = "text-[9.33px] leading-[13.33px] font-medium"
 const inputText = "text-[12px] leading-[16px]"
 
+const inviteRoleOptions = [
+  { value: "super_admin", label: "Super Admin" },
+  { value: "director", label: "Director" },
+  { value: "regional_pastor", label: "Regional Pastor" },
+  { value: "branch_pastor", label: "Branch Pastor" },
+  { value: "accountant", label: "Accountant" },
+  { value: "admin", label: "Admin" },
+  { value: "hr", label: "HR" },
+  { value: "employee", label: "Employee" },
+] as const
+
 type BranchOption = {
   id: string
   name: string
@@ -169,11 +180,11 @@ export default function Page() {
                   onChange={e => setRole(e.target.value)}
                 >
                   <option value="" disabled className="text-[#9CA3AF]">Select a role...</option>
-                  <option value="super_admin">Super Admin</option>
-                  <option value="director">Director</option>
-                  <option value="admin">Admin</option>
-                  <option value="pastor">Pastor</option>
-                  <option value="accountant">Accountant</option>
+                  {inviteRoleOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
                 <ChevronDown className="absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9CA3AF] pointer-events-none" />
               </div>
