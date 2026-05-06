@@ -13,6 +13,32 @@ function getBackendRegionStatusUrl(regionId: string): string | null {
   return getBackendUrl(`${API_V1}/regions/${encodeURIComponent(regionId)}/status`);
 }
 
+type RegionPayload = {
+  regionName: string;
+  regionDescription: string;
+  regionLocation: string;
+  status?: string;
+};
+
+function normalizeRegionPayload(body: unknown): RegionPayload | null {
+  if (!body || typeof body !== "object") return null;
+
+  const source = body as Record<string, unknown>;
+  const regionName = String(source.regionName ?? source.name ?? "").trim();
+  const regionDescription = String(source.regionDescription ?? source.description ?? "").trim();
+  const regionLocation = String(source.regionLocation ?? source.location ?? "").trim();
+  const status = String(source.status ?? "").trim().toUpperCase();
+
+  if (!regionName || !regionDescription || !regionLocation) return null;
+
+  return {
+    regionName,
+    regionDescription,
+    regionLocation,
+    ...(status ? { status } : {}),
+  };
+}
+
 export async function GET(req: NextRequest, context: { params: Promise<{ regionId: string }> }) {
   try {
     if (!isOriginAllowed(req)) {
@@ -111,6 +137,16 @@ export async function PUT(req: NextRequest, context: { params: Promise<{ regionI
       );
     }
     const body = await req.json().catch(() => null);
+    const regionPayload = normalizeRegionPayload(body);
+    if (!regionPayload) {
+      return applyCors(
+        NextResponse.json(
+          { success: false, message: "Invalid payload. Required fields: name, description, location." },
+          { status: 400 }
+        ),
+        req
+      );
+    }
 
     const backendResponse = await fetch(backendUrl, {
       method: "PUT",
@@ -119,7 +155,7 @@ export async function PUT(req: NextRequest, context: { params: Promise<{ regionI
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: JSON.stringify(body ?? {}),
+      body: JSON.stringify(regionPayload),
       cache: "no-store",
     });
 
