@@ -63,6 +63,26 @@ type TenantCard = {
   statusDot: string
 }
 
+type UserApiItem = {
+  _id?: string
+  id?: string
+  firstName?: string
+  lastName?: string
+  name?: string
+  fullName?: string
+  email?: string
+  role?: string
+  roleName?: string
+  status?: string
+}
+
+type UserOption = {
+  id: string
+  name: string
+  email: string
+  role: string
+}
+
 type BranchHealthSummary = {
   totalBranches: number
   activeBranches: number
@@ -113,6 +133,46 @@ const normalizeRegion = (region: RegionApiItem, index: number): RegionCard => {
     statusDot: statusStyle.dot,
   }
 }
+
+const extractApiList = (payload: unknown): unknown[] => {
+  if (Array.isArray(payload)) return payload
+  if (!payload || typeof payload !== "object") return []
+
+  const source = payload as Record<string, unknown>
+  const data = source.data as Record<string, unknown> | unknown[] | undefined
+  const candidates = [
+    source.data,
+    data && typeof data === "object" && !Array.isArray(data) ? data.data : undefined,
+    data && typeof data === "object" && !Array.isArray(data) ? data.content : undefined,
+    data && typeof data === "object" && !Array.isArray(data) ? data.items : undefined,
+    source.content,
+    source.items,
+    source.users,
+  ]
+
+  return candidates.find((candidate): candidate is unknown[] => Array.isArray(candidate)) ?? []
+}
+
+const normalizeUserOption = (user: UserApiItem, index: number): UserOption | null => {
+  const id = String(user._id ?? user.id ?? "").trim()
+  if (!id) return null
+
+  const firstName = String(user.firstName ?? "").trim()
+  const lastName = String(user.lastName ?? "").trim()
+  const fallbackName = `${firstName} ${lastName}`.trim()
+  const email = String(user.email ?? "").trim()
+  const name = String(user.fullName ?? user.name ?? fallbackName ?? email ?? `User ${index + 1}`).trim()
+  const role = String(user.roleName ?? user.role ?? "").trim()
+
+  return {
+    id,
+    name: name || email || `User ${index + 1}`,
+    email,
+    role,
+  }
+}
+
+const isLeadPastorOption = (user: UserOption) => user.role.toLowerCase().includes("pastor")
 
 const isMongoObjectId = (value: string) => /^[a-f\d]{24}$/i.test(value.trim())
 
@@ -182,6 +242,9 @@ export default function Page() {
   const [branchRegionOptions, setBranchRegionOptions] = useState<RegionCard[]>([])
   const [regionOptionsLoaded, setRegionOptionsLoaded] = useState(false)
   const [regionOptionsLoading, setRegionOptionsLoading] = useState(false)
+  const [leadPastorOptions, setLeadPastorOptions] = useState<UserOption[]>([])
+  const [leadPastorOptionsLoaded, setLeadPastorOptionsLoaded] = useState(false)
+  const [leadPastorOptionsLoading, setLeadPastorOptionsLoading] = useState(false)
   const [branchTouched, setBranchTouched] = useState({
     name: false,
     code: false,
@@ -647,6 +710,7 @@ export default function Page() {
   useEffect(() => {
     if (!showCreateBranch) return
     loadRegionOptions()
+    loadLeadPastorOptions()
   }, [showCreateBranch])
 
   const loadRegionOptions = async () => {
@@ -666,6 +730,28 @@ export default function Page() {
       // ignore
     } finally {
       setRegionOptionsLoading(false)
+    }
+  }
+
+  const loadLeadPastorOptions = async () => {
+    if (leadPastorOptionsLoaded) return
+    try {
+      setLeadPastorOptionsLoading(true)
+      const params = new URLSearchParams({ page: "1", limit: "100", status: "active" })
+      const res = await fetch(`${API_V1}/users?${params.toString()}`, { credentials: "include" })
+      if (!res.ok) return
+      const payload = await res.json()
+      const options = extractApiList(payload)
+        .map((item, index) => normalizeUserOption(item as UserApiItem, index))
+        .filter((item): item is UserOption => Boolean(item))
+        .filter(isLeadPastorOption)
+
+      setLeadPastorOptions(options)
+      setLeadPastorOptionsLoaded(true)
+    } catch {
+      // ignore
+    } finally {
+      setLeadPastorOptionsLoading(false)
     }
   }
 
@@ -1033,12 +1119,27 @@ export default function Page() {
                     <option value="GBP">GBP</option>
                     <option value="EUR">EUR</option>
                   </select>
-                  <Input
-                    className="h-10 rounded-md bg-white text-[12px] text-[#6B7280] border-[#E5E7EB]"
-                    placeholder="Lead pastor ID (optional)"
+                  <select
+                    aria-label="Lead pastor"
+                    className="h-10 rounded-md border border-[#E5E7EB] bg-white px-2 text-[12px] text-[#6B7280]"
                     value={branchLeadPastorId}
                     onChange={(event) => setBranchLeadPastorId(event.target.value)}
-                  />
+                    disabled={leadPastorOptionsLoading}
+                  >
+                    <option value="">
+                      {leadPastorOptionsLoading ? "Loading lead pastors..." : "Select lead pastor (optional)"}
+                    </option>
+                    {!leadPastorOptionsLoading && leadPastorOptionsLoaded && leadPastorOptions.length === 0 && (
+                      <option value="" disabled>
+                        No lead pastors found
+                      </option>
+                    )}
+                    {leadPastorOptions.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.name}{user.email ? ` - ${user.email}` : ""}
+                      </option>
+                    ))}
+                  </select>
                   <Input
                     className="h-10 rounded-md bg-white text-[12px] text-[#6B7280] border-[#E5E7EB]"
                     placeholder="Accountant ID (optional)"

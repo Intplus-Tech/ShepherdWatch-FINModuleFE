@@ -37,10 +37,20 @@ export async function POST(req: NextRequest) {
 
     let response: NextResponse;
     if (!backendRes.ok) {
-      response = NextResponse.json(
-        { success: false, message: responseData?.message || "Failed to invite user" },
-        { status: backendRes.status }
-      );
+      if (backendRes.status === 404 && responseData?.message === "The requested resource was not found.") {
+        response = NextResponse.json(
+          {
+            success: false,
+            message: "Backend invite endpoint is not available. Please confirm POST /api/v1/users/invite is deployed on the backend.",
+          },
+          { status: 502 }
+        );
+      } else {
+        response = NextResponse.json(
+          { success: false, message: responseData?.message || "Failed to invite user" },
+          { status: backendRes.status }
+        );
+      }
     } else {
       response = NextResponse.json(responseData, { status: 201 });
     }

@@ -18,6 +18,24 @@ import { useInviteUser, useBranches } from "@/components/hooks/useUsers"
 const labelText = "text-[9.33px] leading-[13.33px] font-medium"
 const inputText = "text-[12px] leading-[16px]"
 
+type BranchOption = {
+  id: string
+  name: string
+}
+
+function normalizeBranchOption(branch: unknown, index: number): BranchOption | null {
+  if (!branch || typeof branch !== "object") return null
+  const source = branch as Record<string, unknown>
+  const id = String(source._id ?? source.id ?? source.branchId ?? "").trim()
+  if (!id) return null
+
+  const name = String(source.branchName ?? source.name ?? `Branch ${index + 1}`).trim()
+  return {
+    id,
+    name: name || `Branch ${index + 1}`,
+  }
+}
+
 export default function Page() {
   const router = useRouter()
   const [fullName, setFullName] = useState("")
@@ -33,9 +51,17 @@ export default function Page() {
   const [success, setSuccess] = useState(false)
   const [sendEmail, setSendEmail] = useState(true)
   const { user } = useAuth()
+  const { data: branchesPayload, isLoading: branchesLoading } = useBranches()
   const tenantId = useMemo(
     () => user?.tenantId ?? user?.tenant?.id ?? null,
     [user]
+  )
+  const branchOptions = useMemo(
+    () =>
+      (Array.isArray(branchesPayload) ? branchesPayload : [])
+        .map((branch, index) => normalizeBranchOption(branch, index))
+        .filter((branch): branch is BranchOption => Boolean(branch)),
+    [branchesPayload]
   )
 
 
@@ -78,7 +104,7 @@ export default function Page() {
   return (
     <div className="relative min-h-screen bg-[#F8FAFC] font-sans">
       <div className="pointer-events-none select-none">
-        <div className="scale-[1.08] origin-top-left blur-[4px] brightness-[0.95] opacity-65">
+        <div className="scale-[1.08] origin-top-left blur-xs brightness-[0.95] opacity-65">
           <UserDirectoryMenuPage />
         </div>
       </div>
@@ -87,7 +113,7 @@ export default function Page() {
         <div className="w-full max-w-[320px] rounded-[12px] border border-[#E5E7EB] bg-white shadow-xl">
           <div className="flex items-center justify-between border-b border-[#EEF1F6] px-4 py-3">
             <div className="text-[12px] leading-[18.67px] font-bold text-[#111827]">Invite New User</div>
-            <button onClick={handleClose} className="text-[#9CA3AF]">
+            <button onClick={handleClose} className="text-[#9CA3AF]" aria-label="Close invite form">
               <X className="h-4 w-4" />
             </button>
           </div>
@@ -137,7 +163,8 @@ export default function Page() {
               <label className={`${labelText} text-[#6B7280]`}>Primary Role <span className="text-red-500">*</span></label>
               <div className="relative">
                 <select 
-                  className={`flex h-9 w-full items-center justify-between rounded-md border border-[#E5E7EB] bg-white px-3 text-[10.67px] leading-[16px] text-[#111827] appearance-none`}
+                  aria-label="Primary role"
+                  className={`flex h-9 w-full items-center justify-between rounded-md border border-[#E5E7EB] bg-white px-3 text-[10.67px] leading-4 text-[#111827] appearance-none`}
                   value={role}
                   onChange={e => setRole(e.target.value)}
                 >
@@ -156,15 +183,23 @@ export default function Page() {
               <label className={`${labelText} text-[#6B7280]`}>Branch Assignment <span className="text-red-500">*</span></label>
               <div className="relative">
                 <select 
-                  className={`flex h-9 w-full items-center justify-between rounded-md border border-[#E5E7EB] bg-white px-3 text-[10.67px] leading-[16px] text-[#111827] appearance-none`}
+                  aria-label="Branch assignment"
+                  className={`flex h-9 w-full items-center justify-between rounded-md border border-[#E5E7EB] bg-white px-3 text-[10.67px] leading-4 text-[#111827] appearance-none`}
                   value={branchId}
                   onChange={e => setBranchId(e.target.value)}
+                  disabled={branchesLoading}
                 >
-                  <option value="" disabled className="text-[#9CA3AF]">Select a branch...</option>
-                  <option value="hq">Headquarters (HQ)</option>
-                  <option value="lagos_parish">Lagos Parish</option>
-                  <option value="abuja_area">Abuja Area</option>
-                  <option value="ph_zone">Port Harcourt Zone</option>
+                  <option value="" disabled className="text-[#9CA3AF]">
+                    {branchesLoading ? "Loading branches..." : "Select a branch..."}
+                  </option>
+                  {!branchesLoading && branchOptions.length === 0 && (
+                    <option value="" disabled>No branches found</option>
+                  )}
+                  {branchOptions.map((branch) => (
+                    <option key={branch.id} value={branch.id}>
+                      {branch.name}
+                    </option>
+                  ))}
                 </select>
                 <ChevronDown className="absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9CA3AF] pointer-events-none" />
               </div>
