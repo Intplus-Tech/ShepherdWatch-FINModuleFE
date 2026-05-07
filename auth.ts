@@ -9,6 +9,11 @@ import {
 } from "@/lib/auth-config";
 import { refreshAccessToken } from "@/lib/backend-refresh";
 import { getBackendLoginUrl } from "@/lib/backend-auth-url";
+import {
+  BackendUnavailableError,
+  InvalidCredentialsError,
+  mapLoginErrorToAuthError,
+} from "@/lib/auth-errors";
 
 const ACCESS_TOKEN_TTL_MS = ACCESS_TOKEN_MAX_AGE_SECONDS * 1000;
 
@@ -99,7 +104,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const backendUrl = getBackendLoginUrl();
         if (!backendUrl) {
           console.error("[auth] BACKEND_API_URL not configured");
-          return null;
+          throw new BackendUnavailableError();
         }
 
         let res: Response;
@@ -112,13 +117,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           });
         } catch (err) {
           console.error("[auth] backend login fetch failed", err);
-          return null;
+          throw new BackendUnavailableError();
         }
 
-        if (!res.ok) return null;
+        if (!res.ok) {
+          const errorBody = await res.json().catch(() => null);
+          throw mapLoginErrorToAuthError(res.status, errorBody);
+        }
 
         const payload = (await res.json().catch(() => null)) as Record<string, unknown> | null;
-        if (!payload) return null;
+        if (!payload) throw new InvalidCredentialsError();
 
         const data =
           payload.data && typeof payload.data === "object"
@@ -136,7 +144,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           pickToken(tokens, ["accessToken", "access_token", "token"]) ||
           pickToken(data, ["accessToken", "access_token", "token"]) ||
           pickToken(payload, ["accessToken", "access_token", "token"]);
-        if (!accessToken) return null;
+        if (!accessToken) throw new InvalidCredentialsError();
 
         const refreshToken =
           pickToken(tokens, ["refreshToken", "refresh_token"]) ||

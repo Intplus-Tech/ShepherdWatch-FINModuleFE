@@ -66,6 +66,13 @@ export default function LoginForm({ initialEmail = "" }: LoginFormProps) {
       const nextPath = getDashboardPathForUser({ role: authUser?.role, email: normalizedEmail })
       router.replace(nextPath)
     } catch (err) {
+      const code = (err as { code?: string } | null | undefined)?.code
+      if (code === "email_not_verified") {
+        // Invited / unverified users: bounce them to the OTP verification screen
+        // with the email pre-filled so they can verify and continue.
+        router.replace(`/verify-email?email=${encodeURIComponent(normalizedEmail)}`)
+        return
+      }
       setError(err instanceof Error ? err.message : "Login failed")
     } finally {
       setIsSubmitting(false)

@@ -123,7 +123,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
 
       if (!result || result.error) {
-        throw new Error(result?.error ?? "Unable to login");
+        // NextAuth v5 surfaces our typed CredentialsSignin subclass `code`
+        // via `result.code`. Map that to friendly messages so invited users
+        // who haven't verified their email see actionable feedback.
+        const rawCode = (result as { code?: string } | null | undefined)?.code;
+        const code = typeof rawCode === "string" ? rawCode : undefined;
+        const messageByCode: Record<string, string> = {
+          email_not_verified:
+            "Please verify your email before signing in. We can resend the OTP for you.",
+          account_inactive:
+            "Your account is suspended or inactive. Please contact your administrator.",
+          backend_unavailable:
+            "We can't reach the authentication server right now. Please try again shortly.",
+          invalid_credentials: "Invalid email or password.",
+        };
+        const friendly =
+          (code && messageByCode[code]) ||
+          (result?.error && result.error !== "CredentialsSignin" ? result.error : null) ||
+          "Invalid email or password.";
+        const err = new Error(friendly) as Error & { code?: string };
+        if (code) err.code = code;
+        throw err;
       }
 
       // Force the client session to refresh so callers see the freshly authorized user.
