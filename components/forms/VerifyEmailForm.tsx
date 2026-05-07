@@ -2,7 +2,7 @@
 
 import { API_V1 } from "@/lib/api";
 
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -25,10 +25,23 @@ export default function VerifyEmailForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const emailFromQuery = searchParams.get("email")?.trim().toLowerCase() ?? ""
+  const codeFromQuery = (
+    searchParams.get("code") ??
+    searchParams.get("otp") ??
+    searchParams.get("token") ??
+    ""
+  )
+    .trim()
+    .replace(/\s+/g, "")
+    .slice(0, 6)
   const { resendOtp } = useAuth()
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [resendMessage, setResendMessage] = useState<string | null>(null)
+  const [autoVerifying, setAutoVerifying] = useState<boolean>(
+    Boolean(emailFromQuery && /^\d{6}$/.test(codeFromQuery))
+  )
+  const autoSubmittedRef = useRef(false)
 
   const {
     register,
@@ -39,7 +52,7 @@ export default function VerifyEmailForm() {
     resolver: zodResolver(verifySchema),
     defaultValues: {
       email: emailFromQuery,
-      code: "",
+      code: /^\d{6}$/.test(codeFromQuery) ? codeFromQuery : "",
     },
   })
 
@@ -75,8 +88,18 @@ export default function VerifyEmailForm() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Verification failed")
+    } finally {
+      setAutoVerifying(false)
     }
   }
+
+  useEffect(() => {
+    if (autoSubmittedRef.current) return
+    if (!emailFromQuery || !/^\d{6}$/.test(codeFromQuery)) return
+    autoSubmittedRef.current = true
+    void handleSubmit(onSubmit)()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [emailFromQuery, codeFromQuery])
 
   const handleResendOtp = async () => {
     setError(null)
@@ -116,7 +139,9 @@ export default function VerifyEmailForm() {
             <div className="text-center">
               <h1 className="text-[28px] font-bold text-[#111827] mb-2">Verify Email</h1>
               <p className="text-[14px] text-[#98A2B3]">
-                Enter the 6-digit OTP sent to your email.
+                {autoVerifying
+                  ? "Verifying your email from the link..."
+                  : "Enter the 6-digit OTP sent to your email."}
               </p>
             </div>
 
@@ -160,10 +185,10 @@ export default function VerifyEmailForm() {
               <div className="pt-6 flex justify-center">
                 <Button
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || autoVerifying}
                   className="h-[44px] px-12 bg-[#3B5BDB] hover:bg-[#2f4cc2] text-white rounded-[6px] text-[15px] shadow-[0_4px_12px_rgba(59,91,219,0.2)] font-medium"
                 >
-                  {isSubmitting ? "Verifying..." : "Verify Email"}
+                  {isSubmitting || autoVerifying ? "Verifying..." : "Verify Email"}
                 </Button>
               </div>
 
