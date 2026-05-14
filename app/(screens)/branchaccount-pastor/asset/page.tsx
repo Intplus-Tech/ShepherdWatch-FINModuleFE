@@ -106,7 +106,7 @@ export default function Page() {
         id,
         name: pickString(a.name, a.assetName, a.description, "Asset"),
         category: cat,
-        date: purchaseDateRaw ? formatDate(purchaseDateRaw, "date") : "—",
+        date: purchaseDateRaw ? formatDate(purchaseDateRaw, "medium") : "—",
         value: formatCurrency(cost),
         status: s.label,
         statusColor: s.classes,

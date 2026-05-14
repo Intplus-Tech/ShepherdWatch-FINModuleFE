@@ -352,7 +352,7 @@ function ChangePasswordDialog({
   open: boolean
   onOpenChange: (v: boolean) => void
   changePassword: (p: { currentPassword: string; newPassword: string }) => Promise<void>
-  pushToast: (msg: string, type?: "success" | "error" | "info") => void
+  pushToast: (msg: string, type: "success" | "error" | "info") => void
 }) {
   const {
     register,
