@@ -3,7 +3,7 @@
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { LayoutDashboard, ShieldCheck, Wallet, Settings, HelpCircle, ArrowRightLeft, Database, LogOut } from "lucide-react"
+import { LayoutDashboard, ShieldCheck, Wallet, Settings, HelpCircle, ArrowRightLeft, Database, LogOut, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/components/auth/AuthProvider"
 
@@ -15,9 +15,17 @@ const navItems = [
   { label: "Compliance & Remittance", href: "/branchaccount-pastor/compliance-remittance", icon: ShieldCheck },
 ]
 
-export default function BranchAccountantSidebar({ activeHref }: { activeHref?: string }) {
+type Props = {
+  activeHref?: string
+  /** When provided, renders a mobile-drawer-style sidebar (slides in on small screens, sticky on xl). */
+  mobileOpen?: boolean
+  onMobileClose?: () => void
+}
+
+export default function BranchAccountantSidebar({ activeHref, mobileOpen, onMobileClose }: Props) {
   const router = useRouter()
   const { logout } = useAuth()
+  const drawerMode = typeof mobileOpen === "boolean"
 
   const handleLogout = async () => {
     try {
@@ -29,8 +37,25 @@ export default function BranchAccountantSidebar({ activeHref }: { activeHref?: s
     }
   }
 
+  const asideClass = drawerMode
+    ? cn(
+        "w-[260px] border-r border-[#EEF1F6] bg-white flex flex-col shrink-0 h-[100dvh] fixed xl:sticky top-0 z-50 transition-transform duration-300 ease-in-out px-5 py-6",
+        mobileOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full xl:translate-x-0"
+      )
+    : "w-full lg:w-60 border-b lg:border-b-0 lg:border-r border-[#EEF1F6] bg-white px-5 py-6"
+
   return (
-    <aside className="w-full lg:w-60 border-b lg:border-b-0 lg:border-r border-[#EEF1F6] bg-white px-5 py-6">
+    <aside className={asideClass}>
+      {drawerMode && (
+        <button
+          type="button"
+          onClick={onMobileClose}
+          aria-label="Close menu"
+          className="xl:hidden absolute top-5 right-5 h-8 w-8 flex items-center justify-center rounded-full bg-gray-50 text-gray-500 hover:text-gray-900 transition-colors z-10"
+        >
+          <X className="h-4.5 w-4.5" />
+        </button>
+      )}
       <div className="flex items-center gap-3 pb-8">
         <Image src="/images/icon-shepherdwatch.svg" alt="ShepherdWatch" width={26} height={26} />
         <div>
@@ -47,9 +72,10 @@ export default function BranchAccountantSidebar({ activeHref }: { activeHref?: s
             <Link
               key={item.label}
               href={item.href}
+              onClick={() => onMobileClose?.()}
               className={cn(
                 "flex items-center gap-3 rounded-[10px] px-3 py-2.5 text-[13px] transition-colors",
-                isActive ? "bg-[#E9EEFF] text-[#3B5BDB] font-semibold" : "text-[#6B7280]"
+                isActive ? "bg-[#E9EEFF] text-[#3B5BDB] font-semibold" : "text-[#6B7280] hover:bg-gray-50"
               )}
             >
               <Icon className="h-4.5 w-4.5" />

@@ -102,11 +102,9 @@ export default function Page() {
   }
 
   return (
-    <div className="min-h-screen bg-[#1f1f1f] p-6">
-      <div className="mx-auto w-full max-w-300 rounded-[20px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.25)] overflow-hidden">
-        <div className="flex flex-col lg:flex-row">
-          <BranchAccountantSidebar activeHref="/branchaccount-pastor/dashboard" />
-          <main className="flex-1 p-6 lg:p-8 bg-[#F8FAFC]">
+    <div className="flex min-h-screen flex-col lg:flex-row bg-[#F8FAFC]">
+      <BranchAccountantSidebar activeHref="/branchaccount-pastor/dashboard" />
+      <main className="flex-1 p-6 lg:p-8 bg-[#F8FAFC] min-w-0">
       <div className="flex w-full flex-col gap-6">
         {/* Header */}
         <header className="flex flex-col gap-3 rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-sm md:flex-row md:items-center md:justify-between">
@@ -337,9 +335,7 @@ export default function Page() {
           Data sourced from `${API_V1}/dashboard` and `${API_V1}/requisitions/inbox`.
         </p>
       </div>
-          </main>
-        </div>
-      </div>
+      </main>
     </div>
   )
 }
