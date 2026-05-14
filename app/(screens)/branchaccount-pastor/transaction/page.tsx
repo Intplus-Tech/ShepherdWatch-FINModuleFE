@@ -1,8 +1,10 @@
 "use client"
 
 import { API_V1 } from "@/lib/api";
+import { getCsrfTokenFromCookie } from "@/lib/csrf";
+import { formatCurrency as formatCurrencyLib } from "@/lib/format";
 
-import React, { useEffect, useMemo, useState } from "react"
+import React, { useEffect, useMemo, useRef, useState } from "react"
 import Image from "next/image"
 import {
   LayoutDashboard,
@@ -25,10 +27,13 @@ import {
   Calendar,
   Sparkles,
   CheckCircle,
-  ArrowUp
+  ArrowUp,
+  Loader2
 } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
 import { useTransactions } from "@/components/hooks/useTransactions"
+import { useExport } from "@/components/hooks/useExport"
+import { useToast } from "@/components/ui/toast"
 import BranchesDropdown from "@/components/navigation/BranchesDropdown"
 
 type CoaTreeNode = {
@@ -107,8 +112,16 @@ export default function Page() {
   const [coaOptions, setCoaOptions] = useState<Array<{ id: string; label: string }>>([])
   const [coaLoading, setCoaLoading] = useState(true)
   const [coaError, setCoaError] = useState<string | null>(null)
-  const [exporting, setExporting] = useState(false)
-  const [exportError, setExportError] = useState<string | null>(null)
+  const {
+    exporting,
+    error: exportError,
+    exportData: triggerExport,
+    setError: setExportError,
+  } = useExport({
+    endpoint: `${API_V1}/financial/export/transactions`,
+    fallbackFilename: "transactions.csv",
+    defaultErrorMessage: "Unable to export transactions.",
+  })
   const [parseOpen, setParseOpen] = useState(false)
   const [parseSubject, setParseSubject] = useState("")
   const [parseFrom, setParseFrom] = useState("")
@@ -118,6 +131,49 @@ export default function Page() {
   const [parseResults, setParseResults] = useState<Array<Record<string, any>>>([])
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const csvInputRef = useRef<HTMLInputElement>(null)
+  const [csvUploading, setCsvUploading] = useState(false)
+  const { pushToast } = useToast()
+
+  async function handleCsvUpload(file: File) {
+    if (csvUploading) return
+    const isCsv =
+      file.type === "text/csv" ||
+      file.type === "application/vnd.ms-excel" ||
+      file.name.toLowerCase().endsWith(".csv")
+    if (!isCsv) {
+      pushToast("Please select a .csv file", "error")
+      return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      pushToast("File exceeds 10 MB limit", "error")
+      return
+    }
+    setCsvUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+      const res = await fetch(`${API_V1}/transactions/upload-csv`, {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        const msg = body?.message || body?.error || `Upload failed (${res.status})`
+        throw new Error(msg)
+      }
+      const count = body?.data?.importedCount ?? body?.importedCount ?? 0
+      pushToast(`Imported ${count} transaction${count === 1 ? "" : "s"}`, "success")
+      refreshTransactions()
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Unable to upload CSV"
+      pushToast(message, "error")
+    } finally {
+      setCsvUploading(false)
+      if (csvInputRef.current) csvInputRef.current.value = ""
+    }
+  }
 
   const tenantId = useMemo(
     () => user?.tenantId ?? user?.tenant?.id ?? "",
@@ -125,11 +181,7 @@ export default function Page() {
   )
 
   const formatCurrency = (value: number) =>
-    new Intl.NumberFormat("en-NG", {
-      style: "currency",
-      currency: "NGN",
-      maximumFractionDigits: 2,
-    }).format(value)
+    formatCurrencyLib(value, { maximumFractionDigits: 2 })
 
   const formatDateLabel = (value?: string) => {
     if (!value) return "—"
@@ -176,13 +228,7 @@ export default function Page() {
     }
   }, [rawTransactions, selectedTransactionId])
 
-  const getCsrfToken = () => {
-    if (typeof document === "undefined") return ""
-    const match = document.cookie
-      .split("; ")
-      .find((cookie) => cookie.startsWith("csrf_token="))
-    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
-  }
+  const getCsrfToken = getCsrfTokenFromCookie
 
   const selectedTransaction = useMemo(
     () => rawTransactions.find((tx) => String(tx.id) === String(selectedTransactionId)),
@@ -305,47 +351,7 @@ export default function Page() {
       setExportError("Tenant is required to export transactions.")
       return
     }
-    setExporting(true)
-    setExportError(null)
-
-    try {
-      const params = new URLSearchParams({
-        tenantId,
-        startDate,
-        endDate,
-      })
-      const response = await fetch(`${API_V1}/financial/export/transactions?${params.toString()}`, {
-        method: "GET",
-        credentials: "include",
-      })
-
-      if (!response.ok) {
-        const payload = await response.json().catch(async () => ({
-          message: await response.text().catch(() => ""),
-        }))
-        throw new Error(payload?.message ?? "Unable to export transactions.")
-      }
-
-      const blob = await response.blob()
-      const disposition = response.headers.get("Content-Disposition") ?? ""
-      const filenameMatch =
-        disposition.match(/filename\\*=UTF-8''([^;]+)/i) ??
-        disposition.match(/filename=\"?([^\";]+)\"?/i)
-      const filename = filenameMatch ? decodeURIComponent(filenameMatch[1]) : "transactions.csv"
-
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement("a")
-      link.href = url
-      link.download = filename
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      window.URL.revokeObjectURL(url)
-    } catch (error) {
-      setExportError(error instanceof Error ? error.message : "Unable to export transactions.")
-    } finally {
-      setExporting(false)
-    }
+    await triggerExport({ tenantId, startDate, endDate })
   }
 
   useEffect(() => {
@@ -566,10 +572,30 @@ export default function Page() {
                   <p className="mt-1 text-[13px] text-[#9CA3AF] font-medium">Reconcile imported bank feeds with your chart of accounts.</p>
                 </div>
                 <div className="flex items-center gap-3">
-                  <button className="flex items-center h-[33.33px] w-[140px] sm:w-[160px] justify-center rounded-[5.33px] border-[0.67px] border-[#E5E7EB] bg-white px-4 text-[12px] text-[#111827] font-bold shadow-sm hover:bg-gray-50 transition-all">
-                    <Upload className="mr-2 h-4 w-4" />
-                    Upload CSV
+                  <button
+                    type="button"
+                    onClick={() => csvInputRef.current?.click()}
+                    disabled={csvUploading}
+                    className="flex items-center h-[33.33px] w-[140px] sm:w-[160px] justify-center rounded-[5.33px] border-[0.67px] border-[#E5E7EB] bg-white px-4 text-[12px] text-[#111827] font-bold shadow-sm hover:bg-gray-50 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {csvUploading ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Upload className="mr-2 h-4 w-4" />
+                    )}
+                    {csvUploading ? "Uploading..." : "Upload CSV"}
                   </button>
+                  <input
+                    ref={csvInputRef}
+                    type="file"
+                    accept=".csv,text/csv"
+                    aria-label="Upload transactions CSV"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) void handleCsvUpload(file)
+                    }}
+                  />
                   <button
                     onClick={() => setParseOpen((prev) => !prev)}
                     className="flex items-center h-[33.33px] w-[140px] sm:w-[160px] justify-center rounded-[5.33px] border-[0.67px] border-[#E5E7EB] bg-white px-4 text-[12px] text-[#111827] font-bold shadow-sm hover:bg-gray-50 transition-all"

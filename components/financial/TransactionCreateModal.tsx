@@ -1,6 +1,7 @@
 "use client"
 
 import { API_V1 } from "@/lib/api";
+import { getCsrfTokenFromCookie } from "@/lib/csrf";
 
 import React, { useState, useEffect } from "react"
 import {
@@ -268,13 +269,7 @@ export function TransactionCreateModal({
     }
   }
 
-  const getCsrfToken = () => {
-    if (typeof document === "undefined") return ""
-    const match = document.cookie
-      .split("; ")
-      .find((cookie) => cookie.startsWith("csrf_token="))
-    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
-  }
+  const getCsrfToken = getCsrfTokenFromCookie
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

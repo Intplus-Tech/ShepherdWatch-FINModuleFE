@@ -2,12 +2,12 @@
 
 import { API_V1 } from "@/lib/api";
 
-import React, { Suspense, useEffect, useState } from "react"
-import { useSearchParams } from "next/navigation"
+import React, { Suspense, useEffect, useRef, useState } from "react"
 import BudgetPage from "../budget/page"
 import { X, Info, Paperclip, Send, Trash2 } from "lucide-react"
 import { useBudgetComments } from "@/components/hooks/useBudgetComments"
 import { useBudget } from "@/components/hooks/useBudget"
+import { useModal } from "@/components/providers/ModalContext"
 
 function formatTime(value: string): string {
   if (!value) return ""
@@ -42,9 +42,15 @@ function CommunicationPageInner() {
   const [postError, setPostError] = useState<string | null>(null)
   const [page, setPage] = useState(1)
 
-  const searchParams = useSearchParams()
-  const budgetId = searchParams.get("budgetId") ?? ""
-  const budgetTitleQuery = searchParams.get("title") ?? ""
+  type PendingAttachment = { id: string; fileName: string }
+  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([])
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+
+  const { selectedBudget, closeBudget } = useModal()
+  const budgetId = selectedBudget?.id ?? ""
+  const budgetTitleQuery = selectedBudget?.title ?? ""
   const { comments, pagination, loading, error, setComments, loadComments } = useBudgetComments(budgetId, page, 20)
   const { budget, loading: budgetLoading, error: budgetError, fetchBudget } = useBudget()
 
@@ -91,6 +97,43 @@ function CommunicationPageInner() {
     }
   }
 
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    setUploadError(null)
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+      const response = await fetch(`${API_V1}/file-uploads`, {
+        method: "POST",
+        headers: {
+          "x-csrf-token": getCsrfToken(),
+        },
+        credentials: "include",
+        body: formData,
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Unable to upload file.")
+      }
+      const data = payload?.data ?? payload
+      const id = data?._id ?? data?.id
+      const fileName = data?.fileName ?? file.name
+      if (!id) throw new Error("Upload succeeded but no file id returned.")
+      setPendingAttachments((prev) => [...prev, { id: String(id), fileName: String(fileName) }])
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Unable to upload file.")
+    } finally {
+      setUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ""
+    }
+  }
+
+  const removePendingAttachment = (id: string) => {
+    setPendingAttachments((prev) => prev.filter((a) => a.id !== id))
+  }
+
   const handlePostComment = async () => {
     if (!budgetId) {
       setPostError("Budget ID is required to post comments.")
@@ -112,7 +155,12 @@ function CommunicationPageInner() {
           "x-csrf-token": getCsrfToken(),
         },
         credentials: "include",
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({
+          message: text,
+          ...(pendingAttachments.length > 0
+            ? { attachments: pendingAttachments.map((a) => a.id) }
+            : {}),
+        }),
       })
       const payload = await response.json().catch(() => null)
       if (!response.ok) {
@@ -120,6 +168,7 @@ function CommunicationPageInner() {
       }
 
       setMessage("")
+      setPendingAttachments([])
       await loadComments()
     } catch (err) {
       setPostError(err instanceof Error ? err.message : "Unable to add comment.")
@@ -141,7 +190,12 @@ function CommunicationPageInner() {
               <Info className="h-4 w-4" strokeWidth={2.5} />
               ACTIVE THREAD
             </div>
-            <button className="text-[#9CA3AF] hover:text-[#111827] transition-colors">
+            <button
+              type="button"
+              onClick={closeBudget}
+              aria-label="Close discussion"
+              className="text-[#9CA3AF] hover:text-[#111827] transition-colors"
+            >
               <X className="h-4.5 w-4.5" />
             </button>
           </div>
@@ -220,6 +274,36 @@ function CommunicationPageInner() {
         </div>
 
         <div className="p-5 border-t border-[#EEF1F6] bg-white mt-auto">
+          {pendingAttachments.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {pendingAttachments.map((att) => (
+                <span
+                  key={att.id}
+                  className="inline-flex items-center gap-1 rounded-full bg-[#EEF2FF] px-2 py-1 text-[11px] font-semibold text-[#3B5BDB]"
+                >
+                  <Paperclip className="h-3 w-3" />
+                  <span className="max-w-[140px] truncate">{att.fileName}</span>
+                  <button
+                    type="button"
+                    onClick={() => removePendingAttachment(att.id)}
+                    aria-label={`Remove attachment ${att.fileName}`}
+                    className="ml-0.5 text-[#3B5BDB] hover:text-[#1E3A8A]"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          {uploadError && <div className="mb-2 text-[11px] text-rose-600">{uploadError}</div>}
+          <input
+            ref={fileInputRef}
+            type="file"
+            aria-label="Attach file to comment"
+            title="Attach file to comment"
+            className="hidden"
+            onChange={handleFileSelect}
+          />
           <div className="relative flex items-center border border-[#E5E7EB] rounded-[10px] bg-white shadow-sm p-1.5">
             <input
               type="text"
@@ -235,7 +319,14 @@ function CommunicationPageInner() {
               className="flex-1 bg-transparent border-none outline-none text-[13px] text-[#111827] placeholder:text-[#9CA3AF] pl-3 py-2 font-medium h-[42px] min-w-0 w-full"
             />
             <div className="flex items-center gap-1.5 pr-1 shrink-0">
-              <button className="h-9 w-9 flex items-center justify-center rounded-[8px] text-[#9CA3AF] hover:bg-gray-50 hover:text-[#4B5563] transition-colors">
+              <button
+                type="button"
+                aria-label="Attach file"
+                title={uploading ? "Uploading..." : "Attach file"}
+                disabled={uploading || !budgetId}
+                onClick={() => fileInputRef.current?.click()}
+                className="h-9 w-9 flex items-center justify-center rounded-[8px] text-[#9CA3AF] hover:bg-gray-50 hover:text-[#4B5563] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
                 <Paperclip className="h-[18px] w-[18px]" strokeWidth={2.5} />
               </button>
               <button

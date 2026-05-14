@@ -1,6 +1,7 @@
 "use client"
 
 import { API_V1 } from "@/lib/api";
+import { formatCurrency as formatCurrencyLib } from "@/lib/format";
 
 import React, { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
@@ -24,6 +25,14 @@ import {
   ChevronRight
 } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -60,6 +69,7 @@ export default function Page() {
   const [alertsError, setAlertsError] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string; title: string } | null>(null)
   const [historyRecords, setHistoryRecords] = useState<MaintenanceRecord[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historyError, setHistoryError] = useState<string | null>(null)
@@ -92,6 +102,7 @@ export default function Page() {
       setDeleteError(error instanceof Error ? error.message : "Unable to delete maintenance task.")
     } finally {
       setDeletingId(null)
+      setConfirmDelete(null)
     }
   }
 
@@ -252,11 +263,7 @@ export default function Page() {
 
   const formatCurrency = (value: number, currency?: string) => {
     const cur = currency && ["NGN", "USD", "GBP", "EUR"].includes(currency) ? currency : "NGN"
-    return new Intl.NumberFormat("en-NG", {
-      style: "currency",
-      currency: cur,
-      maximumFractionDigits: 0,
-    }).format(value)
+    return formatCurrencyLib(value, { currency: cur, maximumFractionDigits: 0 })
   }
 
   const getRecordNames = (record: MaintenanceRecord) => {
@@ -572,7 +579,7 @@ export default function Page() {
                           <div className="mt-1 flex w-full items-center justify-between text-[12px] font-[800] text-[#DC2626] uppercase tracking-wide">
                             <span>{alert.daysOverdue} Days</span>
                             <button
-                              onClick={() => handleDeleteTask(alert.id)}
+                              onClick={() => setConfirmDelete({ id: alert.id, title: alert.title })}
                               disabled={deletingId === alert.id}
                               className="text-[11px] font-[800] text-rose-600 hover:text-rose-700 disabled:opacity-60 disabled:cursor-not-allowed"
                             >
@@ -837,6 +844,37 @@ export default function Page() {
           </div>
         </main>
       </div>
+
+      <Dialog open={confirmDelete !== null} onOpenChange={(open) => { if (!open) setConfirmDelete(null) }}>
+        <DialogContent className="sm:max-w-[440px]">
+          <DialogHeader>
+            <DialogTitle>Delete maintenance task?</DialogTitle>
+            <DialogDescription>
+              {confirmDelete
+                ? `“${confirmDelete.title}” will be permanently removed. This action cannot be undone.`
+                : "This action cannot be undone."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(null)}
+              disabled={deletingId !== null}
+              className="inline-flex items-center justify-center rounded-lg border border-[#E5E7EB] bg-white px-4 py-2 text-[13px] font-[700] text-[#111827] hover:bg-[#F9FAFB] disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => { if (confirmDelete) { handleDeleteTask(confirmDelete.id) } }}
+              disabled={deletingId !== null}
+              className="inline-flex items-center justify-center rounded-lg bg-rose-600 px-4 py-2 text-[13px] font-[800] text-white hover:bg-rose-700 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {deletingId !== null ? "Deleting..." : "Delete Task"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

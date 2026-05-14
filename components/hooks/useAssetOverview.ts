@@ -119,19 +119,31 @@ export function useAssetOverview(options: { enabled?: boolean; branchId?: string
   };
 }
 
-export function useDepreciationAnalysis(options: { enabled?: boolean; branchId?: string } = {}) {
+export function useDepreciationAnalysis(
+  options: { enabled?: boolean; branchId?: string; fiscalYear?: number } = {}
+) {
   const enabled = options.enabled ?? true;
   const branchId = options.branchId?.trim() || undefined;
+  const fiscalYear =
+    typeof options.fiscalYear === "number" && Number.isFinite(options.fiscalYear)
+      ? options.fiscalYear
+      : undefined;
 
   const query = useQuery({
-    queryKey: ["asset-depreciation-analysis", { branchId: branchId ?? "" }],
+    queryKey: [
+      "asset-depreciation-analysis",
+      { branchId: branchId ?? "", fiscalYear: fiscalYear ?? "" },
+    ],
     enabled,
     placeholderData: keepPreviousData,
     queryFn: async () => {
+      const params: Record<string, string | number> = {};
+      if (branchId) params.branchId = branchId;
+      if (fiscalYear !== undefined) params.fiscalYear = fiscalYear;
       const res = await requestWithAuthRecovery(() =>
         axios.get(`${API_V1}/assets/depreciation-analysis`, {
           withCredentials: true,
-          params: branchId ? { branchId } : undefined,
+          params: Object.keys(params).length > 0 ? params : undefined,
         })
       );
       return res.data;

@@ -1,4 +1,5 @@
 import { API_V1 } from "@/lib/api";
+import { getCsrfTokenFromCookie } from "@/lib/csrf";
 import { useCallback, useState } from "react"
 import { useAuth } from "@/components/auth/AuthProvider"
 
@@ -15,13 +16,7 @@ export function useBudgetUpdate() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
 
-  const getCsrfToken = () => {
-    if (typeof document === "undefined") return ""
-    const match = document.cookie
-      .split("; ")
-      .find((cookie) => cookie.startsWith("csrf_token="))
-    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
-  }
+  const getCsrfToken = getCsrfTokenFromCookie
 
   const updateBudget = useCallback(async (id: string, payload: BudgetPayload) => {
     if (!id || !user) {

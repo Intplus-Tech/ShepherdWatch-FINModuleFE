@@ -1,10 +1,12 @@
 "use client"
 
 import { API_V1 } from "@/lib/api";
+import { getCsrfTokenFromCookie } from "@/lib/csrf";
+import { formatCurrency as formatCurrencyLib } from "@/lib/format";
 
 
 
-import React, { useMemo, useState } from "react"
+import React, { useEffect, useMemo, useState } from "react"
 
 import Image from "next/image"
 
@@ -51,6 +53,7 @@ import {
 } from "lucide-react"
 
 import { useBudgetEntries } from "@/components/hooks/useBudgetEntries"
+import { useExport } from "@/components/hooks/useExport"
 import { useAuth } from "@/components/auth/AuthProvider"
 import BranchesDropdown from "@/components/navigation/BranchesDropdown"
 
@@ -61,17 +64,7 @@ const inter = Inter({ subsets: ["latin"] })
 
 
 const formatCurrency = (value: number) =>
-
-  new Intl.NumberFormat("en-NG", {
-
-    style: "currency",
-
-    currency: "NGN",
-
-    maximumFractionDigits: 0,
-
-  }).format(value)
-
+  formatCurrencyLib(value, { maximumFractionDigits: 0 })
 
 
 export default function Page() {
@@ -84,22 +77,131 @@ export default function Page() {
   const [submittingProposal, setSubmittingProposal] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null)
-  const [exporting, setExporting] = useState(false)
-  const [exportError, setExportError] = useState<string | null>(null)
+  const {
+    exporting,
+    error: exportError,
+    exportData: triggerExport,
+    setError: setExportError,
+  } = useExport({
+    endpoint: `${API_V1}/export/budget-entries`,
+    fallbackFilename: "budget-entries.csv",
+    defaultErrorMessage: "Unable to export budget entries.",
+  })
   const [lastBudgetId, setLastBudgetId] = useState<string | null>(null)
+
+  const currentYear = new Date().getFullYear()
+  const [selectedYear, setSelectedYear] = useState<number>(currentYear)
+  const yearOptions = useMemo(() => {
+    return [currentYear + 1, currentYear, currentYear - 1, currentYear - 2]
+  }, [currentYear])
+
+  interface BudgetSummary {
+    totalAllocated: number
+    totalSpent: number
+    utilization: number
+    monthsElapsed: number
+  }
+  interface BudgetLineItem {
+    chartOfAccount?: { name?: string; code?: string }
+    annualBudget?: number
+    actualSpentYTD?: number
+    variance?: number
+    status?: string
+  }
+  interface BudgetForYear {
+    _id?: string
+    id?: string
+    title?: string
+    status?: string
+    fiscalYear?: number
+    totalAmount?: number
+  }
+
+  const [budgetForYear, setBudgetForYear] = useState<BudgetForYear | null>(null)
+  const [performance, setPerformance] = useState<{ summary: BudgetSummary; lineItems: BudgetLineItem[] } | null>(null)
+  const [allocations, setAllocations] = useState<Array<{ _id?: string; id?: string; amount?: number; chartOfAccountId?: { name?: string; code?: string } | string; notes?: string }>>([])
+  const [performanceLoading, setPerformanceLoading] = useState(false)
+  const [performanceError, setPerformanceError] = useState<string | null>(null)
+  const [breakdownOpen, setBreakdownOpen] = useState(true)
 
   const tenantId = useMemo(
     () => user?.tenantId ?? user?.tenant?.id ?? "",
     [user]
   )
 
-  const getCsrfToken = () => {
-    if (typeof document === "undefined") return ""
-    const match = document.cookie
-      .split("; " )
-      .find((cookie) => cookie.startsWith("csrf_token="))
-    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
-  }
+  const getCsrfToken = getCsrfTokenFromCookie
+
+  // Fetch the budget for the selected fiscal year + branch, then fetch its
+  // canonical performance summary and allocations.
+  useEffect(() => {
+    let cancelled = false
+    if (!tenantId) {
+      setBudgetForYear(null)
+      setPerformance(null)
+      setAllocations([])
+      return
+    }
+    const run = async () => {
+      setPerformanceLoading(true)
+      setPerformanceError(null)
+      try {
+        const listRes = await fetch(
+          `/api/v1/budgets?branchId=${encodeURIComponent(tenantId)}&fiscalYear=${selectedYear}&limit=1`,
+          { credentials: "include" }
+        )
+        const listJson = await listRes.json().catch(() => null)
+        if (!listRes.ok) {
+          throw new Error(listJson?.message || `Failed to load budgets (${listRes.status})`)
+        }
+        const list: BudgetForYear[] = Array.isArray(listJson?.data) ? listJson.data : []
+        const found = list[0] ?? null
+        if (cancelled) return
+        setBudgetForYear(found)
+        if (!found) {
+          setPerformance(null)
+          setAllocations([])
+          return
+        }
+        const budgetId = found._id ?? found.id ?? ""
+        if (!budgetId) {
+          setPerformance(null)
+          setAllocations([])
+          return
+        }
+        const [perfRes, allocRes] = await Promise.all([
+          fetch(`/api/v1/budgets/${encodeURIComponent(budgetId)}/performance`, { credentials: "include" }),
+          fetch(`/api/v1/budget-allocations?budgetId=${encodeURIComponent(budgetId)}&limit=100`, { credentials: "include" }),
+        ])
+        const perfJson = await perfRes.json().catch(() => null)
+        const allocJson = await allocRes.json().catch(() => null)
+        if (cancelled) return
+        if (perfRes.ok && perfJson?.data) {
+          setPerformance({
+            summary: perfJson.data.summary ?? { totalAllocated: 0, totalSpent: 0, utilization: 0, monthsElapsed: 0 },
+            lineItems: Array.isArray(perfJson.data.lineItems) ? perfJson.data.lineItems : [],
+          })
+        } else {
+          setPerformance(null)
+        }
+        if (allocRes.ok && Array.isArray(allocJson?.data)) {
+          setAllocations(allocJson.data)
+        } else {
+          setAllocations([])
+        }
+      } catch (err) {
+        if (cancelled) return
+        setPerformanceError(err instanceof Error ? err.message : "Failed to load budget performance.")
+        setPerformance(null)
+        setAllocations([])
+      } finally {
+        if (!cancelled) setPerformanceLoading(false)
+      }
+    }
+    run()
+    return () => {
+      cancelled = true
+    }
+  }, [tenantId, selectedYear])
 
   const handleSubmitProposal = async () => {
     if (!tenantId) {
@@ -120,7 +222,7 @@ export default function Page() {
     try {
       const year = new Date().getFullYear() + 1
       const csrfToken = getCsrfToken()
-      const response = await fetch(`${API_V1}/financial/budgets`, {
+      const response = await fetch(`${API_V1}/budgets`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -160,7 +262,7 @@ export default function Page() {
       }
 
       const existingAllocationsResponse = await fetch(
-        `${API_V1}/financial/budget-allocations?budgetId=${encodeURIComponent(String(budgetId))}&page=1&limit=200`,
+        `${API_V1}/budget-allocations?budgetId=${encodeURIComponent(String(budgetId))}&page=1&limit=200`,
         {
           method: "GET",
           credentials: "include",
@@ -196,8 +298,8 @@ export default function Page() {
         const existingAllocationId = existingByCoa.get(row.chartOfAccountId)
         const allocationResponse = await fetch(
           existingAllocationId
-            ? `${API_V1}/financial/budget-allocations/${encodeURIComponent(existingAllocationId)}`
-            : `${API_V1}/financial/budget-allocations`,
+            ? `${API_V1}/budget-allocations/${encodeURIComponent(existingAllocationId)}`
+            : `${API_V1}/budget-allocations`,
           {
             method: existingAllocationId ? "PATCH" : "POST",
             headers: {
@@ -229,7 +331,7 @@ export default function Page() {
       }
 
       const allocationListResponse = await fetch(
-        `${API_V1}/financial/budget-allocations?budgetId=${encodeURIComponent(String(budgetId))}&page=1&limit=200`,
+        `${API_V1}/budget-allocations?budgetId=${encodeURIComponent(String(budgetId))}&page=1&limit=200`,
         {
           method: "GET",
           credentials: "include",
@@ -254,7 +356,7 @@ export default function Page() {
       ).trim()
       if (firstAllocationId) {
         const allocationDetailResponse = await fetch(
-          `${API_V1}/financial/budget-allocations/${encodeURIComponent(firstAllocationId)}`,
+          `${API_V1}/budget-allocations/${encodeURIComponent(firstAllocationId)}`,
           {
             method: "GET",
             credentials: "include",
@@ -266,7 +368,7 @@ export default function Page() {
         }
       }
 
-      const submitResponse = await fetch(`${API_V1}/financial/budgets/${budgetId}/submit`, {
+      const submitResponse = await fetch(`${API_V1}/budgets/${budgetId}/submit`, {
         method: "PATCH",
         headers: {
           "x-csrf-token": csrfToken,
@@ -291,43 +393,7 @@ export default function Page() {
       setExportError("Tenant is required to export budget entries.")
       return
     }
-    setExporting(true)
-    setExportError(null)
-
-    try {
-      const params = new URLSearchParams({ tenantId })
-      const response = await fetch(`${API_V1}/export/budget-entries?${params.toString()}`, {
-        method: "GET",
-        credentials: "include",
-      })
-
-      if (!response.ok) {
-        const payload = await response.json().catch(async () => ({
-          message: await response.text().catch(() => ""),
-        }))
-        throw new Error(payload?.message ?? "Unable to export budget entries.")
-      }
-
-      const blob = await response.blob()
-      const disposition = response.headers.get("Content-Disposition") ?? ""
-      const filenameMatch =
-        disposition.match(/filename\\*=UTF-8''([^;]+)/i) ??
-        disposition.match(/filename=\"?([^\";]+)\"?/i)
-      const filename = filenameMatch ? decodeURIComponent(filenameMatch[1]) : "budget-entries.csv"
-
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement("a")
-      link.href = url
-      link.download = filename
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      window.URL.revokeObjectURL(url)
-    } catch (error) {
-      setExportError(error instanceof Error ? error.message : "Unable to export budget entries.")
-    } finally {
-      setExporting(false)
-    }
+    await triggerExport({ tenantId })
   }
 
   const budgetData = useMemo(() => {
@@ -378,6 +444,16 @@ export default function Page() {
   )
 
   const totals = useMemo(() => {
+    // Prefer backend-driven figures from /budgets/{id}/performance when an
+    // approved budget exists for the selected fiscal year. Otherwise fall
+    // back to the forecast derived from current entries being prepared.
+    if (performance?.summary) {
+      const income = Number(performance.summary.totalAllocated ?? 0)
+      const expense = Number(performance.summary.totalSpent ?? 0)
+      const deduction = income * 0.1
+      const surplus = income - expense - deduction
+      return { income, expense, deduction, surplus }
+    }
     const income = entries
       .filter((entry) => (entry.type ?? "").toUpperCase() === "INCOME")
       .reduce((sum, entry) => sum + Number(entry.amount ?? 0), 0)
@@ -393,7 +469,7 @@ export default function Page() {
     const surplus = resolvedIncome - resolvedExpense - deduction
 
     return { income: resolvedIncome, expense: resolvedExpense, deduction, surplus }
-  }, [entries])
+  }, [entries, performance])
 
 
   return (
@@ -423,6 +499,10 @@ export default function Page() {
       <aside className={`w-[260px] border-r border-[#EEF1F6] bg-white flex flex-col shrink-0 h-[100dvh] fixed xl:sticky top-0 z-50 transition-transform duration-300 ease-in-out ${isMobileMenuOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full xl:translate-x-0"}`}>
 
         <button
+
+          type="button"
+
+          aria-label="Close menu"
 
           onClick={() => setIsMobileMenuOpen(false)}
 
@@ -564,6 +644,10 @@ export default function Page() {
 
             <button
 
+              type="button"
+
+              aria-label="Open menu"
+
               onClick={() => setIsMobileMenuOpen(true)}
 
               className="xl:hidden -ml-1 h-9 w-9 flex items-center justify-center rounded-[8px] text-[#6B7280] hover:bg-white hover:text-[#111827] transition-colors"
@@ -662,6 +746,21 @@ export default function Page() {
                 </div>
 
                 <div className="flex flex-row items-center w-full md:w-auto gap-3">
+
+                  <label className="flex items-center gap-2 h-[38px] md:h-[34px] px-2 sm:px-3 rounded-[6px] border border-[#E5E7EB] bg-white text-[11px] sm:text-[12px] text-[#111827] font-bold shadow-sm">
+                    <Calendar className="h-3.5 w-3.5 text-[#6B7280]" />
+                    <span className="hidden sm:inline text-[#6B7280] font-medium">FY</span>
+                    <select
+                      value={selectedYear}
+                      onChange={(e) => setSelectedYear(Number(e.target.value))}
+                      className="bg-transparent outline-none text-[12px] font-bold text-[#111827] cursor-pointer pr-1"
+                      aria-label="Fiscal year"
+                    >
+                      {yearOptions.map((y) => (
+                        <option key={y} value={y}>{y}</option>
+                      ))}
+                    </select>
+                  </label>
 
                   <button
                     onClick={handleExport}
@@ -805,6 +904,130 @@ export default function Page() {
 
 
 
+              {/* Backend-driven budget summary for the selected fiscal year */}
+              <div className="mb-6 rounded-[14px] bg-white border border-[#EEF1F6] shadow-[0_1px_3px_0_rgba(0,0,0,0.02)]">
+                <button
+                  type="button"
+                  onClick={() => setBreakdownOpen((v) => !v)}
+                  className="w-full flex items-center justify-between px-4 sm:px-5 py-3 sm:py-4 text-left"
+                  aria-controls="approved-budget-breakdown"
+                >
+                  <div className="min-w-0">
+                    <h3 className="text-[14px] sm:text-[16px] font-bold text-[#111827] tracking-tight truncate">
+                      Approved Budget · FY {selectedYear}
+                    </h3>
+                    <p className="mt-0.5 text-[11px] sm:text-[12px] text-[#6B7280] font-medium truncate">
+                      {performanceLoading
+                        ? "Loading performance…"
+                        : performanceError
+                          ? performanceError
+                          : budgetForYear
+                            ? `${budgetForYear.title ?? "Budget"} · Status: ${budgetForYear.status ?? "—"}`
+                            : "No approved budget for this fiscal year yet."}
+                    </p>
+                  </div>
+                  <span className="text-[#6B7280] text-[12px] font-semibold shrink-0 ml-3">
+                    {breakdownOpen ? "Hide" : "Show"}
+                  </span>
+                </button>
+
+                {breakdownOpen && (
+                  <div id="approved-budget-breakdown" className="px-4 sm:px-5 pb-4 sm:pb-5 border-t border-[#EEF1F6]">
+                    {performance?.summary && (
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3 mb-4 text-[12px]">
+                        <div>
+                          <div className="text-[#6B7280] font-medium">Total Allocated</div>
+                          <div className="font-bold text-[#111827]">{formatCurrency(performance.summary.totalAllocated)}</div>
+                        </div>
+                        <div>
+                          <div className="text-[#6B7280] font-medium">Total Spent YTD</div>
+                          <div className="font-bold text-[#111827]">{formatCurrency(performance.summary.totalSpent)}</div>
+                        </div>
+                        <div>
+                          <div className="text-[#6B7280] font-medium">Utilization</div>
+                          <div className="font-bold text-[#111827]">{Math.round(performance.summary.utilization ?? 0)}%</div>
+                        </div>
+                        <div>
+                          <div className="text-[#6B7280] font-medium">Months Elapsed</div>
+                          <div className="font-bold text-[#111827]">{performance.summary.monthsElapsed}</div>
+                        </div>
+                      </div>
+                    )}
+
+                    {performance && performance.lineItems.length > 0 ? (
+                      <div className="overflow-x-auto">
+                        <table className="w-full min-w-[640px] text-left text-[12px] border-collapse">
+                          <thead>
+                            <tr className="text-[#6B7280] font-semibold border-b border-[#EEF1F6]">
+                              <th className="py-2 pr-3">Line Item</th>
+                              <th className="py-2 pr-3">Annual Budget</th>
+                              <th className="py-2 pr-3">Spent YTD</th>
+                              <th className="py-2 pr-3">Variance</th>
+                              <th className="py-2 pr-3">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {performance.lineItems.map((item, idx) => (
+                              <tr key={idx} className="border-b border-[#F1F5F9]">
+                                <td className="py-2 pr-3 text-[#111827] font-medium">
+                                  {item.chartOfAccount?.name ?? "—"}
+                                  {item.chartOfAccount?.code ? (
+                                    <span className="ml-1 text-[#6B7280] font-normal">({item.chartOfAccount.code})</span>
+                                  ) : null}
+                                </td>
+                                <td className="py-2 pr-3 text-[#111827]">{formatCurrency(Number(item.annualBudget ?? 0))}</td>
+                                <td className="py-2 pr-3 text-[#111827]">{formatCurrency(Number(item.actualSpentYTD ?? 0))}</td>
+                                <td className={`py-2 pr-3 font-semibold ${Number(item.variance ?? 0) < 0 ? "text-rose-600" : "text-emerald-600"}`}>
+                                  {formatCurrency(Number(item.variance ?? 0))}
+                                </td>
+                                <td className="py-2 pr-3">
+                                  <span className="inline-block px-2 py-0.5 rounded-full bg-[#F3F4F6] text-[11px] font-bold text-[#374151]">
+                                    {(item.status ?? "—").replace(/_/g, " ")}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : allocations.length > 0 ? (
+                      <div className="overflow-x-auto">
+                        <table className="w-full min-w-[480px] text-left text-[12px] border-collapse">
+                          <thead>
+                            <tr className="text-[#6B7280] font-semibold border-b border-[#EEF1F6]">
+                              <th className="py-2 pr-3">Line Item</th>
+                              <th className="py-2 pr-3">Amount</th>
+                              <th className="py-2 pr-3">Notes</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {allocations.map((a, idx) => {
+                              const coa = typeof a.chartOfAccountId === "object" ? a.chartOfAccountId : undefined
+                              return (
+                                <tr key={a._id ?? a.id ?? idx} className="border-b border-[#F1F5F9]">
+                                  <td className="py-2 pr-3 text-[#111827] font-medium">
+                                    {coa?.name ?? "—"}
+                                    {coa?.code ? <span className="ml-1 text-[#6B7280] font-normal">({coa.code})</span> : null}
+                                  </td>
+                                  <td className="py-2 pr-3 text-[#111827]">{formatCurrency(Number(a.amount ?? 0))}</td>
+                                  <td className="py-2 pr-3 text-[#6B7280]">{a.notes ?? ""}</td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      !performanceLoading && !performanceError && (
+                        <p className="mt-3 text-[12px] text-[#6B7280]">No line items to display.</p>
+                      )
+                    )}
+                  </div>
+                )}
+              </div>
+
+
+
               {/* Main Table Interface */}
 
               <div className="rounded-[16px] bg-white border border-[#EEF1F6] flex flex-col shadow-[0_1px_3px_0_rgba(0,0,0,0.02)] relative min-h-[460px] pb-[130px] sm:pb-[88px]">
@@ -939,6 +1162,10 @@ export default function Page() {
                                     <input
 
                                       type="text"
+
+                                      aria-label="Proposed budget amount"
+
+                                      placeholder="0"
 
                                       defaultValue={item.proposed}
 

@@ -1,6 +1,8 @@
 "use client"
 
 import { API_V1 } from "@/lib/api";
+import { getCsrfTokenFromCookie } from "@/lib/csrf";
+import { bankAccountSchema } from "@/lib/validation/bankAccount";
 
 import React, { useEffect, useMemo, useState } from "react"
 import { X, Mail, ChevronDown } from "lucide-react"
@@ -87,13 +89,7 @@ export default function AddNewAccountPage() {
     [user]
   )
 
-  const getCsrfToken = () => {
-    if (typeof document === "undefined") return ""
-    const match = document.cookie
-      .split("; ")
-      .find((cookie) => cookie.startsWith("csrf_token="))
-    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
-  }
+  const getCsrfToken = getCsrfTokenFromCookie
 
   useEffect(() => {
     let isMounted = true
@@ -362,17 +358,27 @@ export default function AddNewAccountPage() {
       return
     }
 
-    if (!bankName.trim() || !accountName.trim() || !accountNumber.trim()) {
-      setSubmitError("Bank name, account name, and account number are required.")
+    const parsed = bankAccountSchema.safeParse({
+      bankName,
+      accountName,
+      accountNumber,
+      currency,
+      isDomiciliary,
+      chartOfAccountId: selectedCoaId || undefined,
+      branchId: tenantId,
+    })
+    if (!parsed.success) {
+      setSubmitError(parsed.error.issues[0]?.message ?? "Please correct the highlighted fields.")
       return
     }
+    const validated = parsed.data
 
     setSubmitting(true)
     try {
       const existingAccount = bankAccounts.find((item) => {
         const existingNumber = String(item.accountNumber ?? "").trim()
         const existingBank = String(item.bankName ?? "").trim().toLowerCase()
-        return existingNumber === accountNumber.trim() && existingBank === bankName.trim().toLowerCase()
+        return existingNumber === validated.accountNumber && existingBank === validated.bankName.toLowerCase()
       })
 
       const response = await fetch(
@@ -389,13 +395,13 @@ export default function AddNewAccountPage() {
         },
         credentials: "include",
         body: JSON.stringify({
-          accountName: accountName.trim(),
-          accountNumber: accountNumber.trim(),
-          bankName: bankName.trim(),
+          accountName: validated.accountName,
+          accountNumber: validated.accountNumber,
+          bankName: validated.bankName,
           ...(existingAccount ? {} : { branchId: tenantId }),
-          currency,
-          isDomiciliary,
-          chartOfAccountId: selectedCoaId || undefined,
+          currency: validated.currency,
+          isDomiciliary: validated.isDomiciliary,
+          chartOfAccountId: validated.chartOfAccountId,
         }),
       })
       const payload = await response.json().catch(() => null)

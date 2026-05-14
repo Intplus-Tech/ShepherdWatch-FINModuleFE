@@ -1,6 +1,8 @@
 "use client"
 
 import { API_V1 } from "@/lib/api";
+import { getCsrfTokenFromCookie } from "@/lib/csrf";
+import { formatCurrency } from "@/lib/format";
 
 import React, { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
@@ -24,19 +26,56 @@ import {
   Image as ImageIcon
 } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
+import { useAssetClasses } from "@/components/hooks/useAssetClasses"
+import { useDebouncedValue } from "@/components/hooks/useDebouncedValue"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
 
 const inter = Inter({ subsets: ["latin"] })
 
 type AssetRow = {
   id: string
+  rawId: string
   name: string
   desc: string
   category: string
+  categoryId: string
   location: string
   status: string
   statusColor: string
   value: string
   active: boolean
+}
+
+type AssetFormState = {
+  name: string
+  assetClassId: string
+  purchaseCost: string
+  purchaseDate: string
+  depreciationMethod: "straight_line" | "declining_balance"
+  usefulLifeYears: string
+  residualValue: string
+  serialNumber: string
+  description: string
+}
+
+const INITIAL_FORM: AssetFormState = {
+  name: "",
+  assetClassId: "",
+  purchaseCost: "",
+  purchaseDate: new Date().toISOString().slice(0, 10),
+  depreciationMethod: "straight_line",
+  usefulLifeYears: "",
+  residualValue: "",
+  serialNumber: "",
+  description: "",
 }
 
 
@@ -50,26 +89,33 @@ export default function Page() {
   const [assets, setAssets] = useState<AssetRow[]>([])
   const [assetsLoading, setAssetsLoading] = useState(false)
   const [assetsError, setAssetsError] = useState<string | null>(null)
+  const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [searchInput, setSearchInput] = useState("")
+  const debouncedSearch = useDebouncedValue(searchInput, 300)
+  const filteredAssets = useMemo(() => {
+    const term = debouncedSearch.trim().toLowerCase()
+    if (!term) return assets
+    return assets.filter((a) =>
+      a.id.toLowerCase().includes(term) ||
+      a.name.toLowerCase().includes(term) ||
+      a.desc.toLowerCase().includes(term) ||
+      a.category.toLowerCase().includes(term) ||
+      a.location.toLowerCase().includes(term),
+    )
+  }, [assets, debouncedSearch])
+  const [form, setForm] = useState<AssetFormState>(INITIAL_FORM)
+  const [refreshKey, setRefreshKey] = useState(0)
+  const { assetClasses, isLoading: assetClassesLoading } = useAssetClasses({ limit: 100 })
 
   const tenantId = useMemo(
     () => user?.tenantId ?? user?.tenant?.id ?? "",
     [user]
   )
 
-  const getCsrfToken = () => {
-    if (typeof document === "undefined") return ""
-    const match = document.cookie
-      .split("; ")
-      .find((cookie) => cookie.startsWith("csrf_token="))
-    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
-  }
+  const getCsrfToken = getCsrfTokenFromCookie
 
-  const formatCurrency = (amount: number) =>
-    new Intl.NumberFormat("en-NG", {
-      style: "currency",
-      currency: "NGN",
-      maximumFractionDigits: 0,
-    }).format(amount)
+  const formatCurrencyLocal = (amount: number) =>
+    formatCurrency(amount, { maximumFractionDigits: 0 })
 
   const getStatusColor = (status: string) => {
     const normalized = status.toLowerCase()
@@ -79,11 +125,23 @@ export default function Page() {
     if (normalized.includes("maintenance") || normalized.includes("service")) {
       return "bg-amber-50 text-amber-600"
     }
-    if (normalized.includes("pending") || normalized.includes("disposal")) {
+    if (normalized.includes("pending") || normalized.includes("disposal") || normalized.includes("written")) {
       return "bg-rose-50 text-rose-600"
     }
     return "bg-slate-100 text-slate-600"
   }
+
+  // Build a lookup from asset class id => name, so the active category filter
+  // (which is a *name* label like "Vehicles") can be mapped to an assetClassId.
+  const classNameToId = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const c of assetClasses ?? []) {
+      const id = (c._id ?? c.id ?? "") as string
+      const name = (c.name ?? "").toString()
+      if (id && name) map[name.toLowerCase()] = id
+    }
+    return map
+  }, [assetClasses])
 
   useEffect(() => {
     let isMounted = true
@@ -100,20 +158,14 @@ export default function Page() {
         setAssetsError(null)
 
         const params = new URLSearchParams()
-        params.set("tenantId", tenantId)
-        const categoryMap: Record<string, string> = {
-          "All Assets": "",
-          Electronics: "Electronics",
-          Vehicles: "Vehicle",
-          Furniture: "Furniture",
-          "Musical Equipment": "Musical Equipment",
-        }
-        const categoryParam = categoryMap[activeCategory] ?? activeCategory
-        if (categoryParam) {
-          params.set("category", categoryParam)
+        params.set("branchId", tenantId)
+        params.set("limit", "100")
+        if (activeCategory && activeCategory !== "All Assets") {
+          const id = classNameToId[activeCategory.toLowerCase()]
+          if (id) params.set("assetClassId", id)
         }
 
-        const response = await fetch(`${API_V1}/financial/fixed-assets?${params.toString()}`, {
+        const response = await fetch(`${API_V1}/assets?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         })
@@ -127,24 +179,40 @@ export default function Page() {
           payload?.data ??
           payload?.content ??
           []
-        const mapped = (Array.isArray(data) ? data : []).map((asset, index) => {
-          const id = asset?.assetCode ?? asset?.assetTag ?? asset?.code ?? asset?.id ?? `ASSET-${index + 1}`
-          const name = asset?.name ?? asset?.description ?? asset?.assetName ?? "Unnamed Asset"
-          const desc = asset?.description ?? asset?.details ?? ""
-          const category = asset?.category ?? "General"
-          const location = asset?.location ?? "N/A"
-          const status = asset?.status ?? "Active"
-          const valueAmount = asset?.currentValue ?? asset?.purchaseValue ?? asset?.value ?? 0
+        const mapped = (Array.isArray(data) ? data : []).map((asset: Record<string, unknown>, index: number) => {
+          const rawId = String(asset?._id ?? asset?.id ?? "")
+          const id = String(asset?.assetCode ?? asset?.code ?? rawId ?? `ASSET-${index + 1}`)
+          const name = String(asset?.name ?? asset?.description ?? "Unnamed Asset")
+          const desc = String(asset?.description ?? "")
+          const assetClass = asset?.assetClass as Record<string, unknown> | string | null | undefined
+          const category =
+            typeof assetClass === "object" && assetClass
+              ? String((assetClass as Record<string, unknown>).name ?? "General")
+              : typeof assetClass === "string"
+                ? assetClass
+                : String((asset?.category as string) ?? "General")
+          const categoryId =
+            typeof assetClass === "object" && assetClass
+              ? String((assetClass as Record<string, unknown>)._id ?? (assetClass as Record<string, unknown>).id ?? "")
+              : ""
+          const branch = asset?.branch as Record<string, unknown> | null | undefined
+          const location = branch && typeof branch === "object"
+            ? String(branch.name ?? "N/A")
+            : String((asset?.location as string) ?? "N/A")
+          const status = String(asset?.status ?? "active")
+          const valueAmount = Number(asset?.currentBookValue ?? asset?.purchaseCost ?? asset?.currentValue ?? 0)
 
           return {
             id,
+            rawId,
             name,
             desc,
             category,
+            categoryId,
             location,
             status,
-            statusColor: getStatusColor(String(status)),
-            value: formatCurrency(Number(valueAmount) || 0),
+            statusColor: getStatusColor(status),
+            value: formatCurrencyLocal(valueAmount || 0),
             active: index === 0,
           } as AssetRow
         })
@@ -169,11 +237,41 @@ export default function Page() {
     return () => {
       isMounted = false
     }
-  }, [activeCategory, tenantId])
+  }, [activeCategory, tenantId, classNameToId, refreshKey])
 
-  const handleCreateAsset = async () => {
+  const resetForm = () => {
+    setForm(INITIAL_FORM)
+    setCreateError(null)
+    setCreateSuccess(null)
+  }
+
+  const updateForm = <K extends keyof AssetFormState>(key: K, value: AssetFormState[K]) => {
+    setForm((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const handleCreateAsset = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
     if (!tenantId) {
       setCreateError("Tenant is required to create a fixed asset.")
+      return
+    }
+
+    // Client-side validation
+    if (!form.name.trim()) {
+      setCreateError("Asset name is required.")
+      return
+    }
+    if (!form.assetClassId) {
+      setCreateError("Asset class is required.")
+      return
+    }
+    const purchaseCost = Number(form.purchaseCost)
+    if (!Number.isFinite(purchaseCost) || purchaseCost <= 0) {
+      setCreateError("Purchase cost must be a positive number.")
+      return
+    }
+    if (!form.purchaseDate) {
+      setCreateError("Purchase date is required.")
       return
     }
 
@@ -183,35 +281,44 @@ export default function Page() {
 
     try {
       const csrfToken = getCsrfToken()
-      const assetCode = `GEN-${String(Date.now()).slice(-4)}`
-      const response = await fetch(`${API_V1}/financial/fixed-assets`, {
+      const usefulLife = Number(form.usefulLifeYears)
+      const residual = Number(form.residualValue)
+      const body: Record<string, unknown> = {
+        name: form.name.trim(),
+        assetClassId: form.assetClassId,
+        branchId: tenantId,
+        purchaseCost,
+        purchaseDate: form.purchaseDate,
+        depreciationMethod: form.depreciationMethod,
+      }
+      if (Number.isFinite(usefulLife) && usefulLife > 0) body.usefulLifeYears = usefulLife
+      if (Number.isFinite(residual) && residual >= 0) body.residualValue = residual
+      if (form.serialNumber.trim()) body.serialNumber = form.serialNumber.trim()
+      if (form.description.trim()) body.description = form.description.trim()
+
+      const response = await fetch(`${API_V1}/assets`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-csrf-token": csrfToken,
         },
         credentials: "include",
-        body: JSON.stringify({
-          assetCode,
-          description: "Perkins 150KVA Diesel Generator",
-          category: "Machinery",
-          location: "Main Church Building",
-          status: "ACTIVE",
-          purchaseDate: new Date().toISOString(),
-          purchaseValue: 8500000,
-          currentValue: 8500000,
-          depreciationMethod: "STRAIGHT_LINE",
-          usefulLifeYears: 10,
-          residualValue: 850000,
-          tenantId,
-        }),
+        body: JSON.stringify(body),
       })
       const payload = await response.json().catch(() => null)
       if (!response.ok) {
         throw new Error(payload?.message ?? "Unable to create fixed asset.")
       }
 
-      setCreateSuccess(`Fixed asset ${assetCode} created successfully.`)
+      const createdName = payload?.data?.name ?? form.name.trim()
+      setCreateSuccess(`Fixed asset "${createdName}" created successfully.`)
+      setForm(INITIAL_FORM)
+      setRefreshKey((k) => k + 1)
+      // Auto-close shortly after success so user can see toast briefly
+      setTimeout(() => {
+        setIsCreateOpen(false)
+        setCreateSuccess(null)
+      }, 1200)
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : "Unable to create fixed asset.")
     } finally {
@@ -317,7 +424,10 @@ export default function Page() {
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
               <input
                 type="search"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
                 placeholder="Search transactions..."
+                aria-label="Search assets"
                 className="h-[36px] sm:h-[38px] w-full rounded-[10px] border border-transparent bg-[#F3F4F6] pl-9 pr-3 text-[13px] text-[#4B5563] font-medium placeholder:text-[#9CA3AF] focus-visible:bg-white focus-visible:border-[#3B5BDB] focus-visible:ring-1 focus-visible:ring-[#3B5BDB]/20 outline-none transition-all"
               />
             </div>
@@ -350,8 +460,22 @@ export default function Page() {
                 <p className="text-[14px] text-[#6B7280] font-medium tracking-tight">Detailed directory of church properties and equipment.</p>
               </div>
 
-              <div className="flex items-center pt-1 w-full md:w-auto overflow-x-auto no-scrollbar pb-1 md:pb-0">
-                <button className="flex-1 md:flex-none flex items-center justify-center h-[42px] px-6 sm:px-8 rounded-[8px] bg-[#EF4444] text-[14px] font-bold text-white shadow-[0_4px_14px_rgba(239,68,68,0.2)] hover:bg-[#DC2626] transition-colors whitespace-nowrap tracking-wide">
+              <div className="flex items-center gap-2.5 pt-1 w-full md:w-auto overflow-x-auto no-scrollbar pb-1 md:pb-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetForm()
+                    setIsCreateOpen(true)
+                  }}
+                  className="flex-1 md:flex-none flex items-center justify-center h-[42px] px-6 sm:px-7 rounded-[8px] bg-[#2563EB] text-[14px] font-bold text-white shadow-[0_4px_14px_rgba(37,99,235,0.2)] hover:bg-[#1D4ED8] transition-colors whitespace-nowrap tracking-wide"
+                >
+                  + Add Asset
+                </button>
+                <button
+                  type="button"
+                  className="flex-1 md:flex-none flex items-center justify-center h-[42px] px-6 sm:px-8 rounded-[8px] bg-[#EF4444] text-[14px] font-bold text-white shadow-[0_4px_14px_rgba(239,68,68,0.2)] hover:bg-[#DC2626] transition-colors whitespace-nowrap tracking-wide"
+                  onClick={() => { window.location.href = '/branchaccount-pastor/depreciation' }}
+                >
                   Asset Depreciation
                 </button>
               </div>
@@ -359,19 +483,28 @@ export default function Page() {
 
             {/* Tabs */}
             <div className="mb-6 flex overflow-x-auto no-scrollbar items-center gap-2.5 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 sm:pb-0 sm:flex-wrap">
-              {["All Assets", "Electronics", "Vehicles", "Furniture", "Musical Equipment"].map((label) => (
-                <button
-                  key={label}
-                  onClick={() => setActiveCategory(label)}
-                  className={`shrink-0 whitespace-nowrap rounded-[20px] px-5 py-2 text-[13px] font-semibold transition-colors tracking-wide ${
-                    activeCategory === label
-                      ? "bg-[#2563EB] text-white font-bold shadow-[0_2px_8px_rgba(37,99,235,0.25)]"
-                      : "bg-[#F3F4F6] text-[#6B7280] hover:bg-[#E5E7EB]"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
+              {(() => {
+                const dynamicLabels = (assetClasses ?? [])
+                  .map((c) => (c.name ?? "").toString())
+                  .filter((n) => n.length > 0)
+                const labels = ["All Assets", ...dynamicLabels]
+                return labels.map((label) => (
+                  <button
+                    key={label}
+                    onClick={() => setActiveCategory(label)}
+                    className={`shrink-0 whitespace-nowrap rounded-[20px] px-5 py-2 text-[13px] font-semibold transition-colors tracking-wide ${
+                      activeCategory === label
+                        ? "bg-[#2563EB] text-white font-bold shadow-[0_2px_8px_rgba(37,99,235,0.25)]"
+                        : "bg-[#F3F4F6] text-[#6B7280] hover:bg-[#E5E7EB]"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))
+              })()}
+              {assetClassesLoading && (
+                <span className="text-[12px] text-[#6B7280] ml-1">Loading classes...</span>
+              )}
             </div>
 
             {/* Split Content Area: Adjusted proportions here to reduce the table card width relative to right panel */}
@@ -388,7 +521,7 @@ export default function Page() {
 
                 {/* Mobile Card List */}
                 <div className="lg:hidden divide-y divide-[#EEF1F6]/60">
-                  {assets.map((asset, idx) => (
+                  {filteredAssets.map((asset, idx) => (
                     <div key={idx} className={`p-4 sm:p-5 transition-colors ${asset.active ? "bg-[#F8FAFC]" : "bg-white"}`}>
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-center gap-2">
@@ -453,7 +586,7 @@ export default function Page() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#EEF1F6]/50">
-                      {assets.map((asset, idx) => (
+                      {filteredAssets.map((asset, idx) => (
                         <tr key={idx} className={`relative hover:bg-[#F8FAFC] transition-colors cursor-pointer ${asset.active ? 'bg-[#F8FAFC]/50' : ''}`}>
                           <td className="py-4 pl-5 pr-4 align-top relative">
                             {/* Active Blue Indicator */}
@@ -609,6 +742,200 @@ export default function Page() {
           </div>
         </main>
       </div>
+
+      {/* Create Asset Dialog */}
+      <Dialog
+        open={isCreateOpen}
+        onOpenChange={(open) => {
+          setIsCreateOpen(open)
+          if (!open) {
+            setCreateError(null)
+            setCreateSuccess(null)
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Add Fixed Asset</DialogTitle>
+            <DialogDescription>
+              Register a new fixed asset under your branch. Required fields are
+              marked with an asterisk.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleCreateAsset} className="space-y-4 py-2">
+            {createError && (
+              <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-[13px] font-medium text-rose-700">
+                {createError}
+              </div>
+            )}
+            {createSuccess && (
+              <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-[13px] font-medium text-emerald-700">
+                {createSuccess}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="sm:col-span-2">
+                <label className="block text-[12px] font-semibold text-[#374151] mb-1">
+                  Asset Name <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={form.name}
+                  onChange={(e) => updateForm("name", e.target.value)}
+                  required
+                  className="w-full rounded-md border border-[#E5E7EB] px-3 py-2 text-[13px] focus:border-[#2563EB] focus:outline-none focus:ring-1 focus:ring-[#2563EB]"
+                  placeholder="e.g. Toyota Hiace Bus"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block text-[12px] font-semibold text-[#374151] mb-1">
+                  Asset Class <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={form.assetClassId}
+                  onChange={(e) => updateForm("assetClassId", e.target.value)}
+                  required
+                  disabled={assetClassesLoading}
+                  className="w-full rounded-md border border-[#E5E7EB] px-3 py-2 text-[13px] bg-white focus:border-[#2563EB] focus:outline-none focus:ring-1 focus:ring-[#2563EB] disabled:bg-gray-50"
+                >
+                  <option value="">
+                    {assetClassesLoading ? "Loading classes..." : "Select asset class"}
+                  </option>
+                  {(assetClasses ?? []).map((c) => {
+                    const id = (c._id ?? c.id ?? "") as string
+                    return (
+                      <option key={id} value={id}>
+                        {c.name}
+                      </option>
+                    )
+                  })}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[12px] font-semibold text-[#374151] mb-1">
+                  Purchase Cost (NGN) <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.purchaseCost}
+                  onChange={(e) => updateForm("purchaseCost", e.target.value)}
+                  required
+                  className="w-full rounded-md border border-[#E5E7EB] px-3 py-2 text-[13px] focus:border-[#2563EB] focus:outline-none focus:ring-1 focus:ring-[#2563EB]"
+                  placeholder="0.00"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[12px] font-semibold text-[#374151] mb-1">
+                  Purchase Date <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={form.purchaseDate}
+                  onChange={(e) => updateForm("purchaseDate", e.target.value)}
+                  required
+                  className="w-full rounded-md border border-[#E5E7EB] px-3 py-2 text-[13px] focus:border-[#2563EB] focus:outline-none focus:ring-1 focus:ring-[#2563EB]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[12px] font-semibold text-[#374151] mb-1">
+                  Depreciation Method
+                </label>
+                <select
+                  value={form.depreciationMethod}
+                  onChange={(e) =>
+                    updateForm(
+                      "depreciationMethod",
+                      e.target.value as AssetFormState["depreciationMethod"]
+                    )
+                  }
+                  className="w-full rounded-md border border-[#E5E7EB] px-3 py-2 text-[13px] bg-white focus:border-[#2563EB] focus:outline-none focus:ring-1 focus:ring-[#2563EB]"
+                >
+                  <option value="straight_line">Straight Line</option>
+                  <option value="declining_balance">Declining Balance</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[12px] font-semibold text-[#374151] mb-1">
+                  Useful Life (years)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={form.usefulLifeYears}
+                  onChange={(e) => updateForm("usefulLifeYears", e.target.value)}
+                  className="w-full rounded-md border border-[#E5E7EB] px-3 py-2 text-[13px] focus:border-[#2563EB] focus:outline-none focus:ring-1 focus:ring-[#2563EB]"
+                  placeholder="e.g. 10"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[12px] font-semibold text-[#374151] mb-1">
+                  Residual Value (NGN)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.residualValue}
+                  onChange={(e) => updateForm("residualValue", e.target.value)}
+                  className="w-full rounded-md border border-[#E5E7EB] px-3 py-2 text-[13px] focus:border-[#2563EB] focus:outline-none focus:ring-1 focus:ring-[#2563EB]"
+                  placeholder="0.00"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block text-[12px] font-semibold text-[#374151] mb-1">
+                  Serial Number
+                </label>
+                <input
+                  type="text"
+                  value={form.serialNumber}
+                  onChange={(e) => updateForm("serialNumber", e.target.value)}
+                  className="w-full rounded-md border border-[#E5E7EB] px-3 py-2 text-[13px] focus:border-[#2563EB] focus:outline-none focus:ring-1 focus:ring-[#2563EB]"
+                  placeholder="Optional"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block text-[12px] font-semibold text-[#374151] mb-1">
+                  Description
+                </label>
+                <textarea
+                  value={form.description}
+                  onChange={(e) => updateForm("description", e.target.value)}
+                  rows={3}
+                  className="w-full rounded-md border border-[#E5E7EB] px-3 py-2 text-[13px] focus:border-[#2563EB] focus:outline-none focus:ring-1 focus:ring-[#2563EB]"
+                  placeholder="Optional notes about the asset"
+                />
+              </div>
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsCreateOpen(false)}
+                disabled={creatingAsset}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={creatingAsset}>
+                {creatingAsset ? "Creating..." : "Create Asset"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

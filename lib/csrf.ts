@@ -30,3 +30,16 @@ export const setCsrfCookie = (res: NextResponse, token: string) => {
     path: "/",
   });
 };
+
+/**
+ * Browser-side helper: reads the `csrf_token` cookie from `document.cookie`.
+ * Returns "" when called on the server or when the cookie is unset.
+ */
+export const getCsrfTokenFromCookie = (): string => {
+  if (typeof document === "undefined") return "";
+  const match = document.cookie
+    .split("; ")
+    .find((cookie) => cookie.startsWith(`${CSRF_COOKIE_NAME}=`));
+  return match ? decodeURIComponent(match.split("=")[1] ?? "") : "";
+};
+

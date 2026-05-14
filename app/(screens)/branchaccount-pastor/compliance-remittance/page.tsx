@@ -6,8 +6,13 @@ import { Button } from "@/components/ui/button"
 import { useAuth } from "@/components/auth/AuthProvider"
 import { useEffect, useMemo, useState, type FormEvent } from "react"
 import { Bell, ChevronDown } from "lucide-react"
-import { useStatutoryDeductions, type DeductionType } from "@/components/hooks/useStatutoryDeductions"
+import { useStatutoryDeductions, type DeductionType, type StatutoryDeduction } from "@/components/hooks/useStatutoryDeductions"
 import { useComplianceSummary } from "@/components/hooks/useComplianceSummary"
+import {
+  complianceDeductionSchema,
+  complianceDeductionUpdateSchema,
+} from "@/lib/validation/complianceDeduction"
+import { formatCurrency as formatCurrencyLib } from "@/lib/format"
 
 export default function Page() {
   const { user } = useAuth()
@@ -65,38 +70,33 @@ export default function Page() {
   }, [tenantId, fetchDeductions, fetchSummary])
 
   const formatCurrency = (value: number) =>
-    new Intl.NumberFormat("en-NG", {
-      style: "currency",
-      currency: "NGN",
-      maximumFractionDigits: 0,
-    }).format(value)
+    formatCurrencyLib(value, { maximumFractionDigits: 0 })
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setSuccess(null)
     setError(null)
 
-    const amount = Number(form.amount)
-    if (!form.employeeProfileId.trim()) {
-      setError("Employee profile ID is required.")
+    const parsed = complianceDeductionSchema.safeParse({
+      type: form.type,
+      employeeProfileId: form.employeeProfileId,
+      period: form.period,
+      amount: Number(form.amount),
+      branchId: tenantId || undefined,
+    })
+    if (!parsed.success) {
+      setError(parsed.error.issues[0]?.message ?? "Please correct the highlighted fields.")
       return
     }
-    if (!form.period.trim()) {
-      setError("Period is required. Use format YYYY-MM.")
-      return
-    }
-    if (!Number.isFinite(amount) || amount <= 0) {
-      setError("Amount must be greater than 0.")
-      return
-    }
+    const validated = parsed.data
 
     try {
       await createDeduction({
-        type: form.type,
-        employeeProfileId: form.employeeProfileId.trim(),
-        amount,
-        period: form.period.trim(),
-        branchId: tenantId || undefined,
+        type: validated.type as DeductionType,
+        employeeProfileId: validated.employeeProfileId,
+        amount: validated.amount,
+        period: validated.period,
+        branchId: validated.branchId,
       })
       setSuccess("Statutory deduction created successfully.")
       setForm((prev) => ({ ...prev, employeeProfileId: "", amount: "" }))
@@ -124,20 +124,19 @@ export default function Page() {
     setUpdateSuccess(null)
     setError(null)
 
-    const amount = Number(editAmount)
-    if (!editPeriod.trim()) {
-      setError("Period is required.")
-      return
-    }
-    if (!Number.isFinite(amount) || amount <= 0) {
-      setError("Amount must be greater than 0.")
+    const parsed = complianceDeductionUpdateSchema.safeParse({
+      amount: Number(editAmount),
+      period: editPeriod,
+    })
+    if (!parsed.success) {
+      setError(parsed.error.issues[0]?.message ?? "Please correct the highlighted fields.")
       return
     }
 
     try {
       await updateDeduction(selectedDeduction.id, {
-        amount,
-        period: editPeriod.trim(),
+        amount: parsed.data.amount,
+        period: parsed.data.period,
       })
       setUpdateSuccess("Deduction updated successfully.")
       await fetchDeductions({ branchId: tenantId, page: 1, limit: 10 })
@@ -162,6 +161,73 @@ export default function Page() {
       // handled in hook state
     }
   }
+
+  const handleDownloadReceipt = async (deduction: StatutoryDeduction) => {
+    if (!deduction.remitted) return
+    try {
+      const { jsPDF } = await import("jspdf")
+      const doc = new jsPDF({ unit: "pt", format: "a4" })
+      const pageWidth = doc.internal.pageSize.getWidth()
+      let y = 60
+
+      doc.setFont("helvetica", "bold")
+      doc.setFontSize(18)
+      doc.text("Statutory Remittance Receipt", pageWidth / 2, y, { align: "center" })
+      y += 28
+      doc.setFont("helvetica", "normal")
+      doc.setFontSize(10)
+      doc.text("ShepherdWatch — Compliance & Remittance", pageWidth / 2, y, { align: "center" })
+      y += 28
+
+      doc.setDrawColor(200)
+      doc.line(48, y, pageWidth - 48, y)
+      y += 24
+
+      doc.setFontSize(11)
+      const remittedOn = deduction.remittedAt ? new Date(deduction.remittedAt).toLocaleDateString() : "—"
+      const generatedOn = new Date().toLocaleString()
+
+      const rows: Array<[string, string]> = [
+        ["Receipt No.", deduction.receiptNumber || "—"],
+        ["Deduction ID", deduction.id],
+        ["Type", deduction.type.toUpperCase()],
+        ["Period", deduction.period],
+        ["Amount", formatCurrency(deduction.amount)],
+        ["Employee Profile ID", deduction.employeeProfileId],
+        ["Branch ID", deduction.branchId || tenantId || "—"],
+        ["Remitted On", remittedOn],
+        ["Status", "REMITTED"],
+      ]
+
+      rows.forEach(([label, value]) => {
+        doc.setFont("helvetica", "bold")
+        doc.text(`${label}:`, 60, y)
+        doc.setFont("helvetica", "normal")
+        doc.text(String(value), 200, y)
+        y += 20
+      })
+
+      y += 16
+      doc.line(48, y, pageWidth - 48, y)
+      y += 20
+      doc.setFontSize(9)
+      doc.setTextColor(120)
+      doc.text(
+        "This receipt was generated electronically and is valid without a signature.",
+        pageWidth / 2,
+        y,
+        { align: "center" },
+      )
+      y += 14
+      doc.text(`Generated: ${generatedOn}`, pageWidth / 2, y, { align: "center" })
+
+      const filename = `remittance-receipt-${deduction.receiptNumber || deduction.id}.pdf`
+      doc.save(filename)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to generate receipt PDF.")
+    }
+  }
+
 
   return (
     <div className="min-h-screen bg-[#1f1f1f] p-6">
@@ -303,14 +369,27 @@ export default function Page() {
                       </div>
                       <div className="mt-1 text-[10px] text-[#6B7280]">Period: {item.period}</div>
                       <div className="text-[10px] text-[#6B7280]">Remittance: {item.remitted ? "Remitted" : "Pending"}</div>
-                      <button
-                        onClick={() => {
-                          handleSelect(item.id)
-                        }}
-                        className="mt-2 rounded border border-[#E5E7EB] px-2.5 py-1 text-[10px] font-semibold text-[#4B5563] hover:bg-gray-50"
-                      >
-                        View details
-                      </button>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <button
+                          onClick={() => {
+                            handleSelect(item.id)
+                          }}
+                          className="rounded border border-[#E5E7EB] px-2.5 py-1 text-[10px] font-semibold text-[#4B5563] hover:bg-gray-50"
+                        >
+                          View details
+                        </button>
+                        {item.remitted && (
+                          <button
+                            onClick={() => {
+                              handleDownloadReceipt(item)
+                            }}
+                            className="rounded border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-100"
+                            aria-label={`Download receipt for ${item.type.toUpperCase()} deduction ${item.id}`}
+                          >
+                            Download Receipt
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ))}
                   {(detailLoading || detailError || selectedDeduction) && (
@@ -381,8 +460,18 @@ export default function Page() {
                             </div>
                           )}
                           {selectedDeduction.remitted && (
-                            <div className="mt-2 text-[10px] text-amber-700">
-                              This deduction is remitted and can no longer be updated.
+                            <div className="mt-2 space-y-2">
+                              <div className="text-[10px] text-amber-700">
+                                This deduction is remitted and can no longer be updated.
+                              </div>
+                              <button
+                                onClick={() => {
+                                  handleDownloadReceipt(selectedDeduction)
+                                }}
+                                className="rounded-[8px] border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-100"
+                              >
+                                Download Receipt (PDF)
+                              </button>
                             </div>
                           )}
                           {updateSuccess && (

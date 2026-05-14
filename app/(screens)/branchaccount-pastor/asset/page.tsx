@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useMemo, useState } from "react"
 import Image from "next/image"
 import {
   LayoutDashboard,
@@ -16,45 +16,140 @@ import {
   Bell,
   AlertTriangle,
   MoreHorizontal,
-  ChevronLeft,
-  ChevronRight
 } from "lucide-react"
 
 import { Inter } from "next/font/google"
+import { useAuth } from "@/components/auth/AuthProvider"
+import { useAssetOverview, type AssetOverviewItem } from "@/components/hooks/useAssetOverview"
+import { formatCurrency, formatDate } from "@/lib/format"
 const inter = Inter({ subsets: ["latin"] })
 
-const assetsData = [
-  {
-    id: 1,
-    name: "Church Sound System (Array)",
-    category: "Electronics",
-    date: "Oct 12, 2022",
-    value: "₦4,200,000",
-    status: "EXCELLENT",
-    statusColor: "text-[#10B981] bg-[#ECFDF5]"
-  },
-  {
-    id: 2,
-    name: "Industrial Generator 250kVA",
-    category: "Power Plant",
-    date: "Jan 05, 2021",
-    value: "₦12,500,000",
-    status: "SERVICING REQ.",
-    statusColor: "text-[#F59E0B] bg-[#FEF3C7]"
+type DisplayAsset = {
+  id: string
+  name: string
+  category: string
+  date: string
+  value: string
+  status: string
+  statusColor: string
+}
+
+const STATUS_STYLES: Record<string, { label: string; classes: string; bucket: "operational" | "maintenance" | "offline" }> = {
+  EXCELLENT: { label: "EXCELLENT", classes: "text-[#10B981] bg-[#ECFDF5]", bucket: "operational" },
+  GOOD: { label: "GOOD", classes: "text-[#10B981] bg-[#ECFDF5]", bucket: "operational" },
+  OPERATIONAL: { label: "OPERATIONAL", classes: "text-[#10B981] bg-[#ECFDF5]", bucket: "operational" },
+  ACTIVE: { label: "ACTIVE", classes: "text-[#10B981] bg-[#ECFDF5]", bucket: "operational" },
+  MAINTENANCE: { label: "MAINTENANCE", classes: "text-[#F59E0B] bg-[#FEF3C7]", bucket: "maintenance" },
+  SERVICING: { label: "SERVICING REQ.", classes: "text-[#F59E0B] bg-[#FEF3C7]", bucket: "maintenance" },
+  FAIR: { label: "FAIR", classes: "text-[#F59E0B] bg-[#FEF3C7]", bucket: "maintenance" },
+  OFFLINE: { label: "OFFLINE", classes: "text-[#EF4444] bg-[#FEE2E2]", bucket: "offline" },
+  FAULTY: { label: "FAULTY", classes: "text-[#EF4444] bg-[#FEE2E2]", bucket: "offline" },
+  DISPOSED: { label: "DISPOSED", classes: "text-[#6B7280] bg-[#F3F4F6]", bucket: "offline" },
+}
+
+function classifyStatus(raw?: string) {
+  const key = (raw ?? "").toUpperCase().replace(/[^A-Z]/g, "")
+  for (const k of Object.keys(STATUS_STYLES)) {
+    if (key.includes(k)) return STATUS_STYLES[k]
   }
-]
+  return { label: raw ?? "—", classes: "text-[#6B7280] bg-[#F3F4F6]", bucket: "operational" as const }
+}
+
+function pickNumber(...vals: Array<unknown>): number {
+  for (const v of vals) {
+    if (typeof v === "number" && Number.isFinite(v)) return v
+    if (typeof v === "string" && v.trim() !== "" && !Number.isNaN(Number(v))) return Number(v)
+  }
+  return 0
+}
+
+function pickString(...vals: Array<unknown>): string {
+  for (const v of vals) {
+    if (typeof v === "string" && v.trim() !== "") return v
+  }
+  return ""
+}
 
 export default function Page() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const { user } = useAuth()
+  const branchId = user?.tenantId ?? user?.tenant?.id ?? ""
+  const { items, totals, isLoading } = useAssetOverview({ branchId })
 
-  // Circular progress math (87%)
+  const {
+    bookValue,
+    nbv,
+    breakdown,
+    statusCounts,
+    healthPercent,
+    displayAssets,
+    totalAssets,
+  } = useMemo(() => {
+    const list = (items ?? []) as AssetOverviewItem[]
+    let book = 0
+    let net = 0
+    const catCounts: Record<string, number> = {}
+    const status = { operational: 0, maintenance: 0, offline: 0 }
+    const display: DisplayAsset[] = []
+    for (const a of list) {
+      const cost = pickNumber(a.cost, a.purchaseValue, a.value)
+      const currentValue = pickNumber(a.nbv, a.currentValue, cost)
+      book += cost
+      net += currentValue
+      const cat = pickString(a.category, "Uncategorized")
+      catCounts[cat] = (catCounts[cat] ?? 0) + 1
+      const s = classifyStatus(a.status)
+      status[s.bucket] += 1
+      const id = pickString(a.id, a._id, `${cat}-${display.length}`)
+      const purchaseDateRaw = pickString(a.purchaseDate as string, a.createdAt as string)
+      display.push({
+        id,
+        name: pickString(a.name, a.assetName, a.description, "Asset"),
+        category: cat,
+        date: purchaseDateRaw ? formatDate(purchaseDateRaw, "date") : "—",
+        value: formatCurrency(cost),
+        status: s.label,
+        statusColor: s.classes,
+      })
+    }
+    const totalForBreakdown = list.length || 1
+    const breakdownEntries = Object.entries(catCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([label, count]) => ({ label, pct: Math.round((count / totalForBreakdown) * 100) }))
+    const operational = status.operational
+    const total = operational + status.maintenance + status.offline
+    const health = total === 0 ? 0 : Math.round((operational / total) * 100)
+
+    // Allow API to override aggregates via totals
+    const overrideBook = totals && typeof (totals as Record<string, unknown>).bookValue === "number"
+      ? ((totals as Record<string, unknown>).bookValue as number)
+      : undefined
+    const overrideNbv = totals && typeof (totals as Record<string, unknown>).nbv === "number"
+      ? ((totals as Record<string, unknown>).nbv as number)
+      : undefined
+
+    return {
+      bookValue: overrideBook ?? book,
+      nbv: overrideNbv ?? net,
+      breakdown: breakdownEntries,
+      statusCounts: status,
+      healthPercent: health,
+      displayAssets: display,
+      totalAssets: list.length,
+    }
+  }, [items, totals])
+
+  // Circular progress math
   const size = 110
   const stroke = 8
   const radius = size / 2
   const normalizedRadius = radius - stroke / 2
   const circumference = normalizedRadius * 2 * Math.PI
-  const progress = 87
+  const progress = healthPercent
   const strokeDashoffset = circumference - (progress / 100) * circumference
+  const healthLabel = progress >= 85 ? "HEALTHY" : progress >= 60 ? "FAIR" : progress > 0 ? "AT RISK" : "NO DATA"
+  const breakdownColors = ["#2563EB", "#38BDF8", "#FBBF24"]
 
   return (
     <div className={`flex flex-col xl:flex-row min-h-screen bg-[#F8FAFC] relative w-full ${inter.className} antialiased`}>
@@ -201,11 +296,11 @@ export default function Page() {
                 <div className="flex justify-between items-start gap-4 mb-auto z-10">
                   <div>
                     <div className="text-[13px] font-semibold text-[#6B7280] tracking-tight mb-1">Book Value</div>
-                    <div className="text-[26px] xl:text-[28px] font-bold text-[#111827] tracking-tight leading-none">₦28.45M</div>
+                    <div className="text-[26px] xl:text-[28px] font-bold text-[#111827] tracking-tight leading-none">{isLoading ? "—" : formatCurrency(bookValue)}</div>
                   </div>
                   <div>
                     <div className="text-[13px] font-semibold text-[#6B7280] tracking-tight mb-1">Net Book Value (NBV)</div>
-                    <div className="text-[26px] xl:text-[28px] font-bold text-[#3B5BDB] tracking-tight leading-none">₦21.75M</div>
+                    <div className="text-[26px] xl:text-[28px] font-bold text-[#3B5BDB] tracking-tight leading-none">{isLoading ? "—" : formatCurrency(nbv)}</div>
                   </div>
                 </div>
                 
@@ -226,15 +321,22 @@ export default function Page() {
                 {/* Category Breakdown */}
                 <div className="mt-5 pt-5 border-t border-[#EEF1F6]">
                   <div className="text-[12px] font-semibold text-[#6B7280] mb-2 tracking-tight">Category Breakdown</div>
-                  <div className="w-full h-[6px] rounded-full overflow-hidden flex mb-2">
-                    <div className="bg-[#2563EB] h-full" style={{ width: '55%' }}></div>
-                    <div className="bg-[#38BDF8] h-full" style={{ width: '30%' }}></div>
-                    <div className="bg-[#FBBF24] h-full" style={{ width: '15%' }}></div>
+                  <div className="w-full h-[6px] rounded-full overflow-hidden flex mb-2 bg-[#F3F4F6]">
+                    {breakdown.map((b, idx) => (
+                      <div key={b.label} className="h-full" style={{ width: `${b.pct}%`, backgroundColor: breakdownColors[idx] }} />
+                    ))}
                   </div>
-                  <div className="flex items-center justify-between text-[11px] font-bold text-[#6B7280]">
-                    <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#2563EB]"></div>Land/Bldgs</div>
-                    <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#38BDF8]"></div>Electronic</div>
-                    <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#FBBF24]"></div>Furniture</div>
+                  <div className="flex items-center justify-between text-[11px] font-bold text-[#6B7280] gap-2">
+                    {breakdown.length === 0 ? (
+                      <span className="italic text-[#9CA3AF]">No category data</span>
+                    ) : (
+                      breakdown.map((b, idx) => (
+                        <div key={b.label} className="flex items-center gap-1.5 truncate">
+                          <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: breakdownColors[idx] }} />
+                          <span className="truncate">{b.label}</span>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
               </div>
@@ -269,21 +371,21 @@ export default function Page() {
                     </svg>
                     <div className="absolute inset-0 flex flex-col items-center justify-center pt-1">
                       <span className="text-[26px] font-[900] text-[#111827] leading-none mb-0.5 tracking-tight">{progress}%</span>
-                      <span className="text-[10px] font-bold text-[#6B7280] uppercase tracking-wide">HEALTHY</span>
+                      <span className="text-[10px] font-bold text-[#6B7280] uppercase tracking-wide">{healthLabel}</span>
                     </div>
                   </div>
                   <div className="space-y-3.5 flex-1 pl-2">
                     <div className="flex items-center justify-between">
                       <span className="text-[13px] font-medium text-[#6B7280]">Operational</span>
-                      <span className="text-[14px] font-bold text-[#111827]">412</span>
+                      <span className="text-[14px] font-bold text-[#111827]">{statusCounts.operational}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-[13px] font-medium text-[#6B7280]">Maintenance</span>
-                      <span className="text-[14px] font-bold text-[#F59E0B]">54</span>
+                      <span className="text-[14px] font-bold text-[#F59E0B]">{statusCounts.maintenance}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-[13px] font-medium text-[#6B7280]">Offline/Faulty</span>
-                      <span className="text-[14px] font-bold text-[#EF4444]">8</span>
+                      <span className="text-[14px] font-bold text-[#EF4444]">{statusCounts.offline}</span>
                     </div>
                   </div>
                 </div>
@@ -397,8 +499,12 @@ export default function Page() {
                     </tr>
                   </thead>
                   <tbody>
-                    {assetsData.map((asset, idx) => (
-                      <tr key={idx} className="border-b border-[#EEF1F6]/70 last:border-0 hover:bg-[#F8FAFC] transition-colors">
+                    {isLoading && displayAssets.length === 0 ? (
+                      <tr><td colSpan={6} className="py-10 px-7 text-center text-[13px] font-semibold text-[#9CA3AF]">Loading assets…</td></tr>
+                    ) : displayAssets.length === 0 ? (
+                      <tr><td colSpan={6} className="py-10 px-7 text-center text-[13px] font-semibold text-[#9CA3AF]">No assets found for this branch.</td></tr>
+                    ) : displayAssets.map((asset) => (
+                      <tr key={asset.id} className="border-b border-[#EEF1F6]/70 last:border-0 hover:bg-[#F8FAFC] transition-colors">
                         <td className="py-5 px-7">
                           <div className="text-[14px] font-[800] text-[#111827] tracking-tight">{asset.name}</div>
                         </td>
@@ -428,7 +534,7 @@ export default function Page() {
               {/* Pagination / Footer */}
               <div className="p-5 sm:p-7 border-t border-[#EEF1F6] flex items-center justify-between">
                 <div className="text-[13px] font-semibold text-[#6B7280]">
-                  Showing 1-2 of 474 assets
+                  Showing {displayAssets.length === 0 ? 0 : 1}-{displayAssets.length} of {totalAssets} assets
                 </div>
                 <div className="flex items-center gap-2">
                   <button className="h-[34px] px-4 rounded-[6px] border border-[#E5E7EB] bg-white text-[12px] font-bold text-[#6B7280] flex items-center gap-1 hover:bg-gray-50 transition-all shadow-sm">

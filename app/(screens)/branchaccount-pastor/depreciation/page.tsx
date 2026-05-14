@@ -1,8 +1,6 @@
 "use client"
 
-import { API_V1 } from "@/lib/api";
-
-import React, { useEffect, useMemo, useState } from "react"
+import React, { useMemo, useState } from "react"
 import Image from "next/image"
 import {
   LayoutDashboard,
@@ -22,130 +20,130 @@ import {
   TrendingUp,
   TrendingDown
 } from "lucide-react"
+import { useAuth } from "@/components/auth/AuthProvider"
+import { useDepreciationAnalysis } from "@/components/hooks/useAssetOverview"
+import { formatCurrency } from "@/lib/format"
 
+type CategoryRow = {
+  category: string
+  method: string
+  cost: string
+  opening: string
+  current: string
+  closing: string
+  methodColor: string
+}
 
-const categories = [
-  { category: "Vehicles", method: "Straight-line", cost: "₦15.0M", opening: "₦8.5M", current: "₦1.5M", closing: "₦7.0M", methodColor: "bg-[#EFF6FF] text-[#2563EB]" },
-  { category: "Equipment", method: "Reducing Balance", cost: "₦5.2M", opening: "₦3.1M", current: "₦450k", closing: "₦2.65M", methodColor: "bg-[#FFFbeb] text-[#D97706]" },
-  { category: "Furniture", method: "Straight-line", cost: "₦2.5M", opening: "₦1.8M", current: "₦250k", closing: "₦1.55M", methodColor: "bg-[#EFF6FF] text-[#2563EB]" },
-  { category: "Buildings", method: "Straight-line", cost: "₦45.0M", opening: "₦40.5M", current: "₦900k", closing: "₦39.6M", methodColor: "bg-[#EFF6FF] text-[#2563EB]" },
-]
-
-type ScheduleItem = {
+type MonthItem = {
   label: string
   value: string
   status: "past" | "current" | "future"
 }
 
+const MONTH_LABELS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
+
+const pickNumber = (raw: unknown, ...keys: string[]): number => {
+  if (!raw || typeof raw !== "object") return 0
+  const obj = raw as Record<string, unknown>
+  for (const k of keys) {
+    const v = obj[k]
+    if (typeof v === "number" && Number.isFinite(v)) return v
+  }
+  return 0
+}
+
+const pickString = (raw: unknown, ...keys: string[]): string => {
+  if (!raw || typeof raw !== "object") return ""
+  const obj = raw as Record<string, unknown>
+  for (const k of keys) {
+    const v = obj[k]
+    if (typeof v === "string" && v.trim()) return v
+  }
+  return ""
+}
 
 export default function Page() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
-  const [scheduleItems, setScheduleItems] = useState<ScheduleItem[]>([])
-  const [scheduleLoading, setScheduleLoading] = useState(false)
-  const [scheduleError, setScheduleError] = useState<string | null>(null)
+  const currentYear = new Date().getFullYear()
+  const [fiscalYear, setFiscalYear] = useState<number>(currentYear)
+  const { user } = useAuth()
+  const branchId = user?.tenantId ?? user?.tenant?.id ?? ""
+  const { data, isLoading, error } = useDepreciationAnalysis({ branchId, fiscalYear })
 
-  const formatCurrency = (amount: number) =>
-    new Intl.NumberFormat("en-NG", {
-      style: "currency",
-      currency: "NGN",
-      maximumFractionDigits: 0,
-    }).format(amount)
-
-  const buildScheduleItems = (schedule: Array<Record<string, unknown>>): ScheduleItem[] => {
-    const currentIndex = 0
-    return schedule.map((item, index) => {
-      const label =
-        (typeof item.period === "string" && item.period) ||
-        (typeof item.year === "number" && `YR ${item.year}`) ||
-        (typeof item.label === "string" && item.label) ||
-        `Period ${index + 1}`
-      const rawValue =
-        (typeof item.depreciationExpense === "number" && item.depreciationExpense) ||
-        (typeof item.depreciation === "number" && item.depreciation) ||
-        (typeof item.amount === "number" && item.amount) ||
-        (typeof item.value === "number" && item.value) ||
-        0
+  const { kpis, categoryRows, monthItems, fiscalYearDisplay } = useMemo(() => {
+    const payload = (data && typeof data === "object" ? (data as Record<string, unknown>).data ?? data : null) as
+      | Record<string, unknown>
+      | null
+    const totalAnnual = pickNumber(payload, "totalAnnualDepreciation")
+    const monthlyAvg = totalAnnual / 12
+    const categoriesRaw = Array.isArray((payload as Record<string, unknown> | null)?.categories)
+      ? ((payload as Record<string, unknown>).categories as unknown[])
+      : []
+    let accumulated = 0
+    const rows: CategoryRow[] = categoriesRaw.map((c) => {
+      const cost = pickNumber(c, "totalCost", "cost")
+      const opening = pickNumber(c, "openingNBV", "openingNbv", "opening")
+      const annual = pickNumber(c, "annualDepreciation", "currentDepreciation", "annual")
+      const closing = pickNumber(c, "closingNBV", "closingNbv", "closing")
+      accumulated += cost - closing
+      const method = pickString(c, "depreciationMethod", "method") || "Straight-line"
+      const isReducing = /reducing/i.test(method)
       return {
-        label,
-        value: formatCurrency(rawValue),
-        status: index < currentIndex ? "past" : index === currentIndex ? "current" : "future",
+        category: pickString(c, "className", "category", "name") || "Uncategorised",
+        method,
+        cost: formatCurrency(cost),
+        opening: formatCurrency(opening),
+        current: formatCurrency(annual),
+        closing: formatCurrency(closing),
+        methodColor: isReducing
+          ? "bg-[#FFFbeb] text-[#D97706]"
+          : "bg-[#EFF6FF] text-[#2563EB]",
       }
     })
-  }
 
-  useEffect(() => {
-    let isMounted = true
-
-    const fetchSchedule = async () => {
-      try {
-        setScheduleLoading(true)
-        setScheduleError(null)
-
-        const assetsResponse = await fetch(`${API_V1}/financial/fixed-assets`, {
-          method: "GET",
-          credentials: "include",
-        })
-        const assetsPayload = await assetsResponse.json().catch(() => null)
-        if (!assetsResponse.ok) {
-          throw new Error(assetsPayload?.message ?? "Unable to load fixed assets.")
-        }
-
-        const assetList =
-          assetsPayload?.data?.content ??
-          assetsPayload?.data ??
-          assetsPayload?.content ??
-          []
-        const firstAsset = Array.isArray(assetList) ? assetList[0] : null
-        const assetId = firstAsset?.id ?? firstAsset?.assetId
-
-        if (!assetId) {
-          throw new Error("No fixed asset found to generate depreciation schedule.")
-        }
-
-        const scheduleResponse = await fetch(
-          `${API_V1}/financial/fixed-assets/${assetId}/depreciation-schedule?granularity=yearly&periods=10`,
-          {
-            method: "GET",
-            credentials: "include",
-          }
-        )
-        const schedulePayload = await scheduleResponse.json().catch(() => null)
-        if (!scheduleResponse.ok) {
-          throw new Error(schedulePayload?.message ?? "Unable to load depreciation schedule.")
-        }
-
-        const schedule = schedulePayload?.data?.schedule ?? schedulePayload?.schedule ?? []
-        if (isMounted) {
-          setScheduleItems(buildScheduleItems(Array.isArray(schedule) ? schedule : []))
-        }
-      } catch (error) {
-        if (isMounted) {
-          setScheduleError(error instanceof Error ? error.message : "Unable to load depreciation schedule.")
-          setScheduleItems([])
-        }
-      } finally {
-        if (isMounted) {
-          setScheduleLoading(false)
-        }
+    const monthlyRaw = Array.isArray((payload as Record<string, unknown> | null)?.monthlyDistribution)
+      ? ((payload as Record<string, unknown>).monthlyDistribution as unknown[])
+      : []
+    const currentMonth = new Date().getMonth() + 1
+    const months: MonthItem[] = monthlyRaw.map((m, idx) => {
+      const monthNumber = pickNumber(m, "month") || idx + 1
+      const dep = pickNumber(m, "depreciation", "amount", "value")
+      const status: MonthItem["status"] =
+        monthNumber < currentMonth ? "past" : monthNumber === currentMonth ? "current" : "future"
+      return {
+        label: MONTH_LABELS[(monthNumber - 1) % 12] ?? `M${monthNumber}`,
+        value: formatCurrency(dep),
+        status,
       }
+    })
+
+    return {
+      kpis: {
+        annual: totalAnnual,
+        monthly: monthlyAvg,
+        accumulated,
+      },
+      categoryRows: rows,
+      monthItems: months,
+      fiscalYearDisplay: pickNumber(payload, "fiscalYear") || fiscalYear,
     }
+  }, [data, fiscalYear])
 
-    fetchSchedule()
-
-    return () => {
-      isMounted = false
-    }
-  }, [])
-
-  const monthItems = useMemo(
-    () =>
-      scheduleItems.length
-        ? scheduleItems
-        : [
-            { label: "N/A", value: scheduleLoading ? "Loading..." : "Unavailable", status: "future" as const },
-          ],
-    [scheduleItems, scheduleLoading]
-  )
+  const totals = useMemo(() => {
+    return categoryRows.reduce(
+      (acc, row, idx) => {
+        const src = (((data as Record<string, unknown> | null)?.data as Record<string, unknown> | undefined)
+          ?.categories ?? (data as Record<string, unknown> | null)?.categories ?? []) as unknown[]
+        const raw = src[idx] ?? {}
+        acc.cost += pickNumber(raw, "totalCost", "cost")
+        acc.opening += pickNumber(raw, "openingNBV", "openingNbv", "opening")
+        acc.current += pickNumber(raw, "annualDepreciation", "currentDepreciation", "annual")
+        acc.closing += pickNumber(raw, "closingNBV", "closingNbv", "closing")
+        return acc
+      },
+      { cost: 0, opening: 0, current: 0, closing: 0 }
+    )
+  }, [categoryRows, data])
 
   return (
     <div className="flex flex-col xl:flex-row min-h-screen bg-[#F8FAFC] relative w-full font-sans antialiased" style={{ fontFamily: '"Public Sans", sans-serif' }}>
@@ -160,6 +158,8 @@ export default function Page() {
       {/* Sidebar */}
       <aside className={`w-[260px] border-r border-[#EEF1F6] bg-white flex flex-col shrink-0 h-[100dvh] fixed xl:sticky top-0 z-50 transition-transform duration-300 ease-in-out ${isMobileMenuOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full xl:translate-x-0"}`}>
         <button
+          type="button"
+          aria-label="Close menu"
           onClick={() => setIsMobileMenuOpen(false)}
           className="xl:hidden absolute top-5 right-5 h-8 w-8 flex items-center justify-center rounded-full bg-gray-50 text-gray-500 hover:text-gray-900 transition-colors"
         >
@@ -230,6 +230,8 @@ export default function Page() {
         <header className="flex h-[64px] sm:h-[72px] shrink-0 items-center justify-between border-b border-[#EEF1F6] bg-white px-4 sm:px-6 xl:px-8 w-full gap-3 sm:gap-6">
           <div className="flex items-center gap-3">
             <button
+              type="button"
+              aria-label="Open menu"
               onClick={() => setIsMobileMenuOpen(true)}
               className="xl:hidden -ml-1 h-9 w-9 flex items-center justify-center rounded-[8px] text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#111827] transition-colors"
             >
@@ -249,7 +251,7 @@ export default function Page() {
                 className="h-[36px] sm:h-[38px] w-full rounded-[10px] border border-transparent bg-[#F3F4F6] pl-9 pr-3 text-[13px] text-[#4B5563] font-medium placeholder:text-[#9CA3AF] focus-visible:bg-white focus-visible:border-[#3B5BDB] focus-visible:ring-1 focus-visible:ring-[#3B5BDB]/20 outline-none transition-all"
               />
             </div>
-            <button className="relative flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-full text-[#6B7280] hover:bg-gray-50 transition-colors border border-transparent hover:border-[#E5E7EB]">
+            <button type="button" aria-label="Notifications" className="relative flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-full text-[#6B7280] hover:bg-gray-50 transition-colors border border-transparent hover:border-[#E5E7EB]">
               <Bell className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
               <span className="absolute right-2 sm:right-3 top-2 sm:top-2.5 h-1.5 w-1.5 rounded-full bg-rose-500 ring-2 ring-white"></span>
             </button>
@@ -267,16 +269,33 @@ export default function Page() {
             </button>
 
             {/* Header Section */}
-            <header className="mb-8">
-              <h1
-                className="text-[26.21px] font-black text-[#111827] tracking-[-0.66px] leading-[32.76px] mb-1.5"
-                style={{ fontFamily: "Inter, sans-serif", verticalAlign: "middle" }}
-              >
-                Depreciation Schedule & Analysis
-              </h1>
-              <p className="text-[14px] text-[#6B7280] font-medium tracking-tight">
-                Financial overview for Grace Chapel Ikeja Asset Management
-              </p>
+            <header className="mb-8 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+              <div>
+                <h1
+                  className="text-[26.21px] font-black text-[#111827] tracking-[-0.66px] leading-[32.76px] mb-1.5"
+                  style={{ fontFamily: "Inter, sans-serif", verticalAlign: "middle" }}
+                >
+                  Depreciation Schedule & Analysis
+                </h1>
+                <p className="text-[14px] text-[#6B7280] font-medium tracking-tight">
+                  Fiscal year {fiscalYearDisplay} · {isLoading ? "Loading…" : `${categoryRows.length} asset categor${categoryRows.length === 1 ? "y" : "ies"}`}
+                </p>
+                {error && (
+                  <p className="mt-2 text-[12px] font-semibold text-[#EF4444]">{error}</p>
+                )}
+              </div>
+              <label className="flex items-center gap-2 text-[12px] font-bold text-[#6B7280] uppercase tracking-wider">
+                <span>Fiscal Year</span>
+                <select
+                  value={fiscalYear}
+                  onChange={(e) => setFiscalYear(Number(e.target.value))}
+                  className="rounded-[8px] border border-[#E5E7EB] bg-white px-3 py-2 text-[13px] font-semibold text-[#111827] focus:border-[#3B5BDB] focus:ring-1 focus:ring-[#3B5BDB]/20 outline-none"
+                >
+                  {[currentYear + 1, currentYear, currentYear - 1, currentYear - 2].map((yr) => (
+                    <option key={yr} value={yr}>{yr}</option>
+                  ))}
+                </select>
+              </label>
             </header>
 
             {/* 3 Summary Cards */}
@@ -300,12 +319,12 @@ export default function Page() {
                       verticalAlign: 'middle'
                     }}
                   >
-                    ₦1.45M
+                    {isLoading ? "—" : formatCurrency(kpis.annual)}
                   </div>
                 </div>
-                <div className="flex items-center gap-1.5 text-[11.5px] font-bold text-[#10B981] mt-auto">
+                <div className="flex items-center gap-1.5 text-[11.5px] font-bold text-[#6B7280] mt-auto">
                   <TrendingUp className="h-3.5 w-3.5" strokeWidth={3} />
-                  <span>+2.4% vs LY</span>
+                  <span>FY {fiscalYearDisplay} total</span>
                 </div>
               </div>
 
@@ -327,12 +346,12 @@ export default function Page() {
                       verticalAlign: 'middle'
                     }}
                   >
-                    ₦120k
+                    {isLoading ? "—" : formatCurrency(kpis.monthly)}
                   </div>
                 </div>
-                <div className="flex items-center gap-1.5 text-[11.5px] font-bold text-[#EF4444] mt-auto">
+                <div className="flex items-center gap-1.5 text-[11.5px] font-bold text-[#6B7280] mt-auto">
                   <TrendingDown className="h-3.5 w-3.5" strokeWidth={3} />
-                  <span>-0.5% vs Prev Month</span>
+                  <span>Annual / 12</span>
                 </div>
               </div>
 
@@ -354,12 +373,12 @@ export default function Page() {
                       verticalAlign: 'middle'
                     }}
                   >
-                    ₦6.7M
+                    {isLoading ? "—" : formatCurrency(kpis.accumulated)}
                   </div>
                 </div>
-                <div className="flex items-center gap-1.5 text-[11.5px] font-bold text-[#10B981] mt-auto">
+                <div className="flex items-center gap-1.5 text-[11.5px] font-bold text-[#6B7280] mt-auto">
                   <TrendingUp className="h-3.5 w-3.5" strokeWidth={3} />
-                  <span>+12.1% total base</span>
+                  <span>Cost − closing NBV</span>
                 </div>
               </div>
             </div>
@@ -377,7 +396,13 @@ export default function Page() {
 
               {/* Mobile Cards */}
               <div className="lg:hidden divide-y divide-[#EEF1F6]/70">
-                {categories.map((row, idx) => (
+                {isLoading && categoryRows.length === 0 && (
+                  <div className="p-6 text-[13px] font-medium text-[#6B7280]">Loading depreciation analysis…</div>
+                )}
+                {!isLoading && categoryRows.length === 0 && (
+                  <div className="p-6 text-[13px] font-medium text-[#6B7280]">No depreciation data available for {fiscalYearDisplay}.</div>
+                )}
+                {categoryRows.map((row, idx) => (
                   <div key={idx} className="p-5 sm:p-6">
                     <div className="flex items-center justify-between gap-3">
                       <div className="text-[14px] font-[800] text-[#111827]">{row.category}</div>
@@ -406,27 +431,29 @@ export default function Page() {
                   </div>
                 ))}
 
-                <div className="p-5 sm:p-6 bg-[#F8FAFC]">
-                  <div className="text-[11px] font-[900] text-[#111827] uppercase tracking-wide">Total Asset Portfolio</div>
-                  <div className="mt-4 grid grid-cols-2 gap-4 text-[12px]">
-                    <div className="flex flex-col gap-1">
-                      <span className="text-[10px] font-[800] uppercase tracking-widest text-[#9CA3AF]">Cost</span>
-                      <span className="text-[14px] font-[900] text-[#111827]">â‚¦67.7M</span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="text-[10px] font-[800] uppercase tracking-widest text-[#9CA3AF]">Opening NBV</span>
-                      <span className="text-[14px] font-[900] text-[#111827]">â‚¦53.9M</span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="text-[10px] font-[800] uppercase tracking-widest text-[#9CA3AF]">Current Depr</span>
-                      <span className="text-[14px] font-[900] text-[#EF4444]">â‚¦3.1M</span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="text-[10px] font-[800] uppercase tracking-widest text-[#9CA3AF]">Closing NBV</span>
-                      <span className="text-[14px] font-[900] text-[#2563EB]">â‚¦50.8M</span>
+                {categoryRows.length > 0 && (
+                  <div className="p-5 sm:p-6 bg-[#F8FAFC]">
+                    <div className="text-[11px] font-[900] text-[#111827] uppercase tracking-wide">Total Asset Portfolio</div>
+                    <div className="mt-4 grid grid-cols-2 gap-4 text-[12px]">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] font-[800] uppercase tracking-widest text-[#9CA3AF]">Cost</span>
+                        <span className="text-[14px] font-[900] text-[#111827]">{formatCurrency(totals.cost)}</span>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] font-[800] uppercase tracking-widest text-[#9CA3AF]">Opening NBV</span>
+                        <span className="text-[14px] font-[900] text-[#111827]">{formatCurrency(totals.opening)}</span>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] font-[800] uppercase tracking-widest text-[#9CA3AF]">Current Depr</span>
+                        <span className="text-[14px] font-[900] text-[#EF4444]">{formatCurrency(totals.current)}</span>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] font-[800] uppercase tracking-widest text-[#9CA3AF]">Closing NBV</span>
+                        <span className="text-[14px] font-[900] text-[#2563EB]">{formatCurrency(totals.closing)}</span>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
               </div>
 
               {/* Desktop Table */}
@@ -443,7 +470,17 @@ export default function Page() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#EEF1F6]/70">
-                    {categories.map((row, idx) => (
+                    {isLoading && categoryRows.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="py-8 px-6 sm:px-8 text-center text-[13px] font-medium text-[#6B7280]">Loading depreciation analysis…</td>
+                      </tr>
+                    )}
+                    {!isLoading && categoryRows.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="py-8 px-6 sm:px-8 text-center text-[13px] font-medium text-[#6B7280]">No depreciation data available for {fiscalYearDisplay}.</td>
+                      </tr>
+                    )}
+                    {categoryRows.map((row, idx) => (
                       <tr key={idx} className="hover:bg-[#F8FAFC] transition-colors">
                         <td className="py-5 px-6 sm:px-8">
                           <div className="text-[13px] font-[800] text-[#111827]">{row.category}</div>
@@ -468,23 +505,25 @@ export default function Page() {
                       </tr>
                     ))}
                     {/* Totals Row */}
-                    <tr className="bg-[#F8FAFC]">
-                      <td colSpan={2} className="py-6 px-6 sm:px-8">
-                        <div className="text-[13px] font-[900] text-[#111827] uppercase tracking-wide">TOTAL ASSET PORTFOLIO</div>
-                      </td>
-                      <td className="py-6 px-6 sm:px-8 text-right">
-                        <div className="text-[14px] font-[900] text-[#111827]">₦67.7M</div>
-                      </td>
-                      <td className="py-6 px-6 sm:px-8 text-right">
-                        <div className="text-[14px] font-[900] text-[#111827]">₦53.9M</div>
-                      </td>
-                      <td className="py-6 px-6 sm:px-8 text-right">
-                        <div className="text-[14px] font-[900] text-[#EF4444]">₦3.1M</div>
-                      </td>
-                      <td className="py-6 px-6 sm:px-8 text-right">
-                        <div className="text-[14px] font-[900] text-[#2563EB]">₦50.8M</div>
-                      </td>
-                    </tr>
+                    {categoryRows.length > 0 && (
+                      <tr className="bg-[#F8FAFC]">
+                        <td colSpan={2} className="py-6 px-6 sm:px-8">
+                          <div className="text-[13px] font-[900] text-[#111827] uppercase tracking-wide">TOTAL ASSET PORTFOLIO</div>
+                        </td>
+                        <td className="py-6 px-6 sm:px-8 text-right">
+                          <div className="text-[14px] font-[900] text-[#111827]">{formatCurrency(totals.cost)}</div>
+                        </td>
+                        <td className="py-6 px-6 sm:px-8 text-right">
+                          <div className="text-[14px] font-[900] text-[#111827]">{formatCurrency(totals.opening)}</div>
+                        </td>
+                        <td className="py-6 px-6 sm:px-8 text-right">
+                          <div className="text-[14px] font-[900] text-[#EF4444]">{formatCurrency(totals.current)}</div>
+                        </td>
+                        <td className="py-6 px-6 sm:px-8 text-right">
+                          <div className="text-[14px] font-[900] text-[#2563EB]">{formatCurrency(totals.closing)}</div>
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -493,10 +532,10 @@ export default function Page() {
             {/* Monthly Distribution Block */}
             <div className="rounded-[16px] bg-white border border-[#EEF1F6] shadow-[0_2px_10px_rgba(0,0,0,0.02)] pt-6 sm:pt-8 overflow-hidden">
               <div className="px-6 sm:px-8 mb-8">
-                <h2 className="text-[18px] font-[800] text-[#111827] tracking-tight mb-1">2024 Monthly Distribution</h2>
+                <h2 className="text-[18px] font-[800] text-[#111827] tracking-tight mb-1">{fiscalYearDisplay} Monthly Distribution</h2>
                 <p className="text-[13px] font-medium text-[#6B7280]">Allocation of depreciation expense across the current calendar year</p>
-                {scheduleError && (
-                  <p className="mt-2 text-[12px] font-medium text-[#EF4444]">{scheduleError}</p>
+                {error && (
+                  <p className="mt-2 text-[12px] font-medium text-[#EF4444]">{error}</p>
                 )}
               </div>
 
