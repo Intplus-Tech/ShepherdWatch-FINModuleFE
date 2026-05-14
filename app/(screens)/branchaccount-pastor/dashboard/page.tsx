@@ -23,6 +23,7 @@ import { useRecentDashboardTransactions } from "@/components/hooks/useRecentDash
 import { formatCurrency, formatDate } from "@/lib/format"
 import { SkeletonStatGrid, SkeletonTable } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
+import BranchAccountantSidebar from "@/components/navigation/BranchAccountantSidebar"
 
 function getCsrfToken() {
   if (typeof document === "undefined") return ""
@@ -101,8 +102,12 @@ export default function Page() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] p-6 md:p-8">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
+    <div className="min-h-screen bg-[#1f1f1f] p-6">
+      <div className="mx-auto w-full max-w-300 rounded-[20px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.25)] overflow-hidden">
+        <div className="flex flex-col lg:flex-row">
+          <BranchAccountantSidebar activeHref="/branchaccount-pastor/dashboard" />
+          <main className="flex-1 p-6 lg:p-8 bg-[#F8FAFC]">
+      <div className="flex w-full flex-col gap-6">
         {/* Header */}
         <header className="flex flex-col gap-3 rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-sm md:flex-row md:items-center md:justify-between">
           <div>
@@ -331,6 +336,9 @@ export default function Page() {
           <AlertCircle className="h-3.5 w-3.5" />
           Data sourced from `${API_V1}/dashboard` and `${API_V1}/requisitions/inbox`.
         </p>
+      </div>
+          </main>
+        </div>
       </div>
     </div>
   )
