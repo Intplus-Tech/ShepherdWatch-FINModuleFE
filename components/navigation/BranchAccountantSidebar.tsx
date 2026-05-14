@@ -1,7 +1,11 @@
+"use client"
+
 import Image from "next/image"
 import Link from "next/link"
-import { LayoutDashboard, ShieldCheck, Wallet, Settings, HelpCircle, ArrowRightLeft, Database } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { LayoutDashboard, ShieldCheck, Wallet, Settings, HelpCircle, ArrowRightLeft, Database, LogOut } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useAuth } from "@/components/auth/AuthProvider"
 
 const navItems = [
   { label: "Dashboard", href: "/branchaccount-pastor/dashboard", icon: LayoutDashboard },
@@ -12,8 +16,21 @@ const navItems = [
 ]
 
 export default function BranchAccountantSidebar({ activeHref }: { activeHref?: string }) {
+  const router = useRouter()
+  const { logout } = useAuth()
+
+  const handleLogout = async () => {
+    try {
+      await logout()
+      router.replace("/login")
+    } catch (err) {
+      console.error("Logout failed", err)
+      router.replace("/login")
+    }
+  }
+
   return (
-    <aside className="w-full lg:w-[240px] border-b lg:border-b-0 lg:border-r border-[#EEF1F6] bg-white px-5 py-6">
+    <aside className="w-full lg:w-60 border-b lg:border-b-0 lg:border-r border-[#EEF1F6] bg-white px-5 py-6">
       <div className="flex items-center gap-3 pb-8">
         <Image src="/images/icon-shepherdwatch.svg" alt="ShepherdWatch" width={26} height={26} />
         <div>
@@ -51,6 +68,13 @@ export default function BranchAccountantSidebar({ activeHref }: { activeHref?: s
           <HelpCircle className="h-4 w-4" />
           Help Center
         </div>
+        <button
+          onClick={handleLogout}
+          className="flex items-center gap-3 w-full rounded-[8px] px-0 py-1 text-[12px] text-rose-600 hover:text-rose-700 transition-colors"
+        >
+          <LogOut className="h-4 w-4" />
+          Logout
+        </button>
       </div>
 
       <div className="mt-10 flex items-center gap-3 pt-4">
