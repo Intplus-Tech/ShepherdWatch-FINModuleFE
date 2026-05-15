@@ -14,6 +14,7 @@ import {
   InvalidCredentialsError,
   mapLoginErrorToAuthError,
 } from "@/lib/auth-errors";
+import { extractBranchIdFromJwt } from "@/lib/jwt-claims";
 
 const ACCESS_TOKEN_TTL_MS = ACCESS_TOKEN_MAX_AGE_SECONDS * 1000;
 
@@ -205,6 +206,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // Session update() — re-sync cookies (no-op for now).
       if (trigger === "update") {
         return token;
+      }
+
+      // Backfill tenantId for sessions created before the fix was applied.
+      // The access token (a backend JWT) carries branchId/tenantId as a claim.
+      if (!token.tenantId && typeof token.accessToken === "string" && token.accessToken) {
+        const extracted = extractBranchIdFromJwt(token.accessToken);
+        if (extracted) token.tenantId = extracted;
       }
 
       // Access token still valid — nothing to do.
