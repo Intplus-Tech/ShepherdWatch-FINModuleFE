@@ -162,7 +162,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           "";
         const firstName = pickString(userSrc, ["firstName"]);
         const lastName = pickString(userSrc, ["lastName"]);
-        const tenantId = pickString(userSrc, ["tenantId"]) ?? pickString(data, ["tenantId"]);
+        const tenantId = pickString(userSrc, ["tenantId", "branchId", "branch_id"]) ?? pickString(data, ["tenantId", "branchId", "branch_id"]);
         const fullName =
           pickString(userSrc, ["fullName", "name"]) ??
           (firstName && lastName ? `${firstName} ${lastName}` : firstName);

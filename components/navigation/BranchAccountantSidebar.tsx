@@ -86,14 +86,22 @@ export default function BranchAccountantSidebar({ activeHref, mobileOpen, onMobi
       </nav>
 
       <div className="mt-8 space-y-3 text-[12px] text-[#6B7280]">
-        <div className="flex items-center gap-3">
+        <Link
+          href="/branchaccount-pastor/settings"
+          onClick={() => onMobileClose?.()}
+          className="flex items-center gap-3 w-full py-1 hover:text-[#111827] transition-colors"
+        >
           <Settings className="h-4 w-4" />
           Settings
-        </div>
-        <div className="flex items-center gap-3">
+        </Link>
+        <Link
+          href="/branchaccount-pastor/help-center"
+          onClick={() => onMobileClose?.()}
+          className="flex items-center gap-3 w-full py-1 hover:text-[#111827] transition-colors"
+        >
           <HelpCircle className="h-4 w-4" />
           Help Center
-        </div>
+        </Link>
         <button
           onClick={handleLogout}
           className="flex items-center gap-3 w-full rounded-[8px] px-0 py-1 text-[12px] text-rose-600 hover:text-rose-700 transition-colors"

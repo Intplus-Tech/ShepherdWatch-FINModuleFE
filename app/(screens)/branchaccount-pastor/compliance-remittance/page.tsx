@@ -230,12 +230,10 @@ export default function Page() {
 
 
   return (
-    <div className="min-h-screen bg-[#1f1f1f] p-6">
-      <div className="mx-auto w-full max-w-[1200px] rounded-[20px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.25)] overflow-hidden">
-        <div className="flex flex-col lg:flex-row">
-          <BranchAccountantSidebar activeHref="/branchaccount-pastor/compliance-remittance" />
+    <div className="flex min-h-screen flex-col lg:flex-row bg-[#F8FAFC]">
+      <BranchAccountantSidebar activeHref="/branchaccount-pastor/compliance-remittance" />
 
-          <main className="flex-1 p-6 lg:p-7 bg-[#F7F8FC]">
+      <main className="flex-1 p-6 lg:p-8 bg-[#F8FAFC] min-w-0">
             <BranchAccountantHeader
               title="Compliance"
               subtitle="Monitor compliance and remittances."
@@ -492,9 +490,7 @@ export default function Page() {
                 </div>
               </div>
             </div>
-          </main>
-        </div>
-      </div>
+      </main>
     </div>
   )
 }
