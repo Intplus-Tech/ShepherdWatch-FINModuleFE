@@ -118,9 +118,6 @@ export default function Page() {
               <p className="text-[13px] md:text-[14px] font-medium text-[#6B7280]">Monitor and verify all financial inflows for the branch.</p>
             </div>
             <div className="flex items-center gap-3">
-              <Button onClick={() => setIsModalOpen(true)} className="h-[44px] flex-1 lg:flex-none rounded-[10px] bg-[#2563EB] px-5 text-[14px] font-bold text-white shadow-sm hover:bg-blue-700 flex items-center justify-center gap-2">
-                <Plus className="h-4.5 w-4.5" strokeWidth={2.5} /> Record Income
-              </Button>
               <Button variant="outline" className="h-[44px] flex-1 lg:flex-none rounded-[10px] border-[#E5E7EB] bg-white px-5 text-[14px] font-bold text-[#111827] shadow-sm hover:bg-gray-50 flex items-center justify-center gap-2">
                 <Upload className="h-4.5 w-4.5 text-[#4B5563]" strokeWidth={2.5} /> Import
               </Button>
@@ -239,7 +236,7 @@ export default function Page() {
           </div>
 
           {/* Main Grid View */}
-          <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_340px]">
+          <div className="grid grid-cols-1 gap-6">
             {/* Data Table */}
             <div className="rounded-[16px] border border-[#E5E7EB] bg-white overflow-hidden shadow-sm flex flex-col">
               <div className="overflow-x-auto">
@@ -338,20 +335,6 @@ export default function Page() {
               </div>
             </div>
 
-            {/* Sidebar Box (Insights) */}
-            <div className="h-fit">
-              <div className="rounded-[16px] border border-[#E5E7EB] bg-[#F8FAFC] p-6 shadow-sm">
-                <div className="flex items-center gap-3 mb-5">
-                  <div className="text-[#2563EB]">
-                    <Lightbulb className="h-[20px] w-5" strokeWidth={2.5} />
-                  </div>
-                  <h3 className="text-[15px] font-extrabold text-[#2563EB] tracking-tight">Summary Insights</h3>
-                </div>
-                <p className="text-[14px] font-medium text-[#4B5563] leading-relaxed">
-                  Total unverified income currently stands at <span className="text-[#111827] font-extrabold tracking-tight">₦25,000</span>. You have <span className="text-[#111827] font-extrabold">2 transactions</span> pending manual verification from the weekend services.
-                </p>
-              </div>
-            </div>
           </div>
         </div>
       </main>

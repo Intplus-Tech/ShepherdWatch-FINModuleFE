@@ -64,7 +64,7 @@ export default function AddNewAccountPage() {
   const [bankName, setBankName] = useState("")
   const [accountName, setAccountName] = useState("")
   const [accountNumber, setAccountNumber] = useState("")
-  const [currency, setCurrency] = useState<"NGN" | "USD" | "GBP" | "EUR">("NGN")
+  const [currency, setCurrency] = useState<"NGN" | "USD" | "GBP" | "EUR" | "CAD">("NGN")
   const [isDomiciliary, setIsDomiciliary] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [submitMessage, setSubmitMessage] = useState<string | null>(null)
@@ -516,13 +516,14 @@ export default function AddNewAccountPage() {
                       <div className="relative">
                         <select
                           value={currency}
-                          onChange={(event) => setCurrency(event.target.value as "NGN" | "USD" | "GBP" | "EUR")}
+                          onChange={(event) => setCurrency(event.target.value as "NGN" | "USD" | "GBP" | "EUR" | "CAD")}
                           className="h-[30.7px] w-full appearance-none rounded-[3.23px] border-[0.81px] border-gray-200 bg-white pl-3 pr-10 text-[13px] font-medium text-gray-900 focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]/20 transition-all"
                         >
                           <option value="NGN">NGN</option>
                           <option value="USD">USD</option>
                           <option value="GBP">GBP</option>
                           <option value="EUR">EUR</option>
+                          <option value="CAD">CAD</option>
                         </select>
                         <ChevronDown className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 pointer-events-none" />
                       </div>

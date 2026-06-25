@@ -1,6 +1,5 @@
 "use client"
 
-import { API_V1 } from "@/lib/api";
 
 import Image from "next/image"
 import Link from "next/link"
@@ -17,21 +16,28 @@ import {
   Search,
   ChevronDown,
   Download,
-  AlertTriangle,
-  ArrowUpRight,
-  MoreHorizontal,
-  CheckCircle2,
-  Flag,
   Upload,
-  RefreshCw,
   X,
-  Calendar,
-  Eye,
+  Plus,
+  Landmark,
+  ArrowDownLeft,
+  ArrowUpRight,
+  FileSpreadsheet,
+  Trash2,
+  Pencil,
+  Clock,
   Check,
+  Link2,
+  AlertCircle,
+  CheckCircle2,
+  Printer,
+  FileText,
+  TrendingUp,
+  Hourglass,
+  Save,
 } from "lucide-react"
-import { useAuth } from "@/components/auth/AuthProvider"
-import { useTransactions } from "@/components/hooks/useTransactions"
-import BranchesDropdown from "@/components/navigation/BranchesDropdown"
+import SidebarNav from "@/components/navigation/SidebarNav"
+import { ModalShell } from "@/components/ui/modal-shell"
 
 const navItems = [
   { label: "Dashboard", href: "/director-screen/dashboard", icon: LayoutDashboard },
@@ -44,1101 +50,1470 @@ const navItems = [
   { label: "Settings", href: "/director-screen/settings", icon: Settings },
 ]
 
-type CoaTreeNode = {
-  id?: string
-  _id?: string
-  coaId?: string
-  code?: string
-  accountCode?: string
-  number?: string
-  name?: string
-  accountName?: string
-  title?: string
-  accountType?: string
-  children?: CoaTreeNode[]
-}
-
-function flattenCoaTree(nodes: CoaTreeNode[]): CoaTreeNode[] {
-  const flat: CoaTreeNode[] = []
-  const queue = [...nodes]
-  while (queue.length > 0) {
-    const node = queue.shift()
-    if (!node) continue
-    flat.push(node)
-    if (Array.isArray(node.children) && node.children.length > 0) {
-      queue.push(...node.children)
-    }
-  }
-  return flat
-}
-
 export default function Page() {
-  const { user } = useAuth()
-  const [statusFilter, setStatusFilter] = useState<"ALL" | "UNVERIFIED" | "VERIFIED">("ALL")
-  const { startDate, endDate, dateLabel } = useMemo(() => {
-    const today = new Date()
-    const start = new Date(today.getFullYear(), today.getMonth(), 1)
-    const end = new Date(today.getFullYear(), today.getMonth() + 1, 0)
-    const toParam = (value: Date) => value.toISOString().slice(0, 10)
-    const label = start.toLocaleDateString("en-GB", {
-      month: "short",
-      year: "numeric",
-    })
-
-    return {
-      startDate: toParam(start),
-      endDate: toParam(end),
-      dateLabel: label,
-    }
-  }, [])
-
-  const [page, setPage] = useState(1)
-  const [limit, setLimit] = useState(20)
-  const [searchQuery, setSearchQuery] = useState("")
-  const [debouncedSearch, setDebouncedSearch] = useState("")
-  useEffect(() => {
-    const handler = setTimeout(() => { setDebouncedSearch(searchQuery); setPage(1) }, 300)
-    return () => clearTimeout(handler)
-  }, [searchQuery])
-  const { transactions: rawTransactions, pagination, loading: txLoading, error: txError, refresh: refreshTransactions } = useTransactions({
-    ...(statusFilter === "ALL" ? {} : { status: statusFilter }),
-    startDate,
-    endDate,
-    page,
-    limit,
-    search: debouncedSearch,
-  })
-  const [verifying, setVerifying] = useState(false)
-  const [verifyError, setVerifyError] = useState<string | null>(null)
-  const [reconciling, setReconciling] = useState(false)
-  const [reconcileError, setReconcileError] = useState<string | null>(null)
-  const [flagging, setFlagging] = useState(false)
-  const [flagError, setFlagError] = useState<string | null>(null)
-  const [selectedTransactionId, setSelectedTransactionId] = useState<string>("")
-  const [coaOptions, setCoaOptions] = useState<Array<{ id: string; label: string }>>([])
-  const [selectedCoaId, setSelectedCoaId] = useState<string>("")
-  const [coaLoading, setCoaLoading] = useState(true)
-  const [coaError, setCoaError] = useState<string | null>(null)
-  const [coaDeleteError, setCoaDeleteError] = useState<string | null>(null)
-  const [deletingCoa, setDeletingCoa] = useState(false)
-  const [exporting, setExporting] = useState(false)
-  const [exportError, setExportError] = useState<string | null>(null)
-  const [parseOpen, setParseOpen] = useState(false)
-  const [parseSubject, setParseSubject] = useState("")
-  const [parseFrom, setParseFrom] = useState("")
-  const [parseBody, setParseBody] = useState("")
-  const [parseLoading, setParseLoading] = useState(false)
-  const [parseError, setParseError] = useState<string | null>(null)
-  const [parseResults, setParseResults] = useState<Array<Record<string, unknown>>>([])
-  const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [deleteError, setDeleteError] = useState<string | null>(null)
-
-  const tenantId = useMemo(
-    () => user?.tenantId ?? user?.tenant?.id ?? "",
-    [user]
-  )
-
-  const formatCurrency = (value: number) =>
-    new Intl.NumberFormat("en-NG", {
-      style: "currency",
-      currency: "NGN",
-      maximumFractionDigits: 2,
-    }).format(value)
-
-  const formatDateLabel = (value?: string) => {
-    if (!value) return "—"
-    const date = new Date(value)
-    if (Number.isNaN(date.getTime())) return value
-    return date.toLocaleDateString("en-GB", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    })
-  }
-
-  const transactions = useMemo(() => {
-    return rawTransactions.map((tx, idx) => {
-      const flowType = (tx.flowType ?? "").toUpperCase()
-      const isPositive = flowType === "INFLOW" || tx.amount >= 0
-      const status = (tx.status ?? "UNVERIFIED").toUpperCase()
-      const isVerified = status.includes("VERIFIED") || status === "APPROVED"
-      const tagLabel = tx.category || tx.coaName || "Uncategorized"
-
-      return {
-        id: tx.id ?? `tx-${idx}`,
-        date: formatDateLabel(tx.date),
-        description: tx.description || "Transaction",
-        amount: `${isPositive ? "+" : "-"}${formatCurrency(Math.abs(tx.amount))}`,
-        amountColor: isPositive ? "text-emerald-600" : "text-gray-600",
-        tag: tagLabel,
-        tagBg: isPositive ? "bg-purple-50" : "bg-gray-100",
-        tagColor: isPositive ? "text-purple-600" : "text-gray-500",
-        status: isVerified ? "Verified" : "Unverified",
-        statusBg: isVerified ? "bg-transparent" : "bg-amber-100/50",
-        statusColor: isVerified ? "text-emerald-500" : "text-amber-600",
-        checked: idx === 0,
-      }
-    })
-  }, [rawTransactions])
-
-  useEffect(() => {
-    if (!selectedTransactionId && rawTransactions.length > 0) {
-      setSelectedTransactionId(String(rawTransactions[0]?.id ?? ""))
-    }
-  }, [rawTransactions, selectedTransactionId])
-
-  const getCsrfToken = () => {
-    if (typeof document === "undefined") return ""
-    const match = document.cookie
-      .split("; ")
-      .find((cookie) => cookie.startsWith("csrf_token="))
-    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
-  }
-
-  const selectedTransaction = useMemo(
-    () => rawTransactions.find((tx) => String(tx.id) === String(selectedTransactionId)),
-    [rawTransactions, selectedTransactionId]
-  )
-
-  const handleVerify = async () => {
-    if (!selectedTransactionId) return
-    setVerifying(true)
-    setVerifyError(null)
-
-    try {
-      const csrfToken = getCsrfToken()
-      const response = await fetch(`${API_V1}/financial/transactions/${selectedTransactionId}/verify`, {
-        method: "POST",
-        headers: { "x-csrf-token": csrfToken },
-        credentials: "include",
-      })
-      const payload = await response.json().catch(() => null)
-      if (!response.ok) {
-        throw new Error(payload?.message ?? "Unable to verify transaction.")
-      }
-      refreshTransactions()
-    } catch (err) {
-      setVerifyError(err instanceof Error ? err.message : "Unable to verify transaction.")
-    } finally {
-      setVerifying(false)
-    }
-  }
-
-  const handleReconcile = async () => {
-    if (!selectedTransactionId) return
-    setReconciling(true)
-    setReconcileError(null)
-
-    try {
-      const csrfToken = getCsrfToken()
-      const response = await fetch(`${API_V1}/financial/transactions/${selectedTransactionId}/reconcile`, {
-        method: "POST",
-        headers: { "x-csrf-token": csrfToken },
-        credentials: "include",
-      })
-      const payload = await response.json().catch(() => null)
-      if (!response.ok) {
-        throw new Error(payload?.message ?? "Unable to reconcile transaction.")
-      }
-      refreshTransactions()
-    } catch (err) {
-      setReconcileError(err instanceof Error ? err.message : "Unable to reconcile transaction.")
-    } finally {
-      setReconciling(false)
-    }
-  }
-
-  const handleFlag = async () => {
-    if (!selectedTransactionId) return
-    setFlagging(true)
-    setFlagError(null)
-
-    try {
-      const csrfToken = getCsrfToken()
-      const response = await fetch(`${API_V1}/financial/transactions/${selectedTransactionId}/flag`, {
-        method: "POST",
-        headers: { "x-csrf-token": csrfToken },
-        credentials: "include",
-      })
-      const payload = await response.json().catch(() => null)
-      if (!response.ok) {
-        throw new Error(payload?.message ?? "Unable to flag transaction.")
-      }
-      refreshTransactions()
-    } catch (err) {
-      setFlagError(err instanceof Error ? err.message : "Unable to flag transaction.")
-    } finally {
-      setFlagging(false)
-    }
-  }
-
-  const handleDeleteSelectedCoa = async () => {
-    if (!selectedCoaId) return
-    setDeletingCoa(true)
-    setCoaDeleteError(null)
-    try {
-      const csrfToken = getCsrfToken()
-      const response = await fetch(`${API_V1}/financial/coa/${encodeURIComponent(selectedCoaId)}`, {
-        method: "DELETE",
-        headers: { "x-csrf-token": csrfToken },
-        credentials: "include",
-      })
-      const payload = await response.json().catch(() => null)
-      if (!response.ok) {
-        throw new Error(payload?.message ?? "Unable to delete chart of account.")
-      }
-
-      setCoaOptions((prev) => {
-        const next = prev.filter((option) => option.id !== selectedCoaId)
-        setSelectedCoaId(next[0]?.id ?? "")
-        return next
-      })
-    } catch (error) {
-      setCoaDeleteError(error instanceof Error ? error.message : "Unable to delete chart of account.")
-    } finally {
-      setDeletingCoa(false)
-    }
-  }
-
-  const handleDeleteTransaction = async (transactionId: string) => {
-    if (!transactionId) return
-    setDeletingId(transactionId)
-    setDeleteError(null)
-
-    try {
-      const csrfToken = getCsrfToken()
-      const response = await fetch(`${API_V1}/financial/transactions/${transactionId}`, {
-        method: "DELETE",
-        headers: { "x-csrf-token": csrfToken },
-        credentials: "include",
-      })
-      const payload = await response.json().catch(() => null)
-      if (!response.ok) {
-        throw new Error(payload?.message ?? "Unable to delete transaction.")
-      }
-      refreshTransactions()
-    } catch (error) {
-      setDeleteError(error instanceof Error ? error.message : "Unable to delete transaction.")
-    } finally {
-      setDeletingId(null)
-    }
-  }
-
-  const handleExport = async () => {
-    if (!tenantId) {
-      setExportError("Tenant is required to export transactions.")
-      return
-    }
-    setExporting(true)
-    setExportError(null)
-
-    try {
-      const params = new URLSearchParams({
-        tenantId,
-        startDate,
-        endDate,
-      })
-      const response = await fetch(`${API_V1}/financial/export/transactions?${params.toString()}`, {
-        method: "GET",
-        credentials: "include",
-      })
-
-      if (!response.ok) {
-        const payload = await response.json().catch(async () => ({
-          message: await response.text().catch(() => ""),
-        }))
-        throw new Error(payload?.message ?? "Unable to export transactions.")
-      }
-
-      const blob = await response.blob()
-      const disposition = response.headers.get("Content-Disposition") ?? ""
-      const filenameMatch =
-        disposition.match(/filename\\*=UTF-8''([^;]+)/i) ??
-        disposition.match(/filename=\"?([^\";]+)\"?/i)
-      const filename = filenameMatch ? decodeURIComponent(filenameMatch[1]) : "transactions.csv"
-
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement("a")
-      link.href = url
-      link.download = filename
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      window.URL.revokeObjectURL(url)
-    } catch (error) {
-      setExportError(error instanceof Error ? error.message : "Unable to export transactions.")
-    } finally {
-      setExporting(false)
-    }
-  }
-
-  const handleParseEmail = async () => {
-    if (!tenantId) {
-      setParseError("Tenant is required to parse email alerts.")
-      return
-    }
-    if (!parseSubject.trim() || !parseBody.trim() || !parseFrom.trim()) {
-      setParseError("Subject, sender, and body are required.")
-      return
-    }
-
-    setParseLoading(true)
-    setParseError(null)
-    setParseResults([])
-
-    try {
-      const response = await fetch(`${API_V1}/financial/bank-statement/parse-email`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          subject: parseSubject.trim(),
-          body: parseBody.trim(),
-          from: parseFrom.trim(),
-          tenantId,
-        }),
-      })
-      const payload = await response.json().catch(() => null)
-      if (!response.ok) {
-        throw new Error(payload?.message ?? "Unable to parse email alert.")
-      }
-      const data = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : []
-      setParseResults(data)
-    } catch (error) {
-      setParseError(error instanceof Error ? error.message : "Unable to parse email alert.")
-    } finally {
-      setParseLoading(false)
-    }
-  }
-
-  const stats = useMemo(() => {
-    const unverifiedCount = rawTransactions.filter((tx) =>
-      String(tx.status ?? "").toUpperCase().includes("UNVERIFIED")
-    ).length
-    const inflowMonth = rawTransactions
-      .filter((tx) => String(tx.flowType ?? "").toUpperCase() === "INFLOW")
-      .reduce((sum, tx) => sum + Number(tx.amount ?? 0), 0)
-
-    return [
-      {
-        title: "UNVERIFIED",
-        value: String(unverifiedCount),
-        trend: "Action Needed",
-        trendColor: "text-amber-500",
-        icon: AlertTriangle,
-        iconBaseColor: "text-amber-100",
-        iconColor: "text-amber-500",
-      },
-      {
-        title: "INFLOW (MONTH)",
-        value: formatCurrency(inflowMonth),
-        trend: inflowMonth ? "↑12%" : "",
-        trendColor: "text-emerald-500",
-        icon: ArrowUpRight,
-        iconBaseColor: "text-emerald-100",
-        iconColor: "text-emerald-500",
-      },
-      {
-        title: "PENDING REVIEW",
-        value: "0",
-        trend: "",
-        trendColor: "",
-        icon: MoreHorizontal,
-        iconBaseColor: "text-gray-100",
-        iconColor: "text-gray-400",
-      },
-    ]
-  }, [rawTransactions])
-
-  useEffect(() => {
-    let isMounted = true
-
-    const loadCoaOptions = async () => {
-      setCoaLoading(true)
-      setCoaError(null)
-
-      try {
-        const url = tenantId
-          ? `${API_V1}/financial/coa/tree?branchId=${encodeURIComponent(tenantId)}`
-          : `${API_V1}/financial/coa/tree`
-
-        const coaResponse = await fetch(url, {
-          method: "GET",
-          credentials: "include",
-        })
-        const coaData = await coaResponse.json().catch(() => null)
-
-        if (!coaResponse.ok) {
-          throw new Error(coaData?.message ?? "Unable to fetch chart of accounts.")
-        }
-
-        const rawTree = Array.isArray(coaData?.data)
-          ? coaData.data
-          : Array.isArray(coaData?.items)
-            ? coaData.items
-            : Array.isArray(coaData)
-              ? coaData
-              : []
-
-        const rawItems = flattenCoaTree(rawTree as CoaTreeNode[]).filter(
-          (item) => String(item.accountType ?? "").toLowerCase() === "revenue"
-        )
-
-        const options = rawItems.map((item: CoaTreeNode, index: number) => {
-          const name =
-            item?.name ?? item?.accountName ?? item?.title ?? `COA ${index + 1}`
-          const code = item?.code ?? item?.accountCode ?? item?.number
-          return {
-            id: String(item?.id ?? item?._id ?? item?.coaId ?? `${index}`),
-            label: code ? `${code} - ${name}` : name,
-          }
-        })
-
-        if (isMounted) {
-          setCoaOptions(options)
-          setSelectedCoaId((prev) => prev || options[0]?.id || "")
-        }
-      } catch (error) {
-        if (isMounted) {
-          setCoaError(
-            error instanceof Error ? error.message : "Unable to load COA list."
-          )
-        }
-      } finally {
-        if (isMounted) {
-          setCoaLoading(false)
-        }
-      }
-    }
-
-    if (tenantId) {
-      loadCoaOptions()
-    } else {
-      setCoaLoading(false)
-      setCoaError("Tenant context is missing.")
-    }
-
-    return () => {
-      isMounted = false
-    }
-  }, [tenantId])
-
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
-      {/* Sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-20 hidden w-[260px] flex-col border-r border-[#EEF1F6] bg-[#FAFBFF] xl:flex">
-        <div className="flex flex-col gap-1 px-6 pt-6 lg:pt-8 pb-4">
-          <div className="flex items-center gap-2">
-            <Image src="/images/logo.svg" alt="ShepherdWatch" width={160} height={36} className="object-contain" />
-          </div>
-          <span className="text-[10px] font-medium text-[#3B5BDB] ml-9 -mt-1 uppercase">
-            {user?.role ? String(user.role).replace(/_/g, ' ') : "Director"}
-          </span>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-4 py-2 mt-2">
-          <div className="flex flex-col gap-1.5">
-            {navItems.map((item) => {
-              const Icon = item.icon
-              const isActive = item.href === "/director-screen/transaction"
-              return (
-                <Link
-                  key={item.label}
-                  href={item.href}
-                  className={`flex items-center gap-3 rounded-[8px] px-4 py-3 text-[13px] font-medium transition-colors ${
-                    isActive
-                      ? "bg-[#3B5BDB] text-white shadow-sm"
-                      : "text-[#6B7280] hover:bg-white hover:text-[#111827]"
-                  }`}
-                >
-                  <Icon className="h-[18px] w-[18px]" />
-                  {item.label}
-                </Link>
-              )
-            })}
-          </div>
-        </div>
-
-        <div className="border-t border-[#EEF1F6] p-5 mt-auto">
-          <div className="flex items-center gap-3 cursor-pointer">
-            <div className="h-10 w-10 overflow-hidden rounded-full border-2 border-white shadow-sm shrink-0">
-              <Image
-                src="/images/Beared%20Guy02-min%201.jpg"
-                alt="User avatar"
-                width={40}
-                height={40}
-                className="h-full w-full object-cover"
-              />
-            </div>
-            <div className="flex flex-col">
-              <span className="text-[13px] font-bold text-[#111827]">
-                {user?.name && !['director user', 'super admin', 'admin user'].includes(user.name.toLowerCase()) ? user.name : user?.email || "Super Admin"}
-              </span>
-              <span className="text-[11px] font-medium text-[#6B7280] capitalize">
-                {user?.role ? String(user.role).replace(/_/g, ' ').toLowerCase() : "Director"}
-              </span>
-            </div>
-          </div>
-        </div>
-      </aside>
+      <SidebarNav
+        activeHref="/director-screen/transaction"
+        className="fixed inset-y-0 left-0 z-20 w-[260px] rounded-none bg-[#FAFBFF] border-r border-[#EEF1F6]"
+      />
 
       {/* Main Content */}
       <main className="flex-1 xl:ml-[260px] text-[#111827]">
         <div className="w-full px-4 pt-5 pb-6 sm:px-6 sm:pt-6 lg:px-8 lg:pt-8 lg:pb-8">
-          
-          {/* Header */}
-          <div className="mb-6 sm:mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-start border-b border-[#EEF1F6] pb-5 sm:pb-6">
-            <div className="pt-1">
-              <h1 className="text-[20px] sm:text-[24px] leading-tight font-bold text-[#111827]">Financial Overview</h1>
-              <p className="text-[12px] sm:text-[13px] text-[#3B5BDB] font-medium mt-2">Global financial health monitoring</p>
-            </div>
-            
-            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-              <BranchesDropdown label="All Branches" />
-              
-              <button className="flex w-full sm:w-auto items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-[11px] sm:text-[12px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50">
-                <Calendar className="h-4 w-4 text-[#6B7280]" />
-                This Month
-                <ChevronDown className="h-3.5 w-3.5 text-[#6B7280] ml-1" />
-              </button>
-
-              <div className="flex items-center rounded-md border border-[#E5E7EB] bg-white p-0.5 shadow-sm w-full sm:w-auto">
-                <button className="rounded px-3 py-1.5 text-[11px] font-bold bg-[#3B5BDB] text-white">NGN</button>
-                <button className="rounded px-3 py-1.5 text-[11px] font-bold text-[#9CA3AF] hover:text-[#4B5563]">USD</button>
-                <button className="rounded px-3 py-1.5 text-[11px] font-bold text-[#9CA3AF] hover:text-[#4B5563]">EUR</button>
-              </div>
-
-              <button
-                onClick={handleExport}
-                disabled={exporting}
-                className="flex w-full sm:w-auto items-center gap-2 rounded-md bg-[#3B5BDB] px-3.5 py-2 text-[11px] sm:text-[12px] font-medium text-white shadow hover:bg-blue-700 ml-0 sm:ml-2 disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                <Download className="h-4 w-4" />
-                {exporting ? "Exporting..." : "Export"}
-              </button>
-            </div>
+          {/* Top Header (kept) */}
+          <div className="mb-6 sm:mb-8 flex items-center justify-end gap-3 border-b border-[#EEF1F6] pb-5 sm:pb-6">
+            <button className="flex w-full sm:w-auto items-center gap-2 rounded-md bg-[#3B5BDB] px-3.5 py-2 text-[11px] sm:text-[12px] font-medium text-white shadow hover:bg-blue-700">
+              <Download className="h-4 w-4" /> Export
+            </button>
           </div>
-          {exportError && (
-            <div className="mb-4 text-[12px] font-semibold text-rose-500">
-              {exportError}
-            </div>
-          )}
-          {deleteError && (
-            <div className="mb-4 text-[12px] font-semibold text-rose-500">
-              {deleteError}
-            </div>
-          )}
 
-          <div className="flex flex-col xl:flex-row gap-6">
-            {/* Left Main Pane (Bank Transactions) */}
-            <div className="flex-1 flex flex-col">
-              
-              {/* Internal Header for Bank Transactions */}
-              <div className="flex flex-col md:flex-row md:items-start justify-between mb-6 gap-3">
-                <div>
-                  <h2 className="text-[18px] sm:text-[20px] font-bold text-[#111827]">Bank Transactions</h2>
-                  <p className="text-[12px] sm:text-[13px] text-[#9CA3AF] mt-1">Reconcile imported bank feeds with your chart of accounts.</p>
-                </div>
-              <div className="flex flex-wrap items-center gap-3 mt-2 md:mt-0">
-                  <button className="flex w-full sm:w-auto items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-3.5 py-2 text-[12px] font-bold text-[#4B5563] shadow-sm hover:bg-gray-50 transition-colors">
-                    <Upload className="h-4 w-4 text-[#4B5563]" strokeWidth={2.5} /> Upload CSV
-                  </button>
-                  <button
-                    onClick={() => setParseOpen((prev) => !prev)}
-                    className="flex w-full sm:w-auto items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-3.5 py-2 text-[12px] font-bold text-[#4B5563] shadow-sm hover:bg-gray-50 transition-colors"
-                  >
-                    Parse Email Alert
-                  </button>
-                  <button
-                    onClick={handleReconcile}
-                    disabled={reconciling || !selectedTransactionId}
-                    className="flex w-full sm:w-auto items-center gap-2 rounded-md bg-[#3B5BDB] px-4 py-2 text-[12px] font-bold text-white shadow-sm hover:bg-blue-700 ml-0 sm:ml-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    <RefreshCw className="h-4 w-4" strokeWidth={2.5} /> {reconciling ? "Reconciling..." : "Sync Feed"}
-                  </button>
-                </div>
-                {reconcileError && (
-                  <div className="mt-2 text-[12px] font-semibold text-rose-500">
-                    {reconcileError}
-                  </div>
-                )}
-              </div>
-              {parseOpen && (
-                <div className="mt-4 rounded-xl border border-[#EEF1F6] bg-white p-4 shadow-sm">
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-[11px] font-bold text-[#6B7280]">Subject</label>
-                      <input
-                        value={parseSubject}
-                        onChange={(event) => setParseSubject(event.target.value)}
-                        className="h-10 rounded-[8px] border border-[#E5E7EB] bg-white px-3 text-[12px] font-medium text-[#111827] focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]/20"
-                        placeholder="Debit Alert"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-[11px] font-bold text-[#6B7280]">From</label>
-                      <input
-                        value={parseFrom}
-                        onChange={(event) => setParseFrom(event.target.value)}
-                        className="h-10 rounded-[8px] border border-[#E5E7EB] bg-white px-3 text-[12px] font-medium text-[#111827] focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]/20"
-                        placeholder="alerts@bank.com"
-                      />
-                    </div>
-                  </div>
-                  <div className="mt-3 flex flex-col gap-1.5">
-                    <label className="text-[11px] font-bold text-[#6B7280]">Body</label>
-                    <textarea
-                      value={parseBody}
-                      onChange={(event) => setParseBody(event.target.value)}
-                      className="min-h-[90px] rounded-[8px] border border-[#E5E7EB] bg-white px-3 py-2 text-[12px] font-medium text-[#111827] focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]/20"
-                      placeholder="Paste email alert body..."
-                    />
-                  </div>
-                  {parseError && <div className="mt-2 text-[12px] font-semibold text-rose-500">{parseError}</div>}
-                  <div className="mt-4 flex flex-wrap items-center gap-3">
-                    <button
-                      onClick={handleParseEmail}
-                      disabled={parseLoading}
-                      className="rounded-md bg-[#3B5BDB] px-4 py-2 text-[12px] font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
-                    >
-                      {parseLoading ? "Parsing..." : "Parse Alert"}
-                    </button>
-                    <button
-                      onClick={() => {
-                        setParseSubject("")
-                        setParseFrom("")
-                        setParseBody("")
-                        setParseResults([])
-                        setParseError(null)
-                      }}
-                      className="rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[12px] font-bold text-[#6B7280] hover:bg-gray-50"
-                    >
-                      Clear
-                    </button>
-                  </div>
-                  {parseResults.length > 0 && (
-                    <div className="mt-4 rounded-lg border border-[#EEF1F6] bg-[#F8FAFC] p-3 text-[12px] text-[#4B5563]">
-                      <div className="font-bold text-[#111827] mb-2">Parsed Alerts</div>
-                      <div className="space-y-2">
-                        {parseResults.map((item, index) => (
-                          <div key={index} className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="font-semibold text-[#111827]">
-                              {formatCurrency(Number(item?.amount ?? 0))}
-                            </div>
-                            <div className="text-[11px] text-[#6B7280]">
-                              {String(item?.flowType ?? "UNKNOWN").toUpperCase()}
-                            </div>
-                            <div className="text-[11px] text-[#6B7280]">
-                              Confidence: {Number(item?.confidence ?? 0).toFixed(2)}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Stat Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 mb-6">
-                {stats.map((stat, i) => {
-                  const Icon = stat.icon;
-                  return (
-                    <div key={i} className="relative rounded-xl border border-[#EEF1F6] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.02)] overflow-hidden">
-                      <p className="text-[11px] font-bold text-[#6B7280] tracking-wider mb-2">{stat.title}</p>
-                      <div className="flex items-end gap-3 mt-2">
-                        <h3 className="text-[24px] sm:text-[28px] leading-tight font-bold text-[#111827]">{stat.value}</h3>
-                        {stat.trend && (
-                          <span className={`text-[12px] font-bold mb-1.5 ${stat.trendColor}`}>{stat.trend}</span>
-                        )}
-                      </div>
-                      <div className={`absolute right-4 top-1/2 -translate-y-1/2 w-16 h-16 opacity-30 ${stat.iconColor}`}>
-                         <Icon className="w-full h-full" strokeWidth={1} />
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-
-              {/* White Box for Table */}
-              <div className="rounded-xl border border-[#EEF1F6] bg-white shadow-sm overflow-hidden flex-1">
-                {/* Filters */}
-                <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-[#EEF1F6]">
-                  <div className="flex items-center gap-2 p-1 rounded-lg bg-[#F3F4F6] self-start md:self-auto">
-                    <button
-                      onClick={() => setStatusFilter("ALL")}
-                      className={`rounded-md px-5 py-1.5 text-[12px] font-bold shadow-sm ${
-                        statusFilter === "ALL" ? "bg-white text-[#4B5563]" : "text-[#6B7280]"
-                      }`}
-                    >
-                      All
-                    </button>
-                    <button
-                      onClick={() => setStatusFilter("UNVERIFIED")}
-                      className={`rounded-md px-4 py-1.5 text-[12px] font-bold ${
-                        statusFilter === "UNVERIFIED" ? "bg-white text-[#3B5BDB] shadow-sm" : "text-[#6B7280]"
-                      }`}
-                    >
-                      Unverified
-                    </button>
-                    <button
-                      onClick={() => setStatusFilter("VERIFIED")}
-                      className={`rounded-md px-4 py-1.5 text-[12px] font-bold ${
-                        statusFilter === "VERIFIED" ? "bg-white text-[#3B5BDB] shadow-sm" : "text-[#6B7280]"
-                      }`}
-                    >
-                      Verified
-                    </button>
-                  </div>
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full lg:w-auto">
-                    <div className="relative w-full sm:w-[320px]">
-                      <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
-                      <input
-                        type="search"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Search by description or amount..."
-                        className="flex h-[36px] w-full items-center rounded-md border border-[#E5E7EB] bg-white pl-10 pr-3 py-2 text-[12px] text-[#111827] placeholder:text-[#9CA3AF] focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]/20 shadow-sm transition-all"
-                      />
-                    </div>
-                    <button className="flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[12px] font-bold text-[#4B5563] shadow-sm w-full sm:w-auto justify-center">
-                      <Calendar className="h-4 w-4 text-[#6B7280]" /> {dateLabel}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Table */}
-                {/* Mobile Cards */}
-                <div className="lg:hidden divide-y divide-[#EEF1F6]">
-                  {txLoading ? (
-                    <div className="p-6 text-center text-[12px] text-[#6B7280]">
-                      Loading transactions…
-                    </div>
-                  ) : txError ? (
-                    <div className="p-6 text-center text-[12px] text-rose-500">
-                      {txError}
-                    </div>
-                  ) : transactions.length === 0 ? (
-                    <div className="p-6 text-center text-[12px] text-[#6B7280]">
-                      No transactions available.
-                    </div>
-                  ) : (
-                    transactions.map((tx) => (
-                      <div
-                        key={tx.id}
-                        className={`p-4 ${String(selectedTransactionId) === String(tx.id) ? 'bg-[#EEF2FF]' : ''}`}
-                        onClick={() => setSelectedTransactionId(String(tx.id))}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="text-[12px] font-bold text-[#6B7280]">{tx.date}</div>
-                            <div className="text-[12px] font-bold text-[#4B5563] uppercase tracking-wide mt-1">{tx.description}</div>
-                          </div>
-                          <div className={`text-[12px] font-bold ${tx.amountColor}`}>{tx.amount}</div>
-                        </div>
-                        <div className="mt-3 flex items-center justify-between">
-                        <span className={`inline-flex items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold ${tx.tagBg} ${tx.tagColor}`}>
-                          {tx.tag}
-                        </span>
-                          <div className="flex items-center gap-2">
-                            {tx.status === "Verified" ? (
-                              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-500">
-                                <CheckCircle2 className="h-3.5 w-3.5" /> {tx.status}
-                              </span>
-                            ) : (
-                              <span className={`inline-flex items-center justify-center rounded-full px-3 py-1.5 text-[11px] font-bold ${tx.statusBg} ${tx.statusColor}`}>
-                                {tx.status}
-                              </span>
-                            )}
-                            <button
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                handleDeleteTransaction(String(tx.id))
-                              }}
-                              disabled={deletingId === String(tx.id)}
-                              className="inline-flex h-7 w-7 items-center justify-center rounded-full text-rose-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-60 disabled:cursor-not-allowed"
-                            >
-                              {deletingId === String(tx.id) ? (
-                                <span className="text-[9px] font-bold">...</span>
-                              ) : (
-                                <X className="h-3.5 w-3.5" />
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-
-                {/* Table */}
-                <div className="hidden lg:block overflow-x-auto">
-                  <table className="w-full text-left text-[13px]">
-                    <thead>
-                      <tr>
-                        <th className="px-6 py-4 w-12 text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF] border-b border-[#EEF1F6]">
-                          <div className="h-4 w-4 rounded-[4px] border-2 border-[#D1D5DB] border-dashed"></div>
-                        </th>
-                        <th className="px-4 py-4 text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF] border-b border-[#EEF1F6]">DATE</th>
-                        <th className="px-4 py-4 text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF] border-b border-[#EEF1F6]">DESCRIPTION</th>
-                        <th className="px-4 py-4 text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF] border-b border-[#EEF1F6] text-center w-32">AMOUNT</th>
-                        <th className="px-4 py-4 text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF] border-b border-[#EEF1F6] text-center">SUGGESTED TAG</th>
-                        <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF] border-b border-[#EEF1F6] text-right">STATUS</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#EEF1F6]">
-                      {txLoading ? (
-                        <tr>
-                          <td colSpan={6} className="px-6 py-6 text-center text-[12px] text-[#6B7280]">
-                            Loading transactions…
-                          </td>
-                        </tr>
-                      ) : txError ? (
-                        <tr>
-                          <td colSpan={6} className="px-6 py-6 text-center text-[12px] text-rose-500">
-                            {txError}
-                          </td>
-                        </tr>
-                      ) : transactions.length === 0 ? (
-                        <tr>
-                          <td colSpan={6} className="px-6 py-6 text-center text-[12px] text-[#6B7280]">
-                            No transactions available.
-                          </td>
-                        </tr>
-                      ) : (
-                        transactions.map((tx) => (
-                          <tr
-                            key={tx.id}
-                            className={`hover:bg-gray-50 font-medium ${String(selectedTransactionId) === String(tx.id) ? 'bg-[#EEF2FF]' : ''}`}
-                          >
-                            <td className="px-6 py-5">
-                              <button
-                                type="button"
-                                onClick={() => setSelectedTransactionId(String(tx.id))}
-                                className={`h-4 w-4 rounded-[4px] flex items-center justify-center ${
-                                  String(selectedTransactionId) === String(tx.id)
-                                    ? "bg-[#3B5BDB]"
-                                    : "border-2 border-[#D1D5DB]"
-                                }`}
-                              >
-                                {String(selectedTransactionId) === String(tx.id) && (
-                                  <Check className="h-3 w-3 text-white" strokeWidth={3} />
-                                )}
-                              </button>
-                            </td>
-                            <td className="px-4 py-5 text-[12px] font-bold text-[#6B7280]">{tx.date}</td>
-                            <td className="px-4 py-5 text-[12px] font-bold text-[#4B5563] uppercase tracking-wide">{tx.description}</td>
-                            <td className={`px-4 py-5 text-[12px] font-bold text-center ${tx.amountColor}`}>{tx.amount}</td>
-                            <td className="px-4 py-5 text-center">
-                              <span className={`inline-flex items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold ${tx.tagBg} ${tx.tagColor}`}>
-                                {tx.tag}
-                              </span>
-                            </td>
-                            <td className="px-6 py-5 text-right">
-                              {tx.status === "Verified" ? (
-                                <span className={`inline-flex items-center gap-1 text-[11px] font-bold text-emerald-500`}>
-                                  <CheckCircle2 className="h-3.5 w-3.5" /> {tx.status}
-                                </span>
-                              ) : (
-                                <span className={`inline-flex items-center justify-center rounded-full px-3 py-1.5 text-[11px] font-bold ${tx.statusBg} ${tx.statusColor}`}>
-                                  {tx.status}
-                                </span>
-                              )}
-                              <button
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  handleDeleteTransaction(String(tx.id))
-                                }}
-                                disabled={deletingId === String(tx.id)}
-                                className="ml-3 inline-flex h-7 w-7 items-center justify-center rounded-full text-rose-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-60 disabled:cursor-not-allowed align-middle"
-                              >
-                                {deletingId === String(tx.id) ? (
-                                  <span className="text-[9px] font-bold">...</span>
-                                ) : (
-                                  <X className="h-3.5 w-3.5" />
-                                )}
-                              </button>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Table Footer */}
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t border-[#EEF1F6] p-5">
-                  <div className="text-[12px] sm:text-[13px] font-medium text-[#6B7280]">
-                    Showing {pagination && pagination.total > 0
-                      ? `${(pagination.page - 1) * pagination.limit + 1}-${Math.min(pagination.page * pagination.limit, pagination.total)}`
-                      : "0"} of {pagination?.total ?? 0} transactions
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setPage((p) => Math.max(1, p - 1))}
-                      disabled={!pagination || pagination.page <= 1}
-                      className="px-5 py-2 rounded-[6px] border border-[#EEF1F6] bg-white hover:bg-gray-50 transition-colors font-bold text-[#111827] shadow-[0_1px_2px_rgba(0,0,0,0.02)] disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Previous
-                    </button>
-                    <button
-                      onClick={() => setPage((p) => Math.min(pagination?.pages ?? 1, p + 1))}
-                      disabled={!pagination || pagination.page >= (pagination?.pages ?? 1)}
-                      className="px-5 py-2 rounded-[6px] border border-[#EEF1F6] bg-white hover:bg-gray-50 transition-colors font-bold text-[#111827] shadow-[0_1px_2px_rgba(0,0,0,0.02)] disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Next
-                    </button>
-                  </div>
-                </div>
-
-              </div>
-            </div>
-
-            {/* Right Pane (Verification) */}
-            <div className="w-full xl:w-[350px]">
-              <div className="rounded-xl border border-[#EEF1F6] bg-white shadow-[0_4px_20px_rgba(0,0,0,0.06)] overflow-hidden">
-                <div className="p-6">
-                  {/* Header */}
-                  <div className="flex items-start justify-between mb-8 pb-5 border-b border-[#EEF1F6]">
-                    <div>
-                      <h3 className="text-[16px] font-bold text-[#111827]">Verification</h3>
-                      <p className="text-[11px] font-medium text-[#9CA3AF] mt-1">
-                        Transaction #{selectedTransaction?.id ?? "—"}
-                      </p>
-                    </div>
-                    <button className="text-[#9CA3AF] hover:text-[#4B5563] transition-colors">
-                      <X className="h-5 w-5" />
-                    </button>
-                  </div>
-
-                  {/* Transfer details block */}
-                  <div className="flex flex-col gap-1 rounded-xl bg-[#F8FAFF] border border-[#EEF2FC] p-4 pb-5 mb-4 relative overflow-hidden">
-                    <p className="text-[10px] font-bold text-[#3B5BDB] tracking-wider mb-2">INCOMING TRANSFER</p>
-                    <p className="text-[12px] font-semibold text-[#111827] uppercase leading-snug">
-                      {selectedTransaction?.description ?? "Transaction"}
-                    </p>
-                    <div className="flex items-end justify-between mt-3">
-                      <p className="text-[11px] font-semibold text-[#9CA3AF]">{formatDateLabel(selectedTransaction?.date)}</p>
-                      <p className={`text-[18px] font-bold tracking-tight ${Number(selectedTransaction?.amount ?? 0) >= 0 ? "text-emerald-600" : "text-rose-500"}`}>
-                        {formatCurrency(Number(selectedTransaction?.amount ?? 0))}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Suggestion block */}
-                  <div className="flex items-start gap-3 rounded-xl bg-[#FCF8FF] border border-[#F3E8FF] p-4 mb-8">
-                     <span className="text-[#A855F7] mt-0.5 font-bold">*</span>
-                     <div>
-                       <p className="text-[12px] font-bold text-[#a442f5] mb-1">
-                         Suggestion: {selectedTransaction?.coaName ?? "Uncategorized"}
-                       </p>
-                       <p className="text-[10px] text-[#C084FC] font-medium leading-relaxed">
-                         Based on description context
-                       </p>
-                     </div>
-                  </div>
-
-                  {/* Form fields */}
-                  <div className="flex flex-col gap-5 mb-8">
-                    <div className="flex flex-col gap-2">
-                       <label className="text-[12px] font-bold text-[#111827]">Chart of Accounts</label>
-                       <div className="relative">
-                        <select
-                          value={selectedCoaId}
-                          onChange={(event) => setSelectedCoaId(event.target.value)}
-                          className="h-[42px] w-full appearance-none rounded-[8px] border border-[#EEF1F6] bg-white pl-3.5 pr-10 text-[13px] font-medium text-[#111827] focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]/20 transition-all shadow-[0_1px_2px_0_rgba(0,0,0,0.02)]"
-                        >
-                          {coaLoading ? (
-                            <option>Loading chart of accounts...</option>
-                          ) : coaError ? (
-                            <option>{coaError}</option>
-                          ) : coaOptions.length === 0 ? (
-                            <option>No COA entries available</option>
-                          ) : (
-                            coaOptions.map((option) => (
-                              <option key={option.id} value={option.id}>
-                                {option.label}
-                              </option>
-                            ))
-                          )}
-                        </select>
-                        <ChevronDown className="absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF] pointer-events-none" />
-                       </div>
-                       <div className="flex items-center justify-between">
-                        <button
-                          type="button"
-                          onClick={handleDeleteSelectedCoa}
-                          disabled={!selectedCoaId || deletingCoa}
-                          className="rounded-md border border-rose-200 bg-white px-3 py-1.5 text-[11px] font-bold text-rose-600 hover:bg-rose-50 disabled:opacity-60 disabled:cursor-not-allowed"
-                        >
-                          {deletingCoa ? "Removing..." : "Delete Selected COA"}
-                        </button>
-                        {coaDeleteError && (
-                          <span className="text-[11px] font-medium text-rose-500">{coaDeleteError}</span>
-                        )}
-                       </div>
-                    </div>
-                    
-                    <div className="flex flex-col gap-2">
-                       <label className="text-[12px] font-bold text-[#111827] flex items-center gap-1">Budget Head <span className="text-[#9CA3AF] font-medium text-[11px]">(Optional)</span></label>
-                       <div className="flex items-center justify-between rounded-md border border-[#E5E7EB] bg-white px-3.5 py-3 text-[13px] font-medium text-[#9CA3AF] shadow-sm cursor-pointer">
-                         Select a budget...
-                         <ChevronDown className="h-4 w-4 text-[#9CA3AF]" />
-                       </div>
-                    </div>
-
-                    <div className="flex flex-col gap-2">
-                       <label className="text-[12px] font-bold text-[#111827]">Notes</label>
-                       <textarea 
-                          placeholder="Add a note about this transaction..."
-                          className="w-full rounded-md border border-[#E5E7EB] bg-white px-3.5 py-3 text-[13px] font-medium text-[#4B5563] shadow-sm resize-none h-[80px] outline-none"
-                       />
-                    </div>
-                  </div>
-
-                  {/* Bottom Actions */}
-                  <div className="flex flex-col gap-3">
-                    <button
-                      onClick={handleVerify}
-                      disabled={verifying || !selectedTransactionId}
-                      className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#3B5BDB] py-3 text-[14px] font-bold text-white shadow-sm hover:bg-blue-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                    >
-                      <Check className="h-4 w-4" strokeWidth={3} /> {verifying ? "Verifying..." : "Verify & Save"}
-                    </button>
-                    {verifyError && (
-                      <div className="text-[12px] font-semibold text-rose-500">
-                        {verifyError}
-                      </div>
-                    )}
-                    <div className="flex items-center gap-3">
-                      <button className="flex-1 rounded-lg border border-[#E5E7EB] py-3 text-[14px] font-bold text-[#4B5563] hover:bg-gray-50 transition-colors">Split</button>
-                      <button
-                        onClick={handleFlag}
-                        disabled={flagging || !selectedTransactionId}
-                        className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-rose-100 bg-white py-3 text-[14px] font-bold text-rose-500 hover:bg-rose-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                      >
-                        <Flag className="h-4 w-4" strokeWidth={2.5} /> {flagging ? "Flagging..." : "Flag"}
-                      </button>
-                    </div>
-                    {flagError && (
-                      <div className="text-[12px] font-semibold text-rose-500">
-                        {flagError}
-                      </div>
-                    )}
-                  </div>
-
-                </div>
-              </div>
-            </div>
-
-          </div>
+          <BankTransactions />
         </div>
       </main>
     </div>
   )
 }
 
+// ---------------------------------------------------------------------------
+// Shared Bank Transactions flow (used by Super Admin & Branch Accountant pages)
+// ---------------------------------------------------------------------------
 
+type RowStatus = "pending" | "uncategorized" | "cleared" | "none"
 
+type DemoRow = {
+  id: string
+  date: string
+  txId: string
+  payee: string
+  description: string
+  account: string
+  expense: number | null
+  income: number | null
+  category: string
+  status: RowStatus
+  linkedGroup: "G1" | null
+  reconcilable?: boolean
+}
 
+const DEMO_ROWS: DemoRow[] = [
+  {
+    id: "1",
+    date: "Oct 23, 2023",
+    txId: "TXN-89021",
+    payee: "Sunday General Offering",
+    description: "",
+    account: "General Offerings (0012337821)",
+    expense: null,
+    income: 14250,
+    category: "General Offerings",
+    status: "cleared",
+    linkedGroup: "G1",
+  },
+  {
+    id: "2",
+    date: "Oct 23, 2023",
+    txId: "TXN-89022",
+    payee: "Monthly Tithe - John Doe",
+    description: "",
+    account: "General Offerings (0012337821)",
+    expense: null,
+    income: 123250,
+    category: "General Offerings",
+    status: "cleared",
+    linkedGroup: "G1",
+  },
+  {
+    id: "3",
+    date: "Oct 23, 2023",
+    txId: "TXN-89023",
+    payee: "Building Fund Donation",
+    description: "",
+    account: "Capital Project (0012117811)",
+    expense: null,
+    income: 14250,
+    category: "Capital Project",
+    status: "pending",
+    linkedGroup: null,
+  },
+  {
+    id: "4",
+    date: "Oct 23, 2023",
+    txId: "TXN-89024",
+    payee: "Benevolence Fund - Smith Family",
+    description: "",
+    account: "Thanksgiving (7820176218)",
+    expense: null,
+    income: 14250,
+    category: "-",
+    status: "uncategorized",
+    linkedGroup: null,
+  },
+  {
+    id: "5",
+    date: "Oct 23, 2023",
+    txId: "TXN-89021",
+    payee: "Sunday General Offering",
+    description: "",
+    account: "General Offerings (0012337821)",
+    expense: null,
+    income: 14250,
+    category: "General Offerings",
+    status: "cleared",
+    linkedGroup: null,
+    reconcilable: true,
+  },
+  {
+    id: "6",
+    date: "Oct 23, 2023",
+    txId: "TXN-89021",
+    payee: "Sunday General Offering",
+    description: "",
+    account: "General Offerings (0012337821)",
+    expense: null,
+    income: 14250,
+    category: "General Offerings",
+    status: "none",
+    linkedGroup: null,
+  },
+  {
+    id: "7",
+    date: "Oct 23, 2023",
+    txId: "TXN-89021",
+    payee: "New AC Purchase for church",
+    description: "",
+    account: "",
+    expense: 14250,
+    income: null,
+    category: "Operational Exp.",
+    status: "none",
+    linkedGroup: null,
+  },
+  {
+    id: "8",
+    date: "Oct 23, 2023",
+    txId: "TXN-89021",
+    payee: "ShopForFree",
+    description: "",
+    account: "",
+    expense: 14250,
+    income: null,
+    category: "Program Budgets",
+    status: "none",
+    linkedGroup: null,
+  },
+  {
+    id: "9",
+    date: "Oct 23, 2023",
+    txId: "TXN-89021",
+    payee: "Building Project",
+    description: "",
+    account: "",
+    expense: 14250,
+    income: null,
+    category: "Capital Projects",
+    status: "none",
+    linkedGroup: null,
+  },
+]
 
+const CATEGORY_OPTIONS = [
+  "General Offerings",
+  "Capital Project",
+  "Thanksgiving",
+  "Operational Exp.",
+  "Program Budgets",
+  "Capital Projects",
+  "-",
+]
+
+function formatMoney(value: number) {
+  return new Intl.NumberFormat("en-NG", {
+    style: "currency",
+    currency: "NGN",
+    maximumFractionDigits: 0,
+  }).format(value)
+}
+
+function formatUSD(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value)
+}
+
+export function BankTransactions() {
+  const [tab, setTab] = useState<"ALL" | "CREDIT" | "DEBIT">("ALL")
+  const [search, setSearch] = useState("")
+  const [rows, setRows] = useState<DemoRow[]>(DEMO_ROWS)
+
+  // Modal open state
+  const [uploadOpen, setUploadOpen] = useState(false)
+  const [summaryOpen, setSummaryOpen] = useState(false)
+  const [incomeOpen, setIncomeOpen] = useState(false)
+  const [expenseOpen, setExpenseOpen] = useState(false)
+  const [accountsOpen, setAccountsOpen] = useState(false)
+  const [reconcileOpen, setReconcileOpen] = useState(false)
+  const [groupDetailsOpen, setGroupDetailsOpen] = useState(false)
+
+  const updateCategory = (id: string, category: string) => {
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, category } : r)))
+  }
+
+  const filteredRows = useMemo(() => {
+    return rows.filter((row) => {
+      if (tab === "CREDIT" && row.income == null) return false
+      if (tab === "DEBIT" && row.expense == null) return false
+      if (!search.trim()) return true
+      const q = search.toLowerCase()
+      const amount = String(row.income ?? row.expense ?? "")
+      return (
+        row.description.toLowerCase().includes(q) ||
+        row.payee.toLowerCase().includes(q) ||
+        amount.includes(q)
+      )
+    })
+  }, [rows, tab, search])
+
+  const statCards = [
+    {
+      title: "BANK BALANCE",
+      value: formatMoney(128840250),
+      icon: Landmark,
+      iconColor: "text-[#3B5BDB]",
+      iconBg: "bg-[#EEF2FF]",
+      trend: null as string | null,
+    },
+    {
+      title: "EXPENSE (MONTH)",
+      value: formatMoney(8840250),
+      icon: ArrowUpRight,
+      iconColor: "text-rose-500",
+      iconBg: "bg-rose-50",
+      trend: "+12%",
+    },
+    {
+      title: "INCOME (MONTH)",
+      value: formatMoney(8840250),
+      icon: ArrowDownLeft,
+      iconColor: "text-emerald-500",
+      iconBg: "bg-emerald-50",
+      trend: "+12%",
+    },
+  ]
+
+  return (
+    <>
+      {/* Page title + actions */}
+      <div className="flex flex-col md:flex-row md:items-start justify-between mb-6 gap-3">
+        <div>
+          <h1 className="text-[20px] sm:text-[24px] leading-tight font-bold text-[#111827]">Bank Transactions</h1>
+          <p className="text-[12px] sm:text-[13px] text-[#9CA3AF] mt-1.5">
+            Reconcile imported bank feeds with your chart of accounts.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3 mt-2 md:mt-0">
+          <button
+            onClick={() => setUploadOpen(true)}
+            className="flex w-full sm:w-auto items-center justify-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 py-2.5 text-[12px] font-bold text-[#4B5563] shadow-sm hover:bg-gray-50 transition-colors"
+          >
+            <Upload className="h-4 w-4" strokeWidth={2.5} /> Upload Statements
+          </button>
+          <button
+            onClick={() => setIncomeOpen(true)}
+            className="flex w-full sm:w-auto items-center justify-center gap-2 rounded-md bg-[#3B5BDB] px-4 py-2.5 text-[12px] font-bold text-white shadow-sm hover:bg-blue-700 transition-colors"
+          >
+            <Plus className="h-4 w-4" strokeWidth={2.5} /> Income Entry
+          </button>
+          <button
+            onClick={() => setExpenseOpen(true)}
+            className="flex w-full sm:w-auto items-center justify-center gap-2 rounded-md bg-[#3B5BDB] px-4 py-2.5 text-[12px] font-bold text-white shadow-sm hover:bg-blue-700 transition-colors"
+          >
+            <Plus className="h-4 w-4" strokeWidth={2.5} /> Expense Entry
+          </button>
+        </div>
+      </div>
+
+      {/* Stat cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 mb-6">
+        {statCards.map((stat) => {
+          const Icon = stat.icon
+          return (
+            <div key={stat.title} className="rounded-xl border border-[#EEF1F6] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+              <div className="flex items-start justify-between">
+                <p className="text-[11px] font-bold text-[#6B7280] tracking-wider mb-2">{stat.title}</p>
+                <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${stat.iconBg}`}>
+                  <Icon className={`h-4 w-4 ${stat.iconColor}`} />
+                </div>
+              </div>
+              <div className="flex items-end gap-2 mt-1">
+                <h3 className="text-[22px] sm:text-[26px] leading-tight font-bold text-[#111827]">{stat.value}</h3>
+                {stat.trend && (
+                  <span className="mb-1 flex items-center gap-0.5 text-[11px] font-bold text-emerald-600">
+                    <TrendingUp className="h-3 w-3" /> {stat.trend}
+                  </span>
+                )}
+              </div>
+            </div>
+          )
+        })}
+
+        {/* Accounts card */}
+        <div className="rounded-xl border border-[#EEF1F6] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+          <p className="text-[11px] font-bold text-[#6B7280] tracking-wider mb-2">ACCOUNTS</p>
+          <div className="flex items-end justify-between mt-1">
+            <h3 className="text-[22px] sm:text-[26px] leading-tight font-bold text-[#111827]">3</h3>
+            <div className="flex flex-col items-center gap-1">
+              <button
+                onClick={() => setAccountsOpen(true)}
+                aria-label="New Account"
+                className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#3B5BDB] text-white shadow-sm hover:bg-blue-700 transition-colors"
+              >
+                <Plus className="h-4 w-4" strokeWidth={2.5} />
+              </button>
+              <span className="text-[10px] font-semibold text-[#9CA3AF]">New Account</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Table card */}
+      <div className="rounded-xl border border-[#EEF1F6] bg-white shadow-sm overflow-hidden">
+        {/* Toolbar */}
+        <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-[#EEF1F6]">
+          <div className="flex items-center gap-1 p-1 rounded-lg bg-[#F3F4F6] self-start">
+            {(["ALL", "CREDIT", "DEBIT"] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={`rounded-md px-5 py-1.5 text-[12px] font-bold capitalize transition-colors ${
+                  tab === t ? "bg-white text-[#3B5BDB] shadow-sm" : "text-[#6B7280]"
+                }`}
+              >
+                {t.toLowerCase()}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full lg:w-auto">
+            <button className="flex items-center justify-between gap-2 rounded-md border border-[#E5E7EB] bg-white px-3.5 py-2 text-[12px] font-bold text-[#4B5563] shadow-sm hover:bg-gray-50 w-full sm:w-auto">
+              All Accounts <ChevronDown className="h-3.5 w-3.5 text-[#9CA3AF]" />
+            </button>
+            <button className="flex items-center justify-between gap-2 rounded-md border border-[#E5E7EB] bg-white px-3.5 py-2 text-[12px] font-bold text-[#4B5563] shadow-sm hover:bg-gray-50 w-full sm:w-auto">
+              Oct 2023 <ChevronDown className="h-3.5 w-3.5 text-[#9CA3AF]" />
+            </button>
+            <div className="relative w-full sm:w-[280px]">
+              <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by description or amount..."
+                className="flex h-[36px] w-full items-center rounded-md border border-[#E5E7EB] bg-white pl-10 pr-3 py-2 text-[12px] text-[#111827] placeholder:text-[#9CA3AF] focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]/20 shadow-sm transition-all"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-[13px]">
+            <thead>
+              <tr>
+                <th className="px-4 py-4 border-b border-[#EEF1F6] w-10">
+                  <input type="checkbox" className="h-4 w-4 rounded border-[#D1D5DB] text-[#3B5BDB] focus:ring-[#3B5BDB]/20" />
+                </th>
+                {["DATE", "TRANSACTION ID", "PAYEE / DESCRIPTION", "ACCOUNT", "EXPENSE", "INCOME", "CATEGORY", "STATUS", "LINK"].map((h, i) => (
+                  <th
+                    key={h}
+                    className={`px-4 py-4 text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF] border-b border-[#EEF1F6] ${
+                      i === 4 || i === 5 ? "text-right" : ""
+                    } ${i === 8 ? "text-center" : ""}`}
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#EEF1F6]">
+              {filteredRows.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="px-6 py-8 text-center text-[12px] text-[#6B7280]">
+                    No transactions match your filters.
+                  </td>
+                </tr>
+              ) : (
+                filteredRows.map((row) => (
+                  <tr key={row.id} className="hover:bg-gray-50 font-medium">
+                    <td className="px-4 py-4">
+                      <input type="checkbox" className="h-4 w-4 rounded border-[#D1D5DB] text-[#3B5BDB] focus:ring-[#3B5BDB]/20" />
+                    </td>
+                    <td className="px-4 py-4 text-[12px] font-bold text-[#6B7280] whitespace-nowrap">{row.date}</td>
+                    <td className="px-4 py-4 text-[12px] font-semibold text-[#3B5BDB] whitespace-nowrap">{row.txId}</td>
+                    <td className="px-4 py-4">
+                      <div className="text-[12px] font-bold text-[#111827]">{row.payee}</div>
+                      {row.description ? (
+                        <div className="text-[11px] text-[#9CA3AF]">{row.description}</div>
+                      ) : null}
+                    </td>
+                    <td className="px-4 py-4 text-[12px] font-semibold text-[#4B5563] whitespace-nowrap">{row.account}</td>
+                    <td className="px-4 py-4 text-[12px] font-bold text-right text-[#4B5563] whitespace-nowrap">
+                      {row.expense != null ? formatMoney(row.expense) : "-"}
+                    </td>
+                    <td className="px-4 py-4 text-[12px] font-bold text-right text-emerald-600 whitespace-nowrap">
+                      {row.income != null ? formatMoney(row.income) : "-"}
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="relative">
+                        <select
+                          value={CATEGORY_OPTIONS.includes(row.category) ? row.category : "-"}
+                          onChange={(e) => updateCategory(row.id, e.target.value)}
+                          className="h-[34px] w-full min-w-[150px] appearance-none rounded-md border border-[#E5E7EB] bg-white pl-3 pr-8 text-[12px] font-semibold text-[#4B5563] focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]/20"
+                        >
+                          {CATEGORY_OPTIONS.map((c) => (
+                            <option key={c} value={c}>
+                              {c}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9CA3AF] pointer-events-none" />
+                      </div>
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      <StatusPill status={row.status} />
+                    </td>
+                    <td className="px-4 py-4 text-center">
+                      <LinkCell
+                        row={row}
+                        onReconcile={() => setReconcileOpen(true)}
+                        onGroupDetails={() => setGroupDetailsOpen(true)}
+                      />
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Footer */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t border-[#EEF1F6] p-5">
+          <div className="text-[12px] sm:text-[13px] font-medium text-[#6B7280]">
+            Showing 1-{Math.min(5, filteredRows.length)} of 45
+          </div>
+          <div className="flex gap-2">
+            <button className="px-5 py-2 rounded-[6px] border border-[#EEF1F6] bg-white hover:bg-gray-50 transition-colors font-bold text-[#111827] shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+              Previous
+            </button>
+            <button className="px-5 py-2 rounded-[6px] border border-[#EEF1F6] bg-white hover:bg-gray-50 transition-colors font-bold text-[#111827] shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+              Next
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Modals */}
+      <UploadTransactionsModal
+        open={uploadOpen}
+        onClose={() => setUploadOpen(false)}
+        onProcess={() => {
+          setUploadOpen(false)
+          setSummaryOpen(true)
+        }}
+      />
+      <StatementUploadSummaryModal open={summaryOpen} onClose={() => setSummaryOpen(false)} />
+      <RecordIncomeModal open={incomeOpen} onClose={() => setIncomeOpen(false)} />
+      <RecordExpenseModal open={expenseOpen} onClose={() => setExpenseOpen(false)} />
+      <ManageAccountsModal open={accountsOpen} onClose={() => setAccountsOpen(false)} />
+      <ReconcileBankDepositModal open={reconcileOpen} onClose={() => setReconcileOpen(false)} />
+      <ReconciledGroupDetailsModal open={groupDetailsOpen} onClose={() => setGroupDetailsOpen(false)} />
+    </>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Status pill + Link cell
+// ---------------------------------------------------------------------------
+
+function StatusPill({ status }: { status: RowStatus }) {
+  if (status === "none") return null
+  if (status === "cleared") {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
+        <Check className="h-3 w-3" strokeWidth={3} /> Cleared
+      </span>
+    )
+  }
+  if (status === "uncategorized") {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-2.5 py-1 text-[11px] font-bold text-rose-700">
+        <span className="h-1.5 w-1.5 rounded-full bg-rose-500" /> Uncategorized
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-[#EEF2FF] px-2.5 py-1 text-[11px] font-bold text-[#3B5BDB]">
+      <Clock className="h-3 w-3" strokeWidth={2.5} /> Pending
+    </span>
+  )
+}
+
+function LinkCell({
+  row,
+  onReconcile,
+  onGroupDetails,
+}: {
+  row: DemoRow
+  onReconcile: () => void
+  onGroupDetails: () => void
+}) {
+  if (row.status === "none") return null
+
+  // CLEARED -> chain-link icon. With a group it shows the "G1" badge (opens
+  // group details); without a group it's just the chain-link icon (opens reconcile).
+  if (row.status === "cleared") {
+    if (row.linkedGroup) {
+      return (
+        <button
+          onClick={onGroupDetails}
+          className="inline-flex items-center gap-1 rounded-md bg-[#EEF2FF] px-2 py-1 text-[11px] font-bold text-[#3B5BDB] hover:bg-[#E0E7FF] transition-colors"
+          aria-label={`View reconciled group ${row.linkedGroup}`}
+        >
+          <Link2 className="h-3.5 w-3.5" />
+          {row.linkedGroup}
+        </button>
+      )
+    }
+    return (
+      <button
+        onClick={onReconcile}
+        className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-[#EEF2FF] text-[#3B5BDB] hover:bg-[#E0E7FF] transition-colors"
+        aria-label="Reconcile bank deposit"
+      >
+        <Link2 className="h-4 w-4" />
+      </button>
+    )
+  }
+
+  // UNCATEGORIZED -> bold red "!" (opens reconcile/resolve modal)
+  if (row.status === "uncategorized") {
+    return (
+      <button
+        onClick={onReconcile}
+        className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors"
+        aria-label="Resolve uncategorized transaction"
+      >
+        <AlertCircle className="h-4.5 w-4.5" strokeWidth={2.5} />
+      </button>
+    )
+  }
+
+  // PENDING -> hourglass (opens reconcile modal)
+  return (
+    <button
+      onClick={onReconcile}
+      className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-amber-50 text-amber-500 hover:bg-amber-100 transition-colors"
+      aria-label="Reconcile pending transaction"
+    >
+      <Hourglass className="h-4 w-4" />
+    </button>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Reusable modal header (X) + footer helpers
+// ---------------------------------------------------------------------------
+
+function ModalHeader({
+  title,
+  onClose,
+  titleClassName = "text-[#111827]",
+}: {
+  title: string
+  onClose: () => void
+  titleClassName?: string
+}) {
+  return (
+    <div className="flex items-center justify-between px-6 py-5 border-b border-[#EEF1F6]">
+      <h2 className={`text-[16px] font-bold ${titleClassName}`}>{title}</h2>
+      <button
+        onClick={onClose}
+        className="text-[#9CA3AF] hover:text-[#4B5563] transition-colors"
+        aria-label="Close"
+      >
+        <X className="h-5 w-5" />
+      </button>
+    </div>
+  )
+}
+
+function Field({
+  label,
+  children,
+}: {
+  label: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <label className="text-[12px] font-bold text-[#111827]">{label}</label>
+      {children}
+    </div>
+  )
+}
+
+const inputClass =
+  "h-[42px] w-full rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[13px] font-medium text-[#111827] focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]/20"
+
+function SelectField({
+  value,
+  onChange,
+  children,
+}: {
+  value: string
+  onChange: (v: string) => void
+  children: React.ReactNode
+}) {
+  return (
+    <div className="relative">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={`${inputClass} appearance-none pr-10`}
+      >
+        {children}
+      </select>
+      <ChevronDown className="absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF] pointer-events-none" />
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 1. Reconcile Bank Deposit modal
+// ---------------------------------------------------------------------------
+
+type ReconcileEntry = {
+  id: string
+  date: string
+  txId: string
+  description: string
+  subLabel: string
+  amount: number
+  selected: boolean
+}
+
+const RECONCILE_ENTRIES: ReconcileEntry[] = [
+  { id: "r1", date: "Oct 22, 2024", txId: "TXN-89021", description: "Sunday Tithe", subLabel: "TITHES", amount: 100, selected: true },
+  { id: "r2", date: "Oct 22, 2024", txId: "TXN-89022", description: "Sunday Offering", subLabel: "OFFERINGS", amount: 50, selected: true },
+  { id: "r3", date: "Oct 22, 2024", txId: "TXN-89023", description: "Seed Offering", subLabel: "OFFERINGS", amount: 25, selected: false },
+]
+
+const BANK_DEPOSIT_TOTAL = 150
+
+function ReconcileBankDepositModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [entries, setEntries] = useState<ReconcileEntry[]>(RECONCILE_ENTRIES)
+
+  useEffect(() => {
+    if (open) setEntries(RECONCILE_ENTRIES)
+  }, [open])
+
+  const toggle = (id: string) =>
+    setEntries((prev) => prev.map((e) => (e.id === id ? { ...e, selected: !e.selected } : e)))
+
+  const selected = entries.filter((e) => e.selected)
+  const selectedTotal = selected.reduce((sum, e) => sum + e.amount, 0)
+  const difference = BANK_DEPOSIT_TOTAL - selectedTotal
+  const isMatch = difference === 0
+  const unselected = entries.filter((e) => !e.selected)
+
+  return (
+    <ModalShell open={open} onClose={onClose} className="max-w-3xl">
+      <ModalHeader title="RECONCILE BANK DEPOSIT - GROUP #G1" onClose={onClose} titleClassName="text-[#3B5BDB]" />
+
+      <div className="px-6 py-5 space-y-5">
+        {/* Source card */}
+        <div className="rounded-[10px] border border-[#EEF1F6] bg-[#F8FAFC] p-4">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF] mb-3">Bank Transaction (Source)</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div>
+              <p className="text-[10px] font-bold uppercase text-[#9CA3AF]">Transaction ID</p>
+              <p className="text-[13px] font-bold text-[#3B5BDB] mt-0.5">#BNK-001</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase text-[#9CA3AF]">Date</p>
+              <p className="text-[13px] font-bold text-[#111827] mt-0.5">Oct 22, 2024</p>
+            </div>
+            <div className="col-span-2">
+              <p className="text-[10px] font-bold uppercase text-[#9CA3AF]">Description</p>
+              <p className="text-[13px] font-bold text-[#111827] mt-0.5">Bank Deposit - Cash &amp; Cheques</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase text-[#9CA3AF]">Amount</p>
+              <p className="text-[13px] font-bold text-[#3B5BDB] mt-0.5">{formatUSD(150)} <span className="text-[10px] font-semibold text-[#9CA3AF]">(CREDIT)</span></p>
+            </div>
+            <div className="col-span-3">
+              <p className="text-[10px] font-bold uppercase text-[#9CA3AF]">Uploaded By</p>
+              <p className="text-[13px] font-bold text-[#111827] mt-0.5">Accountant (Maryland Branch)</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Select table */}
+        <div className="overflow-x-auto rounded-[10px] border border-[#EEF1F6]">
+          <table className="w-full text-left text-[13px]">
+            <thead>
+              <tr className="bg-[#F8FAFC]">
+                {["SELECT", "DATE", "ID", "DESCRIPTION", "AMOUNT"].map((h, i) => (
+                  <th
+                    key={h}
+                    className={`px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF] ${i === 4 ? "text-right" : ""}`}
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#EEF1F6]">
+              {entries.map((e) => (
+                <tr key={e.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={e.selected}
+                      onChange={() => toggle(e.id)}
+                      className="h-4 w-4 rounded border-[#D1D5DB] text-[#3B5BDB] focus:ring-[#3B5BDB]/20"
+                    />
+                  </td>
+                  <td className="px-4 py-3 text-[12px] font-semibold text-[#6B7280] whitespace-nowrap">{e.date}</td>
+                  <td className="px-4 py-3 text-[12px] font-semibold text-[#3B5BDB] whitespace-nowrap">{e.txId}</td>
+                  <td className="px-4 py-3">
+                    <div className="text-[12px] font-bold text-[#111827]">{e.description}</div>
+                    <div className="text-[10px] font-bold uppercase text-[#9CA3AF]">{e.subLabel}</div>
+                  </td>
+                  <td className="px-4 py-3 text-[12px] font-bold text-right text-[#111827] whitespace-nowrap">{formatUSD(e.amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Live summary bar */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4 rounded-[10px] border border-[#EEF1F6] bg-[#F8FAFC] p-4">
+          <div className="flex-1">
+            <p className="text-[10px] font-bold uppercase text-[#9CA3AF]">Bank Deposit</p>
+            <p className="text-[15px] font-bold text-[#111827] mt-0.5">{formatUSD(BANK_DEPOSIT_TOTAL)}</p>
+          </div>
+          <div className="flex-1">
+            <p className="text-[10px] font-bold uppercase text-[#9CA3AF]">Selected ({selected.length} of {entries.length})</p>
+            <p className="text-[15px] font-bold text-[#3B5BDB] mt-0.5">{formatUSD(selectedTotal)}</p>
+          </div>
+          <div className="flex-1">
+            <p className="text-[10px] font-bold uppercase text-[#9CA3AF]">Difference</p>
+            <p className={`text-[15px] font-bold mt-0.5 ${isMatch ? "text-emerald-600" : "text-rose-600"}`}>{formatUSD(difference)}</p>
+          </div>
+          {isMatch && (
+            <span className="inline-flex items-center gap-1.5 self-start sm:self-center rounded-full bg-emerald-100 px-3 py-1.5 text-[11px] font-bold text-emerald-700">
+              <CheckCircle2 className="h-4 w-4" /> PERFECT MATCH
+            </span>
+          )}
+        </div>
+
+        {/* Info box */}
+        <div className="rounded-[10px] border border-[#EEF1F6] bg-white p-4 text-[12px] text-[#4B5563] space-y-3">
+          <div className="flex items-start gap-2.5">
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500 mt-0.5" />
+            <p>
+              All selected entries will be marked as{" "}
+              <span className="font-bold text-[#111827]">&apos;Cleared&apos;</span> and linked to{" "}
+              <span className="font-bold text-[#3B5BDB]">#BNK-001</span>.
+            </p>
+          </div>
+          {unselected.length > 0 && (
+            <>
+              <div className="border-t border-[#EEF1F6]" />
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="h-4 w-4 shrink-0 text-[#9CA3AF] mt-0.5" />
+                <p>
+                  Unselected {unselected.length === 1 ? "entry" : "entries"} (
+                  {unselected.map((u) => `${formatUSD(u.amount)} ${u.description}`).join(", ")}) will
+                  remain as <span className="font-bold text-[#111827]">&apos;Pending&apos;</span> in the
+                  Undeposited Funds account for next week&apos;s bank run.
+                </p>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[#EEF1F6]">
+        <button
+          onClick={onClose}
+          className="rounded-md border border-[#E5E7EB] bg-white px-4 py-2.5 text-[12px] font-bold text-[#4B5563] hover:bg-gray-50 transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={onClose}
+          className="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-4 py-2.5 text-[12px] font-bold text-white shadow-sm hover:bg-emerald-700 transition-colors"
+        >
+          <Link2 className="h-4 w-4" />
+          Link &amp; Reconcile Group
+        </button>
+      </div>
+    </ModalShell>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 2. Statement Upload Summary modal
+// ---------------------------------------------------------------------------
+
+function StatementUploadSummaryModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const tiles = [
+    { label: "Total Transactions", value: "42", color: "text-[#111827]" },
+    { label: "Net Amount", value: formatMoney(6299750), color: "text-[#111827]" },
+    { label: "Total Credit", value: `+${formatMoney(8450200)}`, color: "text-emerald-600" },
+    { label: "Total Debit", value: `-${formatMoney(2150450)}`, color: "text-rose-600" },
+  ]
+  const details = [
+    { label: "Account", value: "General Offerings (0012337821)" },
+    { label: "Date Range", value: "Oct 01 - Oct 31, 2024" },
+    { label: "File Name", value: "firstbank_stmt_oct.csv" },
+  ]
+
+  return (
+    <ModalShell open={open} onClose={onClose} className="max-w-2xl">
+      <ModalHeader title="Statement Upload Summary" onClose={onClose} />
+
+      <div className="px-6 py-5 space-y-5">
+        {/* Success banner */}
+        <div className="flex items-center gap-3 rounded-[10px] bg-emerald-50 border border-emerald-100 p-4">
+          <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
+          <p className="text-[13px] font-bold text-emerald-700">File processed successfully. 42 transactions identified.</p>
+        </div>
+
+        {/* Stat tiles */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {tiles.map((t) => (
+            <div key={t.label} className="rounded-[10px] border border-[#EEF1F6] bg-white p-4">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">{t.label}</p>
+              <p className={`text-[18px] font-bold mt-1 ${t.color}`}>{t.value}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Import details */}
+        <div className="rounded-[10px] border border-[#EEF1F6] overflow-hidden">
+          <p className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF] bg-[#F8FAFC] border-b border-[#EEF1F6]">
+            Import Details
+          </p>
+          <div className="divide-y divide-[#EEF1F6]">
+            {details.map((d) => (
+              <div key={d.label} className="flex items-center justify-between px-4 py-3">
+                <span className="text-[12px] font-bold text-[#6B7280]">{d.label}</span>
+                <span className="text-[12px] font-bold text-[#111827]">{d.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[#EEF1F6]">
+        <button
+          onClick={onClose}
+          className="rounded-md border border-[#E5E7EB] bg-white px-4 py-2.5 text-[12px] font-bold text-[#4B5563] hover:bg-gray-50 transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={onClose}
+          className="rounded-md bg-[#3B5BDB] px-4 py-2.5 text-[12px] font-bold text-white shadow-sm hover:bg-blue-700 transition-colors"
+        >
+          Confirm &amp; Import
+        </button>
+      </div>
+    </ModalShell>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 3. Manage Accounts modal
+// ---------------------------------------------------------------------------
+
+type AccountRow = {
+  id: string
+  number: string
+  name: string
+  description: string
+}
+
+const INITIAL_ACCOUNTS: AccountRow[] = [
+  { id: "a1", number: "1001", name: "General Offering", description: "Primary operating account" },
+  { id: "a2", number: "2002", name: "Building Project", description: "Foreign mission support" },
+  { id: "a3", number: "3003", name: "ShopForFree", description: "Facility maintenance" },
+  { id: "a4", number: "4004", name: "Youth Ministry", description: "Events and curriculum" },
+]
+
+function ManageAccountsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [accounts, setAccounts] = useState<AccountRow[]>(INITIAL_ACCOUNTS)
+  const [number, setNumber] = useState("")
+  const [name, setName] = useState("")
+  const [description, setDescription] = useState("")
+
+  useEffect(() => {
+    if (open) {
+      setAccounts(INITIAL_ACCOUNTS)
+      setNumber("")
+      setName("")
+      setDescription("")
+    }
+  }, [open])
+
+  const removeAccount = (id: string) => setAccounts((prev) => prev.filter((a) => a.id !== id))
+
+  const addAccount = () => {
+    if (!number.trim() && !name.trim()) return
+    setAccounts((prev) => [
+      ...prev,
+      { id: `a-${Date.now()}`, number: number.trim() || "—", name: name.trim() || "Untitled", description: description.trim() },
+    ])
+    setNumber("")
+    setName("")
+    setDescription("")
+  }
+
+  return (
+    <ModalShell open={open} onClose={onClose} className="max-w-2xl">
+      <ModalHeader title="Manage Accounts" onClose={onClose} />
+
+      <div className="px-6 py-5 space-y-5">
+        {/* Accounts table */}
+        <div className="overflow-x-auto rounded-[10px] border border-[#EEF1F6]">
+          <table className="w-full text-left text-[13px]">
+            <thead>
+              <tr className="bg-[#F8FAFC]">
+                {["NUMBER", "NAME", "DESCRIPTION", "ACTIONS"].map((h, i) => (
+                  <th key={h} className={`px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF] ${i === 3 ? "text-right" : ""}`}>
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#EEF1F6]">
+              {accounts.map((a) => (
+                <tr key={a.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 text-[12px] font-bold text-[#3B5BDB] whitespace-nowrap">{a.number}</td>
+                  <td className="px-4 py-3 text-[12px] font-bold text-[#111827]">{a.name}</td>
+                  <td className="px-4 py-3 text-[12px] font-medium text-[#6B7280]">{a.description}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center justify-end gap-2">
+                      <button className="text-[#9CA3AF] hover:text-[#3B5BDB] transition-colors" aria-label={`Edit ${a.name}`}>
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => removeAccount(a.id)}
+                        className="text-[#9CA3AF] hover:text-rose-500 transition-colors"
+                        aria-label={`Delete ${a.name}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Add new account form */}
+        <div className="rounded-[10px] border border-[#EEF1F6] bg-[#F8FAFC] p-4 space-y-4">
+          <p className="text-[13px] font-bold text-[#111827]">Add New Account</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <Field label="Account Number">
+              <input value={number} onChange={(e) => setNumber(e.target.value)} placeholder="e.g. 5005" className={inputClass} />
+            </Field>
+            <Field label="Account Name">
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Welfare" className={inputClass} />
+            </Field>
+            <Field label="Description">
+              <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Short description" className={inputClass} />
+            </Field>
+          </div>
+          <button
+            onClick={addAccount}
+            className="flex items-center gap-2 rounded-md bg-[#3B5BDB] px-4 py-2.5 text-[12px] font-bold text-white shadow-sm hover:bg-blue-700 transition-colors"
+          >
+            <Plus className="h-4 w-4" strokeWidth={2.5} /> Add Account
+          </button>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[#EEF1F6]">
+        <button
+          onClick={onClose}
+          className="rounded-md border border-[#E5E7EB] bg-white px-4 py-2.5 text-[12px] font-bold text-[#4B5563] hover:bg-gray-50 transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={onClose}
+          className="rounded-md bg-[#3B5BDB] px-4 py-2.5 text-[12px] font-bold text-white shadow-sm hover:bg-blue-700 transition-colors"
+        >
+          Save Changes
+        </button>
+      </div>
+    </ModalShell>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 4. Record New Expense modal
+// ---------------------------------------------------------------------------
+
+function RecordExpenseModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [date, setDate] = useState("")
+  const [amount, setAmount] = useState("")
+  const [type, setType] = useState("Transfer")
+  const [payee, setPayee] = useState("")
+  const [category, setCategory] = useState("Operational Exp.")
+  const [notes, setNotes] = useState("")
+
+  useEffect(() => {
+    if (open) {
+      setDate("")
+      setAmount("")
+      setType("Transfer")
+      setPayee("")
+      setCategory("Operational Exp.")
+      setNotes("")
+    }
+  }, [open])
+
+  return (
+    <ModalShell open={open} onClose={onClose} className="max-w-xl">
+      <ModalHeader title="Record New Expense" onClose={onClose} />
+
+      <div className="px-6 py-5 space-y-4">
+        <p className="text-[12px] text-[#9CA3AF] -mt-1">Enter the manual transaction details for the ledger.</p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Field label="Transaction Date">
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputClass} />
+          </Field>
+          <Field label="Amount (₦)">
+            <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" className={inputClass} />
+          </Field>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Field label="Transaction Type">
+            <SelectField value={type} onChange={setType}>
+              <option value="Transfer">Transfer</option>
+              <option value="Cash">Cash</option>
+              <option value="Cheque">Cheque</option>
+              <option value="Card">Card</option>
+            </SelectField>
+          </Field>
+          <Field label="Payee / Vendor">
+            <input value={payee} onChange={(e) => setPayee(e.target.value)} placeholder="e.g. City Power Ltd" className={inputClass} />
+          </Field>
+        </div>
+
+        <Field label="Category">
+          <SelectField value={category} onChange={setCategory}>
+            {CATEGORY_OPTIONS.filter((c) => c !== "-").map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </SelectField>
+        </Field>
+
+        <Field label="Notes / Description">
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={3}
+            placeholder="Add a note..."
+            className="w-full rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 py-2.5 text-[13px] font-medium text-[#111827] focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]/20"
+          />
+        </Field>
+      </div>
+
+      <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[#EEF1F6]">
+        <button
+          onClick={onClose}
+          className="rounded-md border border-[#E5E7EB] bg-white px-4 py-2.5 text-[12px] font-bold text-[#4B5563] hover:bg-gray-50 transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={onClose}
+          className="rounded-md bg-[#3B5BDB] px-4 py-2.5 text-[12px] font-bold text-white shadow-sm hover:bg-blue-700 transition-colors"
+        >
+          Save Expense
+        </button>
+      </div>
+    </ModalShell>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 5. Record New Income modal
+// ---------------------------------------------------------------------------
+
+const CURRENCY_RATES: Record<string, { label: string; rate: number }> = {
+  NGN: { label: "Naira (₦)", rate: 1 },
+  GBP: { label: "Pound Sterling (£)", rate: 1807.046 },
+  USD: { label: "US Dollar ($)", rate: 1550 },
+  EUR: { label: "Euro (€)", rate: 1670 },
+  CAD: { label: "Canadian Dollar (C$)", rate: 1130 },
+}
+
+function RecordIncomeModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [date, setDate] = useState("")
+  const [currency, setCurrency] = useState("NGN")
+  const [amount, setAmount] = useState("")
+  const [incomeType, setIncomeType] = useState("Donations")
+  const [notes, setNotes] = useState("")
+
+  useEffect(() => {
+    if (open) {
+      setDate("")
+      setCurrency("NGN")
+      setAmount("")
+      setIncomeType("Donations")
+      setNotes("")
+    }
+  }, [open])
+
+  const isNaira = currency === "NGN"
+  const numericAmount = parseFloat(amount) || 0
+  const localValue = numericAmount * (CURRENCY_RATES[currency]?.rate ?? 1)
+
+  return (
+    <ModalShell open={open} onClose={onClose} className="max-w-xl">
+      <ModalHeader title="Record New Income" onClose={onClose} />
+
+      <div className="px-6 py-5 space-y-4">
+        <p className="-mt-2 text-[12.5px] text-[#6B7280]">Enter the manual transaction details for the ledger.</p>
+        <Field label="Transaction Date">
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputClass} />
+        </Field>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Field label="Currency">
+            <SelectField value={currency} onChange={setCurrency}>
+              {Object.entries(CURRENCY_RATES).map(([code, { label }]) => (
+                <option key={code} value={code}>
+                  {label}
+                </option>
+              ))}
+            </SelectField>
+          </Field>
+          <Field label="Amount">
+            <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="5,000.00" className={inputClass} />
+          </Field>
+        </div>
+
+        {!isNaira && (
+          <Field label="Local Value">
+            <input
+              readOnly
+              value={`₦ ${formatMoney(localValue)}`}
+              className={`${inputClass} bg-[#F3F4F6] text-[#6B7280] cursor-not-allowed`}
+            />
+          </Field>
+        )}
+
+        <Field label="Income Type">
+          <SelectField value={incomeType} onChange={setIncomeType}>
+            <option value="Donations">Donations</option>
+            <option value="Tithes">Tithes</option>
+            <option value="Offerings">Offerings</option>
+            <option value="Pledges">Pledges</option>
+            <option value="Other">Other</option>
+          </SelectField>
+        </Field>
+
+        <Field label="Notes/Description">
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={3}
+            placeholder="Enter specific details about this expense..."
+            className="w-full rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 py-2.5 text-[13px] font-medium text-[#111827] focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]/20"
+          />
+        </Field>
+      </div>
+
+      <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[#EEF1F6]">
+        <button
+          onClick={onClose}
+          className="rounded-md border border-[#E5E7EB] bg-white px-5 py-2.5 text-[12px] font-bold text-[#4B5563] hover:bg-gray-50 transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={onClose}
+          className="inline-flex items-center gap-2 rounded-md bg-[#3B5BDB] px-5 py-2.5 text-[12px] font-bold text-white shadow-sm hover:bg-blue-700 transition-colors"
+        >
+          <Save className="h-4 w-4" />
+          Save Income
+        </button>
+      </div>
+    </ModalShell>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 6. Reconciled Group Details modal
+// ---------------------------------------------------------------------------
+
+function ReconciledGroupDetailsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const ledgerEntries = [
+    { id: "le1", txId: "TXN-89021", name: "Sunday Tithe", fund: "Tithes & Offerings Fund", amount: 100 },
+    { id: "le2", txId: "TXN-89022", name: "Sunday Offering", fund: "General Missions Fund", amount: 50 },
+  ]
+  const journal = [
+    { account: "Bank Account (Asset)", debit: 150, credit: null as number | null },
+    { account: "Undeposited Funds (Asset)", debit: null as number | null, credit: 150 },
+  ]
+
+  return (
+    <ModalShell open={open} onClose={onClose} className="max-w-3xl">
+      {/* Header */}
+      <div className="flex items-start justify-between px-6 py-5 border-b border-[#EEF1F6] gap-4">
+        <div className="space-y-2">
+          <h2 className="text-[16px] font-bold text-[#111827]">RECONCILED GROUP #G1 – DETAILS</h2>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-bold text-emerald-700">
+            <CheckCircle2 className="h-3.5 w-3.5" /> GROUP STATUS: FULLY RECONCILED
+          </span>
+        </div>
+        <button onClick={onClose} className="text-[#9CA3AF] hover:text-[#4B5563] transition-colors shrink-0" aria-label="Close">
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+
+      <div className="px-6 py-5 space-y-5">
+        {/* Meta */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 rounded-[10px] border border-[#EEF1F6] bg-[#F8FAFC] p-4">
+          <div>
+            <p className="text-[10px] font-bold uppercase text-[#9CA3AF]">Reconciled By</p>
+            <p className="text-[13px] font-bold text-[#111827] mt-0.5">Accountant (Maryland)</p>
+          </div>
+          <div>
+            <p className="text-[10px] font-bold uppercase text-[#9CA3AF]">Date</p>
+            <p className="text-[13px] font-bold text-[#111827] mt-0.5">Oct 22, 2024</p>
+          </div>
+          <div>
+            <p className="text-[10px] font-bold uppercase text-[#9CA3AF]">Time</p>
+            <p className="text-[13px] font-bold text-[#111827] mt-0.5">10:32 AM</p>
+          </div>
+        </div>
+
+        {/* Source of truth */}
+        <div className="rounded-[10px] border border-[#EEF1F6] p-4">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF] mb-3">Bank Transaction (Source of Truth)</p>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-[13px] font-bold text-[#3B5BDB]">#BNK-001</p>
+              <p className="text-[12px] font-medium text-[#6B7280]">Bank Deposit</p>
+            </div>
+            <p className="text-[15px] font-bold text-emerald-600">{formatUSD(150)}</p>
+          </div>
+        </div>
+
+        {/* Manual ledger entries */}
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF] mb-3">Manual Ledger Entries (Income Sources)</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {ledgerEntries.map((le) => (
+              <div key={le.id} className="rounded-[10px] border border-[#EEF1F6] p-4">
+                <p className="text-[12px] font-bold text-[#3B5BDB]">#{le.txId}</p>
+                <p className="text-[13px] font-bold text-[#111827] mt-1">{le.name}</p>
+                <p className="text-[11px] font-medium text-[#6B7280]">{le.fund}</p>
+                <p className="text-[13px] font-bold text-emerald-600 mt-2">{formatUSD(le.amount)} <span className="text-[10px] text-emerald-500">CREDIT</span></p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Clearing journal entry */}
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF] mb-3">Clearing Journal Entry</p>
+          <div className="overflow-x-auto rounded-[10px] border border-[#EEF1F6]">
+            <table className="w-full text-left text-[13px]">
+              <thead>
+                <tr className="bg-[#F8FAFC]">
+                  <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">Account Name</th>
+                  <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF] text-right">Debit</th>
+                  <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF] text-right">Credit</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#EEF1F6]">
+                {journal.map((j) => (
+                  <tr key={j.account}>
+                    <td className="px-4 py-3 text-[12px] font-bold text-[#111827]">{j.account}</td>
+                    <td className="px-4 py-3 text-[12px] font-bold text-right text-[#4B5563]">{j.debit != null ? formatUSD(j.debit) : "-"}</td>
+                    <td className="px-4 py-3 text-[12px] font-bold text-right text-[#4B5563]">{j.credit != null ? formatUSD(j.credit) : "-"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center sm:justify-end gap-3 px-6 py-4 border-t border-[#EEF1F6]">
+        <button
+          onClick={onClose}
+          className="rounded-md border border-[#E5E7EB] bg-white px-4 py-2.5 text-[12px] font-bold text-[#4B5563] hover:bg-gray-50 transition-colors"
+        >
+          Back to Ledger
+        </button>
+        <button className="flex items-center justify-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 py-2.5 text-[12px] font-bold text-[#4B5563] hover:bg-gray-50 transition-colors">
+          <FileText className="h-4 w-4" /> Audit Log
+        </button>
+        <button className="flex items-center justify-center gap-2 rounded-md bg-[#3B5BDB] px-4 py-2.5 text-[12px] font-bold text-white shadow-sm hover:bg-blue-700 transition-colors">
+          <Printer className="h-4 w-4" /> Print / Export
+        </button>
+      </div>
+    </ModalShell>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 7. Upload Transactions modal (kept / repurposed)
+// ---------------------------------------------------------------------------
+
+type UploadFile = {
+  id: string
+  name: string
+  size: string
+  progress: number
+}
+
+const INITIAL_FILES: UploadFile[] = [
+  { id: "f1", name: "october-statement.csv", size: "248 KB", progress: 100 },
+  { id: "f2", name: "savings-account.csv", size: "112 KB", progress: 64 },
+]
+
+export function UploadTransactionsModal({
+  open,
+  onClose,
+  onProcess,
+}: {
+  open: boolean
+  onClose: () => void
+  onProcess?: () => void
+}) {
+  const [files, setFiles] = useState<UploadFile[]>(INITIAL_FILES)
+  const [account, setAccount] = useState("")
+
+  // Reset selection state whenever the modal is opened.
+  useEffect(() => {
+    if (open) {
+      setFiles(INITIAL_FILES)
+      setAccount("")
+    }
+  }, [open])
+
+  const removeFile = (id: string) => setFiles((prev) => prev.filter((f) => f.id !== id))
+
+  return (
+    <ModalShell open={open} onClose={onClose} className="max-w-xl">
+      <ModalHeader title="Upload Transactions" onClose={onClose} />
+
+      {/* Body */}
+      <div className="px-6 py-5 space-y-5">
+        {/* Target account */}
+        <div className="flex flex-col gap-2">
+          <label className="text-[12px] font-bold text-[#111827]">Select Target Account</label>
+          <div className="relative">
+            <select
+              value={account}
+              onChange={(e) => setAccount(e.target.value)}
+              className="h-[42px] w-full appearance-none rounded-[8px] border border-[#E5E7EB] bg-white pl-3.5 pr-10 text-[13px] font-medium text-[#111827] focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]/20"
+            >
+              <option value="">Choose an account...</option>
+              <option value="current">Current Account - 1023456789</option>
+              <option value="savings">Savings Account - 2098765432</option>
+              <option value="building">Building Fund Account - 3055512345</option>
+            </select>
+            <ChevronDown className="absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF] pointer-events-none" />
+          </div>
+        </div>
+
+        {/* Drag & drop */}
+        <div className="flex flex-col items-center justify-center gap-3 rounded-[10px] border-2 border-dashed border-[#D1D5DB] bg-[#F8FAFC] px-6 py-8 text-center">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#EEF2FF]">
+            <Upload className="h-5 w-5 text-[#3B5BDB]" />
+          </div>
+          <div>
+            <p className="text-[13px] font-bold text-[#111827]">Drag &amp; drop statement of account here</p>
+            <p className="text-[11px] text-[#9CA3AF] mt-0.5">Upload CSV only</p>
+          </div>
+          <button className="mt-1 flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[12px] font-bold text-[#4B5563] shadow-sm hover:bg-gray-50 transition-colors">
+            Browse Files
+          </button>
+        </div>
+
+        {/* Selected files */}
+        {files.length > 0 && (
+          <div className="space-y-3">
+            {files.map((file) => (
+              <div key={file.id} className="flex items-center gap-3 rounded-[10px] border border-[#EEF1F6] bg-white p-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#EEF2FF] shrink-0">
+                  <FileSpreadsheet className="h-4 w-4 text-[#3B5BDB]" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[12px] font-bold text-[#111827] truncate">{file.name}</span>
+                    <span className="text-[11px] font-medium text-[#9CA3AF] shrink-0">{file.size}</span>
+                  </div>
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <div className="h-1.5 flex-1 rounded-full bg-[#EEF1F6] overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${file.progress >= 100 ? "bg-emerald-500" : "bg-[#3B5BDB]"}`}
+                        style={{ width: `${file.progress}%` }}
+                      />
+                    </div>
+                    <span className={`text-[10px] font-bold shrink-0 ${file.progress >= 100 ? "text-emerald-600" : "text-[#3B5BDB]"}`}>
+                      {file.progress >= 100 ? "Complete" : `Uploading ${file.progress}%`}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => removeFile(file.id)}
+                  className="text-[#9CA3AF] hover:text-rose-500 transition-colors shrink-0"
+                  aria-label={`Remove ${file.name}`}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[#EEF1F6]">
+        <button
+          onClick={onClose}
+          className="rounded-md border border-[#E5E7EB] bg-white px-4 py-2.5 text-[12px] font-bold text-[#4B5563] hover:bg-gray-50 transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={() => (onProcess ? onProcess() : onClose())}
+          className="rounded-md bg-[#3B5BDB] px-4 py-2.5 text-[12px] font-bold text-white shadow-sm hover:bg-blue-700 transition-colors"
+        >
+          Process Upload
+        </button>
+      </div>
+    </ModalShell>
+  )
+}

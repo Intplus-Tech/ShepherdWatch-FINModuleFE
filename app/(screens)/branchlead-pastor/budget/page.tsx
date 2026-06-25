@@ -5,7 +5,7 @@ import { API_V1 } from "@/lib/api";
 import React, { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -33,6 +33,7 @@ import {
 } from "lucide-react"
 import { useBudgetEntries } from "@/components/hooks/useBudgetEntries"
 import { useAuth } from "@/components/auth/AuthProvider"
+import BranchLeadPastorSidebar from "@/components/navigation/BranchLeadPastorSidebar"
 
 const SidebarContent = ({ pathname, displayName, roleLabel }: { pathname: string; displayName: string; roleLabel: string }) => (
   <div className="p-6 flex flex-col h-full">
@@ -96,6 +97,7 @@ const SidebarContent = ({ pathname, displayName, roleLabel }: { pathname: string
 
 export default function Page() {
   const pathname = usePathname()
+  const router = useRouter()
   const { user } = useAuth()
   const displayName = user?.name || user?.email || "User"
   const roleLabel = user?.role ? String(user.role).replace(/_/g, " ") : "Lead Pastor"
@@ -301,23 +303,7 @@ export default function Page() {
   return (
     <div className="flex min-h-screen w-full bg-[#FAFBFF] font-sans" style={{ fontFamily: '"Inter", sans-serif' }}>
 
-      {/* Mobile Drawer */}
-      <div className={`fixed inset-0 z-40 xl:hidden ${mobileOpen ? "" : "pointer-events-none"}`}>
-        <div
-          className={`absolute inset-0 bg-black/40 transition-opacity ${mobileOpen ? "opacity-100" : "opacity-0"}`}
-          onClick={() => setMobileOpen(false)}
-        />
-        <aside
-          className={`absolute left-0 top-0 h-full w-[260px] bg-white shadow-xl transition-transform duration-300 ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}
-        >
-          <SidebarContent pathname={pathname} displayName={displayName} roleLabel={roleLabel} />
-        </aside>
-      </div>
-
-      {/* Sidebar - Desktop */}
-      <aside className="w-[260px] border-r border-[#EEF1F6] bg-white hidden xl:flex flex-col shrink-0 h-screen sticky top-0 z-20 shadow-[2px_0_8px_-4px_rgba(0,0,0,0.05)]">
-            <SidebarContent pathname={pathname} displayName={displayName} roleLabel={roleLabel} />
-      </aside>
+      <BranchLeadPastorSidebar />
 
       {/* Main Layout Wrapping Column */}
       <div className="flex-1 flex flex-col min-h-screen overflow-x-hidden bg-[#FAFBFF]">
@@ -370,17 +356,21 @@ export default function Page() {
                 <ChevronDown className="ml-2 h-4 w-4 text-[#9CA3AF]" />
               </Button>
               <Button
-                onClick={() => {
-                  if (entries.length === 0) return
-                  setApproveError(null)
-                  setShowApproveConfirm(true)
-                }}
-                disabled={approvingAll || entries.length === 0}
-                variant="outline"
-                className="h-[38px] rounded-[10px] border-[#E5E7EB] bg-[#F9FAFB] px-4 text-[13px] font-bold text-[#9CA3AF] hover:bg-[#F9FAFB] disabled:opacity-60 disabled:cursor-not-allowed"
+                onClick={() => router.push("/branchlead-pastor/budget-review")}
+                disabled={loading || entries.length === 0}
+                title={
+                  entries.length === 0
+                    ? "No budget to review yet"
+                    : "Review and approve the submitted budget"
+                }
+                className={`h-[38px] rounded-[10px] px-4 text-[13px] font-bold text-white transition-colors ${
+                  entries.length === 0
+                    ? "bg-[#E5E7EB] text-[#9CA3AF] shadow-none cursor-not-allowed"
+                    : "cta-attention bg-[#EF4444] hover:bg-[#DC2626]"
+                }`}
               >
-                <CheckSquare className="mr-2 h-4 w-4 text-[#9CA3AF]" />
-                {approvingAll ? "Approving..." : "Approve New Budget"}
+                <CheckSquare className="mr-2 h-4 w-4" />
+                Approve New Budget
               </Button>
               <Button
                 onClick={handleExport}
@@ -408,7 +398,16 @@ export default function Page() {
             <div className="mb-10">
               <div className="flex items-center justify-between mb-5">
                 <h2 className="text-[16px] font-extrabold text-[#111827] tracking-tight">January 2024 Performance</h2>
-                <span className="rounded-[6px] bg-[#ECFDF3] px-2.5 py-1 text-[10px] font-bold text-[#16A34A] tracking-[0.05em] uppercase border border-[#D1FADF]">ACTIVE PERIOD</span>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => router.push("/branchlead-pastor/budget-performance")}
+                    className="flex items-center gap-1.5 rounded-[8px] border border-[#E5E7EB] bg-white px-3 py-1.5 text-[12px] font-bold text-[#374151] shadow-sm hover:bg-gray-50 transition-colors"
+                  >
+                    <BarChart3 className="h-3.5 w-3.5 text-[#3B5BDB]" />
+                    View Performance
+                  </button>
+                  <span className="rounded-[6px] bg-[#ECFDF3] px-2.5 py-1 text-[10px] font-bold text-[#16A34A] tracking-[0.05em] uppercase border border-[#D1FADF]">ACTIVE PERIOD</span>
+                </div>
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">

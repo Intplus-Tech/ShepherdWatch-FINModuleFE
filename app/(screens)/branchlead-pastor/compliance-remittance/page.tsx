@@ -1,15 +1,12 @@
 "use client"
 
 import React, { useEffect, useMemo } from "react"
-import Image from "next/image"
-import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { 
-  Search, Bell, LayoutDashboard, BarChart3, Building2, Wallet, 
-  ShieldCheck, ChevronRight, Settings, HelpCircle, ArrowUpRight, 
-  ArrowDownRight, CheckCircle2, Calculator, Info, Menu, X 
+import {
+  Search, Bell, ArrowUpRight,
+  ArrowDownRight, CheckCircle2, Calculator, Info
 } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
+import BranchLeadPastorSidebar from "@/components/navigation/BranchLeadPastorSidebar"
 import { useComplianceDashboard } from "@/components/hooks/useComplianceDashboard"
 import { useStatutoryDeductions } from "@/components/hooks/useStatutoryDeductions"
 import { useComplianceSummary } from "@/components/hooks/useComplianceSummary"
@@ -25,11 +22,7 @@ type ComplianceRow = {
 }
 
 export default function ComplianceRemittancePage() {
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false)
-  const pathname = usePathname()
   const { user } = useAuth()
-  const displayName = user?.name || user?.email || "User"
-  const roleLabel = user?.role ? String(user.role).replace(/_/g, " ") : "Lead Pastor"
   const {
     data: complianceDashboard,
     loading: complianceLoading,
@@ -97,90 +90,7 @@ export default function ComplianceRemittancePage() {
 
   return (
     <div className="flex flex-col xl:flex-row min-h-screen overflow-hidden bg-[#F8FAFC] relative w-full font-sans" style={{ fontFamily: '"Public Sans", sans-serif' }}>
-      
-      {/* Mobile Drawer Overlay */}
-      {isMobileMenuOpen && (
-        <div 
-          className="xl:hidden fixed inset-0 z-40 bg-gray-900/40 backdrop-blur-sm transition-opacity" 
-          onClick={() => setIsMobileMenuOpen(false)}
-        />
-      )}
-
-      {/* Sidebar */}
-      <aside className={`w-[260px] border-r border-[#EEF1F6] bg-white flex flex-col shrink-0 h-[100dvh] fixed xl:sticky top-0 z-50 transition-transform duration-300 ease-in-out ${isMobileMenuOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full xl:translate-x-0"}`}>
-        <button 
-          onClick={() => setIsMobileMenuOpen(false)}
-          className="xl:hidden absolute top-5 right-5 h-8 w-8 flex items-center justify-center rounded-full bg-gray-50 text-gray-500 hover:text-gray-900 transition-colors"
-        >
-          <X className="h-4.5 w-4.5" />
-        </button>
-        <div className="p-6 flex flex-col h-full overflow-y-auto">
-          <div className="flex items-center gap-3 pb-8">
-            <Image src="/images/icon-shepherdwatch.svg" alt="ShepherdWatch logo" width={28} height={28} className="shrink-0" />
-            <div>
-              <div className="text-[15px] font-bold text-[#111827] leading-none tracking-tight">ShepherdWatch</div>
-              <div className="text-[11px] text-[#9CA3AF] font-bold mt-1 tracking-wide uppercase">Lead Pastor View</div>
-            </div>
-          </div>
-
-          <nav className="space-y-1.5 flex-1">
-            {[
-              { label: "Dashboard", icon: LayoutDashboard, href: "/branchlead-pastor/dashboard" },
-              { label: "Financial Management", icon: BarChart3, hasChevron: true, href: "/branchlead-pastor/financial-management/income-tracking" },
-              { label: "Assets", icon: Building2, href: "/branchlead-pastor/assets" },
-              { label: "Budget", icon: Wallet, href: "/branchlead-pastor/budget" },
-              { label: "Compliance & Remittance", icon: ShieldCheck, href: "/branchlead-pastor/compliance-remittance" },
-            ].map((item) => {
-              const Icon = item.icon
-              const isActive = pathname === item.href
-              return (
-                <Link
-                  key={item.label}
-                  href={item.href}
-                  className={`flex items-center justify-between rounded-[8px] px-3.5 py-3 text-[13px] font-semibold cursor-pointer transition-colors ${
-                    isActive ? "bg-[#EEF2FF] text-[#3B5BDB]" : "text-[#4B5563] hover:bg-gray-50"
-                  }`}
-                >
-                  <div className="flex items-center gap-3.5">
-                    <Icon className={`h-4.5 w-4.5 stroke-[2] ${isActive ? "text-[#3B5BDB]" : "text-[#6B7280]"}`} />
-                    {item.label}
-                  </div>
-                  {item.hasChevron && <ChevronRight className="h-4 w-4 text-[#9CA3AF]" />}
-                </Link>
-              )
-            })}
-          </nav>
-
-          <div className="mt-auto">
-            <div className="space-y-1.5 border-t border-[#EEF1F6] pt-6 text-[13px] font-semibold text-[#4B5563]">
-              <Link href="/branchlead-pastor/settings" className="flex items-center gap-3.5 rounded-[8px] px-3.5 py-3 cursor-pointer hover:bg-gray-50 transition-colors">
-                <Settings className="h-4.5 w-4.5 stroke-[2] text-[#6B7280]" />
-                Settings
-              </Link>
-              <Link href="/branchlead-pastor/dashboard" className="flex items-center gap-3.5 rounded-[8px] px-3.5 py-3 cursor-pointer hover:bg-gray-50 transition-colors">
-                <HelpCircle className="h-4.5 w-4.5 stroke-[2] text-[#6B7280]" />
-                Help Center
-              </Link>
-            </div>
-
-            <div className="mt-8 flex items-center gap-3.5 px-3.5 pb-2 cursor-pointer hover:opacity-80 transition-opacity">
-              <div className="h-10 w-10 rounded-full overflow-hidden bg-gray-200 shrink-0 ring-2 ring-white shadow-sm">
-                <Image
-                  src="/images/Beared%20Guy02-min%201.jpg"
-                  alt="Profile avatar"
-                  width={40}
-                  height={40}
-                  className="h-full w-full object-cover"
-                />
-              </div>
-              <div>
-                <div className="text-[14px] font-bold text-[#111827]">{displayName}</div>
-                <div className="text-[11px] text-[#9CA3AF] font-medium">{roleLabel}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </aside>
+      <BranchLeadPastorSidebar />
 
       {/* Main Layout Wrapping Column */}
       <div className="flex-1 flex flex-col h-screen overflow-y-auto w-full relative">
@@ -188,12 +98,6 @@ export default function ComplianceRemittancePage() {
         {/* Top Header */}
         <header className="flex h-[72px] shrink-0 items-center justify-between border-b border-[#EEF1F6] bg-white px-4 sm:px-6 xl:px-8 w-full gap-3 sm:gap-6">
           <div className="flex items-center gap-3">
-            <button 
-              onClick={() => setIsMobileMenuOpen(true)}
-              className="xl:hidden -ml-1 h-9 w-9 flex items-center justify-center rounded-[8px] text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#111827] transition-colors"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
             <div className="hidden sm:block text-[14px] font-semibold text-[#111827]">
               Dashboard
             </div>

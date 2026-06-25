@@ -4,8 +4,6 @@ import { API_V1 } from "@/lib/api";
 import { getCsrfTokenFromCookie } from "@/lib/csrf";
 import { formatCurrency as formatCurrencyLib } from "@/lib/format";
 
-
-
 import React, { useEffect, useMemo, useState } from "react"
 
 import Image from "next/image"
@@ -56,7 +54,6 @@ import { useBudgetEntries } from "@/components/hooks/useBudgetEntries"
 import { useExport } from "@/components/hooks/useExport"
 import { useAuth } from "@/components/auth/AuthProvider"
 import BranchAccountantSidebar from "@/components/navigation/BranchAccountantSidebar"
-import BranchesDropdown from "@/components/navigation/BranchesDropdown"
 
 
 
@@ -397,6 +394,44 @@ export default function Page() {
     await triggerExport({ tenantId })
   }
 
+  // "Add Line Item" -> pick one of the 3 budget categories; a new editable
+  // line is appended under that category.
+  const CATEGORY_OPTIONS = ["Operational Expenses", "Program Budgets", "Capital Projects"]
+  const [addCatOpen, setAddCatOpen] = useState(false)
+  const [customLines, setCustomLines] = useState<
+    Record<string, { id: string; name: string; proposed: string }[]>
+  >({})
+
+  const addLineItem = (category: string) => {
+    setCustomLines((prev) => ({
+      ...prev,
+      [category]: [
+        ...(prev[category] ?? []),
+        { id: `custom-${Date.now()}`, name: "", proposed: "" },
+      ],
+    }))
+    setAddCatOpen(false)
+  }
+
+  const updateCustomLine = (
+    category: string,
+    id: string,
+    field: "name" | "proposed",
+    value: string
+  ) => {
+    setCustomLines((prev) => ({
+      ...prev,
+      [category]: (prev[category] ?? []).map((l) => (l.id === id ? { ...l, [field]: value } : l)),
+    }))
+  }
+
+  const removeCustomLine = (category: string, id: string) => {
+    setCustomLines((prev) => ({
+      ...prev,
+      [category]: (prev[category] ?? []).filter((l) => l.id !== id),
+    }))
+  }
+
   const budgetData = useMemo(() => {
 
     const grouped = new Map<string, typeof entries>()
@@ -436,6 +471,26 @@ export default function Page() {
     }))
 
   }, [entries])
+
+  // Merge user-added line items into their chosen category group (creating the
+  // group if it doesn't exist yet).
+  const mergedGroups = useMemo(() => {
+    const base = budgetData.map((g) => ({
+      category: g.category,
+      items: g.items,
+      custom: [] as { id: string; name: string; proposed: string }[],
+    }))
+    CATEGORY_OPTIONS.forEach((opt) => {
+      const lines = customLines[opt] ?? []
+      if (!lines.length) return
+      const firstWord = opt.split(" ")[0].toLowerCase()
+      const match = base.find((g) => g.category.toLowerCase().includes(firstWord))
+      if (match) match.custom = lines
+      else base.push({ category: opt, items: [], custom: lines })
+    })
+    return base
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [budgetData, customLines])
 
 
 
@@ -545,32 +600,6 @@ export default function Page() {
 
           <div className="flex items-center flex-wrap gap-2 sm:gap-3 w-full sm:w-auto overflow-x-auto no-scrollbar pb-1 sm:pb-0">
 
-            <BranchesDropdown label="All Branches" className="text-[11px] sm:text-[12px]" />
-
-            <button className="flex justify-center whitespace-nowrap items-center h-[36px] px-3 flex-1 sm:flex-none rounded-[8px] border border-[#E5E7EB] bg-white text-[11px] sm:text-[12px] text-[#4B5563] font-bold shadow-sm hover:bg-gray-50 transition-all">
-
-              <Calendar className="mr-2 h-3.5 w-3.5 text-[#9CA3AF] shrink-0" />
-
-              <span className="truncate">This Month</span>
-
-              <ChevronDown className="ml-2 h-3.5 w-3.5 text-[#9CA3AF] shrink-0" />
-
-            </button>
-
-
-
-            <div className="hidden md:flex items-center h-[36px] rounded-[8px] border border-[#E5E7EB] bg-white p-1 shadow-sm shrink-0">
-
-              <button className="px-3 h-full rounded-[6px] bg-[#3B5BDB] text-white text-[11px] font-bold transition-all">NGN</button>
-
-              <button className="px-3 h-full rounded-[6px] text-[#6B7280] text-[11px] font-bold hover:bg-gray-50 transition-all">USD</button>
-
-              <button className="px-3 h-full rounded-[6px] text-[#6B7280] text-[11px] font-bold hover:bg-gray-50 transition-all">EUR</button>
-
-            </div>
-
-
-
             <button
               onClick={handleExport}
               disabled={exporting}
@@ -657,7 +686,7 @@ export default function Page() {
 
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" className="mr-2 outline-none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" /></svg>
 
-                    {submittingProposal ? "Submitting..." : "Submit Budget"}
+                    {submittingProposal ? "Submitting..." : "Submit Budget Proposal to Lead Pastor"}
 
                   </button>
 
@@ -913,13 +942,43 @@ export default function Page() {
 
                   <h3 className="text-[16px] sm:text-[18px] font-bold text-[#111827] tracking-tight">Budget Breakdown</h3>
 
-                  <button className="flex items-center text-[12px] sm:text-[13px] font-bold text-[#3B5BDB] hover:text-[#3451b2] transition-colors bg-[#EEF2FF] sm:bg-transparent px-3 py-1.5 sm:px-0 sm:py-0 rounded-[6px] sm:rounded-none">
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setAddCatOpen((v) => !v)}
+                      className="flex items-center text-[12px] sm:text-[13px] font-bold text-[#3B5BDB] hover:text-[#3451b2] transition-colors bg-[#EEF2FF] sm:bg-transparent px-3 py-1.5 sm:px-0 sm:py-0 rounded-[6px] sm:rounded-none"
+                    >
+                      <Plus className="mr-1 h-3.5 w-3.5 sm:h-4 sm:w-4" strokeWidth={2.5} />
+                      Add Line Item
+                      <ChevronDown className="ml-1 h-3.5 w-3.5" strokeWidth={2.5} />
+                    </button>
 
-                    <Plus className="mr-1 h-3.5 w-3.5 sm:h-4 sm:w-4" strokeWidth={2.5} />
-
-                    Add Line Item
-
-                  </button>
+                    {addCatOpen && (
+                      <>
+                        <button
+                          type="button"
+                          aria-label="Close menu"
+                          className="fixed inset-0 z-40 cursor-default"
+                          onClick={() => setAddCatOpen(false)}
+                        />
+                        <div className="absolute right-0 z-50 mt-2 w-56 overflow-hidden rounded-[10px] border border-[#EEF1F6] bg-white py-1 text-left shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
+                          <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-[#9CA3AF]">
+                            Select a category
+                          </div>
+                          {CATEGORY_OPTIONS.map((cat) => (
+                            <button
+                              key={cat}
+                              type="button"
+                              onClick={() => addLineItem(cat)}
+                              className="block w-full px-3 py-2.5 text-left text-[13px] font-semibold text-[#374151] hover:bg-[#EEF2FF] hover:text-[#3B5BDB]"
+                            >
+                              {cat}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
 
                 </div>
 
@@ -975,7 +1034,7 @@ export default function Page() {
 
                         </tr>
 
-                      ) : budgetData.length === 0 ? (
+                      ) : mergedGroups.length === 0 ? (
 
                         <tr>
 
@@ -989,7 +1048,7 @@ export default function Page() {
 
                       ) : (
 
-                        budgetData.map((group, gIdx) => (
+                        mergedGroups.map((group, gIdx) => (
 
                           <React.Fragment key={gIdx}>
 
@@ -1070,6 +1129,43 @@ export default function Page() {
 
                             ))}
 
+                            {group.custom.map((line) => (
+                              <tr key={line.id} className="bg-[#F8FAFF] border-b border-[#EEF1F6]/50 last:border-0">
+                                <td className="py-3 pl-[32px] sm:pl-[44px] lg:pl-[52px] pr-4 border-0">
+                                  <input
+                                    type="text"
+                                    value={line.name}
+                                    onChange={(e) => updateCustomLine(group.category, line.id, "name", e.target.value)}
+                                    placeholder="New line item name"
+                                    className="h-[36px] w-full rounded-[6px] border border-[#EEF1F6] bg-white px-3 text-[12px] sm:text-[13px] font-medium text-[#111827] outline-none focus:border-[#3B5BDB] focus:ring-1 focus:ring-[#3B5BDB]/20"
+                                  />
+                                </td>
+                                <td className="py-3 text-center border-0 text-[12px] text-[#9CA3AF]">—</td>
+                                <td className="py-3 px-2 border-0">
+                                  <div className="flex items-center h-[36px] sm:h-[38px] w-full max-w-[140px] mx-auto rounded-[6px] border border-[#EEF1F6] bg-white px-3 focus-within:border-[#3B5BDB] focus-within:ring-1 focus-within:ring-[#3B5BDB]/20">
+                                    <span className="text-[#9CA3AF] font-bold mr-1.5 text-[12px] sm:text-[13px]">₦</span>
+                                    <input
+                                      type="text"
+                                      value={line.proposed}
+                                      onChange={(e) => updateCustomLine(group.category, line.id, "proposed", e.target.value)}
+                                      placeholder="0"
+                                      className="bg-transparent w-full text-[12px] sm:text-[13px] font-bold text-[#111827] outline-none"
+                                    />
+                                  </div>
+                                </td>
+                                <td className="py-3 text-center border-0"></td>
+                                <td className="py-3 pr-4 sm:pr-6 lg:pr-8 text-right border-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => removeCustomLine(group.category, line.id)}
+                                    className="text-[11px] font-bold text-rose-500 hover:text-rose-600"
+                                  >
+                                    Remove
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+
                           </React.Fragment>
 
                         ))
@@ -1110,11 +1206,11 @@ export default function Page() {
                     </div>
                   )}
 
-                  <button className="text-[12px] sm:text-[13px] font-semibold text-[#6B7280] hover:text-[#111827] transition-colors shrink-0 whitespace-nowrap bg-white sm:bg-transparent border border-[#E5E7EB] sm:border-transparent px-4 py-2 sm:px-0 sm:py-0 rounded-[6px] sm:rounded-none">Save Draft</button>
+                  <button className="text-[12px] sm:text-[13px] font-semibold text-[#6B7280] hover:text-[#111827] transition-colors shrink-0 whitespace-nowrap bg-white sm:bg-transparent border border-[#E5E7EB] sm:border-transparent px-4 py-2 sm:px-0 sm:py-0 rounded-[6px] sm:rounded-none">Save as Draft</button>
 
                   <button onClick={handleSubmitProposal} disabled={submittingProposal} className="h-[38px] sm:h-[40px] flex-1 sm:flex-none justify-center shrink-0 whitespace-nowrap px-4 sm:px-6 rounded-[8px] bg-[#3B5BDB] text-white text-[12px] sm:text-[13px] font-bold shadow-[0_4px_14px_rgba(59,91,219,0.35)] hover:bg-[#3451b2] transition-colors tracking-wide outline-none disabled:opacity-60 disabled:cursor-not-allowed">
 
-                    {submittingProposal ? "Submitting..." : "Submit Budget"}
+                    {submittingProposal ? "Submitting..." : "Submit Complete Budget"}
 
                   </button>
 

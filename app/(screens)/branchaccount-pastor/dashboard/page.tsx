@@ -14,6 +14,7 @@ import {
   Search,
   Wallet,
 } from "lucide-react"
+import Link from "next/link"
 import { useAuth } from "@/components/auth/AuthProvider"
 import { useTransactions } from "@/components/hooks/useTransactions"
 import { useRequisitionInbox } from "@/components/hooks/useRequisitionInbox"
@@ -169,9 +170,17 @@ export default function Page() {
         <section className="rounded-2xl border border-[#E5E7EB] bg-white shadow-sm">
           <div className="flex items-center justify-between border-b border-[#E5E7EB] px-5 py-4">
             <h2 className="text-base font-semibold text-[#111827]">Bank Account Summary</h2>
-            <span className="text-sm text-[#6B7280]">
-              Total: {formatCurrency(bankData?.totalBalance ?? 0)}
-            </span>
+            <div className="flex items-center gap-4">
+              <span className="hidden text-sm text-[#6B7280] sm:inline">
+                Total: {formatCurrency(bankData?.totalBalance ?? 0)}
+              </span>
+              <Link
+                href="/branchaccount-pastor/add-new-account"
+                className="text-sm font-semibold text-[#3B5BDB] hover:underline"
+              >
+                + Add Account
+              </Link>
+            </div>
           </div>
           {bankLoading ? (
             <div className="p-5">

@@ -35,10 +35,22 @@ import {
   Trash2,
   Eye,
   LogOut,
+  SlidersHorizontal,
+  UploadCloud,
+  Check,
 } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
 import { useAssetOverview, type AssetOverviewItem } from "@/components/hooks/useAssetOverview"
 import { formatCurrency } from "@/lib/format"
+import { ModalShell } from "@/components/ui/modal-shell"
+import AssetDetailModal from "@/components/branch-admin/AssetDetailModal"
+import EditAssetDetailsModal from "@/components/branch-admin/EditAssetDetailsModal"
+import {
+  TopUpCashModal,
+  UpdateStockModal,
+  ScheduleMaintenanceModal,
+  FullMovementHistoryModal,
+} from "@/components/branch-admin/AssetActionModals"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -128,6 +140,17 @@ const movementLogs = [
   }
 ]
 
+// Demo rows for the "All Current Assets" modal (matches Figma)
+const allCurrentAssetsDemo = [
+  { assetId: "AS-1024", name: "Petty Cash Box", category: "Cash Imprest", location: "Head Office", value: "₦ 50,000.00", status: "Active" },
+  { assetId: "AS-1045", name: "Printer Paper Stock (A4)", category: "Supplies", location: "Ikeja Branch", value: "₦ 120,000.00", status: "In Stock" },
+  { assetId: "AS-1050", name: "Cleaning Supplies", category: "Supplies", location: "Lekki Branch", value: "₦ 35,000.00", status: "Low Stock" },
+  { assetId: "AS-1061", name: "Bank Float Account", category: "Cash Imprest", location: "Head Office", value: "₦ 250,000.00", status: "Active" },
+  { assetId: "AS-1072", name: "Toner Cartridges", category: "Supplies", location: "Abuja Branch", value: "₦ 90,000.00", status: "Reserved" },
+  { assetId: "AS-1083", name: "First Aid Inventory", category: "Supplies", location: "Lekki Branch", value: "₦ 18,000.00", status: "Critical" },
+  { assetId: "AS-1090", name: "Stationery Stock", category: "Supplies", location: "Ikeja Branch", value: "₦ 64,000.00", status: "In Stock" },
+]
+
 export default function AssetsHubPage() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [openActionId, setOpenActionId] = useState<string | null>(null)
@@ -137,6 +160,23 @@ export default function AssetsHubPage() {
   const [creatingAsset, setCreatingAsset] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [createSuccess, setCreateSuccess] = useState<string | null>(null)
+
+  // Modal open state
+  const [isAllAssetsOpen, setIsAllAssetsOpen] = useState(false)
+  const [openAssetMenuId, setOpenAssetMenuId] = useState<string | null>(null)
+  const [isAddAssetOpen, setIsAddAssetOpen] = useState(false)
+  const [isExportOpen, setIsExportOpen] = useState(false)
+  const [isAssetDetailOpen, setIsAssetDetailOpen] = useState(false)
+  const [isEditAssetOpen, setIsEditAssetOpen] = useState(false)
+  const [isTopUpOpen, setIsTopUpOpen] = useState(false)
+  const [isUpdateStockOpen, setIsUpdateStockOpen] = useState(false)
+  const [isScheduleOpen, setIsScheduleOpen] = useState(false)
+  const [isMovementHistoryOpen, setIsMovementHistoryOpen] = useState(false)
+
+  // Export modal selections
+  const [exportRegister, setExportRegister] = useState(true)
+  const [exportMaintenance, setExportMaintenance] = useState(false)
+  const [exportFormat, setExportFormat] = useState<"Excel" | "CSV" | "PDF">("CSV")
 
   const tenantId = useMemo(
     () => user?.tenantId ?? user?.tenant?.id ?? "",
@@ -186,7 +226,7 @@ export default function AssetsHubPage() {
 
   const handleAssetRowClick = (assetId: string) => {
     if (!assetId) return
-    router.push(`/branch-admin/details-general-info?id=${encodeURIComponent(assetId)}`)
+    setIsAssetDetailOpen(true)
   }
 
   const getCsrfToken = () => {
@@ -238,6 +278,7 @@ export default function AssetsHubPage() {
       }
 
       setCreateSuccess(`Fixed asset ${assetCode} created successfully.`)
+      setIsAddAssetOpen(false)
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : "Unable to create fixed asset.")
     } finally {
@@ -278,6 +319,33 @@ export default function AssetsHubPage() {
     return (
       <span className={`text-[10px] font-[800] uppercase tracking-wider px-2.5 py-1 rounded-[6px] border ${classes}`}>
         {condition}
+      </span>
+    )
+  }
+
+  // Status badge for the All Current Assets modal
+  const AssetStatusBadge = ({ status }: { status: string }) => {
+    let classes = ""
+    switch (status) {
+      case "Active":
+      case "In Stock":
+        classes = "border-[#10B981] text-[#10B981] bg-[#ECFDF5]" // Green
+        break
+      case "Low Stock":
+        classes = "border-[#F59E0B] text-[#F59E0B] bg-[#FEF3C7]" // Amber
+        break
+      case "Reserved":
+        classes = "border-[#3B82F6] text-[#3B82F6] bg-[#EFF6FF]" // Blue
+        break
+      case "Critical":
+        classes = "border-[#EF4444] text-[#EF4444] bg-[#FEF2F2]" // Red
+        break
+      default:
+        classes = "border-[#6B7280] text-[#6B7280] bg-[#F3F4F6]" // Gray
+    }
+    return (
+      <span className={`text-[10px] font-[800] uppercase tracking-wider px-2.5 py-1 rounded-[6px] border ${classes}`}>
+        {status}
       </span>
     )
   }
@@ -353,6 +421,13 @@ export default function AssetsHubPage() {
           {/* Bottom Section */}
           <div className="mt-auto px-3 mb-2">
             <div className="pt-6 border-t border-[#EEF1F6] flex flex-col gap-4 px-4">
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-3 rounded-[8px] py-2.5 px-2 -mx-2 text-[13px] font-medium text-rose-600 hover:bg-rose-50 transition-colors w-[calc(100%+16px)] text-left"
+              >
+                <LogOut className="h-4.5 w-4.5" />
+                Logout
+              </button>
               <div className="flex items-center gap-3.5 cursor-pointer hover:opacity-80 transition-opacity">
                 <div className="h-10 w-10 relative rounded-full overflow-hidden bg-gray-200 shrink-0 border border-gray-200 flex items-center justify-center">
                   <User className="h-5 w-5 text-gray-500" />
@@ -364,13 +439,6 @@ export default function AssetsHubPage() {
                   </div>
                 </div>
               </div>
-              <button
-                onClick={handleLogout}
-                className="flex items-center gap-3 rounded-[8px] py-2.5 px-2 -mx-2 text-[13px] font-medium text-rose-600 hover:bg-rose-50 transition-colors w-[calc(100%+16px)] text-left"
-              >
-                <LogOut className="h-4.5 w-4.5" />
-                Logout
-              </button>
             </div>
           </div>
         </div>
@@ -445,17 +513,19 @@ export default function AssetsHubPage() {
                 </p>
               </div>
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 self-start md:self-end w-full sm:w-auto md:ml-auto md:justify-end">
-                <button className="h-[36px] sm:h-[44px] px-3 sm:px-6 rounded-[8px] bg-white border border-[#E5E7EB] flex items-center justify-center gap-2 text-[11px] sm:text-[14px] font-[800] text-[#4B5563] hover:bg-gray-50 transition-colors shadow-sm shrink-0 w-full sm:w-auto">
+                <button
+                  onClick={() => setIsExportOpen(true)}
+                  className="h-[36px] sm:h-[44px] px-3 sm:px-6 rounded-[8px] bg-white border border-[#E5E7EB] flex items-center justify-center gap-2 text-[11px] sm:text-[14px] font-[800] text-[#4B5563] hover:bg-gray-50 transition-colors shadow-sm shrink-0 w-full sm:w-auto"
+                >
                   <Download className="h-4 w-4 text-[#6B7280]" strokeWidth={2.5} />
                   Export Report
                 </button>
                 <button
-                  onClick={handleCreateAsset}
-                  disabled={creatingAsset}
+                  onClick={() => setIsAddAssetOpen(true)}
                   className="h-[36px] sm:h-[44px] px-3 sm:px-6 rounded-[8px] bg-[#2563EB] hover:bg-[#1D4ED8] flex items-center justify-center gap-2 text-[11px] sm:text-[14px] font-[800] text-white transition-colors shadow-sm shrink-0 w-full sm:w-auto disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   <Plus className="h-4.5 w-4.5" strokeWidth={2.5} />
-                  {creatingAsset ? "Adding..." : "Add New Asset"}
+                  Add New Asset
                 </button>
               </div>
             </div>
@@ -562,7 +632,7 @@ export default function AssetsHubPage() {
                       <h2 className="text-[16px] font-[900] text-[#111827] tracking-tight">Current Assets</h2>
                       <span className="px-3 py-1 bg-[#F3F4F6] text-[#6B7280] text-[12px] font-[700] rounded-full hidden sm:block">Supplies & Cash</span>
                     </div>
-                    <button className="text-[13px] font-[800] text-[#2563EB] hover:underline self-end sm:self-auto">View All</button>
+                    <button onClick={() => setIsAllAssetsOpen(true)} className="text-[13px] font-[800] text-[#2563EB] hover:underline self-end sm:self-auto">View All</button>
                   </div>
 
                   {/* Table Content */}
@@ -608,10 +678,16 @@ export default function AssetsHubPage() {
                               </button>
                               {openActionId === asset.assetId && (
                                 <div className="absolute right-6 top-6 mt-1 w-[180px] bg-white rounded-[8px] shadow-lg border border-[#EEF1F6] z-50 py-1 overflow-hidden" style={{ textAlign: "left" }}>
-                                  <button className="w-full text-left px-3 py-2.5 hover:bg-gray-50 text-[12.5px] font-[600] text-[#4B5563] flex items-center gap-2">
+                                  <button
+                                    onClick={() => { setOpenActionId(null); setIsTopUpOpen(true) }}
+                                    className="w-full text-left px-3 py-2.5 hover:bg-gray-50 text-[12.5px] font-[600] text-[#4B5563] flex items-center gap-2"
+                                  >
                                     <CreditCard className="h-4 w-4 text-[#9CA3AF]" /> Top-up Cash
                                   </button>
-                                  <button className="w-full text-left px-3 py-2.5 hover:bg-gray-50 text-[12.5px] font-[600] text-[#4B5563] flex items-center gap-2">
+                                  <button
+                                    onClick={() => { setOpenActionId(null); setIsUpdateStockOpen(true) }}
+                                    className="w-full text-left px-3 py-2.5 hover:bg-gray-50 text-[12.5px] font-[600] text-[#4B5563] flex items-center gap-2"
+                                  >
                                     <LayoutGrid className="h-4 w-4 text-[#9CA3AF]" /> Update Stock Level
                                   </button>
                                 </div>
@@ -690,7 +766,7 @@ export default function AssetsHubPage() {
                                 </button>
                               )}
                               {asset.actionType === "Repair" && (
-                                <button className="inline-flex items-center gap-1.5 h-[32px] px-3 border border-[#E5E7EB] bg-white text-[12px] font-[800] text-[#4B5563] rounded-[6px] hover:bg-gray-50 transition-colors shadow-sm float-right">
+                                <button onClick={() => setIsScheduleOpen(true)} className="inline-flex items-center gap-1.5 h-[32px] px-3 border border-[#E5E7EB] bg-white text-[12px] font-[800] text-[#4B5563] rounded-[6px] hover:bg-gray-50 transition-colors shadow-sm float-right">
                                   <Wrench className="h-3.5 w-3.5 text-[#6B7280]" strokeWidth={2.5} />
                                   Repair
                                 </button>
@@ -702,10 +778,16 @@ export default function AssetsHubPage() {
                                   </button>
                                   {openActionId === asset.assetId && (
                                     <div className="absolute right-6 top-[20px] mt-1 w-[200px] bg-white rounded-[8px] shadow-xl border border-[#EEF1F6] z-50 py-1.5 overflow-hidden" style={{ textAlign: "left" }}>
-                                      <button className="w-full text-left px-3.5 py-2.5 hover:bg-gray-50 text-[12.5px] font-[600] text-[#4B5563] flex items-center gap-2.5">
+                                      <button
+                                        onClick={() => { setOpenActionId(null); setIsScheduleOpen(true) }}
+                                        className="w-full text-left px-3.5 py-2.5 hover:bg-gray-50 text-[12.5px] font-[600] text-[#4B5563] flex items-center gap-2.5"
+                                      >
                                         <Calendar className="h-4 w-4 text-[#9CA3AF]" /> Schedule Maintenance
                                       </button>
-                                      <button className="w-full text-left px-3.5 py-2.5 hover:bg-gray-50 text-[12.5px] font-[600] text-[#4B5563] flex items-center gap-2.5">
+                                      <button
+                                        onClick={() => { setOpenActionId(null); setIsMovementHistoryOpen(true) }}
+                                        className="w-full text-left px-3.5 py-2.5 hover:bg-gray-50 text-[12.5px] font-[600] text-[#4B5563] flex items-center gap-2.5"
+                                      >
                                         <Truck className="h-4 w-4 text-[#9CA3AF]" /> Log Movement/Transfer
                                       </button>
                                       <button className="w-full text-left px-3.5 py-2.5 hover:bg-gray-50 text-[12.5px] font-[600] text-[#4B5563] flex items-center gap-2.5">
@@ -741,7 +823,7 @@ export default function AssetsHubPage() {
                       <Clock className="h-5 w-5 text-[#9CA3AF]" strokeWidth={2.5} />
                       <h2 className="text-[16px] font-[900] text-[#111827]">Movement Log</h2>
                     </div>
-                    <button className="text-[13px] font-[800] text-[#2563EB] hover:underline">See All</button>
+                    <button onClick={() => setIsMovementHistoryOpen(true)} className="text-[13px] font-[800] text-[#2563EB] hover:underline">See All</button>
                   </div>
 
                   {/* Log Items */}
@@ -777,7 +859,7 @@ export default function AssetsHubPage() {
 
                   {/* Log Footer */}
                   <div className="p-4 border-t border-[#EEF1F6] flex items-center justify-center shrink-0">
-                    <button className="text-[13px] font-[800] text-[#4B5563] hover:text-[#111827] transition-colors flex items-center gap-1 group">
+                    <button onClick={() => setIsMovementHistoryOpen(true)} className="text-[13px] font-[800] text-[#4B5563] hover:text-[#111827] transition-colors flex items-center gap-1 group">
                       View Full History
                       <ChevronDown className="h-4 w-4 -rotate-90 group-hover:translate-x-1 transition-transform" strokeWidth={2.5} />
                     </button>
@@ -790,6 +872,403 @@ export default function AssetsHubPage() {
           </div>
         </main>
       </div>
+
+      {/* ============ MODAL 1: All Current Assets ============ */}
+      <ModalShell open={isAllAssetsOpen} onClose={() => setIsAllAssetsOpen(false)} className="max-w-5xl">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-4 p-6 border-b border-[#EEF1F6]">
+          <div>
+            <h2 className="text-[18px] font-[900] text-[#111827] tracking-tight">All Current Assets</h2>
+            <p className="text-[13px] font-[500] text-[#6B7280] mt-1">Detailed view of operational and liquid assets across all branches.</p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button className="h-[38px] px-4 rounded-[8px] bg-white border border-[#E5E7EB] flex items-center gap-2 text-[13px] font-[800] text-[#4B5563] hover:bg-gray-50 transition-colors shadow-sm">
+              <Download className="h-4 w-4 text-[#6B7280]" strokeWidth={2.5} />
+              Export
+            </button>
+            <button
+              onClick={() => setIsAllAssetsOpen(false)}
+              className="h-9 w-9 flex items-center justify-center rounded-full text-[#9CA3AF] hover:bg-gray-100 hover:text-[#111827] transition-colors"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Toolbar */}
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-3 p-5 border-b border-[#EEF1F6]">
+          <div className="relative flex-1 min-w-0">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9CA3AF]" strokeWidth={2.5} />
+            <input
+              type="search"
+              placeholder="Search by Asset ID or Name..."
+              className="h-[40px] w-full rounded-[8px] border border-[#E5E7EB] bg-[#F9FAFB] pl-10 pr-4 text-[13px] font-[500] text-[#111827] placeholder:text-[#9CA3AF] focus-visible:bg-white focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20 outline-none transition-all"
+            />
+          </div>
+          <div className="flex items-center gap-3">
+            <button className="h-[40px] px-3.5 rounded-[8px] border border-[#E5E7EB] bg-white flex items-center gap-2 text-[13px] font-[700] text-[#4B5563] hover:bg-gray-50 transition-colors">
+              All Categories
+              <ChevronDown className="h-4 w-4 text-[#9CA3AF]" strokeWidth={2.5} />
+            </button>
+            <button className="h-[40px] px-3.5 rounded-[8px] border border-[#E5E7EB] bg-white flex items-center gap-2 text-[13px] font-[700] text-[#4B5563] hover:bg-gray-50 transition-colors">
+              All Locations
+              <ChevronDown className="h-4 w-4 text-[#9CA3AF]" strokeWidth={2.5} />
+            </button>
+            <button className="h-[40px] px-3.5 rounded-[8px] border border-[#E5E7EB] bg-white flex items-center gap-2 text-[13px] font-[700] text-[#4B5563] hover:bg-gray-50 transition-colors">
+              <SlidersHorizontal className="h-4 w-4 text-[#6B7280]" strokeWidth={2.5} />
+              Advanced
+            </button>
+          </div>
+        </div>
+
+        {/* Table */}
+        <div className="w-full overflow-x-auto max-h-[50vh] overflow-y-auto">
+          <table className="w-full min-w-[760px] text-left">
+            <thead className="sticky top-0 bg-white z-10">
+              <tr className="border-b border-[#EEF1F6]">
+                <th className="py-3.5 px-6 text-[10px] uppercase tracking-wider font-[800] text-[#9CA3AF]">Asset Details</th>
+                <th className="py-3.5 px-3 text-[10px] uppercase tracking-wider font-[800] text-[#9CA3AF]">Category</th>
+                <th className="py-3.5 px-3 text-[10px] uppercase tracking-wider font-[800] text-[#9CA3AF]">Location</th>
+                <th className="py-3.5 px-3 text-[10px] uppercase tracking-wider font-[800] text-[#9CA3AF]">Value (₦)</th>
+                <th className="py-3.5 px-3 text-[10px] uppercase tracking-wider font-[800] text-[#9CA3AF]">Status</th>
+                <th className="py-3.5 px-6 text-[10px] uppercase tracking-wider font-[800] text-[#9CA3AF] text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#EEF1F6]">
+              {allCurrentAssetsDemo.map((row) => (
+                <tr key={row.assetId} className="hover:bg-[#F8FAFC] transition-colors">
+                  <td className="py-4 px-6">
+                    <div className="text-[13px] font-[700] text-[#111827]">{row.name}</div>
+                    <div className="text-[12px] font-[600] text-[#2563EB] mt-0.5">{row.assetId}</div>
+                  </td>
+                  <td className="py-4 px-3">
+                    <span className="px-2.5 py-1 bg-[#F3F4F6] text-[#4B5563] text-[11px] font-[700] rounded-full whitespace-nowrap">{row.category}</span>
+                  </td>
+                  <td className="py-4 px-3 text-[13px] font-[500] text-[#6B7280]">{row.location}</td>
+                  <td className="py-4 px-3 text-[13px] font-[800] text-[#111827]">{row.value}</td>
+                  <td className="py-4 px-3"><AssetStatusBadge status={row.status} /></td>
+                  <td className="py-4 px-6 text-right">
+                    <div className="relative inline-block text-left">
+                      <button
+                        type="button"
+                        aria-label="Asset actions"
+                        onClick={() =>
+                          setOpenAssetMenuId((cur) => (cur === row.assetId ? null : row.assetId))
+                        }
+                        className="text-[#9CA3AF] hover:text-[#4B5563] transition-colors p-1 rounded-md hover:bg-gray-100"
+                      >
+                        <MoreVertical className="h-4.5 w-4.5" />
+                      </button>
+                      {openAssetMenuId === row.assetId && (
+                        <>
+                          <button
+                            type="button"
+                            aria-label="Close menu"
+                            className="fixed inset-0 z-40 cursor-default"
+                            onClick={() => setOpenAssetMenuId(null)}
+                          />
+                          <div className="absolute right-0 z-50 mt-1 w-44 overflow-hidden rounded-[10px] border border-[#EEF1F6] bg-white py-1 text-left shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
+                            <button
+                              type="button"
+                              onClick={() => setOpenAssetMenuId(null)}
+                              className="block w-full px-4 py-2.5 text-left text-[12px] font-[600] text-[#374151] hover:bg-[#F9FAFB]"
+                            >
+                              View Details
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setOpenAssetMenuId(null)}
+                              className="block w-full px-4 py-2.5 text-left text-[12px] font-[600] text-[#374151] hover:bg-[#F9FAFB]"
+                            >
+                              Edit Asset
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setOpenAssetMenuId(null)}
+                              className="block w-full px-4 py-2.5 text-left text-[12px] font-[600] text-[#374151] hover:bg-[#F9FAFB]"
+                            >
+                              Move / Transfer
+                            </button>
+                            <div className="my-1 border-t border-[#EEF1F6]" />
+                            <button
+                              type="button"
+                              onClick={() => setOpenAssetMenuId(null)}
+                              className="block w-full px-4 py-2.5 text-left text-[12px] font-[600] text-rose-600 hover:bg-rose-50"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Footer */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-5 border-t border-[#EEF1F6]">
+          <div className="text-[13px] font-[600] text-[#6B7280]">Showing 1 to 7 of 42 results</div>
+          <div className="flex items-center gap-2">
+            <button className="h-[36px] px-4 rounded-[8px] border border-[#E5E7EB] bg-white text-[13px] font-[800] text-[#4B5563] hover:bg-gray-50 transition-colors">Previous</button>
+            <button className="h-[36px] px-4 rounded-[8px] border border-[#E5E7EB] bg-white text-[13px] font-[800] text-[#4B5563] hover:bg-gray-50 transition-colors">Next</button>
+          </div>
+        </div>
+      </ModalShell>
+
+      {/* ============ MODAL 2: Add New Asset ============ */}
+      <ModalShell open={isAddAssetOpen} onClose={() => setIsAddAssetOpen(false)} className="max-w-2xl">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-4 p-6 border-b border-[#EEF1F6]">
+          <div>
+            <h2 className="text-[18px] font-[900] text-[#111827] tracking-tight">Add New Asset</h2>
+            <p className="text-[13px] font-[500] text-[#6B7280] mt-1">Enter details for the new inventory item.</p>
+          </div>
+          <button
+            onClick={() => setIsAddAssetOpen(false)}
+            className="h-9 w-9 flex items-center justify-center rounded-full text-[#9CA3AF] hover:bg-gray-100 hover:text-[#111827] transition-colors shrink-0"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Form */}
+        <div className="p-6 max-h-[60vh] overflow-y-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[12px] font-[800] text-[#374151]">Asset Type</label>
+              <div className="relative">
+                <select className="h-[42px] w-full appearance-none rounded-[8px] border border-[#E5E7EB] bg-[#F9FAFB] pl-3.5 pr-9 text-[13px] font-[600] text-[#111827] focus-visible:bg-white focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20 outline-none transition-all">
+                  <option>Current Asset (Cash/Supplies)</option>
+                  <option>Non-Current Asset (Equipment)</option>
+                  <option>Non-Current Asset (Furniture)</option>
+                </select>
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9CA3AF] pointer-events-none" strokeWidth={2.5} />
+              </div>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[12px] font-[800] text-[#374151]">Category</label>
+              <div className="relative">
+                <select className="h-[42px] w-full appearance-none rounded-[8px] border border-[#E5E7EB] bg-[#F9FAFB] pl-3.5 pr-9 text-[13px] font-[600] text-[#111827] focus-visible:bg-white focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20 outline-none transition-all">
+                  <option>Cash Imprest</option>
+                  <option>Supplies</option>
+                  <option>IT Equipment</option>
+                  <option>Furniture</option>
+                  <option>Machinery</option>
+                </select>
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9CA3AF] pointer-events-none" strokeWidth={2.5} />
+              </div>
+            </div>
+            <div className="flex flex-col gap-1.5 sm:col-span-2">
+              <label className="text-[12px] font-[800] text-[#374151]">Asset Name / Description</label>
+              <input
+                type="text"
+                placeholder="e.g. Dell OptiPlex 7090 Desktop"
+                className="h-[42px] w-full rounded-[8px] border border-[#E5E7EB] bg-[#F9FAFB] px-3.5 text-[13px] font-[600] text-[#111827] placeholder:text-[#9CA3AF] placeholder:font-[500] focus-visible:bg-white focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20 outline-none transition-all"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5 sm:col-span-2">
+              <label className="text-[12px] font-[800] text-[#374151]">Serial Number</label>
+              <input
+                type="text"
+                placeholder="e.g. SN-0099283"
+                className="h-[42px] w-full rounded-[8px] border border-[#E5E7EB] bg-[#F9FAFB] px-3.5 text-[13px] font-[600] text-[#111827] placeholder:text-[#9CA3AF] placeholder:font-[500] focus-visible:bg-white focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20 outline-none transition-all"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5 sm:col-span-2">
+              <label className="text-[12px] font-[800] text-[#374151]">Technical Specifications</label>
+              <textarea
+                rows={3}
+                placeholder="Enter technical details, dimensions, capacity, etc."
+                className="w-full rounded-[8px] border border-[#E5E7EB] bg-[#F9FAFB] px-3.5 py-2.5 text-[13px] font-[600] text-[#111827] placeholder:text-[#9CA3AF] placeholder:font-[500] focus-visible:bg-white focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20 outline-none transition-all resize-none"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5 sm:col-span-2">
+              <label className="text-[12px] font-[800] text-[#374151]">Responsible</label>
+              <input
+                type="text"
+                placeholder="Who is responsible for this asset"
+                className="h-[42px] w-full rounded-[8px] border border-[#E5E7EB] bg-[#F9FAFB] px-3.5 text-[13px] font-[600] text-[#111827] placeholder:text-[#9CA3AF] placeholder:font-[500] focus-visible:bg-white focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20 outline-none transition-all"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[12px] font-[800] text-[#374151]">Acquisition Date</label>
+              <input
+                type="date"
+                className="h-[42px] w-full rounded-[8px] border border-[#E5E7EB] bg-[#F9FAFB] px-3.5 text-[13px] font-[600] text-[#111827] focus-visible:bg-white focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20 outline-none transition-all"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[12px] font-[800] text-[#374151]">Cost (₦)</label>
+              <input
+                type="number"
+                placeholder="0.00"
+                className="h-[42px] w-full rounded-[8px] border border-[#E5E7EB] bg-[#F9FAFB] px-3.5 text-[13px] font-[600] text-[#111827] placeholder:text-[#9CA3AF] placeholder:font-[500] focus-visible:bg-white focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20 outline-none transition-all"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5 sm:col-span-2">
+              <label className="text-[12px] font-[800] text-[#374151]">Initial Condition</label>
+              <div className="relative">
+                <select className="h-[42px] w-full appearance-none rounded-[8px] border border-[#E5E7EB] bg-[#F9FAFB] pl-3.5 pr-9 text-[13px] font-[600] text-[#111827] focus-visible:bg-white focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20 outline-none transition-all">
+                  <option>Brand New</option>
+                  <option>Excellent</option>
+                  <option>Good</option>
+                  <option>Fair</option>
+                  <option>Requires Repair</option>
+                </select>
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9CA3AF] pointer-events-none" strokeWidth={2.5} />
+              </div>
+            </div>
+            <div className="flex flex-col gap-1.5 sm:col-span-2">
+              <label className="text-[12px] font-[800] text-[#374151]">Receipt / Proof of Purchase</label>
+              <label className="flex flex-col items-center justify-center gap-2 rounded-[10px] border-2 border-dashed border-[#D1D5DB] bg-[#F9FAFB] px-4 py-7 cursor-pointer hover:border-[#2563EB] hover:bg-[#EFF6FF]/40 transition-colors text-center">
+                <UploadCloud className="h-7 w-7 text-[#9CA3AF]" strokeWidth={2} />
+                <div className="text-[13px] font-[700] text-[#4B5563]">
+                  <span className="text-[#2563EB]">Click to upload</span> or drag and drop
+                </div>
+                <div className="text-[11px] font-[500] text-[#9CA3AF]">SVG, PNG, JPG or PDF (MAX. 5MB)</div>
+                <input type="file" accept=".svg,.png,.jpg,.jpeg,.pdf" className="hidden" />
+              </label>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 p-5 border-t border-[#EEF1F6]">
+          <button
+            onClick={() => setIsAddAssetOpen(false)}
+            className="h-[42px] px-5 rounded-[8px] border border-[#E5E7EB] bg-white text-[13px] font-[800] text-[#4B5563] hover:bg-gray-50 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleCreateAsset}
+            disabled={creatingAsset}
+            className="h-[42px] px-5 rounded-[8px] bg-[#2563EB] hover:bg-[#1D4ED8] text-[13px] font-[800] text-white transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {creatingAsset ? "Saving..." : "Save Asset"}
+          </button>
+        </div>
+      </ModalShell>
+
+      {/* ============ MODAL 3: Export Assets ============ */}
+      <ModalShell open={isExportOpen} onClose={() => setIsExportOpen(false)} className="max-w-lg">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-4 p-6 border-b border-[#EEF1F6]">
+          <div>
+            <h2 className="text-[18px] font-[900] text-[#111827] tracking-tight">Export Assets</h2>
+            <p className="text-[13px] font-[500] text-[#6B7280] mt-1">Select data to include in your report.</p>
+          </div>
+          <button
+            onClick={() => setIsExportOpen(false)}
+            className="h-9 w-9 flex items-center justify-center rounded-full text-[#9CA3AF] hover:bg-gray-100 hover:text-[#111827] transition-colors shrink-0"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="p-6 flex flex-col gap-6">
+          {/* Data Selection */}
+          <div className="flex flex-col gap-3">
+            <div className="text-[12px] font-[900] text-[#374151] uppercase tracking-wider">Data Selection</div>
+            <button
+              type="button"
+              onClick={() => setExportRegister((v) => !v)}
+              className={`flex items-center gap-3 w-full text-left rounded-[10px] border p-3.5 transition-colors ${exportRegister ? "border-[#2563EB] bg-[#EFF6FF]/50" : "border-[#E5E7EB] bg-white hover:bg-gray-50"}`}
+            >
+              <span className={`h-5 w-5 rounded-[6px] border flex items-center justify-center shrink-0 ${exportRegister ? "bg-[#2563EB] border-[#2563EB]" : "bg-white border-[#D1D5DB]"}`}>
+                {exportRegister && <Check className="h-3.5 w-3.5 text-white" strokeWidth={3} />}
+              </span>
+              <span>
+                <span className="block text-[13px] font-[800] text-[#111827]">Asset Register</span>
+                <span className="block text-[12px] font-[500] text-[#6B7280] mt-0.5">Complete list including current valuations</span>
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setExportMaintenance((v) => !v)}
+              className={`flex items-center gap-3 w-full text-left rounded-[10px] border p-3.5 transition-colors ${exportMaintenance ? "border-[#2563EB] bg-[#EFF6FF]/50" : "border-[#E5E7EB] bg-white hover:bg-gray-50"}`}
+            >
+              <span className={`h-5 w-5 rounded-[6px] border flex items-center justify-center shrink-0 ${exportMaintenance ? "bg-[#2563EB] border-[#2563EB]" : "bg-white border-[#D1D5DB]"}`}>
+                {exportMaintenance && <Check className="h-3.5 w-3.5 text-white" strokeWidth={3} />}
+              </span>
+              <span>
+                <span className="block text-[13px] font-[800] text-[#111827]">Maintenance History</span>
+                <span className="block text-[12px] font-[500] text-[#6B7280] mt-0.5">Repair logs and condition updates</span>
+              </span>
+            </button>
+          </div>
+
+          {/* Date Range */}
+          <div className="flex flex-col gap-2">
+            <div className="text-[12px] font-[900] text-[#374151] uppercase tracking-wider">Date Range</div>
+            <div className="grid grid-cols-2 gap-3">
+              <input
+                type="date"
+                className="h-[42px] w-full rounded-[8px] border border-[#E5E7EB] bg-[#F9FAFB] px-3.5 text-[13px] font-[600] text-[#111827] focus-visible:bg-white focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20 outline-none transition-all"
+              />
+              <input
+                type="date"
+                className="h-[42px] w-full rounded-[8px] border border-[#E5E7EB] bg-[#F9FAFB] px-3.5 text-[13px] font-[600] text-[#111827] focus-visible:bg-white focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20 outline-none transition-all"
+              />
+            </div>
+          </div>
+
+          {/* Export Format */}
+          <div className="flex flex-col gap-2">
+            <div className="text-[12px] font-[900] text-[#374151] uppercase tracking-wider">Export Format</div>
+            <div className="grid grid-cols-3 gap-1 rounded-[10px] border border-[#E5E7EB] bg-[#F3F4F6] p-1">
+              {(["Excel", "CSV", "PDF"] as const).map((fmt) => (
+                <button
+                  key={fmt}
+                  type="button"
+                  onClick={() => setExportFormat(fmt)}
+                  className={`h-[38px] rounded-[8px] text-[13px] font-[800] transition-colors ${exportFormat === fmt ? "bg-white text-[#2563EB] shadow-sm" : "text-[#6B7280] hover:text-[#111827]"}`}
+                >
+                  {fmt}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 p-5 border-t border-[#EEF1F6]">
+          <button
+            onClick={() => setIsExportOpen(false)}
+            className="h-[42px] px-5 rounded-[8px] border border-[#E5E7EB] bg-white text-[13px] font-[800] text-[#4B5563] hover:bg-gray-50 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => setIsExportOpen(false)}
+            className="h-[42px] px-5 rounded-[8px] bg-[#2563EB] hover:bg-[#1D4ED8] text-[13px] font-[800] text-white transition-colors shadow-sm flex items-center gap-2"
+          >
+            <Download className="h-4 w-4" strokeWidth={2.5} />
+            Export Report
+          </button>
+        </div>
+      </ModalShell>
+
+      {/* Asset detail + edit */}
+      <AssetDetailModal
+        open={isAssetDetailOpen}
+        onClose={() => setIsAssetDetailOpen(false)}
+        onEdit={() => {
+          setIsAssetDetailOpen(false)
+          setIsEditAssetOpen(true)
+        }}
+      />
+      <EditAssetDetailsModal open={isEditAssetOpen} onClose={() => setIsEditAssetOpen(false)} />
+
+      {/* Asset action modals */}
+      <TopUpCashModal open={isTopUpOpen} onClose={() => setIsTopUpOpen(false)} />
+      <UpdateStockModal open={isUpdateStockOpen} onClose={() => setIsUpdateStockOpen(false)} />
+      <ScheduleMaintenanceModal open={isScheduleOpen} onClose={() => setIsScheduleOpen(false)} />
+      <FullMovementHistoryModal open={isMovementHistoryOpen} onClose={() => setIsMovementHistoryOpen(false)} />
     </div>
   )
 }

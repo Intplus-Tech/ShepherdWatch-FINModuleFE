@@ -11,14 +11,20 @@ import { useUsers, useToggleUserStatus } from "@/components/hooks/useUsers"
 import { SkeletonTable } from "@/components/ui/skeleton"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { 
+import {
   ChevronDown,
   Download,
   ArrowRight,
+  Ban,
+  CircleCheck,
   Filter,
+  GitBranch,
   History,
+  KeyRound,
+  MoreVertical,
   Search,
   ShieldCheck,
+  User as UserIcon,
   UserPlus,
   Users,
   Check,
@@ -80,6 +86,31 @@ export default function Page() {
   const handleToggleStatus = (user: any) => {
     const newStatus = user.rawStatus === "ACTIVE" ? "deactivated" : "active"
     toggleStatus({ userId: user.id, status: newStatus })
+  }
+
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null)
+  const [resetMessage, setResetMessage] = useState<string | null>(null)
+
+  const handleResetPassword = async (user: any) => {
+    setOpenMenuId(null)
+    if (!user.email) return
+    try {
+      const res = await fetch(`${API_V1}/auth/forgot-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email: user.email }),
+      })
+      setResetMessage(
+        res.ok
+          ? `Password reset link sent to ${user.email}.`
+          : "Unable to send reset link. Please try again."
+      )
+    } catch {
+      setResetMessage("Unable to send reset link. Please try again.")
+    } finally {
+      setTimeout(() => setResetMessage(null), 4000)
+    }
   }
 
   const [isExporting, setIsExporting] = useState(false)
@@ -270,16 +301,85 @@ export default function Page() {
                       </td>
                       <td className="py-3 px-4 text-right">
                         {user.id && (
-                          <button 
-                            onClick={() => handleToggleStatus(user)}
-                            className={`text-[11px] font-medium px-3 py-1.5 rounded-[6px] border transition-colors ${
-                              user.rawStatus === "ACTIVE" 
-                                ? "bg-white border-rose-200 text-rose-600 hover:bg-rose-50" 
-                                : "bg-white border-emerald-200 text-emerald-600 hover:bg-emerald-50"
-                            }`}
-                          >
-                            {user.rawStatus === "ACTIVE" ? "Suspend" : "Activate"}
-                          </button>
+                          <div className="relative inline-block text-left">
+                            <button
+                              type="button"
+                              aria-label="Row actions"
+                              onClick={() =>
+                                setOpenMenuId((cur) => (cur === user.id ? null : user.id))
+                              }
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[#6B7280] hover:bg-[#F3F4F6]"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </button>
+
+                            {openMenuId === user.id && (
+                              <>
+                                {/* click-away backdrop */}
+                                <button
+                                  type="button"
+                                  aria-label="Close menu"
+                                  className="fixed inset-0 z-30 cursor-default"
+                                  onClick={() => setOpenMenuId(null)}
+                                />
+                                <div className="absolute right-0 z-40 mt-1 w-52 overflow-hidden rounded-[10px] border border-[#EEF1F6] bg-white py-1 text-left shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
+                                  <button
+                                    type="button"
+                                    onClick={() => setOpenMenuId(null)}
+                                    className="flex w-full items-center gap-2.5 px-4 py-2.5 text-[12px] font-medium text-[#374151] hover:bg-[#F9FAFB]"
+                                  >
+                                    <UserIcon className="h-4 w-4 text-[#6B7280]" />
+                                    View Profile
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setOpenMenuId(null)
+                                      router.push("/director-screen/user-permission")
+                                    }}
+                                    className="flex w-full items-center gap-2.5 px-4 py-2.5 text-[12px] font-medium text-[#374151] hover:bg-[#F9FAFB]"
+                                  >
+                                    <ShieldCheck className="h-4 w-4 text-[#6B7280]" />
+                                    Edit Permissions
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setOpenMenuId(null)}
+                                    className="flex w-full items-center gap-2.5 px-4 py-2.5 text-[12px] font-medium text-[#374151] hover:bg-[#F9FAFB]"
+                                  >
+                                    <GitBranch className="h-4 w-4 text-[#6B7280]" />
+                                    Change Branch
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleResetPassword(user)}
+                                    className="flex w-full items-center gap-2.5 px-4 py-2.5 text-[12px] font-medium text-[#374151] hover:bg-[#F9FAFB]"
+                                  >
+                                    <KeyRound className="h-4 w-4 text-[#6B7280]" />
+                                    Reset Password
+                                  </button>
+                                  <div className="my-1 border-t border-[#EEF1F6]" />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setOpenMenuId(null)
+                                      handleToggleStatus(user)
+                                    }}
+                                    className={`flex w-full items-center gap-2.5 px-4 py-2.5 text-[12px] font-medium hover:bg-[#F9FAFB] ${
+                                      user.rawStatus === "ACTIVE" ? "text-rose-600" : "text-emerald-600"
+                                    }`}
+                                  >
+                                    {user.rawStatus === "ACTIVE" ? (
+                                      <Ban className="h-4 w-4" />
+                                    ) : (
+                                      <CircleCheck className="h-4 w-4" />
+                                    )}
+                                    {user.rawStatus === "ACTIVE" ? "Deactivate Account" : "Activate Account"}
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </div>
                         )}
                       </td>
                     </tr>
@@ -394,6 +494,12 @@ export default function Page() {
           </section>
         </div>
       </main>
+
+      {resetMessage && (
+        <div className="fixed bottom-6 right-6 z-50 rounded-[10px] border border-[#EEF1F6] bg-white px-4 py-3 text-[12px] font-medium text-[#111827] shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
+          {resetMessage}
+        </div>
+      )}
     </div>
   )
 }

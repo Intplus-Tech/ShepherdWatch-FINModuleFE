@@ -3,98 +3,27 @@
 import { API_V1 } from "@/lib/api";
 
 import React, { useEffect, useMemo, useState } from "react"
-import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { useAuth } from "@/components/auth/AuthProvider"
 import {
-  BarChart3,
   Bell,
   Calendar,
   CheckCircle2,
   ChevronDown,
   Download,
   FileText,
-  LayoutDashboard,
-  Menu,
-  ShieldCheck,
   TrendingDown,
   TrendingUp,
-  Settings,
-  HelpCircle,
-  PiggyBank,
   ArrowUpRight,
   Search,
   PieChart,
   FolderMinus,
   CheckSquare,
-  Building2,
 } from "lucide-react"
 import { useBudgetEntries } from "@/components/hooks/useBudgetEntries"
-
-const SidebarContent = ({ displayName, roleLabel }: { displayName: string; roleLabel: string }) => (
-  <div className="p-6 flex flex-col h-full">
-    <div className="flex items-center gap-3 pb-8">
-      <Image src="/images/icon-shepherdwatch.svg" alt="ShepherdWatch logo" width={28} height={28} className="shrink-0" />
-      <div>
-        <div className="text-[15px] font-bold text-[#111827] leading-none tracking-tight">ShepherdWatch</div>
-        <div className="text-[11px] text-[#9CA3AF] font-bold mt-1 tracking-wide uppercase">Lead Pastor View</div>
-      </div>
-    </div>
-
-    <nav className="space-y-1.5 flex-1">
-      {[
-        { label: "Dashboard", icon: LayoutDashboard },
-        { label: "Financial Management", icon: BarChart3 },
-        { label: "Assets", icon: Building2 },
-        { label: "Budget", icon: PiggyBank, active: true },
-        { label: "Compliance & Remittance", icon: ShieldCheck },
-      ].map((item) => {
-        const Icon = item.icon
-        return (
-          <div
-            key={item.label}
-            className={`flex items-center gap-3.5 rounded-[10px] px-3.5 py-3 text-[13px] font-bold cursor-pointer transition-colors ${
-              item.active ? "bg-[#EEF2FF] text-[#3B5BDB]" : "text-[#4B5563] hover:bg-gray-50"
-            }`}
-          >
-            <Icon className={`h-4.5 w-4.5 stroke-[2] ${item.active ? "text-[#3B5BDB]" : "text-[#6B7280]"}`} />
-            {item.label}
-          </div>
-        )
-      })}
-    </nav>
-
-    <div className="mt-auto">
-      <div className="space-y-1.5 border-t border-[#EEF1F6] pt-6 text-[13px] font-bold text-[#4B5563]">
-        <div className="flex items-center gap-3.5 rounded-[10px] px-3.5 py-3 cursor-pointer hover:bg-gray-50 transition-colors">
-          <Settings className="h-4.5 w-4.5 stroke-[2] text-[#6B7280]" />
-          Settings
-        </div>
-        <div className="flex items-center gap-3.5 rounded-[10px] px-3.5 py-3 cursor-pointer hover:bg-gray-50 transition-colors">
-          <HelpCircle className="h-4.5 w-4.5 stroke-[2] text-[#6B7280]" />
-          Help Guide
-        </div>
-      </div>
-
-      <div className="mt-8 flex items-center gap-3.5 px-3.5 pb-2">
-        <div className="h-10 w-10 rounded-full overflow-hidden bg-gray-200 shrink-0 ring-2 ring-white shadow-sm">
-          <img src="/images/Beared%20Guy02-min%201.jpg" alt="Profile avatar" className="h-full w-full object-cover" />
-        </div>
-        <div>
-          <div className="text-[14px] font-extrabold text-[#111827]">{displayName}</div>
-          <div className="text-[11px] text-[#9CA3AF] font-bold tracking-wide">{roleLabel}</div>
-        </div>
-      </div>
-    </div>
-  </div>
-)
+import BranchLeadPastorSidebar from "@/components/navigation/BranchLeadPastorSidebar"
 
 export default function Page() {
-  const { user } = useAuth()
-  const displayName = user?.name || user?.email || "User"
-  const roleLabel = user?.role ? String(user.role).replace(/_/g, " ") : "Lead Pastor"
-  const [mobileOpen, setMobileOpen] = useState(false)
   const { entries, loading, error } = useBudgetEntries()
   const [approvingAll, setApprovingAll] = useState(false)
   const [approveError, setApproveError] = useState<string | null>(null)
@@ -241,24 +170,7 @@ export default function Page() {
 
   return (
     <div className="flex min-h-screen w-full bg-[#FAFBFF] font-sans" style={{ fontFamily: '"Public Sans", sans-serif' }}>
-
-      {/* Mobile Drawer */}
-      <div className={`fixed inset-0 z-40 xl:hidden ${mobileOpen ? "" : "pointer-events-none"}`}>
-        <div
-          className={`absolute inset-0 bg-black/40 transition-opacity ${mobileOpen ? "opacity-100" : "opacity-0"}`}
-          onClick={() => setMobileOpen(false)}
-        />
-        <aside
-          className={`absolute left-0 top-0 h-full w-[260px] bg-white shadow-xl transition-transform duration-300 ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}
-        >
-          <SidebarContent displayName={displayName} roleLabel={roleLabel} />
-        </aside>
-      </div>
-
-      {/* Sidebar - Desktop */}
-      <aside className="w-[260px] border-r border-[#EEF1F6] bg-white hidden xl:flex flex-col shrink-0 h-screen sticky top-0 z-20 shadow-[2px_0_8px_-4px_rgba(0,0,0,0.05)]">
-            <SidebarContent displayName={displayName} roleLabel={roleLabel} />
-      </aside>
+      <BranchLeadPastorSidebar />
 
       {/* Main Layout Wrapping Column */}
       <div className="flex-1 flex flex-col min-h-screen overflow-x-hidden bg-[#FAFBFF]">
@@ -266,12 +178,6 @@ export default function Page() {
         {/* Top Header / Navbar */}
         <header className="flex h-[72px] shrink-0 items-center justify-between border-b border-[#EEF1F6] bg-white px-4 sm:px-6 lg:px-10 w-full">
           <div className="flex items-center gap-4">
-            <button
-              className="xl:hidden flex h-9 w-9 items-center justify-center rounded-[10px] border border-[#E5E7EB] bg-white text-[#6B7280]"
-              onClick={() => setMobileOpen(true)}
-            >
-              <Menu className="h-5 w-5" />
-            </button>
             <div className="text-[15px] font-bold text-[#111827] flex items-center gap-2">Dashboard</div>
           </div>
           

@@ -4,10 +4,10 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { Camera, KeyRound, Loader2, Mail, MapPin, Phone, Shield, User as UserIcon } from "lucide-react"
+import { Camera, KeyRound, Loader2, MapPin } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
-import { ActiveSessionsManager } from "@/components/settings/ActiveSessionsManager"
 import { useToast } from "@/components/ui/toast"
+import BranchAccountantSidebar from "@/components/navigation/BranchAccountantSidebar"
 import { API_V1 } from "@/lib/api"
 import {
   Dialog,
@@ -21,8 +21,7 @@ import {
 import { PasswordInput } from "@/components/ui/password-input"
 
 const profileSchema = z.object({
-  firstName: z.string().trim().min(1, "First name is required").max(80),
-  lastName: z.string().trim().max(80),
+  fullName: z.string().trim().min(1, "Full name is required").max(160),
   phone: z
     .string()
     .trim()
@@ -51,6 +50,22 @@ const passwordSchema = z
 
 type PasswordFormValues = z.infer<typeof passwordSchema>
 
+const ROLE_LABELS: Record<string, string> = {
+  accountant: "Branch Accountant",
+  branch_accountant: "Branch Accountant",
+}
+
+function formatRole(role?: string | null) {
+  if (!role) return "Branch Accountant"
+  const key = String(role).trim().toLowerCase()
+  if (ROLE_LABELS[key]) return ROLE_LABELS[key]
+  return key
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+    .join(" ")
+}
+
 function getInitials(name: string) {
   if (!name.trim()) return "?"
   const parts = name.trim().split(/\s+/)
@@ -70,33 +85,39 @@ export default function Page() {
     reset,
     formState: { errors, isSubmitting, isDirty },
     setError: setFormError,
-    setValue,
   } = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
-    defaultValues: { firstName: "", lastName: "", phone: "" },
+    defaultValues: { fullName: "", phone: "" },
   })
+
+  const fullName = useMemo(() => {
+    const fn = user?.firstName ?? ""
+    const ln = user?.lastName ?? ""
+    return `${fn} ${ln}`.trim() || user?.name || user?.email || "User"
+  }, [user])
 
   useEffect(() => {
     if (user) {
       reset({
-        firstName: user.firstName ?? "",
-        lastName: user.lastName ?? "",
+        fullName:
+          `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || user.name || "",
         phone: user.phone ?? user.phoneNumber ?? "",
       })
     }
   }, [user, reset])
 
-  const fullName = useMemo(() => {
-    const fn = user?.firstName ?? ""
-    const ln = user?.lastName ?? ""
-    return `${fn} ${ln}`.trim() || user?.email || "User"
-  }, [user])
+  const roleLabel = formatRole(user?.role)
+  const employeeId = user?.id ?? "—"
+  const branchName = user?.tenant?.name ?? user?.branch?.name
 
   const onSubmit = handleSubmit(async (values) => {
+    const parts = values.fullName.trim().split(/\s+/)
+    const firstName = parts[0] ?? ""
+    const lastName = parts.slice(1).join(" ")
     try {
       await updateProfile({
-        firstName: values.firstName,
-        lastName: values.lastName,
+        firstName,
+        lastName,
         phone: values.phone?.trim() || undefined,
       })
       reset(values)
@@ -128,19 +149,14 @@ export default function Page() {
         body: formData,
       })
       const body = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        throw new Error(body?.message ?? "Upload failed")
-      }
+      if (!res.ok) throw new Error(body?.message ?? "Upload failed")
       const uploaded = body?.data ?? body
       const fileId: string | undefined = uploaded?.id ?? uploaded?._id ?? uploaded?.url
-      if (!fileId) {
-        throw new Error("Upload response missing file ID")
-      }
+      if (!fileId) throw new Error("Upload response missing file ID")
       await updateProfile({ avatar: fileId })
       pushToast("Avatar updated", "success")
     } catch (e) {
-      const message = e instanceof Error ? e.message : "Unable to upload avatar"
-      pushToast(message, "error")
+      pushToast(e instanceof Error ? e.message : "Unable to upload avatar", "error")
     } finally {
       setAvatarUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ""
@@ -148,133 +164,138 @@ export default function Page() {
   }
 
   return (
-    <main className="min-h-screen bg-[#F8FAFC] p-6 md:p-8">
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
-        <header>
-          <h1 className="text-xl font-bold text-[#111827]">Account Settings</h1>
-          <p className="text-sm text-[#6B7280]">Manage your profile and security</p>
+    <div className="flex min-h-screen flex-col lg:flex-row bg-[#F8FAFC]">
+      <BranchAccountantSidebar activeHref="/branchaccount-pastor/settings" />
+      <main className="min-w-0 flex-1 p-6 md:p-10">
+        <div className="flex w-full flex-col gap-6">
+        <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h1 className="text-[28px] font-bold tracking-tight text-[#111827]">User Settings</h1>
+            <p className="mt-1 text-sm text-[#6B7280]">
+              Manage personal details, alerts, and operational templates.
+            </p>
+          </div>
+          <button
+            type="submit"
+            form="profile-form"
+            disabled={!isDirty || isSubmitting || authLoading}
+            className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-[#2563EB] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#1D4ED8] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <KeyRound className="h-4 w-4" />
+            {isSubmitting ? "Saving..." : "Save All Changes"}
+          </button>
         </header>
 
-        {/* Profile card */}
-        <section className="rounded-2xl border border-[#E5E7EB] bg-white p-6 shadow-sm">
-          <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={avatarUploading}
-                className="group relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-linear-to-br from-blue-500 to-indigo-600 text-xl font-bold text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed"
-                aria-label="Change profile photo"
-              >
-                {user?.avatar ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={user.avatar} alt={fullName} className="h-full w-full object-cover" />
-                ) : (
-                  getInitials(fullName)
-                )}
-                <span className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
-                  {avatarUploading ? (
-                    <Loader2 className="h-5 w-5 animate-spin text-white" />
-                  ) : (
-                    <Camera className="h-5 w-5 text-white" />
-                  )}
-                </span>
-                {avatarUploading && (
-                  <span className="absolute inset-0 flex items-center justify-center bg-black/40">
-                    <Loader2 className="h-5 w-5 animate-spin text-white" />
-                  </span>
-                )}
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                aria-label="Upload profile photo"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  if (file) void handleAvatarFile(file)
-                }}
-              />
-            </div>
-            <div className="min-w-0 flex-1">
-              <h2 className="truncate text-lg font-semibold text-[#111827]">{fullName}</h2>
-              <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-[#6B7280]">
-                <span className="inline-flex items-center gap-1">
-                  <Shield className="h-3.5 w-3.5" />
-                  {user?.role ?? "—"}
-                </span>
-                {user?.tenant?.name && (
-                  <span className="inline-flex items-center gap-1">
-                    <MapPin className="h-3.5 w-3.5" />
-                    {user.tenant.name}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Profile form */}
-        <form onSubmit={onSubmit} className="rounded-2xl border border-[#E5E7EB] bg-white p-6 shadow-sm">
-          <h2 className="text-base font-semibold text-[#111827]">Personal Information</h2>
-          <p className="mb-5 text-sm text-[#6B7280]">Update your name and contact details</p>
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {/* Read-only: Employee ID */}
-            <ReadOnlyField
-              label="Employee ID"
-              icon={<UserIcon className="h-4 w-4" />}
-              value={user?.id ?? "—"}
-            />
-            {/* Read-only: Work Email */}
-            <ReadOnlyField
-              label="Work Email"
-              icon={<Mail className="h-4 w-4" />}
-              value={user?.email ?? "—"}
-            />
-
-            {/* Editable: First name */}
-            <div>
-              <label className="mb-1 block text-sm font-medium text-[#374151]">First name</label>
-              <input
-                {...register("firstName")}
-                className="h-10 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 text-sm text-[#111827] focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                placeholder="First name"
-                autoComplete="given-name"
-              />
-              {errors.firstName && (
-                <p className="mt-1 text-xs text-rose-600">{errors.firstName.message}</p>
-              )}
-            </div>
-
-            {/* Editable: Last name */}
-            <div>
-              <label className="mb-1 block text-sm font-medium text-[#374151]">Last name</label>
-              <input
-                {...register("lastName")}
-                className="h-10 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 text-sm text-[#111827] focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                placeholder="Last name"
-                autoComplete="family-name"
-              />
-              {errors.lastName && (
-                <p className="mt-1 text-xs text-rose-600">{errors.lastName.message}</p>
-              )}
-            </div>
-
-            {/* Editable: Phone */}
-            <div className="md:col-span-2">
-              <label className="mb-1 block text-sm font-medium text-[#374151]">Phone</label>
+        <form
+          id="profile-form"
+          onSubmit={onSubmit}
+          className="rounded-2xl border border-[#E5E7EB] bg-white p-6 shadow-sm sm:p-8"
+        >
+          {/* Profile row */}
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-4">
               <div className="relative">
-                <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={avatarUploading}
+                  className="group relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-xl font-bold text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed"
+                  aria-label="Change profile photo"
+                >
+                  {user?.avatar ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={user.avatar} alt={fullName} className="h-full w-full object-cover" />
+                  ) : (
+                    getInitials(fullName)
+                  )}
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+                    {avatarUploading ? (
+                      <Loader2 className="h-5 w-5 animate-spin text-white" />
+                    ) : (
+                      <Camera className="h-5 w-5 text-white" />
+                    )}
+                  </span>
+                </button>
                 <input
-                  {...register("phone")}
-                  className="h-10 w-full rounded-lg border border-[#E5E7EB] bg-white pl-9 pr-3 text-sm text-[#111827] focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                  placeholder="+234 800 000 0000"
-                  autoComplete="tel"
-                  type="tel"
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  aria-label="Upload profile photo"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) void handleAvatarFile(file)
+                  }}
                 />
               </div>
+              <div className="min-w-0">
+                <h2 className="truncate text-lg font-bold text-[#111827]">{fullName}</h2>
+                <p className="mt-0.5 text-[13px] text-[#6B7280]">
+                  {roleLabel} <span className="text-[#D1D5DB]">|</span> ID: #{employeeId}
+                </p>
+                {branchName && (
+                  <p className="mt-0.5 inline-flex items-center gap-1 text-[12px] text-[#9CA3AF]">
+                    <MapPin className="h-3.5 w-3.5" />
+                    {branchName}
+                  </p>
+                )}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPasswordOpen(true)}
+              className="inline-flex items-center gap-1.5 self-start text-sm font-semibold text-[#2563EB] hover:text-[#1D4ED8] sm:self-center"
+            >
+              Change Password
+            </button>
+          </div>
+
+          <div className="my-6 h-px w-full bg-[#EEF1F6]" />
+
+          {/* Fields */}
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-[#374151]">Full Name</label>
+              <input
+                {...register("fullName")}
+                className="h-11 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 text-sm text-[#111827] focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                placeholder="Full name"
+                autoComplete="name"
+              />
+              {errors.fullName && (
+                <p className="mt-1 text-xs text-rose-600">{errors.fullName.message}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-[#374151]">Employee ID</label>
+              <input
+                value={employeeId}
+                readOnly
+                aria-label="Employee ID"
+                className="h-11 w-full cursor-not-allowed rounded-lg border border-[#E5E7EB] bg-[#F3F4F6] px-3 text-sm text-[#9CA3AF]"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-[#374151]">Work Email</label>
+              <input
+                value={user?.email ?? "—"}
+                readOnly
+                aria-label="Work Email"
+                className="h-11 w-full cursor-not-allowed rounded-lg border border-[#E5E7EB] bg-[#F3F4F6] px-3 text-sm text-[#6B7280]"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-[#374151]">Phone Number</label>
+              <input
+                {...register("phone")}
+                className="h-11 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 text-sm text-[#111827] focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                placeholder="+234 800 000 0000"
+                autoComplete="tel"
+                type="tel"
+              />
               {errors.phone && <p className="mt-1 text-xs text-rose-600">{errors.phone.message}</p>}
             </div>
           </div>
@@ -282,56 +303,14 @@ export default function Page() {
           {errors.root?.message && (
             <p
               role="alert"
-              className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-600"
+              className="mt-5 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-600"
             >
               {errors.root.message}
             </p>
           )}
-
-          <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <button
-              type="button"
-              onClick={() => setPasswordOpen(true)}
-              className="inline-flex items-center gap-2 text-sm font-semibold text-blue-600 hover:text-blue-700"
-            >
-              <KeyRound className="h-4 w-4" />
-              Change password
-            </button>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  if (user) {
-                    setValue("firstName", user.firstName ?? "")
-                    setValue("lastName", user.lastName ?? "")
-                    setValue("phone", user.phone ?? user.phoneNumber ?? "")
-                  }
-                }}
-                disabled={!isDirty || isSubmitting}
-                className="inline-flex h-10 items-center rounded-lg border border-[#E5E7EB] bg-white px-4 text-sm font-medium text-[#374151] hover:bg-[#F9FAFB] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Reset
-              </button>
-              <button
-                type="submit"
-                disabled={!isDirty || isSubmitting || authLoading}
-                className="inline-flex h-10 items-center rounded-lg bg-[#2563EB] px-4 text-sm font-semibold text-white hover:bg-[#1D4ED8] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isSubmitting ? "Saving..." : "Save changes"}
-              </button>
-            </div>
-          </div>
         </form>
-
-        {/* Active sessions */}
-        <section className="rounded-2xl border border-[#E5E7EB] bg-white p-6 shadow-sm">
-          <h2 className="text-base font-semibold text-[#111827]">Active Sessions</h2>
-          <p className="mb-4 text-sm text-[#6B7280]">
-            Devices currently signed into your account
-          </p>
-          <ActiveSessionsManager />
-        </section>
-      </div>
+        </div>
+      </main>
 
       <ChangePasswordDialog
         open={passwordOpen}
@@ -339,7 +318,7 @@ export default function Page() {
         changePassword={changePassword}
         pushToast={pushToast}
       />
-    </main>
+    </div>
   )
 }
 
@@ -378,8 +357,7 @@ function ChangePasswordDialog({
       pushToast("Password changed", "success")
       onOpenChange(false)
     } catch (e) {
-      const message = e instanceof Error ? e.message : "Unable to change password"
-      setError("root", { message })
+      setError("root", { message: e instanceof Error ? e.message : "Unable to change password" })
     }
   })
 
@@ -387,25 +365,24 @@ function ChangePasswordDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Change password</DialogTitle>
-          <DialogDescription>
-            Enter your current password and choose a new one.
-          </DialogDescription>
+          <DialogTitle>Change Password</DialogTitle>
+          <DialogDescription>Enter your new password credentials.</DialogDescription>
         </DialogHeader>
         <form onSubmit={onSubmit} className="space-y-4">
           <div>
-            <label className="mb-1 block text-sm font-medium text-[#374151]">Current password</label>
+            <label className="mb-1 block text-sm font-medium text-[#374151]">Old Password</label>
             <PasswordInput
               {...register("currentPassword")}
-              placeholder="Current password"
-              autoComplete="current-password"
+              placeholder="Old password"
+              initiallyVisible={false}
+              autoComplete="off"
             />
             {errors.currentPassword && (
               <p className="mt-1 text-xs text-rose-600">{errors.currentPassword.message}</p>
             )}
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium text-[#374151]">New password</label>
+            <label className="mb-1 block text-sm font-medium text-[#374151]">New Password</label>
             <PasswordInput
               {...register("newPassword")}
               placeholder="New password"
@@ -416,10 +393,10 @@ function ChangePasswordDialog({
             )}
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium text-[#374151]">Confirm new password</label>
+            <label className="mb-1 block text-sm font-medium text-[#374151]">Re Enter New Password</label>
             <PasswordInput
               {...register("confirmPassword")}
-              placeholder="Confirm new password"
+              placeholder="Re enter new password"
               autoComplete="new-password"
             />
             {errors.confirmPassword && (
@@ -448,31 +425,11 @@ function ChangePasswordDialog({
               disabled={isSubmitting}
               className="inline-flex h-10 items-center rounded-lg bg-[#2563EB] px-4 text-sm font-semibold text-white hover:bg-[#1D4ED8] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isSubmitting ? "Updating..." : "Update password"}
+              {isSubmitting ? "Updating..." : "Update Password"}
             </button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
-  )
-}
-
-function ReadOnlyField({
-  label,
-  value,
-  icon,
-}: {
-  label: string
-  value: string
-  icon: React.ReactNode
-}) {
-  return (
-    <div>
-      <label className="mb-1 block text-sm font-medium text-[#374151]">{label}</label>
-      <div className="flex h-10 items-center gap-2 rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] px-3 text-sm text-[#6B7280]">
-        <span className="text-[#9CA3AF]">{icon}</span>
-        <span className="truncate">{value}</span>
-      </div>
-    </div>
   )
 }

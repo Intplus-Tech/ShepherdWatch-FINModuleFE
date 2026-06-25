@@ -10,18 +10,19 @@ import { useBudgetConfig } from "@/components/hooks/useBudgetConfig"
 import { useExchangeRates } from "@/components/hooks/useExchangeRates"
 import { ActiveSessionsManager } from "@/components/settings/ActiveSessionsManager"
 import ScreenHeader from "@/components/navigation/ScreenHeader"
+import SettingsConfigSidebar from "@/components/navigation/SettingsConfigSidebar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
   Calendar,
   FolderKanban,
-  Info,
   Layers,
-  Settings,
+  Plus,
   ShieldCheck,
   SlidersHorizontal,
   RefreshCw,
   TrendingUp,
+  X,
 } from "lucide-react"
 
 const monthNames = [
@@ -39,16 +40,18 @@ const monthNames = [
   "December",
 ]
 
-const sideItems = [
-  { label: "Budget", active: true },
-  { label: "Overview" },
-  { label: "Exchange Rates" },
-  { label: "Departmental" },
-  { label: "Audit Logs" },
-  { label: "App Logs" },
-  { label: "HTTP Logs" },
-  { label: "Permissions" },
-]
+// NOTE: settings sub-navigation now lives in <SettingsConfigSidebar />.
+// Previous inline list (kept for reference):
+// const sideItems = [
+//   { label: "Budget", active: true },
+//   { label: "Overview" },
+//   { label: "Exchange Rates" },
+//   { label: "Departmental" },
+//   { label: "Audit Logs" },
+//   { label: "App Logs" },
+//   { label: "HTTP Logs" },
+//   { label: "Permissions" },
+// ]
 
 function ExchangeRatesSection() {
   const { createRate, getLatestRate, listRates, loading } = useExchangeRates()
@@ -155,9 +158,11 @@ function ExchangeRatesSection() {
               <div>
                 <label className="text-[12px] font-[600] text-[#6B7280]">From</label>
                 <select value={form.fromCurrency} onChange={(e) => setForm({...form, fromCurrency: e.target.value})} className="mt-1 w-full h-[36px] px-2 text-[13px] rounded-[6px] border border-[#E5E7EB]">
+                  <option value="NGN">NGN</option>
                   <option value="USD">USD</option>
                   <option value="GBP">GBP</option>
                   <option value="EUR">EUR</option>
+                  <option value="CAD">CAD</option>
                 </select>
               </div>
               <div>
@@ -165,6 +170,9 @@ function ExchangeRatesSection() {
                 <select value={form.toCurrency} onChange={(e) => setForm({...form, toCurrency: e.target.value})} className="mt-1 w-full h-[36px] px-2 text-[13px] rounded-[6px] border border-[#E5E7EB]">
                   <option value="NGN">NGN</option>
                   <option value="USD">USD</option>
+                  <option value="GBP">GBP</option>
+                  <option value="EUR">EUR</option>
+                  <option value="CAD">CAD</option>
                 </select>
               </div>
             </div>
@@ -397,11 +405,58 @@ export default function Page() {
   const [budgetSaveError, setBudgetSaveError] = useState<string | null>(null)
   const [budgetSaving, setBudgetSaving] = useState(false)
 
+  // Local UI state for the Global Budget Configuration design (image #1).
+  // Budget streams + default thresholds are presentation-level until the
+  // backend exposes matching fields.
+  const [budgetStreams, setBudgetStreams] = useState([
+    {
+      id: "operational",
+      code: "OP",
+      title: "Operational Budget",
+      desc: "Recurring administrative and utility costs",
+      avatar: "bg-[#E9EEFF] text-[#3B5BDB]",
+      heads: ["Staffing", "Utilities", "Rent"],
+    },
+    {
+      id: "program",
+      code: "PR",
+      title: "Program Budget",
+      desc: "Events, outreach, and training initiatives",
+      avatar: "bg-[#F3E8FF] text-[#7C3AED]",
+      heads: ["Events", "Outreach", "Training"],
+    },
+    {
+      id: "capital",
+      code: "CP",
+      title: "Capital Budget",
+      desc: "Long-term assets, equipment and building",
+      avatar: "bg-[#FEF3E2] text-[#F59E0B]",
+      heads: ["Equipment", "Vehicles"],
+    },
+  ])
+  const [defaultThresholds, setDefaultThresholds] = useState({
+    minApproval: "50,000",
+    pettyCash: "15,000",
+    auditTrigger: "500,000",
+  })
+
+  const removeBudgetHead = (streamId: string, head: string) =>
+    setBudgetStreams((prev) =>
+      prev.map((s) =>
+        s.id === streamId ? { ...s, heads: s.heads.filter((h) => h !== head) } : s
+      )
+    )
+  const addBudgetHead = (streamId: string) =>
+    setBudgetStreams((prev) =>
+      prev.map((s) =>
+        s.id === streamId ? { ...s, heads: [...s.heads, "New Head"] } : s
+      )
+    )
+
   const enforcementAction = budgetForm.enforcementAction || budgetConfig?.enforcementAction
   const reportingInterval = budgetForm.reportingInterval || budgetConfig?.reportingInterval
   const isWarnOnly = enforcementAction === "warn_only"
   const isBlockTransactions = enforcementAction === "block_transactions"
-  const isRequireApproval = enforcementAction === "require_approval"
   const fiscalYearStartValue = budgetForm.fiscalYearStart
     ? Number(budgetForm.fiscalYearStart)
     : budgetConfig?.fiscalYearStart
@@ -995,41 +1050,7 @@ export default function Page() {
           <ScreenHeader title="Financial Overview" subtitle="Global financial health monitoring" />
 
           <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[260px_1fr]">
-            <aside className="space-y-4">
-              <div className="rounded-[12px] border border-[#EEF1F6] bg-white p-4">
-                <div className="text-[12.74px] leading-[16.98px] font-bold uppercase tracking-[1.27px] text-[#9CA3AF]">
-                  SUPER ADMIN
-                </div>
-                <div className="text-[14.86px] leading-[21.23px] font-semibold text-[#111827]">
-                  Global Configuration
-                </div>
-                <div className="mt-3 space-y-1">
-                  {sideItems.map((item) => (
-                    <button
-                      key={item.label}
-                      className={`flex w-full items-center gap-2 rounded-[8px] px-2.5 py-2 text-[14.86px] leading-[21.23px] ${
-                        item.active
-                          ? "bg-[#E9EEFF] text-[#3B5BDB] font-bold"
-                          : "text-[#6B7280] font-medium hover:bg-[#F3F5F9]"
-                      }`}
-                    >
-                      <Settings className="h-3.5 w-3.5" />
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="rounded-[12px] border border-[#DBEAFE] bg-[#F0F7FF] p-4">
-                <div className="flex items-center gap-2 text-[10px] font-medium text-[#2563EB]">
-                  <Info className="h-3.5 w-3.5" />
-                  Director&apos;s Note
-                </div>
-                <p className="mt-2 text-[9px] text-[#6B7280]">
-                  These settings are global. Changes here affect all department budgets and fiscal cycles immediately.
-                </p>
-              </div>
-            </aside>
+            <SettingsConfigSidebar active="budget" />
 
             <section className="space-y-6">
               <div>
@@ -1053,15 +1074,67 @@ export default function Page() {
                     Budget Streams &amp; Categories
                   </div>
                   <button
-                    disabled
-                    className="text-[14.86px] leading-[21.23px] font-bold text-center text-[#3B5BDB] opacity-60 cursor-not-allowed"
+                    type="button"
+                    onClick={() =>
+                      setBudgetStreams((prev) => [
+                        ...prev,
+                        {
+                          id: `stream-${Date.now()}`,
+                          code: "NB",
+                          title: "New Budget",
+                          desc: "Describe this budget stream",
+                          avatar: "bg-[#F1F5F9] text-[#6B7280]",
+                          heads: [],
+                        },
+                      ])
+                    }
+                    className="inline-flex items-center gap-1 text-[14px] font-semibold text-[#3B5BDB] hover:underline"
                   >
-                    + Add Stream
+                    <Plus className="h-4 w-4" />
+                    Add Stream
                   </button>
                 </div>
 
-                <div className="px-4 py-6 text-[12.74px] leading-[16.98px] text-[#9CA3AF]">
-                  No budget streams are configured in this module yet.
+                <div className="divide-y divide-[#F3F5F9]">
+                  {budgetStreams.map((stream) => (
+                    <div key={stream.id} className="flex flex-col gap-3 px-4 py-4 md:flex-row md:items-start md:justify-between">
+                      <div className="flex items-start gap-3">
+                        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[12px] font-bold ${stream.avatar}`}>
+                          {stream.code}
+                        </div>
+                        <div>
+                          <div className="text-[14px] font-bold text-[#111827]">{stream.title}</div>
+                          <div className="text-[12px] text-[#9CA3AF]">{stream.desc}</div>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 md:max-w-[55%] md:justify-end">
+                        {stream.heads.map((head) => (
+                          <span
+                            key={head}
+                            className="inline-flex items-center gap-1 rounded-full border border-[#E5E7EB] bg-white px-3 py-1 text-[12px] font-medium text-[#374151]"
+                          >
+                            {head}
+                            <button
+                              type="button"
+                              onClick={() => removeBudgetHead(stream.id, head)}
+                              aria-label={`Remove ${head}`}
+                              className="text-[#9CA3AF] hover:text-[#EF4444]"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </span>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => addBudgetHead(stream.id)}
+                          className="inline-flex items-center gap-1 rounded-full bg-[#EEF2FF] px-3 py-1 text-[12px] font-semibold text-[#3B5BDB] hover:bg-[#E0E7FF]"
+                        >
+                          <Plus className="h-3 w-3" />
+                          Add Head
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -1096,16 +1169,16 @@ export default function Page() {
                   <div className="mt-4 text-[14.86px] leading-[21.23px] font-semibold text-[#6B7280]">
                     Enforcement Action
                   </div>
-                  <div className="mt-2 flex items-center gap-2">
+                  <div className="mt-2 inline-flex rounded-[10px] border border-[#E5E7EB] bg-[#F8FAFC] p-1">
                     <button
                       type="button"
                       onClick={() =>
                         setBudgetForm((prev) => ({ ...prev, enforcementAction: "warn_only" }))
                       }
-                      className={`rounded-[10px] border px-3 py-1.5 text-[12.74px] leading-[16.98px] font-semibold ${
+                      className={`rounded-[8px] px-4 py-1.5 text-[12.74px] leading-[16.98px] font-semibold transition-colors ${
                         isWarnOnly
-                          ? "border-[#C7D2FE] bg-[#EEF2FF] text-[#3B5BDB]"
-                          : "border-[#E5E7EB] bg-white text-[#6B7280]"
+                          ? "bg-white text-[#3B5BDB] shadow-sm"
+                          : "text-[#6B7280] hover:text-[#111827]"
                       }`}
                     >
                       Soft Warning
@@ -1118,29 +1191,13 @@ export default function Page() {
                           enforcementAction: "block_transactions",
                         }))
                       }
-                      className={`rounded-[10px] border px-3 py-1.5 text-[12.74px] leading-[16.98px] font-semibold ${
+                      className={`rounded-[8px] px-4 py-1.5 text-[12.74px] leading-[16.98px] font-semibold transition-colors ${
                         isBlockTransactions
-                          ? "border-[#C7D2FE] bg-[#EEF2FF] text-[#3B5BDB]"
-                          : "border-[#E5E7EB] bg-white text-[#6B7280]"
+                          ? "bg-white text-[#3B5BDB] shadow-sm"
+                          : "text-[#6B7280] hover:text-[#111827]"
                       }`}
                     >
-                      Block Transactions
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setBudgetForm((prev) => ({
-                          ...prev,
-                          enforcementAction: "require_approval",
-                        }))
-                      }
-                      className={`rounded-[10px] border px-3 py-1.5 text-[12.74px] leading-[16.98px] font-semibold ${
-                        isRequireApproval
-                          ? "border-[#C7D2FE] bg-[#EEF2FF] text-[#3B5BDB]"
-                          : "border-[#E5E7EB] bg-white text-[#6B7280]"
-                      }`}
-                    >
-                      Require Approval
+                      Hard Block
                     </button>
                   </div>
                 </div>
@@ -1262,10 +1319,47 @@ export default function Page() {
                 </div>
               </div>
 
+              {/* Default Thresholds (₦) — image #1 */}
               <div className="rounded-[12px] border border-[#EEF1F6] bg-white p-4">
                 <div className="flex items-center gap-2 text-[19.11px] leading-[29.72px] font-bold text-[#111827]">
                   <ShieldCheck className="h-4 w-4 text-[#3B5BDB]" />
-                  Fiscal Year &amp; Currency
+                  Default Thresholds (₦)
+                </div>
+                <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+                  {([
+                    { key: "minApproval", label: "Min. Approval Level 1" },
+                    { key: "pettyCash", label: "Petty Cash Limit" },
+                    { key: "auditTrigger", label: "Audit Trigger" },
+                  ] as const).map((field) => (
+                    <div key={field.key} className="space-y-1">
+                      <div className="text-[12.74px] leading-[16.98px] font-semibold text-[#6B7280]">
+                        {field.label}
+                      </div>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] font-semibold text-[#9CA3AF]">
+                          ₦
+                        </span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={defaultThresholds[field.key]}
+                          onChange={(e) =>
+                            setDefaultThresholds((prev) => ({ ...prev, [field.key]: e.target.value }))
+                          }
+                          className="h-10 w-full rounded-[10px] border border-[#E5E7EB] bg-white pl-7 pr-3 text-[14px] font-semibold text-[#111827]"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* PREVIOUS "Fiscal Year & Currency" card — not part of image #1.
+                  Commented out (not deleted) per instruction; restore if needed.
+              <div className="rounded-[12px] border border-[#EEF1F6] bg-white p-4">
+                <div className="flex items-center gap-2 text-[19.11px] leading-[29.72px] font-bold text-[#111827]">
+                  <ShieldCheck className="h-4 w-4 text-[#3B5BDB]" />
+                  Fiscal Year and Currency
                 </div>
                 <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
                   <div className="space-y-1">
@@ -1308,10 +1402,12 @@ export default function Page() {
                       <option value="USD">USD</option>
                       <option value="GBP">GBP</option>
                       <option value="EUR">EUR</option>
+                      <option value="CAD">CAD</option>
                     </select>
                   </div>
                 </div>
               </div>
+              */}
 
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="text-[12.74px] leading-[16.98px] italic font-normal text-[#9CA3AF]">

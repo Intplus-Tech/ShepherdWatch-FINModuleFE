@@ -17,9 +17,16 @@ import {
 interface RequisitionDetailsModalProps {
   isOpen: boolean
   onClose: () => void
+  onAuthorize?: () => void
+  isAuthorizing?: boolean
 }
 
-export function RequisitionDetailsModal({ isOpen, onClose }: RequisitionDetailsModalProps) {
+export function RequisitionDetailsModal({
+  isOpen,
+  onClose,
+  onAuthorize,
+  isAuthorizing = false,
+}: RequisitionDetailsModalProps) {
   if (!isOpen) return null
 
   return (
@@ -163,9 +170,14 @@ export function RequisitionDetailsModal({ isOpen, onClose }: RequisitionDetailsM
               </div>
 
               <div className="flex flex-col gap-3 mb-6">
-                <button className="flex h-11 w-full items-center justify-center gap-2 rounded-[8px] bg-[#81A1EC] text-[13px] font-bold text-white shadow-sm hover:bg-[#2563EB] transition-colors">
+                <button
+                  type="button"
+                  onClick={onAuthorize}
+                  disabled={isAuthorizing}
+                  className="flex h-11 w-full items-center justify-center gap-2 rounded-[8px] bg-[#81A1EC] text-[13px] font-bold text-white shadow-sm hover:bg-[#2563EB] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                >
                   <FileSignature className="h-4 w-4" />
-                  Authorize Override
+                  {isAuthorizing ? "Authorizing..." : "Authorize Override"}
                 </button>
                 <button className="flex h-11 w-full items-center justify-center gap-2 rounded-[8px] border border-[#E5E7EB] bg-white text-[13px] font-bold text-[#111827] shadow-sm hover:bg-[#F9FAFB] transition-colors">
                   <FileText className="h-4 w-4 text-[#6B7280]" />

@@ -18,17 +18,57 @@ import {
   Briefcase, 
   Settings as SettingsIcon,
   User,
-  LogOut
+  LogOut,
+  X
 } from "lucide-react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { ActiveSessionsManager } from "@/components/settings/ActiveSessionsManager";
+import { ModalShell } from "@/components/ui/modal-shell";
+import { PasswordInput } from "@/components/ui/password-input";
 
 // Using Inter font unconditionally matching Figma
 const inter = Inter({ subsets: ["latin"] });
 
 export default function UserSettingsPage() {
   const queryClient = useQueryClient();
-  const { updateProfile, logout } = useAuth();
+  const { updateProfile, logout, changePassword } = useAuth();
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [pwCurrent, setPwCurrent] = useState("");
+  const [pwNew, setPwNew] = useState("");
+  const [pwConfirm, setPwConfirm] = useState("");
+  const [pwError, setPwError] = useState<string | null>(null);
+  const [pwSuccess, setPwSuccess] = useState<string | null>(null);
+  const [pwSaving, setPwSaving] = useState(false);
+
+  const handleChangePassword = async () => {
+    setPwError(null);
+    setPwSuccess(null);
+    if (!pwCurrent || !pwNew || !pwConfirm) {
+      setPwError("Please fill in all fields.");
+      return;
+    }
+    if (pwNew !== pwConfirm) {
+      setPwError("New passwords do not match.");
+      return;
+    }
+    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(pwNew)) {
+      setPwError("Password must be 8+ chars with uppercase, lowercase, and a number.");
+      return;
+    }
+    setPwSaving(true);
+    try {
+      await changePassword({ currentPassword: pwCurrent, newPassword: pwNew });
+      setPwSuccess("Password changed successfully.");
+      setPwCurrent("");
+      setPwNew("");
+      setPwConfirm("");
+      setTimeout(() => setPasswordOpen(false), 1200);
+    } catch (err) {
+      setPwError(err instanceof Error ? err.message : "Failed to change password.");
+    } finally {
+      setPwSaving(false);
+    }
+  };
   const pathname = usePathname();
   const router = useRouter();
   const [profile, setProfile] = useState<any>(null);
@@ -597,6 +637,13 @@ export default function UserSettingsPage() {
 
         {/* Profile Footer */}
         <div className="mt-auto border-t border-[#EEF1F6] p-4 bg-[#FAFAFA]">
+          <button
+            onClick={handleLogout}
+            className="mb-3 flex items-center gap-2 rounded-[8px] py-2 px-2 text-[12px] font-medium text-rose-600 hover:bg-rose-50 transition-colors w-full text-left"
+          >
+            <LogOut className="h-4 w-4" />
+            Logout
+          </button>
           <div className="flex items-center gap-3">
             <div className="w-[36px] h-[36px] rounded-full overflow-hidden border-2 border-white shadow-sm shrink-0">
               <div className="w-full h-full bg-[#1E293B] flex items-center justify-center text-white text-[12px] font-[700]">{initials || "U"}</div>
@@ -606,13 +653,6 @@ export default function UserSettingsPage() {
               <span className="text-[#64748B] text-[11.5px] font-[500] truncate">{roleName}</span>
             </div>
           </div>
-          <button
-            onClick={handleLogout}
-            className="mt-3 flex items-center gap-2 rounded-[8px] py-2 px-2 text-[12px] font-medium text-rose-600 hover:bg-rose-50 transition-colors w-full text-left"
-          >
-            <LogOut className="h-4 w-4" />
-            Logout
-          </button>
         </div>
       </aside>
 
@@ -699,7 +739,10 @@ export default function UserSettingsPage() {
                 </div>
 
                 {/* Action */}
-                <button className="text-[#2563EB] text-[14px] font-[800] hover:underline self-start sm:self-auto cursor-pointer">
+                <button
+                  onClick={() => setPasswordOpen(true)}
+                  className="text-[#2563EB] text-[14px] font-[800] hover:underline self-start sm:self-auto cursor-pointer"
+                >
                   Change Password
                 </button>
 
@@ -1241,6 +1284,73 @@ export default function UserSettingsPage() {
           
         </div>
       </main>
+
+      <ModalShell open={passwordOpen} onClose={() => setPasswordOpen(false)} className="max-w-md">
+        <div className="flex items-start justify-between border-b border-[#EEF1F6] px-6 py-4">
+          <div>
+            <h2 className="text-[17px] font-[800] text-[#111827]">Change Password</h2>
+            <p className="text-[12px] text-[#6B7280]">Enter your new password credentials</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setPasswordOpen(false)}
+            aria-label="Close"
+            className="rounded-full p-1 text-[#9CA3AF] hover:bg-[#F3F4F6] hover:text-[#111827]"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="flex flex-col gap-4 px-6 py-5">
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-[700] text-[#374151]">Old Password</label>
+            <PasswordInput
+              value={pwCurrent}
+              onChange={(e) => setPwCurrent(e.target.value)}
+              initiallyVisible={false}
+              autoComplete="off"
+              className="h-[42px] rounded-[8px] border-[#E2E8F0] bg-[#F8FAFC] text-[13px]"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-[700] text-[#374151]">New Password</label>
+            <PasswordInput
+              value={pwNew}
+              onChange={(e) => setPwNew(e.target.value)}
+              autoComplete="new-password"
+              className="h-[42px] rounded-[8px] border-[#E2E8F0] bg-[#F8FAFC] text-[13px]"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-[700] text-[#374151]">Re Enter New Password</label>
+            <PasswordInput
+              value={pwConfirm}
+              onChange={(e) => setPwConfirm(e.target.value)}
+              autoComplete="new-password"
+              className="h-[42px] rounded-[8px] border-[#E2E8F0] bg-[#F8FAFC] text-[13px]"
+            />
+          </div>
+          {pwError ? <p className="text-[11px] font-semibold text-rose-600">{pwError}</p> : null}
+          {pwSuccess ? <p className="text-[11px] font-semibold text-emerald-600">{pwSuccess}</p> : null}
+        </div>
+        <div className="flex items-center justify-end gap-3 border-t border-[#EEF1F6] px-6 py-4">
+          <button
+            type="button"
+            onClick={() => setPasswordOpen(false)}
+            disabled={pwSaving}
+            className="text-[13px] font-[700] text-[#4B5563] hover:text-[#111827] disabled:opacity-70"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleChangePassword}
+            disabled={pwSaving}
+            className="rounded-[8px] bg-[#2563EB] px-5 py-2 text-[13px] font-[700] text-white hover:bg-[#1D4ED8] disabled:opacity-70"
+          >
+            {pwSaving ? "Updating..." : "Update Password"}
+          </button>
+        </div>
+      </ModalShell>
     </div>
   );
 }

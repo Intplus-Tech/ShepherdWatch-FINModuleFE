@@ -10,15 +10,38 @@ import ScreenHeader from "@/components/navigation/ScreenHeader"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
+  AlertTriangle,
   Calendar,
   ChevronDown,
   Download,
   Eye,
+  FileEdit,
   History,
   Search,
   ShieldCheck,
+  UserCog,
   Users,
 } from "lucide-react"
+
+// Derive the action badge style + icon from the action label so the audit log
+// renders like the design (Budget Override = amber, COA Update = blue,
+// Role Modified = gray) regardless of the API's action naming.
+function actionStyle(action: string): {
+  tone: string
+  Icon: React.ComponentType<{ className?: string }>
+} {
+  const a = action.toLowerCase()
+  if (a.includes("override") || a.includes("budget")) {
+    return { tone: "bg-amber-50 text-amber-700", Icon: AlertTriangle }
+  }
+  if (a.includes("role") || a.includes("permission") || a.includes("access")) {
+    return { tone: "bg-slate-100 text-slate-700", Icon: UserCog }
+  }
+  if (a.includes("coa") || a.includes("update") || a.includes("category") || a.includes("edit")) {
+    return { tone: "bg-blue-50 text-blue-700", Icon: FileEdit }
+  }
+  return { tone: "bg-slate-50 text-slate-600", Icon: FileEdit }
+}
 import {
   flattenRolePermissions,
   formatRoleLabel,
@@ -472,11 +495,23 @@ export default function Page() {
                         </div>
                       </td>
                       <td className="py-4 px-4">
-                        <span className={`rounded-full px-2 py-1 text-[10px] ${log.actionTone}`}>{log.action || "—"}</span>
+                        {log.action ? (
+                          (() => {
+                            const { tone, Icon } = actionStyle(log.action)
+                            return (
+                              <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-semibold ${tone}`}>
+                                <Icon className="h-3 w-3" />
+                                {log.action}
+                              </span>
+                            )
+                          })()
+                        ) : (
+                          <span className="text-[#9CA3AF]">—</span>
+                        )}
                       </td>
                       <td className="py-4 px-4">
                         <div className="text-[10px] text-[#9CA3AF]">{log.impactLabel}</div>
-                        <div className="text-[12px] text-rose-600">{log.impactValue}</div>
+                        <div className="text-[12px] text-rose-600 line-through">{log.impactValue}</div>
                         {log.impactAfterLabel ? (
                           <div className="mt-1 space-y-1">
                             <div className="text-[10px] text-[#9CA3AF]">{log.impactAfterLabel}</div>

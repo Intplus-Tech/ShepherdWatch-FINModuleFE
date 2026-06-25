@@ -27,8 +27,10 @@ import {
   CreditCard,
   Check,
   LogOut,
+  Info,
 } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
+import { ModalShell } from "@/components/ui/modal-shell"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -74,6 +76,16 @@ export default function LogisticsRepairsPage() {
   })
   const [editError, setEditError] = useState<string | null>(null)
   const [editSaving, setEditSaving] = useState(false)
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false)
+  const [scheduleForm, setScheduleForm] = useState({
+    maintenanceType: "Routine Check",
+    scheduledDate: "Every 30 Days",
+    provider: "",
+    cost: "",
+    createRequisition: true,
+  })
+
+  const closeScheduleModal = () => setScheduleModalOpen(false)
 
   const branchId = useMemo(
     () => user?.branchId ?? user?.branch?.id ?? "",
@@ -574,6 +586,13 @@ export default function LogisticsRepairsPage() {
           {/* Bottom Section */}
           <div className="mt-auto px-3 mb-2">
             <div className="pt-6 border-t border-[#EEF1F6] flex flex-col gap-4 px-4">
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-3 rounded-[8px] py-2.5 px-2 -mx-2 text-[13px] font-medium text-rose-600 hover:bg-rose-50 transition-colors w-[calc(100%+16px)] text-left"
+              >
+                <LogOut className="h-4.5 w-4.5" />
+                Logout
+              </button>
               <div className="flex items-center gap-3.5 cursor-pointer hover:opacity-80 transition-opacity">
                 <div className="h-10 w-10 relative rounded-full overflow-hidden bg-gray-200 shrink-0 border border-gray-200 flex items-center justify-center">
                   <Image src="/images/Beared%20Guy02-min%201.jpg" alt="Profile avatar" fill className="object-cover" />
@@ -585,13 +604,6 @@ export default function LogisticsRepairsPage() {
                   </div>
                 </div>
               </div>
-              <button
-                onClick={handleLogout}
-                className="flex items-center gap-3 rounded-[8px] py-2.5 px-2 -mx-2 text-[13px] font-medium text-rose-600 hover:bg-rose-50 transition-colors w-[calc(100%+16px)] text-left"
-              >
-                <LogOut className="h-4.5 w-4.5" />
-                Logout
-              </button>
             </div>
           </div>
         </div>
@@ -632,9 +644,9 @@ export default function LogisticsRepairsPage() {
           <div className="mx-auto w-full max-w-[1440px] flex flex-col gap-6 lg:gap-8">
 
             {/* Hero Section */}
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-              <div className="max-w-[650px]">
-                <h1 
+            <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 md:gap-6">
+              <div className="min-w-0 md:max-w-[650px]">
+                <h1
                   className="text-[#111827] mb-2"
                   style={{
                     fontFamily: '"Inter", sans-serif',
@@ -651,12 +663,15 @@ export default function LogisticsRepairsPage() {
                   Manage ongoing maintenance tasks and recurring expenses.
                 </p>
               </div>
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 self-start md:self-end w-full sm:w-auto md:ml-auto md:justify-end">
-                <button className="h-[40px] sm:h-[44px] px-4 sm:px-5 rounded-[8px] bg-white border border-[#E5E7EB] flex items-center justify-center gap-2 text-[12.5px] sm:text-[14px] font-[800] text-[#4B5563] hover:bg-gray-50 transition-colors shadow-sm shrink-0 w-full sm:w-[210px]">
+              <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3 w-full md:w-auto shrink-0 md:justify-end">
+                <button className="h-[40px] sm:h-[44px] px-4 sm:px-5 rounded-[8px] bg-white border border-[#E5E7EB] flex items-center justify-center gap-2 text-[12.5px] sm:text-[14px] font-[800] text-[#4B5563] hover:bg-gray-50 transition-colors shadow-sm whitespace-nowrap">
                   <Download className="h-4 w-4 text-[#6B7280]" strokeWidth={2.5} />
                   Export Report
                 </button>
-                <button className="h-[40px] sm:h-[44px] px-4 sm:px-6 rounded-[8px] bg-[#2563EB] hover:bg-[#1D4ED8] flex items-center justify-center gap-2 text-[12.5px] sm:text-[14px] font-[800] text-white transition-colors shadow-sm shrink-0 w-full sm:w-[210px]">
+                <button
+                  onClick={() => setScheduleModalOpen(true)}
+                  className="h-[40px] sm:h-[44px] px-4 sm:px-6 rounded-[8px] bg-[#2563EB] hover:bg-[#1D4ED8] flex items-center justify-center gap-2 text-[12.5px] sm:text-[14px] font-[800] text-white transition-colors shadow-sm whitespace-nowrap"
+                >
                   <Plus className="h-4.5 w-4.5" strokeWidth={2.5} />
                   New Maintenance Request
                 </button>
@@ -1206,6 +1221,127 @@ export default function LogisticsRepairsPage() {
           </div>
         </div>
       )}
+
+      <ModalShell open={scheduleModalOpen} onClose={closeScheduleModal} className="max-w-[520px]">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-[#EEF1F6]">
+          <h2 className="text-[16px] font-[900] text-[#111827] tracking-tight">Schedule Maintenance</h2>
+          <button
+            onClick={closeScheduleModal}
+            className="h-8 w-8 rounded-full flex items-center justify-center text-[#9CA3AF] hover:text-[#4B5563] hover:bg-gray-100 transition-colors"
+            aria-label="Close"
+          >
+            <X className="h-4.5 w-4.5" />
+          </button>
+        </div>
+
+        <div className="px-6 py-5 flex flex-col gap-5">
+          {/* Info banner */}
+          <div className="flex items-start gap-3 rounded-[10px] bg-[#EFF6FF] border border-[#BFDBFE] px-4 py-3">
+            <div className="h-7 w-7 rounded-[8px] bg-[#DBEAFE] flex items-center justify-center shrink-0 text-[#2563EB]">
+              <Info className="h-4 w-4" strokeWidth={2.5} />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[13px] font-[800] text-[#1E3A8A]">Asset: HVAC Unit - Main Hall (EQ-2045)</span>
+              <span className="text-[12px] font-[500] text-[#3B82F6]">Regular maintenance helps extend asset lifespan.</span>
+            </div>
+          </div>
+
+          {/* Maintenance Type + Scheduled Date */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] font-[700] text-[#6B7280] uppercase tracking-wide">Maintenance Type</label>
+              <select
+                value={scheduleForm.maintenanceType}
+                onChange={(e) => setScheduleForm((prev) => ({ ...prev, maintenanceType: e.target.value }))}
+                className="h-[42px] rounded-[8px] border border-[#E5E7EB] bg-white px-3 text-[13px] font-[600] text-[#111827] outline-none focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20"
+              >
+                <option value="Routine Check">Routine Check</option>
+                <option value="Repair">Repair</option>
+                <option value="Inspection">Inspection</option>
+                <option value="Replacement">Replacement</option>
+              </select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] font-[700] text-[#6B7280] uppercase tracking-wide">Scheduled Date</label>
+              <select
+                value={scheduleForm.scheduledDate}
+                onChange={(e) => setScheduleForm((prev) => ({ ...prev, scheduledDate: e.target.value }))}
+                className="h-[42px] rounded-[8px] border border-[#E5E7EB] bg-white px-3 text-[13px] font-[600] text-[#111827] outline-none focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20"
+              >
+                <option value="Every 30 Days">Every 30 Days</option>
+                <option value="Every 60 Days">Every 60 Days</option>
+                <option value="Every 90 Days">Every 90 Days</option>
+                <option value="Every 6 Months">Every 6 Months</option>
+                <option value="Yearly">Yearly</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Service Provider / Vendor */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[11px] font-[700] text-[#6B7280] uppercase tracking-wide">Service Provider / Vendor</label>
+            <input
+              value={scheduleForm.provider}
+              onChange={(e) => setScheduleForm((prev) => ({ ...prev, provider: e.target.value }))}
+              placeholder="e.g. CoolAir Services Ltd"
+              className="h-[42px] rounded-[8px] border border-[#E5E7EB] bg-white px-3 text-[13px] font-[600] text-[#111827] placeholder:text-[#9CA3AF] outline-none focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20"
+            />
+          </div>
+
+          {/* Estimated Cost */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[11px] font-[700] text-[#6B7280] uppercase tracking-wide">Estimated Cost</label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] font-[700] text-[#9CA3AF]">₦</span>
+              <input
+                type="number"
+                min="0"
+                value={scheduleForm.cost}
+                onChange={(e) => setScheduleForm((prev) => ({ ...prev, cost: e.target.value }))}
+                placeholder="0.00"
+                className="h-[42px] w-full rounded-[8px] border border-[#E5E7EB] bg-white pl-8 pr-3 text-[13px] font-[600] text-[#111827] placeholder:text-[#9CA3AF] outline-none focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20"
+              />
+            </div>
+            <span className="text-[11px] font-[500] text-[#9CA3AF]">Approximate cost for budgeting purposes.</span>
+          </div>
+
+          {/* Toggle row */}
+          <div className="flex items-center justify-between rounded-[10px] border border-[#EEF1F6] bg-[#F8FAFC] px-4 py-3">
+            <div className="flex flex-col">
+              <span className="text-[13px] font-[800] text-[#111827]">Create Payment Requisition</span>
+              <span className="text-[12px] font-[500] text-[#6B7280]">Notify accountant to process funds release</span>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={scheduleForm.createRequisition}
+              onClick={() => setScheduleForm((prev) => ({ ...prev, createRequisition: !prev.createRequisition }))}
+              className={`relative h-6 w-11 rounded-full transition-colors shrink-0 ${scheduleForm.createRequisition ? "bg-[#2563EB]" : "bg-[#D1D5DB]"}`}
+            >
+              <span
+                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${scheduleForm.createRequisition ? "translate-x-[22px]" : "translate-x-0.5"}`}
+              />
+            </button>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[#EEF1F6]">
+          <button
+            onClick={closeScheduleModal}
+            className="h-[40px] px-4 rounded-[8px] border border-[#E5E7EB] bg-white text-[#4B5563] text-[13px] font-[700] hover:bg-gray-50 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={closeScheduleModal}
+            className="h-[40px] px-5 rounded-[8px] bg-[#2563EB] text-white text-[13px] font-[800] hover:bg-[#1D4ED8] transition-colors shadow-sm"
+          >
+            Confirm Schedule
+          </button>
+        </div>
+      </ModalShell>
     </div>
   )
 }

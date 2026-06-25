@@ -19,6 +19,7 @@ import {
 } from "lucide-react"
 
 import { Inter } from "next/font/google"
+import { useRouter } from "next/navigation"
 import { useAuth } from "@/components/auth/AuthProvider"
 import BranchAccountantSidebar from "@/components/navigation/BranchAccountantSidebar"
 import { useAssetOverview, type AssetOverviewItem } from "@/components/hooks/useAssetOverview"
@@ -73,6 +74,7 @@ function pickString(...vals: Array<unknown>): string {
 
 export default function Page() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const router = useRouter()
   const { user } = useAuth()
   const branchId = user?.tenantId ?? user?.tenant?.id ?? ""
   const { items, totals, isLoading } = useAssetOverview({ branchId })
@@ -212,10 +214,16 @@ export default function Page() {
               </div>
 
               <div className="flex items-center gap-3 w-full md:w-auto overflow-x-auto no-scrollbar pb-1 md:pb-0">
-                <button className="flex-1 md:flex-none flex items-center justify-center h-[42px] px-5 sm:px-6 rounded-[8px] bg-[#2563EB] text-[14px] font-bold text-white shadow-[0_4px_14px_rgba(37,99,235,0.2)] hover:bg-[#1D4ED8] transition-colors whitespace-nowrap tracking-wide">
+                <button
+                  onClick={() => router.push("/branchaccount-pastor/asset-register")}
+                  className="flex-1 md:flex-none flex items-center justify-center h-[42px] px-5 sm:px-6 rounded-[8px] bg-[#2563EB] text-[14px] font-bold text-white shadow-[0_4px_14px_rgba(37,99,235,0.2)] hover:bg-[#1D4ED8] transition-colors whitespace-nowrap tracking-wide"
+                >
                   Asset Register
                 </button>
-                <button className="flex-1 md:flex-none flex items-center justify-center h-[42px] px-5 sm:px-6 rounded-[8px] bg-[#EF4444] text-[14px] font-bold text-white shadow-[0_4px_14px_rgba(239,68,68,0.2)] hover:bg-[#DC2626] transition-colors whitespace-nowrap tracking-wide">
+                <button
+                  onClick={() => router.push("/branchaccount-pastor/maintenance")}
+                  className="flex-1 md:flex-none flex items-center justify-center h-[42px] px-5 sm:px-6 rounded-[8px] bg-[#EF4444] text-[14px] font-bold text-white shadow-[0_4px_14px_rgba(239,68,68,0.2)] hover:bg-[#DC2626] transition-colors whitespace-nowrap tracking-wide"
+                >
                   Maintenance Schedule
                 </button>
               </div>

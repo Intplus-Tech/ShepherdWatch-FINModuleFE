@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState } from "react"
 import Image from "next/image"
+import { useRouter } from "next/navigation"
 import { Inter } from "next/font/google"
 import {
   LayoutDashboard,
@@ -62,6 +63,7 @@ function toTracker(status: string) {
 }
 
 export default function TrackRequests() {
+  const router = useRouter()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const { user } = useAuth()
   const { requisitions, loading: inboxLoading } = useRequisitionInbox({
@@ -247,7 +249,7 @@ export default function TrackRequests() {
 
             {/* Back Button */}
             <div className="mb-4">
-              <button className="flex items-center gap-1.5 text-[14px] font-[700] text-[#4B5563] hover:text-[#111827] transition-colors">
+              <button onClick={() => router.back()} className="flex items-center gap-1.5 text-[14px] font-[700] text-[#4B5563] hover:text-[#111827] transition-colors">
                 <ArrowLeft className="h-4 w-4" strokeWidth={2.5} />
                 Back
               </button>

@@ -5,7 +5,7 @@ import { API_V1 } from "@/lib/api";
 import Image from "next/image"
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { Input } from "@/components/ui/input"
 import { useAuth } from "@/components/auth/AuthProvider"
 import {
@@ -50,6 +50,7 @@ type EventColorType = "scheduled" | "completed" | "overdue"
 type CalendarEvent = { title: string; sub?: string; colorType: EventColorType }
 
 export default function MaintenanceManagementPage() {
+  const router = useRouter()
   const { user } = useAuth()
   const displayName = user?.name || user?.email || "User"
   const roleLabel = user?.role ? String(user.role).replace(/_/g, " ") : "Lead Pastor"
@@ -573,7 +574,7 @@ export default function MaintenanceManagementPage() {
             
             {/* Header Titles */}
             <div className="mb-8">
-              <button className="flex items-center gap-1.5 text-[14px] font-bold text-[#3B5BDB] hover:text-[#2e4ac0] transition-colors mb-5 w-fit">
+              <button onClick={() => router.back()} className="flex items-center gap-1.5 text-[14px] font-bold text-[#3B5BDB] hover:text-[#2e4ac0] transition-colors mb-5 w-fit">
                 <ArrowLeft className="h-4 w-4 stroke-[2.5]" />
                 Back
               </button>
@@ -643,8 +644,8 @@ export default function MaintenanceManagementPage() {
               {/* Right Column: Schedule Calendar */}
               <div className="flex-1 w-full bg-white rounded-[24px] shadow-[0px_2px_16px_rgba(0,0,0,0.03)] border border-[#EEF1F6] flex flex-col overflow-hidden relative">
                 
-                {/* Legend Header Overlay */}
-                <div className="absolute top-7 right-8 hidden sm:flex items-center gap-4 text-[12px] font-bold text-[#64748B]">
+                {/* Legend (top-right, own row so it never overlaps the week nav) */}
+                <div className="flex justify-end gap-4 px-7 sm:px-8 pt-6 text-[12px] font-bold text-[#64748B]">
                   <div className="flex items-center gap-2">
                     <div className="w-2.5 h-2.5 rounded-full bg-[#EF4444]"></div>
                     Overdue
@@ -659,7 +660,7 @@ export default function MaintenanceManagementPage() {
                   </div>
                 </div>
 
-                <div className="p-7 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-5 border-b border-[#EEF1F6]">
+                <div className="px-7 sm:px-8 pb-7 sm:pb-8 pt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-5 border-b border-[#EEF1F6]">
                   <div className="flex items-center gap-2.5">
                     <CalendarDays className="text-[#3B5BDB] h-[24px] w-[24px] stroke-[2]" />
                     <h2 className="text-[20px] font-extrabold text-[#111827] tracking-tight leading-none">{scheduleHeaderLabel}</h2>
