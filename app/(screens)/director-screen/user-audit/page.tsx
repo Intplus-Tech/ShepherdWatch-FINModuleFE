@@ -53,6 +53,7 @@ type AuditLogRow = {
   id: string
   rawId: string
   time: string
+  rawTime: string
   user: string
   role: string
   action: string
@@ -68,6 +69,8 @@ export default function Page() {
   const [searchText, setSearchText] = useState("")
   const [actionFilter, setActionFilter] = useState("")
   const [roleFilter, setRoleFilter] = useState("")
+  const [dateFrom, setDateFrom] = useState("")
+  const [dateTo, setDateTo] = useState("")
   const [permissionOptions, setPermissionOptions] = useState<string[]>([])
   const [roleOptions, setRoleOptions] = useState<string[]>([])
   const [auditLogs, setAuditLogs] = useState<AuditLogRow[]>([])
@@ -234,6 +237,7 @@ export default function Page() {
             time: timestamp
               ? new Date(timestamp).toLocaleString()
               : "",
+            rawTime: timestamp ? String(timestamp) : "",
             user: String(userLabel),
             role: String(roleLabel),
             action: String(action),
@@ -302,9 +306,19 @@ export default function Page() {
       const matchesAction = actionFilter ? log.action === actionFilter : true
       const matchesRole = roleFilter ? log.role === roleFilter : true
 
-      return matchesSearch && matchesAction && matchesRole
+      const logTime = log.rawTime ? new Date(log.rawTime).getTime() : NaN
+      const matchesFrom =
+        dateFrom && !Number.isNaN(logTime)
+          ? logTime >= new Date(`${dateFrom}T00:00:00`).getTime()
+          : true
+      const matchesTo =
+        dateTo && !Number.isNaN(logTime)
+          ? logTime <= new Date(`${dateTo}T23:59:59.999`).getTime()
+          : true
+
+      return matchesSearch && matchesAction && matchesRole && matchesFrom && matchesTo
     })
-  }, [searchText, actionFilter, roleFilter, auditLogs])
+  }, [searchText, actionFilter, roleFilter, dateFrom, dateTo, auditLogs])
 
   const handleExportAuditLogs = async () => {
     setAuditError(null)
@@ -351,7 +365,7 @@ export default function Page() {
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
       <SidebarNav
-        activeHref="/director-screen/user-audit"
+        activeHref="/director-screen/users"
         className="fixed inset-y-0 left-0 z-20 w-[260px] rounded-none bg-[#FAFBFF] border-r border-[#EEF1F6]"
       />
 
@@ -447,10 +461,29 @@ export default function Page() {
                 </div>
                 <div className="space-y-1">
                   <div className="text-[10px] text-[#9CA3AF] font-semibold">DATE RANGE</div>
-                  <Button variant="outline" size="sm" className="h-9 w-full justify-between rounded-md border-[#E5E7EB] bg-white text-[12px] text-[#6B7280]">
-                    <Calendar className="h-4 w-4" /> All Dates
-                    <ChevronDown className="h-3.5 w-3.5" />
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <Calendar className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9CA3AF]" />
+                      <input
+                        type="date"
+                        aria-label="From date"
+                        value={dateFrom}
+                        max={dateTo || undefined}
+                        onChange={(event) => setDateFrom(event.target.value)}
+                        onClick={(e) => e.currentTarget.showPicker?.()}
+                        className="h-9 w-full rounded-md border border-[#E5E7EB] bg-white pl-8 pr-2 text-[12px] text-[#6B7280] outline-none transition-all focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20"
+                      />
+                    </div>
+                    <input
+                      type="date"
+                      aria-label="To date"
+                      value={dateTo}
+                      min={dateFrom || undefined}
+                      onChange={(event) => setDateTo(event.target.value)}
+                      onClick={(e) => e.currentTarget.showPicker?.()}
+                      className="h-9 flex-1 rounded-md border border-[#E5E7EB] bg-white px-2 text-[12px] text-[#6B7280] outline-none transition-all focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20"
+                    />
+                  </div>
                 </div>
               </div>
             </div>

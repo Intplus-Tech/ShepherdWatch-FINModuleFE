@@ -34,6 +34,11 @@ export default function Page() {
   const [selectedBudget, setSelectedBudget] = useState<any>(null)
   const [editModalOpen, setEditModalOpen] = useState(false)
   const [approvalModalOpen, setApprovalModalOpen] = useState(false)
+
+  // Financial Overview header filters
+  const [fiscalYear, setFiscalYear] = useState("2024 (Present)")
+  const [branchFilter, setBranchFilter] = useState("Maryland, Lagos")
+  const [currencyFilter, setCurrencyFilter] = useState("NGN (₦)")
   
 
 
@@ -268,9 +273,6 @@ export default function Page() {
                       >
                         Budget Control
                       </button>
-                      <button className="flex items-center gap-2 rounded-md bg-[#3B5BDB] px-4 py-2 text-[12px] font-bold text-white shadow-sm hover:bg-blue-700 ml-1 transition-colors">
-                        <RefreshCw className="h-4 w-4" strokeWidth={2.5} /> Sync Feed
-                      </button>
                     </div>
                   </div>
 
@@ -302,23 +304,55 @@ export default function Page() {
                     <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_auto] gap-4 text-[13px] text-[#4B5563] font-medium">
                       <div className="flex flex-col gap-1.5">
                         <span className="text-[11px] font-bold text-[#9CA3AF] uppercase">FISCAL PERIOD</span>
-                        <div className="flex items-center justify-between rounded-md border border-[#E5E7EB] bg-white px-3.5 py-2.5 shadow-sm cursor-pointer">
-                          FY 2024 (Current)
-                          <ChevronDown className="h-4 w-4 text-[#9CA3AF]" />
+                        <div className="relative">
+                          <select
+                            value={fiscalYear}
+                            onChange={(e) => setFiscalYear(e.target.value)}
+                            className="w-full appearance-none rounded-md border border-[#E5E7EB] bg-white px-3.5 py-2.5 pr-9 text-[13px] font-medium text-[#4B5563] shadow-sm outline-none focus:border-[#3B5BDB]"
+                          >
+                            <option value="2021">2021</option>
+                            <option value="2022">2022</option>
+                            <option value="2023">2023</option>
+                            <option value="2024 (Present)">2024 (Present)</option>
+                          </select>
+                          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
                         </div>
                       </div>
                       <div className="flex flex-col gap-1.5">
                         <span className="text-[11px] font-bold text-[#9CA3AF] uppercase">BRANCH</span>
-                        <div className="flex items-center justify-between rounded-md border border-[#E5E7EB] bg-white px-3.5 py-2.5 shadow-sm cursor-pointer">
-                          Maryland, Lagos
-                          <ChevronDown className="h-4 w-4 text-[#9CA3AF]" />
+                        <div className="relative">
+                          <select
+                            value={branchFilter}
+                            onChange={(e) => setBranchFilter(e.target.value)}
+                            className="w-full appearance-none rounded-md border border-[#E5E7EB] bg-white px-3.5 py-2.5 pr-9 text-[13px] font-medium text-[#4B5563] shadow-sm outline-none focus:border-[#3B5BDB]"
+                          >
+                            <option>All Branches</option>
+                            <option>Maryland, Lagos</option>
+                            <option>HQ, Ibadan</option>
+                            <option>Victoria Island, Lagos</option>
+                            <option>Agodi, Ibadan</option>
+                            <option>London HQ</option>
+                            <option>New York Branch</option>
+                            <option>Singapore Branch</option>
+                          </select>
+                          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
                         </div>
                       </div>
                       <div className="flex flex-col gap-1.5">
                         <span className="text-[11px] font-bold text-[#9CA3AF] uppercase">CURRENCY</span>
-                        <div className="flex items-center justify-between rounded-md border border-[#E5E7EB] bg-white px-3.5 py-2.5 shadow-sm cursor-pointer">
-                          USD ($)
-                          <ChevronDown className="h-4 w-4 text-[#9CA3AF]" />
+                        <div className="relative">
+                          <select
+                            value={currencyFilter}
+                            onChange={(e) => setCurrencyFilter(e.target.value)}
+                            className="w-full appearance-none rounded-md border border-[#E5E7EB] bg-white px-3.5 py-2.5 pr-9 text-[13px] font-medium text-[#4B5563] shadow-sm outline-none focus:border-[#3B5BDB]"
+                          >
+                            <option>NGN (₦)</option>
+                            <option>USD ($)</option>
+                            <option>EUR (€)</option>
+                            <option>GBP (£)</option>
+                            <option>CAD (C$)</option>
+                          </select>
+                          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
                         </div>
                       </div>
                       <button className="mt-5 md:mt-auto flex h-[42px] items-center justify-center gap-2 rounded-md bg-[#EEF2FF] px-4 font-bold text-[12px] text-[#3B5BDB] hover:bg-blue-50 transition-colors">

@@ -24,8 +24,6 @@ import {
   Search,
   Shield,
   Trash2,
-  TrendingUp,
-  ShieldAlert,
   User,
   Users,
   X,
@@ -102,15 +100,6 @@ type UserOption = {
   name: string
   email: string
   role: string
-}
-
-type BranchHealthSummary = {
-  totalBranches: number
-  activeBranches: number
-  networkHealthPercent: number
-  totalRemittanceYTD: number
-  criticalAlertsCount: number
-  pendingAuditsCount: number
 }
 
 const normalizeTenant = (tenant: TenantApiItem, index: number): TenantCard => {
@@ -244,6 +233,7 @@ export default function Page() {
   const [descriptionFilter, setDescriptionFilter] = useState("")
   const [locationFilter, setLocationFilter] = useState("")
   const [statusFilter, setStatusFilter] = useState("ALL")
+  const [regionFilter, setRegionFilter] = useState("ALL")
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(12)
   const [totalItems, setTotalItems] = useState<number | null>(null)
@@ -290,9 +280,6 @@ export default function Page() {
     branchType: false,
   })
   const [branchStatus, setBranchStatus] = useState<"idle" | "saving">("idle")
-  const [branchHealthSummary, setBranchHealthSummary] = useState<BranchHealthSummary | null>(null)
-  const [branchSummaryLoading, setBranchSummaryLoading] = useState(false)
-  const [branchSummaryError, setBranchSummaryError] = useState<string | null>(null)
   const [viewBranch, setViewBranch] = useState<TenantCard | null>(null)
   const [viewBranchOpen, setViewBranchOpen] = useState(false)
   const [viewTab, setViewTab] = useState<"details" | "personnel">("details")
@@ -305,118 +292,6 @@ export default function Page() {
     setViewEditMode(false)
     setViewBranchOpen(true)
   }
-
-  const formatCurrency = (value: number) =>
-    new Intl.NumberFormat("en-NG", {
-      style: "currency",
-      currency: "NGN",
-      maximumFractionDigits: 0,
-    }).format(value)
-
-  useEffect(() => {
-    let isMounted = true
-
-    const fetchBranchSummary = async () => {
-      try {
-        setBranchSummaryLoading(true)
-        setBranchSummaryError(null)
-        const response = await fetch(`${API_V1}/branches/summary`, {
-          method: "GET",
-          credentials: "include",
-        })
-        const payload = await response.json().catch(() => null)
-        if (!response.ok) {
-          throw new Error(payload?.message ?? "Unable to fetch branch summary.")
-        }
-
-        const data = (payload?.data ?? payload ?? {}) as Record<string, unknown>
-        const totalBranches = Number(data.totalBranches ?? 0)
-        const activeBranches = Number(data.activeBranches ?? 0)
-        const networkHealthPercentRaw = Number(data.networkHealthPercent)
-        const networkHealthPercent = Number.isFinite(networkHealthPercentRaw)
-          ? networkHealthPercentRaw
-          : totalBranches > 0
-            ? (activeBranches / totalBranches) * 100
-            : 0
-        const totalRemittanceYTD = Number(data.totalRemittanceYTD ?? 0)
-        const criticalAlertsCount = Number(data.criticalAlertsCount ?? data.criticalAlerts ?? 0)
-        const pendingAuditsCount = Number(data.pendingAuditsCount ?? data.pendingAudits ?? 0)
-
-        if (isMounted) {
-          setBranchHealthSummary({
-            totalBranches: Number.isFinite(totalBranches) ? totalBranches : 0,
-            activeBranches: Number.isFinite(activeBranches) ? activeBranches : 0,
-            networkHealthPercent: Number.isFinite(networkHealthPercent) ? networkHealthPercent : 0,
-            totalRemittanceYTD: Number.isFinite(totalRemittanceYTD) ? totalRemittanceYTD : 0,
-            criticalAlertsCount: Number.isFinite(criticalAlertsCount) ? criticalAlertsCount : 0,
-            pendingAuditsCount: Number.isFinite(pendingAuditsCount) ? pendingAuditsCount : 0,
-          })
-        }
-      } catch (error) {
-        if (isMounted) {
-          setBranchHealthSummary(null)
-          setBranchSummaryError(error instanceof Error ? error.message : "Unable to fetch branch summary.")
-        }
-      } finally {
-        if (isMounted) {
-          setBranchSummaryLoading(false)
-        }
-      }
-    }
-
-    fetchBranchSummary()
-
-    return () => {
-      isMounted = false
-    }
-  }, [])
-
-  const statCards = useMemo(() => {
-    const totalBranches = Number(branchHealthSummary?.totalBranches ?? 0)
-    const totalIncome = Number(branchHealthSummary?.totalRemittanceYTD ?? 0)
-    const complianceAvg = Number(branchHealthSummary?.networkHealthPercent ?? 0)
-    const criticalAlerts = Number(branchHealthSummary?.criticalAlertsCount ?? 0)
-    const pendingAudits = Number(branchHealthSummary?.pendingAuditsCount ?? 0)
-
-    return [
-      {
-        title: "Global Network Health",
-        value: totalBranches ? `${complianceAvg.toFixed(1)}%` : "—",
-        meta: totalBranches ? `${totalBranches} branches monitored` : "Awaiting branch summaries",
-        metaTone: complianceAvg >= 70 ? "text-emerald-600" : "text-amber-600",
-        icon: TrendingUp,
-        tone: "text-[#3B5BDB]",
-        iconBg: "bg-[#E9EEFF]",
-      },
-      {
-        title: "Total Remittance (YTD)",
-        value: totalBranches ? formatCurrency(totalIncome) : "—",
-        meta: totalBranches ? "Aggregated branch income" : "Awaiting branch summaries",
-        metaTone: "text-emerald-600",
-        icon: Banknote,
-        tone: "text-emerald-600",
-        iconBg: "bg-[#EAF8F1]",
-      },
-      {
-        title: "Critical Alerts",
-        value: totalBranches ? String(criticalAlerts) : "—",
-        meta: totalBranches ? "Compliance below 70%" : "Awaiting branch summaries",
-        metaTone: "text-rose-600",
-        icon: ShieldAlert,
-        tone: "text-rose-600",
-        iconBg: "bg-[#FDECEC]",
-      },
-      {
-        title: "Pending Audits",
-        value: totalBranches ? String(pendingAudits) : "—",
-        meta: totalBranches ? "Reported by branches" : "Awaiting branch summaries",
-        metaTone: "text-amber-600",
-        icon: AlertTriangle,
-        tone: "text-amber-600",
-        iconBg: "bg-[#FFF4E6]",
-      },
-    ]
-  }, [branchHealthSummary])
 
   useEffect(() => {
     let active = true
@@ -497,6 +372,27 @@ export default function Page() {
 
   const displayTotal = totalItems ?? regionCards.length
   const displayPage = totalPages ?? Math.max(1, Math.ceil(displayTotal / pageSize))
+
+  const regionFilterOptions = useMemo(() => {
+    const fallback = ["Nigeria", "United Kingdom", "Japan", "Brazil", "UAE", "Canada"]
+    const fromTenants = tenants
+      .map((tenant) => tenant.location?.trim())
+      .filter((value): value is string => Boolean(value) && value !== "—")
+    const distinct = Array.from(new Set([...fromTenants, ...fallback]))
+    return ["ALL", ...distinct]
+  }, [tenants])
+
+  const filteredTenants = useMemo(() => {
+    return tenants.filter((tenant) => {
+      const statusMatch =
+        statusFilter === "ALL" ||
+        tenant.status.toLowerCase() === statusFilter.toLowerCase()
+      const regionMatch =
+        regionFilter === "ALL" ||
+        tenant.location.toLowerCase().includes(regionFilter.toLowerCase())
+      return statusMatch && regionMatch
+    })
+  }, [tenants, statusFilter, regionFilter])
 
   const handleFetchTenants = async (silent = false) => {
     setTenantsLoading(true)
@@ -1192,30 +1088,6 @@ export default function Page() {
               </div>
             )}
 
-            <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-              {branchSummaryLoading && (
-                <div className="col-span-full text-[12px] text-[#6B7280]">Loading branch summaries...</div>
-              )}
-              {branchSummaryError && (
-                <div className="col-span-full text-[12px] text-rose-500">{branchSummaryError}</div>
-              )}
-              {!branchSummaryLoading && !branchSummaryError && statCards.map((card) => {
-                const Icon = card.icon
-                return (
-                  <div key={card.title} className="rounded-xl border border-[#EEF1F6] bg-white p-5 shadow-sm">
-                    <div className="flex items-center justify-between">
-                      <div className="text-[11px] font-medium text-[#9CA3AF]">{card.title}</div>
-                      <div className={`flex h-7 w-7 items-center justify-center rounded-md ${card.iconBg}`}>
-                        <Icon className={`h-4 w-4 ${card.tone}`} />
-                      </div>
-                    </div>
-                    <div className="mt-3 text-[18px] font-bold text-[#111827]">{card.value}</div>
-                    <div className={`mt-1 text-[11px] ${card.metaTone}`}>{card.meta}</div>
-                  </div>
-                )}
-              )}
-            </div>
-
             <div className="mt-6 flex flex-col gap-3 lg:flex-row lg:items-center">
               <div className="flex flex-1 flex-col gap-3 min-w-[240px]">
                 <div className="relative">
@@ -1260,17 +1132,29 @@ export default function Page() {
                   />
                 </div>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  className="h-8 rounded-md border border-[#E5E7EB] bg-white text-[12px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50"
-                  variant="outline"
-                >
-                  Region: All
-                  <ChevronDown className="h-4 w-4" />
-                </Button>
+              <div className="flex flex-wrap items-center gap-2 lg:self-start">
                 <div className="relative">
                   <select
-                    className="h-8 rounded-md border border-[#E5E7EB] bg-white pl-3 pr-7 text-[12px] font-medium text-[#4B5563] shadow-sm appearance-none"
+                    aria-label="Filter by region"
+                    className="h-10 rounded-md border border-[#E5E7EB] bg-white pl-3 pr-7 text-[12px] font-medium text-[#4B5563] shadow-sm appearance-none"
+                    value={regionFilter}
+                    onChange={(event) => {
+                      setRegionFilter(event.target.value)
+                      setPage(1)
+                    }}
+                  >
+                    {regionFilterOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option === "ALL" ? "Region: All" : `Region: ${option}`}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9CA3AF]" />
+                </div>
+                <div className="relative">
+                  <select
+                    aria-label="Filter by status"
+                    className="h-10 rounded-md border border-[#E5E7EB] bg-white pl-3 pr-7 text-[12px] font-medium text-[#4B5563] shadow-sm appearance-none"
                     value={statusFilter}
                     onChange={(event) => {
                       setStatusFilter(event.target.value)
@@ -1279,8 +1163,9 @@ export default function Page() {
                   >
                     <option value="ALL">Status: All</option>
                     <option value="ACTIVE">Status: Active</option>
-                    <option value="INACTIVE">Status: Inactive</option>
-                    <option value="PENDING">Status: Pending</option>
+                    <option value="REVIEW">Status: Review</option>
+                    <option value="SUSPENDED">Status: Suspended</option>
+                    <option value="ONBOARDING">Status: Onboarding</option>
                   </select>
                   <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9CA3AF]" />
                 </div>
@@ -1390,8 +1275,13 @@ export default function Page() {
                   No regions found.
                 </div>
               )}
+              {tenants.length > 0 && filteredTenants.length === 0 && (
+                <div className="rounded-xl border border-dashed border-[#E5E7EB] bg-white p-6 text-[13px] text-[#6B7280]">
+                  No branches match the selected filters.
+                </div>
+              )}
               {tenants.length > 0 &&
-                tenants.map((tenant) => {
+                filteredTenants.map((tenant) => {
                   const statusLabel =
                     tenant.status.charAt(0) + tenant.status.slice(1).toLowerCase()
                   return (

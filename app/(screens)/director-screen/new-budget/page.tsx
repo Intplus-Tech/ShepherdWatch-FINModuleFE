@@ -3,19 +3,18 @@
 import { API_V1 } from "@/lib/api";
 
 import { Suspense, useEffect, useMemo, useState } from "react"
-import Image from "next/image"
-import { useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import SidebarNav from "@/components/navigation/SidebarNav"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { AmountInput, parseAmount, formatAmount } from "@/components/ui/amount-input"
 import {
-  Bell,
+  ArrowLeft,
   ChevronDown,
   GripVertical,
   Info,
   PieChart,
   PlusCircle,
-  Search,
   Trash2,
   Workflow,
   Save,
@@ -27,10 +26,16 @@ type CoaOption = {
   label: string
 }
 
+type BudgetCategory = "Operational" | "Program" | "Capital"
+type AllocationType = "Percentage" | "Fixed"
+
 type LineItemForm = {
   id: string
+  category: BudgetCategory
   chartOfAccountId: string
+  name: string
   description: string
+  allocationType: AllocationType
   defaultAmount: string
 }
 
@@ -50,20 +55,31 @@ function formatCurrency(value: number) {
   }).format(value)
 }
 
-function makeLineItem(): LineItemForm {
+function makeLineItem(category: BudgetCategory = "Operational"): LineItemForm {
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    category,
     chartOfAccountId: "",
+    name: "",
     description: "",
+    allocationType: "Percentage",
     defaultAmount: "",
   }
 }
 
 function PageInner() {
+  const router = useRouter()
   const searchParams = useSearchParams()
   const [templateName, setTemplateName] = useState("")
   const [description, setDescription] = useState("")
-  const [lineItems, setLineItems] = useState<LineItemForm[]>([makeLineItem()])
+  const [fiscalYear, setFiscalYear] = useState("FY 2025")
+  const [branchType, setBranchType] = useState("")
+  const [activeCategory, setActiveCategory] = useState<BudgetCategory>("Operational")
+  const [lineItems, setLineItems] = useState<LineItemForm[]>(() => [
+    { ...makeLineItem("Operational"), name: "Staff Salaries & Wages", allocationType: "Percentage", defaultAmount: "35" },
+    { ...makeLineItem("Operational"), name: "Facility Maintenance", allocationType: "Fixed", defaultAmount: "1,200,000" },
+    { ...makeLineItem("Operational"), name: "Administrative Costs", allocationType: "Percentage", defaultAmount: "10" },
+  ])
   const [templateLookupId, setTemplateLookupId] = useState("")
   const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null)
   const [loadingTemplate, setLoadingTemplate] = useState(false)
@@ -92,20 +108,29 @@ function PageInner() {
               ? String((coaRaw as Record<string, unknown>)._id ?? (coaRaw as Record<string, unknown>).id ?? "")
               : ""
         const lineDescription = String(row.description ?? "").trim()
+        const lineName = String(row.name ?? row.budgetHead ?? lineDescription ?? "").trim()
         const defaultAmount = Number(row.defaultAmount)
         if (!chartOfAccountId || !Number.isFinite(defaultAmount)) return null
+        const rawCategory = String(row.category ?? "Operational")
+        const category: BudgetCategory =
+          rawCategory === "Program" || rawCategory === "Capital" ? rawCategory : "Operational"
+        const allocationType: AllocationType =
+          String(row.allocationType ?? "").toLowerCase() === "fixed" ? "Fixed" : "Percentage"
         return {
           id: makeLineItem().id,
+          category,
           chartOfAccountId,
+          name: lineName,
           description: lineDescription,
-          defaultAmount: String(defaultAmount),
+          allocationType,
+          defaultAmount: formatAmount(String(defaultAmount)),
         }
       })
       .filter((row): row is LineItemForm => row !== null)
 
     setTemplateName(name)
     setDescription(templateDescription)
-    setLineItems(mappedItems.length > 0 ? mappedItems : [makeLineItem()])
+    setLineItems(mappedItems.length > 0 ? mappedItems : [makeLineItem(activeCategory)])
   }
 
   useEffect(() => {
@@ -161,17 +186,33 @@ function PageInner() {
     }
   }, [])
 
-  const totalAmount = useMemo(
-    () => lineItems.reduce((sum, row) => sum + Number(row.defaultAmount || 0), 0),
+  const visibleLineItems = useMemo(
+    () => lineItems.filter((row) => row.category === activeCategory),
+    [lineItems, activeCategory]
+  )
+
+  const totalPercentage = useMemo(
+    () =>
+      lineItems
+        .filter((row) => row.allocationType === "Percentage")
+        .reduce((sum, row) => sum + parseAmount(row.defaultAmount), 0),
     [lineItems]
   )
 
-  const updateLineItem = (id: string, field: keyof LineItemForm, value: string) => {
+  const totalFixed = useMemo(
+    () =>
+      lineItems
+        .filter((row) => row.allocationType === "Fixed")
+        .reduce((sum, row) => sum + parseAmount(row.defaultAmount), 0),
+    [lineItems]
+  )
+
+  const updateLineItem = <K extends keyof LineItemForm>(id: string, field: K, value: LineItemForm[K]) => {
     setLineItems((prev) => prev.map((row) => (row.id === id ? { ...row, [field]: value } : row)))
   }
 
   const addLineItem = () => {
-    setLineItems((prev) => [...prev, makeLineItem()])
+    setLineItems((prev) => [...prev, makeLineItem(activeCategory)])
   }
 
   const removeLineItem = (id: string) => {
@@ -181,7 +222,8 @@ function PageInner() {
   const resetForm = () => {
     setTemplateName("")
     setDescription("")
-    setLineItems([makeLineItem()])
+    setBranchType("")
+    setLineItems([makeLineItem(activeCategory)])
     setTemplateLookupId("")
     setActiveTemplateId(null)
   }
@@ -236,15 +278,21 @@ function PageInner() {
     }
 
     const cleanedLineItems = lineItems
-      .map((row) => ({
-        chartOfAccountId: row.chartOfAccountId.trim(),
-        description: row.description.trim(),
-        defaultAmount: Number(row.defaultAmount),
-      }))
-      .filter((row) => row.chartOfAccountId && Number.isFinite(row.defaultAmount) && row.defaultAmount >= 0)
+      .map((row) => {
+        const amount = parseAmount(row.defaultAmount)
+        return {
+          category: row.category,
+          chartOfAccountId: row.chartOfAccountId.trim(),
+          name: row.name.trim(),
+          description: row.description.trim(),
+          allocationType: row.allocationType,
+          defaultAmount: amount,
+        }
+      })
+      .filter((row) => row.name && Number.isFinite(row.defaultAmount) && row.defaultAmount >= 0)
 
     if (cleanedLineItems.length === 0) {
-      setSubmitError("Add at least one valid line item with account and amount.")
+      setSubmitError("Add at least one valid line item with a budget head name and amount.")
       return
     }
 
@@ -326,62 +374,25 @@ function PageInner() {
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
       <SidebarNav
-        activeHref="/director-screen/settings"
+        activeHref="/director-screen/budgeting"
         className="fixed inset-y-0 left-0 z-20 w-[260px] rounded-none bg-[#FAFBFF] border-r border-[#EEF1F6]"
       />
 
-      <main className="flex-1 xl:ml-[260px] text-[#111827] flex flex-col min-h-screen">
-        <header className="w-full h-[76px] bg-white border-b border-[#EEF1F6] shadow-sm shadow-[#EEF1F6]/50 flex justify-center relative z-10">
-          <div className="w-full h-full max-w-[1400px] mx-auto px-10 lg:px-16 flex items-center justify-between">
-            <div className="flex items-center gap-2 text-[14px] font-medium text-[#9CA3AF]">
-              <span>Home</span>
-              <span>/</span>
-              <span>Configuration</span>
-              <span>/</span>
-              <span className="text-[#111827] font-bold">Templates</span>
-            </div>
-            <div className="flex items-center gap-5">
-              <div className="relative">
-                <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
-                <Input
-                  className="h-[42px] w-[280px] rounded-[8px] border-[#E5E7EB] bg-[#F9FAFB] pl-10 text-[13px] placeholder:text-[#9CA3AF]"
-                  placeholder="Search templates..."
-                />
-              </div>
-              <button className="relative flex h-10 w-10 items-center justify-center rounded-full text-[#6B7280] hover:bg-[#F9FAFB] transition-colors outline-none shrink-0 border-none bg-transparent">
-                <Bell className="h-5 w-5" />
-                <span className="absolute right-[10px] top-[8px] h-2 w-2 rounded-full border-[1.5px] border-white bg-[#EF4444]" />
-              </button>
-              <div className="h-8 w-[1px] bg-[#EEF1F6]"></div>
-              <div className="flex items-center gap-3 pl-1">
-                <div className="text-right">
-                  <div className="text-[13px] flex items-center gap-1 font-bold text-[#111827] leading-tight">
-                    Rev. Anderson
-                    <ChevronDown className="h-3.5 w-3.5 text-[#6B7280]" />
-                  </div>
-                  <div className="text-[11px] font-medium text-[#6B7280] mt-0.5">Director</div>
-                </div>
-                <div className="h-10 w-10 rounded-full overflow-hidden bg-[#111827] ring-1 ring-[#EEF1F6] shrink-0">
-                  <Image
-                    src="https://i.pravatar.cc/150?img=11"
-                    alt="Profile"
-                    width={40}
-                    height={40}
-                    className="h-full w-full object-cover"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </header>
-
-        <div className="flex-1 mx-auto w-full px-10 lg:px-16 pt-[37.78px] pb-24 max-w-[910.22px]">
-          <section className="w-[910.22px] max-w-full h-[85.33px] flex flex-col md:flex-row md:items-end justify-between">
-            <div className="flex flex-col gap-[8.89px]">
-              <h1 className="text-[32px] leading-[35.56px] font-black tracking-[-0.8px] text-[#111827]">
+      <main className="flex-1 xl:ml-[260px] text-[#111827]">
+        <div className="mx-auto w-full px-6 pt-6 pb-8 lg:px-8 lg:pt-8 max-w-7xl">
+          <button
+            onClick={() => router.push("/director-screen/budgeting")}
+            className="mb-5 inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#6B7280] hover:text-[#111827] transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </button>
+          <section className="w-full flex flex-col gap-4 md:flex-row md:items-end justify-between">
+            <div className="flex flex-col gap-2">
+              <h1 className="text-[28px] sm:text-[32px] leading-tight font-black tracking-[-0.8px] text-[#111827]">
                 Create New Budget Template
               </h1>
-              <p className="w-[594.6px] max-w-full text-[14.22px] leading-[21.33px] font-normal text-[#6B7280]">
+              <p className="max-w-xl text-[14px] leading-relaxed font-normal text-[#6B7280]">
                 Define standard financial structures for branch implementation. These settings will apply to the FY
                 {new Date().getFullYear()} cycle.
               </p>
@@ -437,8 +448,14 @@ function PageInner() {
                       Fiscal Year
                     </div>
                     <div className="relative">
-                      <select className="w-full h-11 appearance-none rounded-[6px] border border-[#E5E7EB] bg-[#F9FAFB] px-3 text-[14px] text-[#374151] shadow-sm focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]">
-                        <option>FY 2025</option>
+                      <select
+                        value={fiscalYear}
+                        onChange={(event) => setFiscalYear(event.target.value)}
+                        className="w-full h-11 appearance-none rounded-[6px] border border-[#E5E7EB] bg-[#F9FAFB] px-3 text-[14px] text-[#374151] shadow-sm focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]"
+                      >
+                        <option value="FY 2025">FY 2025</option>
+                        <option value="FY 2026">FY 2026</option>
+                        <option value="FY 2027">FY 2027</option>
                       </select>
                       <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
                         <ChevronDown className="h-4 w-4 text-[#6B7280]" />
@@ -465,8 +482,17 @@ function PageInner() {
                   Branch Type <span className="text-[#EF4444]">*</span>
                 </div>
                 <div className="relative">
-                  <select className="w-full h-11 appearance-none rounded-[6px] border border-[#E5E7EB] bg-[#F9FAFB] px-3 text-[14px] text-[#9CA3AF] shadow-sm focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]">
-                    <option>.e.g. Established</option>
+                  <select
+                    value={branchType}
+                    onChange={(event) => setBranchType(event.target.value)}
+                    className={`w-full h-11 appearance-none rounded-[6px] border border-[#E5E7EB] bg-[#F9FAFB] px-3 text-[14px] shadow-sm focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB] ${branchType ? "text-[#374151]" : "text-[#9CA3AF]"}`}
+                  >
+                    <option value="" disabled>e.g. Established</option>
+                    <option value="Established">Established</option>
+                    <option value="Developing">Developing</option>
+                    <option value="New Plant">New Plant</option>
+                    <option value="Urban">Urban</option>
+                    <option value="Rural">Rural</option>
                   </select>
                   <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
                     <ChevronDown className="h-4 w-4 text-[#6B7280]" />
@@ -486,15 +512,20 @@ function PageInner() {
                 </div>
                 <div className="flex items-center text-[13px] font-semibold">
                   <div className="flex rounded-[6px] border border-[#E5E7EB] p-1 bg-[#F9FAFB]">
-                    <button className="rounded-[4px] px-5 py-1.5 bg-white shadow-sm text-[#111827] border border-[#E5E7EB]">
-                      Operational
-                    </button>
-                    <button className="rounded-[4px] px-5 py-1.5 text-[#6B7280] hover:text-[#111827]">
-                      Program
-                    </button>
-                    <button className="rounded-[4px] px-5 py-1.5 text-[#6B7280] hover:text-[#111827]">
-                      Capital
-                    </button>
+                    {(["Operational", "Program", "Capital"] as BudgetCategory[]).map((tab) => (
+                      <button
+                        key={tab}
+                        type="button"
+                        onClick={() => setActiveCategory(tab)}
+                        className={`rounded-[4px] px-5 py-1.5 transition-colors ${
+                          activeCategory === tab
+                            ? "bg-white shadow-sm text-[#111827] border border-[#E5E7EB]"
+                            : "text-[#6B7280] hover:text-[#111827]"
+                        }`}
+                      >
+                        {tab}
+                      </button>
+                    ))}
                   </div>
                 </div>
               </div>
@@ -503,7 +534,7 @@ function PageInner() {
                 <div className="flex items-center justify-between rounded-[8px] bg-[#EFF6FF] px-4 py-3.5 border border-[#DBEAFE]">
                   <div className="flex items-center gap-2 font-bold text-[#1E40AF] text-[13px]">
                     <PieChart className="h-4 w-4" />
-                    Operational Allocation Target:
+                    {activeCategory} Allocation Target:
                   </div>
                   <div className="font-bold text-[#1E40AF] text-[14px]">45% of Total Income</div>
                 </div>
@@ -525,114 +556,79 @@ function PageInner() {
                       </tr>
                     </thead>
                     <tbody>
-                      <tr className="border-b border-[#E5E7EB] text-[#111827] hover:bg-[#F9FAFB]">
-                        <td className="py-4 px-2 text-[#9CA3AF]">
-                          <GripVertical className="h-4 w-4" />
-                        </td>
-                        <td className="py-4 px-2 font-bold text-[13px]">
-                          Staff Salaries & Wages
-                        </td>
-                        <td className="py-4 px-2">
-                          <div className="relative">
-                            <select className="h-10 w-full appearance-none rounded-[6px] border border-[#E5E7EB] bg-white px-3 text-[13px] text-[#374151] font-medium shadow-sm">
-                              <option>Percentage (%)</option>
-                            </select>
-                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
-                              <ChevronDown className="h-4 w-4 text-[#9CA3AF]" />
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-4 px-2">
-                          <div className="relative">
-                            <input
-                              type="text"
-                              value="35"
-                              readOnly
-                              className="h-10 w-full rounded-[6px] border-[#E5E7EB] bg-white text-[13px] shadow-sm text-right pr-8"
-                            />
-                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
-                              <span className="text-[13px] text-[#6B7280]">%</span>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-4 px-2 text-center">
-                          <button className="inline-flex items-center justify-center text-[#9CA3AF] hover:text-[#EF4444] transition-colors outline-none bg-transparent border-transparent">
-                            <Trash2 className="h-[16px] w-[16px]" />
-                          </button>
-                        </td>
-                      </tr>
-                      <tr className="border-b border-[#E5E7EB] text-[#111827] hover:bg-[#F9FAFB]">
-                        <td className="py-4 px-2 text-[#9CA3AF]">
-                          <GripVertical className="h-4 w-4" />
-                        </td>
-                        <td className="py-4 px-2 font-bold text-[13px]">
-                          Facility Maintenance
-                        </td>
-                        <td className="py-4 px-2">
-                          <div className="relative">
-                            <select className="h-10 w-full appearance-none rounded-[6px] border border-[#E5E7EB] bg-white px-3 text-[13px] text-[#374151] font-medium shadow-sm">
-                              <option>Fixed Amount (N)</option>
-                            </select>
-                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
-                              <ChevronDown className="h-4 w-4 text-[#9CA3AF]" />
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-4 px-2">
-                          <div className="relative flex items-center">
-                            <div className="absolute inset-y-0 left-0 flex items-center pl-3">
-                              <span className="text-[13px] text-[#6B7280]">₦</span>
-                            </div>
-                            <input
-                              type="text"
-                              value="1,200,000"
-                              readOnly
-                              className="h-10 w-full rounded-[6px] border-[#E5E7EB] bg-white text-[13px] shadow-sm text-right pr-3 pl-8"
-                            />
-                          </div>
-                        </td>
-                        <td className="py-4 px-2 text-center">
-                          <button className="inline-flex items-center justify-center text-[#9CA3AF] hover:text-[#EF4444] transition-colors outline-none bg-transparent border-transparent">
-                            <Trash2 className="h-[16px] w-[16px]" />
-                          </button>
-                        </td>
-                      </tr>
-                      <tr className="border-b border-[#E5E7EB] text-[#111827] hover:bg-[#F9FAFB]">
-                        <td className="py-4 px-2 text-[#9CA3AF]">
-                          <GripVertical className="h-4 w-4" />
-                        </td>
-                        <td className="py-4 px-2 font-bold text-[13px]">
-                          Administrative Costs
-                        </td>
-                        <td className="py-4 px-2">
-                          <div className="relative">
-                            <select className="h-10 w-full appearance-none rounded-[6px] border border-[#E5E7EB] bg-white px-3 text-[13px] text-[#374151] font-medium shadow-sm">
-                              <option>Percentage (%)</option>
-                            </select>
-                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
-                              <ChevronDown className="h-4 w-4 text-[#9CA3AF]" />
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-4 px-2">
-                          <div className="relative">
-                            <input
-                              type="text"
-                              value="10"
-                              readOnly
-                              className="h-10 w-full rounded-[6px] border-[#E5E7EB] bg-white text-[13px] shadow-sm text-right pr-8"
-                            />
-                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
-                              <span className="text-[13px] text-[#6B7280]">%</span>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-4 px-2 text-center">
-                          <button className="inline-flex items-center justify-center text-[#9CA3AF] hover:text-[#EF4444] transition-colors outline-none bg-transparent border-transparent">
-                            <Trash2 className="h-[16px] w-[16px]" />
-                          </button>
-                        </td>
-                      </tr>
+                      {visibleLineItems.length === 0 ? (
+                        <tr className="border-b border-[#E5E7EB]">
+                          <td colSpan={5} className="py-6 px-2 text-center text-[13px] text-[#9CA3AF]">
+                            No {activeCategory.toLowerCase()} line items yet. Use the button below to add one.
+                          </td>
+                        </tr>
+                      ) : (
+                        visibleLineItems.map((row) => (
+                          <tr key={row.id} className="border-b border-[#E5E7EB] text-[#111827] hover:bg-[#F9FAFB]">
+                            <td className="py-4 px-2 text-[#9CA3AF]">
+                              <GripVertical className="h-4 w-4" />
+                            </td>
+                            <td className="py-4 px-2">
+                              <input
+                                type="text"
+                                value={row.name}
+                                onChange={(event) => updateLineItem(row.id, "name", event.target.value)}
+                                placeholder="Budget head name"
+                                className="h-10 w-full rounded-[6px] border border-[#E5E7EB] bg-white px-3 text-[13px] font-bold shadow-sm focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]"
+                              />
+                            </td>
+                            <td className="py-4 px-2">
+                              <div className="relative">
+                                <select
+                                  value={row.allocationType}
+                                  onChange={(event) => updateLineItem(row.id, "allocationType", event.target.value as AllocationType)}
+                                  className="h-10 w-full appearance-none rounded-[6px] border border-[#E5E7EB] bg-white px-3 text-[13px] text-[#374151] font-medium shadow-sm focus:border-[#3B5BDB] focus:outline-none"
+                                >
+                                  <option value="Percentage">Percentage (%)</option>
+                                  <option value="Fixed">Fixed Amount (₦)</option>
+                                </select>
+                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+                                  <ChevronDown className="h-4 w-4 text-[#9CA3AF]" />
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-4 px-2">
+                              {row.allocationType === "Percentage" ? (
+                                <div className="relative">
+                                  <AmountInput
+                                    value={row.defaultAmount}
+                                    onValueChange={(formatted) => updateLineItem(row.id, "defaultAmount", formatted)}
+                                    className="h-10 w-full rounded-[6px] border border-[#E5E7EB] bg-white text-[13px] shadow-sm text-right pr-8 pl-3 focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]"
+                                  />
+                                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+                                    <span className="text-[13px] text-[#6B7280]">%</span>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="relative flex items-center">
+                                  <div className="absolute inset-y-0 left-0 flex items-center pl-3">
+                                    <span className="text-[13px] text-[#6B7280]">₦</span>
+                                  </div>
+                                  <AmountInput
+                                    value={row.defaultAmount}
+                                    onValueChange={(formatted) => updateLineItem(row.id, "defaultAmount", formatted)}
+                                    className="h-10 w-full rounded-[6px] border border-[#E5E7EB] bg-white text-[13px] shadow-sm text-right pr-3 pl-8 focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]"
+                                  />
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-4 px-2 text-center">
+                              <button
+                                type="button"
+                                onClick={() => removeLineItem(row.id)}
+                                className="inline-flex items-center justify-center text-[#9CA3AF] hover:text-[#EF4444] transition-colors outline-none bg-transparent border-transparent"
+                              >
+                                <Trash2 className="h-[16px] w-[16px]" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -642,7 +638,7 @@ function PageInner() {
                   className="mt-6 flex w-full items-center justify-center gap-2 rounded-[6px] border border-dashed border-[#3B5BDB] bg-white hover:bg-[#F3F4F6] transition-colors py-3.5 text-[14px] font-medium text-[#3B5BDB]"
                 >
                   <PlusCircle className="h-4 w-4" />
-                  Add Operational Line Item
+                  Add {activeCategory} Line Item
                 </button>
               </div>
             </div>
@@ -654,7 +650,8 @@ function PageInner() {
             <div>
               <div className="text-[11px] font-[600] text-[#9CA3AF] uppercase tracking-wider">TOTAL ALLOCATION</div>
               <div className="mt-0.5 text-[15px] leading-[24.89px] font-bold text-[#111827] flex items-center gap-1">
-                45% <span className="text-[#9CA3AF] font-medium text-[14px]">+ ₦1,200,000</span>
+                {totalPercentage}%
+                <span className="text-[#9CA3AF] font-medium text-[14px]">+ {formatCurrency(totalFixed)}</span>
               </div>
             </div>
             <div className="flex items-center gap-4 mt-4 md:mt-0">

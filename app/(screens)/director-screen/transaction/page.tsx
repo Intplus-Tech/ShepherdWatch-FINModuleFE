@@ -38,6 +38,7 @@ import {
 } from "lucide-react"
 import SidebarNav from "@/components/navigation/SidebarNav"
 import { ModalShell } from "@/components/ui/modal-shell"
+import { AmountInput, parseAmount } from "@/components/ui/amount-input"
 
 const navItems = [
   { label: "Dashboard", href: "/director-screen/dashboard", icon: LayoutDashboard },
@@ -106,7 +107,7 @@ const DEMO_ROWS: DemoRow[] = [
     account: "General Offerings (0012337821)",
     expense: null,
     income: 14250,
-    category: "General Offerings",
+    category: "General Offering",
     status: "cleared",
     linkedGroup: "G1",
   },
@@ -119,7 +120,7 @@ const DEMO_ROWS: DemoRow[] = [
     account: "General Offerings (0012337821)",
     expense: null,
     income: 123250,
-    category: "General Offerings",
+    category: "General Offering",
     status: "cleared",
     linkedGroup: "G1",
   },
@@ -158,7 +159,7 @@ const DEMO_ROWS: DemoRow[] = [
     account: "General Offerings (0012337821)",
     expense: null,
     income: 14250,
-    category: "General Offerings",
+    category: "General Offering",
     status: "cleared",
     linkedGroup: null,
     reconcilable: true,
@@ -172,7 +173,7 @@ const DEMO_ROWS: DemoRow[] = [
     account: "General Offerings (0012337821)",
     expense: null,
     income: 14250,
-    category: "General Offerings",
+    category: "General Offering",
     status: "none",
     linkedGroup: null,
   },
@@ -185,7 +186,7 @@ const DEMO_ROWS: DemoRow[] = [
     account: "",
     expense: 14250,
     income: null,
-    category: "Operational Exp.",
+    category: "Operational Expense",
     status: "none",
     linkedGroup: null,
   },
@@ -198,7 +199,7 @@ const DEMO_ROWS: DemoRow[] = [
     account: "",
     expense: 14250,
     income: null,
-    category: "Program Budgets",
+    category: "Program Project",
     status: "none",
     linkedGroup: null,
   },
@@ -211,23 +212,110 @@ const DEMO_ROWS: DemoRow[] = [
     account: "",
     expense: 14250,
     income: null,
-    category: "Capital Projects",
+    category: "Capital Project",
     status: "none",
+    linkedGroup: null,
+  },
+  {
+    id: "10",
+    date: "Oct 22, 2023",
+    txId: "TXN-89030",
+    payee: "Wednesday Service Offering",
+    description: "",
+    account: "General Offerings (0012337821)",
+    expense: null,
+    income: 58400,
+    category: "General Offering",
+    status: "cleared",
+    linkedGroup: null,
+    reconcilable: true,
+  },
+  {
+    id: "11",
+    date: "Oct 22, 2023",
+    txId: "TXN-89031",
+    payee: "Harvest Thanksgiving",
+    description: "",
+    account: "Thanksgiving (7820176218)",
+    expense: null,
+    income: 240000,
+    category: "Thanksgiving",
+    status: "pending",
+    linkedGroup: null,
+  },
+  {
+    id: "12",
+    date: "Oct 21, 2023",
+    txId: "TXN-89032",
+    payee: "Generator Diesel Supply",
+    description: "",
+    account: "",
+    expense: 96500,
+    income: null,
+    category: "Operational Expense",
+    status: "none",
+    linkedGroup: null,
+  },
+  {
+    id: "13",
+    date: "Oct 21, 2023",
+    txId: "TXN-89033",
+    payee: "Monthly Tithe - Mary Grace",
+    description: "",
+    account: "General Offerings (0012337821)",
+    expense: null,
+    income: 75000,
+    category: "Tithe",
+    status: "cleared",
+    linkedGroup: null,
+  },
+  {
+    id: "14",
+    date: "Oct 20, 2023",
+    txId: "TXN-89034",
+    payee: "Unidentified Bank Credit",
+    description: "",
+    account: "Thanksgiving (7820176218)",
+    expense: null,
+    income: 32000,
+    category: "-",
+    status: "uncategorized",
+    linkedGroup: null,
+  },
+  {
+    id: "15",
+    date: "Oct 20, 2023",
+    txId: "TXN-89035",
+    payee: "Youth Camp Materials",
+    description: "",
+    account: "",
+    expense: 41200,
+    income: null,
+    category: "Program Project",
+    status: "pending",
     linkedGroup: null,
   },
 ]
 
-const CATEGORY_OPTIONS = [
-  "General Offerings",
-  "Capital Project",
-  "Thanksgiving",
-  "Operational Exp.",
-  "Program Budgets",
-  "Capital Projects",
-  "-",
-]
+const INCOME_CATEGORIES = ["General Offering", "Thanksgiving", "Tithe", "Capital Project"]
+const EXPENSE_CATEGORIES = ["Program Project", "Operational Expense", "Capital Project"]
+
+function categoriesForRow(row: DemoRow) {
+  return [...(row.expense != null ? EXPENSE_CATEGORIES : INCOME_CATEGORIES), "-"]
+}
+
+function formatNumber(value: number) {
+  return new Intl.NumberFormat("en-NG", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value)
+}
 
 function formatMoney(value: number) {
+  return "₦" + formatNumber(value)
+}
+
+function formatMoneyWhole(value: number) {
   return new Intl.NumberFormat("en-NG", {
     style: "currency",
     currency: "NGN",
@@ -248,6 +336,16 @@ export function BankTransactions() {
   const [tab, setTab] = useState<"ALL" | "CREDIT" | "DEBIT">("ALL")
   const [search, setSearch] = useState("")
   const [rows, setRows] = useState<DemoRow[]>(DEMO_ROWS)
+  const [accountFilter, setAccountFilter] = useState("All Accounts")
+  const [month, setMonth] = useState("Oct 2023")
+  const [page, setPage] = useState(0)
+
+  const PAGE_SIZE = 5
+
+  const accountNames = useMemo(
+    () => Array.from(new Set(rows.map((r) => r.account).filter(Boolean))),
+    [rows],
+  )
 
   // Modal open state
   const [uploadOpen, setUploadOpen] = useState(false)
@@ -266,6 +364,7 @@ export function BankTransactions() {
     return rows.filter((row) => {
       if (tab === "CREDIT" && row.income == null) return false
       if (tab === "DEBIT" && row.expense == null) return false
+      if (accountFilter !== "All Accounts" && row.account !== accountFilter) return false
       if (!search.trim()) return true
       const q = search.toLowerCase()
       const amount = String(row.income ?? row.expense ?? "")
@@ -275,12 +374,24 @@ export function BankTransactions() {
         amount.includes(q)
       )
     })
-  }, [rows, tab, search])
+  }, [rows, tab, search, accountFilter])
+
+  // Keep page in range as filters change.
+  const pageCount = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE))
+  useEffect(() => {
+    setPage(0)
+  }, [tab, search, accountFilter])
+
+  const safePage = Math.min(page, pageCount - 1)
+  const pageStart = safePage * PAGE_SIZE
+  const pagedRows = filteredRows.slice(pageStart, pageStart + PAGE_SIZE)
+  const showingFrom = filteredRows.length === 0 ? 0 : pageStart + 1
+  const showingTo = pageStart + pagedRows.length
 
   const statCards = [
     {
       title: "BANK BALANCE",
-      value: formatMoney(128840250),
+      value: formatMoneyWhole(128840250),
       icon: Landmark,
       iconColor: "text-[#3B5BDB]",
       iconBg: "bg-[#EEF2FF]",
@@ -288,7 +399,7 @@ export function BankTransactions() {
     },
     {
       title: "EXPENSE (MONTH)",
-      value: formatMoney(8840250),
+      value: formatMoneyWhole(8840250),
       icon: ArrowUpRight,
       iconColor: "text-rose-500",
       iconBg: "bg-rose-50",
@@ -296,7 +407,7 @@ export function BankTransactions() {
     },
     {
       title: "INCOME (MONTH)",
-      value: formatMoney(8840250),
+      value: formatMoneyWhole(8840250),
       icon: ArrowDownLeft,
       iconColor: "text-emerald-500",
       iconBg: "bg-emerald-50",
@@ -398,12 +509,33 @@ export function BankTransactions() {
           </div>
 
           <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full lg:w-auto">
-            <button className="flex items-center justify-between gap-2 rounded-md border border-[#E5E7EB] bg-white px-3.5 py-2 text-[12px] font-bold text-[#4B5563] shadow-sm hover:bg-gray-50 w-full sm:w-auto">
-              All Accounts <ChevronDown className="h-3.5 w-3.5 text-[#9CA3AF]" />
-            </button>
-            <button className="flex items-center justify-between gap-2 rounded-md border border-[#E5E7EB] bg-white px-3.5 py-2 text-[12px] font-bold text-[#4B5563] shadow-sm hover:bg-gray-50 w-full sm:w-auto">
-              Oct 2023 <ChevronDown className="h-3.5 w-3.5 text-[#9CA3AF]" />
-            </button>
+            <div className="relative w-full sm:w-auto">
+              <select
+                value={accountFilter}
+                onChange={(e) => setAccountFilter(e.target.value)}
+                className="h-[36px] w-full sm:w-auto appearance-none rounded-md border border-[#E5E7EB] bg-white pl-3.5 pr-9 text-[12px] font-bold text-[#4B5563] shadow-sm hover:bg-gray-50 focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]/20"
+              >
+                <option value="All Accounts">All Accounts</option>
+                {accountNames.map((acc) => (
+                  <option key={acc} value={acc}>
+                    {acc}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9CA3AF] pointer-events-none" />
+            </div>
+            <div className="relative w-full sm:w-auto">
+              <select
+                value={month}
+                onChange={(e) => setMonth(e.target.value)}
+                className="h-[36px] w-full sm:w-auto appearance-none rounded-md border border-[#E5E7EB] bg-white pl-3.5 pr-9 text-[12px] font-bold text-[#4B5563] shadow-sm hover:bg-gray-50 focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]/20"
+              >
+                <option value="Oct 2023">Oct 2023</option>
+                <option value="Sep 2023">Sep 2023</option>
+                <option value="Aug 2023">Aug 2023</option>
+              </select>
+              <ChevronDown className="absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9CA3AF] pointer-events-none" />
+            </div>
             <div className="relative w-full sm:w-[280px]">
               <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
               <input
@@ -445,7 +577,7 @@ export function BankTransactions() {
                   </td>
                 </tr>
               ) : (
-                filteredRows.map((row) => (
+                pagedRows.map((row) => (
                   <tr key={row.id} className="hover:bg-gray-50 font-medium">
                     <td className="px-4 py-4">
                       <input type="checkbox" className="h-4 w-4 rounded border-[#D1D5DB] text-[#3B5BDB] focus:ring-[#3B5BDB]/20" />
@@ -468,11 +600,11 @@ export function BankTransactions() {
                     <td className="px-4 py-4">
                       <div className="relative">
                         <select
-                          value={CATEGORY_OPTIONS.includes(row.category) ? row.category : "-"}
+                          value={categoriesForRow(row).includes(row.category) ? row.category : "-"}
                           onChange={(e) => updateCategory(row.id, e.target.value)}
                           className="h-[34px] w-full min-w-[150px] appearance-none rounded-md border border-[#E5E7EB] bg-white pl-3 pr-8 text-[12px] font-semibold text-[#4B5563] focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]/20"
                         >
-                          {CATEGORY_OPTIONS.map((c) => (
+                          {categoriesForRow(row).map((c) => (
                             <option key={c} value={c}>
                               {c}
                             </option>
@@ -501,13 +633,21 @@ export function BankTransactions() {
         {/* Footer */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t border-[#EEF1F6] p-5">
           <div className="text-[12px] sm:text-[13px] font-medium text-[#6B7280]">
-            Showing 1-{Math.min(5, filteredRows.length)} of 45
+            Showing {showingFrom}-{showingTo} of {filteredRows.length}
           </div>
           <div className="flex gap-2">
-            <button className="px-5 py-2 rounded-[6px] border border-[#EEF1F6] bg-white hover:bg-gray-50 transition-colors font-bold text-[#111827] shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+            <button
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={safePage === 0}
+              className="px-5 py-2 rounded-[6px] border border-[#EEF1F6] bg-white hover:bg-gray-50 transition-colors font-bold text-[#111827] shadow-[0_1px_2px_rgba(0,0,0,0.02)] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white"
+            >
               Previous
             </button>
-            <button className="px-5 py-2 rounded-[6px] border border-[#EEF1F6] bg-white hover:bg-gray-50 transition-colors font-bold text-[#111827] shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+            <button
+              onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+              disabled={safePage >= pageCount - 1}
+              className="px-5 py-2 rounded-[6px] border border-[#EEF1F6] bg-white hover:bg-gray-50 transition-colors font-bold text-[#111827] shadow-[0_1px_2px_rgba(0,0,0,0.02)] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white"
+            >
               Next
             </button>
           </div>
@@ -950,10 +1090,10 @@ type AccountRow = {
 }
 
 const INITIAL_ACCOUNTS: AccountRow[] = [
-  { id: "a1", number: "1001", name: "General Offering", description: "Primary operating account" },
-  { id: "a2", number: "2002", name: "Building Project", description: "Foreign mission support" },
-  { id: "a3", number: "3003", name: "ShopForFree", description: "Facility maintenance" },
-  { id: "a4", number: "4004", name: "Youth Ministry", description: "Events and curriculum" },
+  { id: "a1", number: "0012337821", name: "General Offering", description: "Primary operating account" },
+  { id: "a2", number: "0011298745", name: "Building Project", description: "Foreign mission support" },
+  { id: "a3", number: "0017654398", name: "ShopForFree", description: "Facility maintenance" },
+  { id: "a4", number: "0013349087", name: "Youth Ministry", description: "Events and curriculum" },
 ]
 
 function ManageAccountsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -961,6 +1101,7 @@ function ManageAccountsModal({ open, onClose }: { open: boolean; onClose: () => 
   const [number, setNumber] = useState("")
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
+  const [editingId, setEditingId] = useState<string | null>(null)
 
   useEffect(() => {
     if (open) {
@@ -968,20 +1109,46 @@ function ManageAccountsModal({ open, onClose }: { open: boolean; onClose: () => 
       setNumber("")
       setName("")
       setDescription("")
+      setEditingId(null)
     }
   }, [open])
 
-  const removeAccount = (id: string) => setAccounts((prev) => prev.filter((a) => a.id !== id))
-
-  const addAccount = () => {
-    if (!number.trim() && !name.trim()) return
-    setAccounts((prev) => [
-      ...prev,
-      { id: `a-${Date.now()}`, number: number.trim() || "—", name: name.trim() || "Untitled", description: description.trim() },
-    ])
+  const resetForm = () => {
     setNumber("")
     setName("")
     setDescription("")
+    setEditingId(null)
+  }
+
+  const removeAccount = (id: string) => {
+    setAccounts((prev) => prev.filter((a) => a.id !== id))
+    if (editingId === id) resetForm()
+  }
+
+  const startEdit = (account: AccountRow) => {
+    setEditingId(account.id)
+    setNumber(account.number)
+    setName(account.name)
+    setDescription(account.description)
+  }
+
+  const saveAccount = () => {
+    if (!number.trim() && !name.trim()) return
+    if (editingId) {
+      setAccounts((prev) =>
+        prev.map((a) =>
+          a.id === editingId
+            ? { ...a, number: number.trim() || "—", name: name.trim() || "Untitled", description: description.trim() }
+            : a,
+        ),
+      )
+    } else {
+      setAccounts((prev) => [
+        ...prev,
+        { id: `a-${Date.now()}`, number: number.trim() || "—", name: name.trim() || "Untitled", description: description.trim() },
+      ])
+    }
+    resetForm()
   }
 
   return (
@@ -1009,7 +1176,11 @@ function ManageAccountsModal({ open, onClose }: { open: boolean; onClose: () => 
                   <td className="px-4 py-3 text-[12px] font-medium text-[#6B7280]">{a.description}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-2">
-                      <button className="text-[#9CA3AF] hover:text-[#3B5BDB] transition-colors" aria-label={`Edit ${a.name}`}>
+                      <button
+                        onClick={() => startEdit(a)}
+                        className={`transition-colors ${editingId === a.id ? "text-[#3B5BDB]" : "text-[#9CA3AF] hover:text-[#3B5BDB]"}`}
+                        aria-label={`Edit ${a.name}`}
+                      >
                         <Pencil className="h-4 w-4" />
                       </button>
                       <button
@@ -1029,10 +1200,10 @@ function ManageAccountsModal({ open, onClose }: { open: boolean; onClose: () => 
 
         {/* Add new account form */}
         <div className="rounded-[10px] border border-[#EEF1F6] bg-[#F8FAFC] p-4 space-y-4">
-          <p className="text-[13px] font-bold text-[#111827]">Add New Account</p>
+          <p className="text-[13px] font-bold text-[#111827]">{editingId ? "Edit Account" : "Add New Account"}</p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Field label="Account Number">
-              <input value={number} onChange={(e) => setNumber(e.target.value)} placeholder="e.g. 5005" className={inputClass} />
+              <input value={number} onChange={(e) => setNumber(e.target.value)} placeholder="e.g. 5005678976" className={inputClass} />
             </Field>
             <Field label="Account Name">
               <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Welfare" className={inputClass} />
@@ -1041,12 +1212,30 @@ function ManageAccountsModal({ open, onClose }: { open: boolean; onClose: () => 
               <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Short description" className={inputClass} />
             </Field>
           </div>
-          <button
-            onClick={addAccount}
-            className="flex items-center gap-2 rounded-md bg-[#3B5BDB] px-4 py-2.5 text-[12px] font-bold text-white shadow-sm hover:bg-blue-700 transition-colors"
-          >
-            <Plus className="h-4 w-4" strokeWidth={2.5} /> Add Account
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={saveAccount}
+              className="flex items-center gap-2 rounded-md bg-[#3B5BDB] px-4 py-2.5 text-[12px] font-bold text-white shadow-sm hover:bg-blue-700 transition-colors"
+            >
+              {editingId ? (
+                <>
+                  <Save className="h-4 w-4" strokeWidth={2.5} /> Update Account
+                </>
+              ) : (
+                <>
+                  <Plus className="h-4 w-4" strokeWidth={2.5} /> Add Account
+                </>
+              )}
+            </button>
+            {editingId && (
+              <button
+                onClick={resetForm}
+                className="text-[12px] font-bold text-[#6B7280] hover:text-[#4B5563] transition-colors"
+              >
+                Cancel edit
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1077,7 +1266,7 @@ function RecordExpenseModal({ open, onClose }: { open: boolean; onClose: () => v
   const [amount, setAmount] = useState("")
   const [type, setType] = useState("Transfer")
   const [payee, setPayee] = useState("")
-  const [category, setCategory] = useState("Operational Exp.")
+  const [category, setCategory] = useState("Operational Expense")
   const [notes, setNotes] = useState("")
 
   useEffect(() => {
@@ -1086,7 +1275,7 @@ function RecordExpenseModal({ open, onClose }: { open: boolean; onClose: () => v
       setAmount("")
       setType("Transfer")
       setPayee("")
-      setCategory("Operational Exp.")
+      setCategory("Operational Expense")
       setNotes("")
     }
   }, [open])
@@ -1100,10 +1289,16 @@ function RecordExpenseModal({ open, onClose }: { open: boolean; onClose: () => v
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Transaction Date">
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputClass} />
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              onClick={(e) => e.currentTarget.showPicker?.()}
+              className={inputClass}
+            />
           </Field>
           <Field label="Amount (₦)">
-            <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" className={inputClass} />
+            <AmountInput value={amount} onValueChange={setAmount} placeholder="0.00" className={inputClass} />
           </Field>
         </div>
 
@@ -1123,7 +1318,7 @@ function RecordExpenseModal({ open, onClose }: { open: boolean; onClose: () => v
 
         <Field label="Category">
           <SelectField value={category} onChange={setCategory}>
-            {CATEGORY_OPTIONS.filter((c) => c !== "-").map((c) => (
+            {EXPENSE_CATEGORIES.map((c) => (
               <option key={c} value={c}>
                 {c}
               </option>
@@ -1176,7 +1371,7 @@ function RecordIncomeModal({ open, onClose }: { open: boolean; onClose: () => vo
   const [date, setDate] = useState("")
   const [currency, setCurrency] = useState("NGN")
   const [amount, setAmount] = useState("")
-  const [incomeType, setIncomeType] = useState("Donations")
+  const [incomeType, setIncomeType] = useState("General Offering")
   const [notes, setNotes] = useState("")
 
   useEffect(() => {
@@ -1184,13 +1379,13 @@ function RecordIncomeModal({ open, onClose }: { open: boolean; onClose: () => vo
       setDate("")
       setCurrency("NGN")
       setAmount("")
-      setIncomeType("Donations")
+      setIncomeType("General Offering")
       setNotes("")
     }
   }, [open])
 
   const isNaira = currency === "NGN"
-  const numericAmount = parseFloat(amount) || 0
+  const numericAmount = parseAmount(amount)
   const localValue = numericAmount * (CURRENCY_RATES[currency]?.rate ?? 1)
 
   return (
@@ -1200,7 +1395,13 @@ function RecordIncomeModal({ open, onClose }: { open: boolean; onClose: () => vo
       <div className="px-6 py-5 space-y-4">
         <p className="-mt-2 text-[12.5px] text-[#6B7280]">Enter the manual transaction details for the ledger.</p>
         <Field label="Transaction Date">
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputClass} />
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            onClick={(e) => e.currentTarget.showPicker?.()}
+            className={inputClass}
+          />
         </Field>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1214,7 +1415,7 @@ function RecordIncomeModal({ open, onClose }: { open: boolean; onClose: () => vo
             </SelectField>
           </Field>
           <Field label="Amount">
-            <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="5,000.00" className={inputClass} />
+            <AmountInput value={amount} onValueChange={setAmount} placeholder="5,000.00" className={inputClass} />
           </Field>
         </div>
 
@@ -1222,7 +1423,7 @@ function RecordIncomeModal({ open, onClose }: { open: boolean; onClose: () => vo
           <Field label="Local Value">
             <input
               readOnly
-              value={`₦ ${formatMoney(localValue)}`}
+              value={`₦ ${formatNumber(localValue)}`}
               className={`${inputClass} bg-[#F3F4F6] text-[#6B7280] cursor-not-allowed`}
             />
           </Field>
@@ -1230,11 +1431,11 @@ function RecordIncomeModal({ open, onClose }: { open: boolean; onClose: () => vo
 
         <Field label="Income Type">
           <SelectField value={incomeType} onChange={setIncomeType}>
-            <option value="Donations">Donations</option>
-            <option value="Tithes">Tithes</option>
-            <option value="Offerings">Offerings</option>
-            <option value="Pledges">Pledges</option>
-            <option value="Other">Other</option>
+            {INCOME_CATEGORIES.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
           </SelectField>
         </Field>
 

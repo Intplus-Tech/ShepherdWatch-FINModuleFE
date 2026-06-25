@@ -3,11 +3,8 @@
 import SidebarNav from "@/components/navigation/SidebarNav"
 import ScreenHeader from "@/components/navigation/ScreenHeader"
 import { useAuth } from "@/components/auth/AuthProvider"
-import { useEffect, useMemo, useState, type FormEvent } from "react"
+import { useEffect, useMemo, useState } from "react"
 import {
-  CalendarDays,
-  ChevronDown,
-  Download,
   Filter,
   Landmark,
   PiggyBank,
@@ -17,14 +14,13 @@ import {
   Clock3,
 } from "lucide-react"
 import BranchesDropdown from "@/components/navigation/BranchesDropdown"
-import { useStatutoryDeductions, type DeductionType } from "@/components/hooks/useStatutoryDeductions"
+import { useStatutoryDeductions } from "@/components/hooks/useStatutoryDeductions"
 import { useComplianceDashboard } from "@/components/hooks/useComplianceDashboard"
 import { useComplianceSummary } from "@/components/hooks/useComplianceSummary"
 
 export default function Page() {
   const { user } = useAuth()
   const {
-    createDeduction,
     fetchDeductions,
     getDeductionById,
     updateDeduction,
@@ -32,12 +28,10 @@ export default function Page() {
     deductions,
     selectedDeduction,
     pagination,
-    creating,
     updating,
     remitting,
     loading: deductionsLoading,
     detailLoading,
-    error: createError,
     listError,
     detailError,
     setError: setCreateError,
@@ -54,7 +48,6 @@ export default function Page() {
     error: summaryError,
     fetchSummary,
   } = useComplianceSummary()
-  const [createSuccess, setCreateSuccess] = useState<string | null>(null)
   const [updateSuccess, setUpdateSuccess] = useState<string | null>(null)
   const [remitSuccess, setRemitSuccess] = useState<string | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
@@ -63,17 +56,6 @@ export default function Page() {
   const [editPeriod, setEditPeriod] = useState("")
   const [remittanceDate, setRemittanceDate] = useState("")
   const [receiptNumber, setReceiptNumber] = useState("")
-  const [deductionForm, setDeductionForm] = useState<{
-    type: DeductionType
-    employeeProfileId: string
-    amount: string
-    period: string
-  }>({
-    type: "paye",
-    employeeProfileId: "",
-    amount: "",
-    period: "",
-  })
 
   const tenantId = useMemo(
     () => user?.tenantId ?? user?.tenant?.id ?? "",
@@ -151,47 +133,6 @@ export default function Page() {
     last: item.period,
     status: item.remitted ? "Compliant" : "Pending",
   }))
-
-  const handleCreateDeduction = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setCreateError(null)
-    setCreateSuccess(null)
-
-    const amount = Number(deductionForm.amount)
-    if (!deductionForm.employeeProfileId.trim()) {
-      setCreateError("Employee profile ID is required.")
-      return
-    }
-    if (!deductionForm.period.trim()) {
-      setCreateError("Period is required. Use format YYYY-MM.")
-      return
-    }
-    if (!Number.isFinite(amount) || amount <= 0) {
-      setCreateError("Amount must be greater than 0.")
-      return
-    }
-
-    try {
-      await createDeduction({
-        type: deductionForm.type,
-        employeeProfileId: deductionForm.employeeProfileId.trim(),
-        amount,
-        period: deductionForm.period.trim(),
-        branchId: tenantId || undefined,
-      })
-      setCreateSuccess("Statutory deduction created successfully.")
-      setDeductionForm((prev) => ({ ...prev, employeeProfileId: "", amount: "" }))
-      await fetchDeductions({
-        page: 1,
-        limit: 20,
-        branchId: tenantId,
-        remitted: remittedFilter === "all" ? undefined : remittedFilter === "compliant",
-      })
-      setCurrentPage(1)
-    } catch {
-      // handled in hook state
-    }
-  }
 
   const handleSelectDeduction = (id: string) => {
     setUpdateSuccess(null)
@@ -279,16 +220,6 @@ export default function Page() {
                   Consolidated view of liabilities and remittances for FY {complianceDashboard?.fiscalYear ?? new Date().getFullYear()}
                 </p>
               </div>
-              <div className="flex items-center gap-2">
-                <button className="flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-3.5 py-2 text-[12px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50">
-                  <CalendarDays className="h-4 w-4 text-[#6B7280]" />
-                  Oct 2023
-                  <ChevronDown className="h-3.5 w-3.5 text-[#6B7280] ml-1" />
-                </button>
-                <button className="flex items-center gap-2 rounded-md bg-[#3B5BDB] px-4 py-2 text-[12px] font-medium text-white shadow hover:bg-blue-700">
-                  <Download className="h-4 w-4" /> Export for Audit
-                </button>
-              </div>
             </div>
 
             <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -326,53 +257,8 @@ export default function Page() {
               <div className="mt-2 text-[12px] font-medium text-[#EF4444]">{summaryError}</div>
             )}
 
-            <div className="mt-6 rounded-xl border border-[#EEF1F6] bg-white shadow-sm overflow-hidden">
-              <div className="border-b border-[#EEF1F6] px-6 py-4">
-                <form onSubmit={handleCreateDeduction} className="grid grid-cols-1 gap-2 md:grid-cols-[120px_1fr_140px_130px_auto]">
-                  <select
-                    value={deductionForm.type}
-                    onChange={(e) => setDeductionForm((prev) => ({ ...prev, type: e.target.value as DeductionType }))}
-                    className="h-9 rounded-[8px] border border-[#E5E7EB] bg-white px-3 text-[12px]"
-                  >
-                    <option value="paye">PAYE</option>
-                    <option value="pension">Pension</option>
-                    <option value="nhf">NHF</option>
-                  </select>
-                  <input
-                    type="text"
-                    value={deductionForm.employeeProfileId}
-                    onChange={(e) => setDeductionForm((prev) => ({ ...prev, employeeProfileId: e.target.value }))}
-                    placeholder="Employee Profile ID"
-                    className="h-9 rounded-[8px] border border-[#E5E7EB] bg-white px-3 text-[12px]"
-                  />
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={deductionForm.amount}
-                    onChange={(e) => setDeductionForm((prev) => ({ ...prev, amount: e.target.value }))}
-                    placeholder="Amount"
-                    className="h-9 rounded-[8px] border border-[#E5E7EB] bg-white px-3 text-[12px]"
-                  />
-                  <input
-                    type="month"
-                    value={deductionForm.period}
-                    onChange={(e) => setDeductionForm((prev) => ({ ...prev, period: e.target.value }))}
-                    className="h-9 rounded-[8px] border border-[#E5E7EB] bg-white px-3 text-[12px]"
-                  />
-                  <button
-                    type="submit"
-                    disabled={creating}
-                    className="h-9 rounded-[8px] bg-[#3B5BDB] px-4 text-[12px] font-semibold text-white disabled:opacity-60"
-                  >
-                    {creating ? "Creating..." : "Create Deduction"}
-                  </button>
-                </form>
-                {createError && <div className="mt-2 text-[12px] text-rose-600">{createError}</div>}
-                {createSuccess && <div className="mt-2 text-[12px] text-emerald-600">{createSuccess}</div>}
-              </div>
-
-              <div className="flex flex-col gap-3 px-6 py-4 md:flex-row md:items-center md:justify-between">
+            <div className="mt-6 rounded-xl border border-[#EEF1F6] bg-white shadow-sm">
+              <div className="relative z-30 flex flex-col gap-3 px-6 py-4 md:flex-row md:items-center md:justify-between">
                 <div className="flex items-center gap-2">
                   <BranchesDropdown label="All Branches" className="text-[11px]" />
                   <button
@@ -551,6 +437,7 @@ export default function Page() {
                               type="date"
                               value={remittanceDate}
                               onChange={(e) => setRemittanceDate(e.target.value)}
+                              onClick={(e) => e.currentTarget.showPicker?.()}
                               className="h-8 rounded-[8px] border border-[#E5E7EB] bg-white px-2.5 text-[12px]"
                             />
                           </label>

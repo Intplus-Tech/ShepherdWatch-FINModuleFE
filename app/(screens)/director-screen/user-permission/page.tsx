@@ -569,7 +569,7 @@ export default function Page() {
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
       <SidebarNav
-        activeHref="/director-screen/user-permission"
+        activeHref="/director-screen/users"
         className="fixed inset-y-0 left-0 z-20 w-[260px] rounded-none bg-[#FAFBFF] border-r border-[#EEF1F6]"
       />
 

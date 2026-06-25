@@ -55,7 +55,7 @@ function Dropdown({
       </button>
 
       {isOpen && (
-        <div className="absolute left-0 top-[calc(100%+4px)] z-10 w-[200px] rounded-[8px] border border-[#EEF1F6] bg-white py-1.5 shadow-[0_4px_20px_rgba(0,0,0,0.08)]">
+        <div className="absolute left-0 top-[calc(100%+4px)] z-30 max-h-[240px] w-[200px] overflow-y-auto rounded-[8px] border border-[#EEF1F6] bg-white py-1.5 shadow-[0_4px_20px_rgba(0,0,0,0.08)]">
           {options.map((opt) => (
             <button
               key={opt}
@@ -121,7 +121,7 @@ function PageInner() {
           </div>
         </header>
 
-        <div className="mx-auto w-full px-4 sm:px-6 pt-6 pb-6 lg:px-8 lg:pt-8 lg:pb-8 max-w-[1200px] overflow-hidden">
+        <div className="mx-auto w-full px-6 pt-6 pb-8 lg:px-8 lg:pt-8 max-w-7xl">
           
           {/* Header */}
           <div className="mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-start border-b border-[#EEF1F6] pb-6">
@@ -165,7 +165,7 @@ function PageInner() {
           </div>
 
           <div className="rounded-[12px] border border-[#EEF1F6] bg-white shadow-sm overflow-visible">
-            <div className="overflow-x-auto overflow-y-visible">
+            <div className="overflow-visible">
               <table className="w-full text-left text-[13px]">
                 <thead>
                   <tr className="border-b border-[#EEF1F6]">

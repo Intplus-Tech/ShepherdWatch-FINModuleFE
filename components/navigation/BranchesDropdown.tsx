@@ -82,7 +82,7 @@ export default function BranchesDropdown({
       </button>
 
       {open ? (
-        <div className="absolute right-0 z-30 mt-2 w-[260px] rounded-[10px] border border-[#E5E7EB] bg-white shadow-lg p-3">
+        <div className="absolute left-0 z-50 mt-2 w-[260px] rounded-[10px] border border-[#E5E7EB] bg-white shadow-lg p-3">
           {loading ? (
             <div className="flex items-center gap-2 text-[12px] text-[#6B7280]">
               <Loader2 className="h-4 w-4 animate-spin" /> Loading branches...
