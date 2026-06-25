@@ -41,3 +41,12 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 /temp
+
+# AI assistant artifacts
+.claude/
+**/.claude/
+CLAUDE.md
+**/CLAUDE.md
+.claude.json
+.cursor/
+.aider*

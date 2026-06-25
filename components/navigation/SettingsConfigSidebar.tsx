@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { Info, ShieldCheck, Wallet, Boxes } from "lucide-react"
+import { Info, ShieldCheck, Wallet, Boxes, ScrollText } from "lucide-react"
 
 /**
  * Shared "SUPER ADMIN / Global Configuration" sub-navigation used across the
@@ -35,6 +35,7 @@ const NAV_ITEMS: NavItem[] = [
     href: "/director-screen/settings-statutory",
     icon: ShieldCheck,
   },
+  { key: "audit", label: "Audit Log", href: "/director-screen/settings-audit", icon: ScrollText },
 ]
 
 export default function SettingsConfigSidebar({

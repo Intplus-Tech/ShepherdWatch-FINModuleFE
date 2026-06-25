@@ -8,19 +8,13 @@ import axios from "axios"
 import SidebarNav from "@/components/navigation/SidebarNav"
 import { useBudgetConfig } from "@/components/hooks/useBudgetConfig"
 import { useExchangeRates } from "@/components/hooks/useExchangeRates"
-import { ActiveSessionsManager } from "@/components/settings/ActiveSessionsManager"
 import ScreenHeader from "@/components/navigation/ScreenHeader"
 import SettingsConfigSidebar from "@/components/navigation/SettingsConfigSidebar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
-  Calendar,
   FolderKanban,
-  Layers,
   Plus,
-  ShieldCheck,
-  SlidersHorizontal,
-  RefreshCw,
   TrendingUp,
   X,
 } from "lucide-react"
@@ -184,7 +178,7 @@ function ExchangeRatesSection() {
 
             <div>
               <label className="text-[12px] font-[600] text-[#6B7280]">Effective Date</label>
-              <Input type="date" value={form.effectiveDate} onChange={(e) => setForm({...form, effectiveDate: e.target.value})} className="mt-1 h-[36px] text-[13px]" />
+              <Input type="date" value={form.effectiveDate} onChange={(e) => setForm({...form, effectiveDate: e.target.value})} onClick={(e) => (e.currentTarget as HTMLInputElement).showPicker?.()} className="mt-1 h-[36px] text-[13px]" />
             </div>
 
             <Button disabled={loading} onClick={handleCreate} className="w-full mt-2 bg-[#3B5BDB] hover:bg-[#2A43A7] h-[36px] text-[13px]">
@@ -401,21 +395,31 @@ export default function Page() {
     reportingInterval: "",
     varianceThresholdPercent: "",
   })
-  const [budgetSaveMessage, setBudgetSaveMessage] = useState<string | null>(null)
-  const [budgetSaveError, setBudgetSaveError] = useState<string | null>(null)
-  const [budgetSaving, setBudgetSaving] = useState(false)
 
   // Local UI state for the Global Budget Configuration design (image #1).
   // Budget streams + default thresholds are presentation-level until the
   // backend exposes matching fields.
-  const [budgetStreams, setBudgetStreams] = useState([
+  type BudgetHead = { id: string; name: string }
+  type BudgetStream = {
+    id: string
+    code: string
+    title: string
+    desc: string
+    avatar: string
+    heads: BudgetHead[]
+  }
+  const makeHead = (name: string): BudgetHead => ({
+    id: `head-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name,
+  })
+  const [budgetStreams, setBudgetStreams] = useState<BudgetStream[]>([
     {
       id: "operational",
       code: "OP",
       title: "Operational Budget",
       desc: "Recurring administrative and utility costs",
       avatar: "bg-[#E9EEFF] text-[#3B5BDB]",
-      heads: ["Staffing", "Utilities", "Rent"],
+      heads: [makeHead("Staffing"), makeHead("Utilities"), makeHead("Rent")],
     },
     {
       id: "program",
@@ -423,7 +427,7 @@ export default function Page() {
       title: "Program Budget",
       desc: "Events, outreach, and training initiatives",
       avatar: "bg-[#F3E8FF] text-[#7C3AED]",
-      heads: ["Events", "Outreach", "Training"],
+      heads: [makeHead("Events"), makeHead("Outreach"), makeHead("Training")],
     },
     {
       id: "capital",
@@ -431,25 +435,36 @@ export default function Page() {
       title: "Capital Budget",
       desc: "Long-term assets, equipment and building",
       avatar: "bg-[#FEF3E2] text-[#F59E0B]",
-      heads: ["Equipment", "Vehicles"],
+      heads: [makeHead("Equipment"), makeHead("Vehicles")],
     },
   ])
-  const [defaultThresholds, setDefaultThresholds] = useState({
-    minApproval: "50,000",
-    pettyCash: "15,000",
-    auditTrigger: "500,000",
-  })
 
-  const removeBudgetHead = (streamId: string, head: string) =>
+  const updateBudgetStreamTitle = (streamId: string, title: string) =>
+    setBudgetStreams((prev) =>
+      prev.map((s) => (s.id === streamId ? { ...s, title } : s))
+    )
+  const updateBudgetStreamDesc = (streamId: string, desc: string) =>
+    setBudgetStreams((prev) =>
+      prev.map((s) => (s.id === streamId ? { ...s, desc } : s))
+    )
+  const removeBudgetHead = (streamId: string, headId: string) =>
     setBudgetStreams((prev) =>
       prev.map((s) =>
-        s.id === streamId ? { ...s, heads: s.heads.filter((h) => h !== head) } : s
+        s.id === streamId ? { ...s, heads: s.heads.filter((h) => h.id !== headId) } : s
       )
     )
   const addBudgetHead = (streamId: string) =>
     setBudgetStreams((prev) =>
       prev.map((s) =>
-        s.id === streamId ? { ...s, heads: [...s.heads, "New Head"] } : s
+        s.id === streamId ? { ...s, heads: [...s.heads, makeHead("")] } : s
+      )
+    )
+  const updateBudgetHead = (streamId: string, headId: string, name: string) =>
+    setBudgetStreams((prev) =>
+      prev.map((s) =>
+        s.id === streamId
+          ? { ...s, heads: s.heads.map((h) => (h.id === headId ? { ...h, name } : h)) }
+          : s
       )
     )
 
@@ -947,86 +962,6 @@ export default function Page() {
     }
   }
 
-  const handleBudgetSave = async () => {
-    setBudgetSaveMessage(null)
-    setBudgetSaveError(null)
-
-    const fiscalYearStart = Number(budgetForm.fiscalYearStart)
-    const varianceThresholdPercent = Number(budgetForm.varianceThresholdPercent)
-
-    if (!Number.isFinite(fiscalYearStart) || fiscalYearStart < 1 || fiscalYearStart > 12) {
-      setBudgetSaveError("Fiscal year start must be a month between 1 and 12.")
-      return
-    }
-    if (!budgetForm.defaultCurrency) {
-      setBudgetSaveError("Default currency is required.")
-      return
-    }
-    if (!budgetForm.enforcementAction) {
-      setBudgetSaveError("Enforcement action is required.")
-      return
-    }
-    if (!budgetForm.reportingInterval) {
-      setBudgetSaveError("Reporting interval is required.")
-      return
-    }
-    if (
-      !Number.isFinite(varianceThresholdPercent) ||
-      varianceThresholdPercent < 0 ||
-      varianceThresholdPercent > 100
-    ) {
-      setBudgetSaveError("Variance threshold must be between 0 and 100.")
-      return
-    }
-
-    setBudgetSaving(true)
-    try {
-      const res = await fetch(`${API_V1}/settings/budget-config`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fiscalYearStart,
-          defaultCurrency: budgetForm.defaultCurrency,
-          enforcementAction: budgetForm.enforcementAction,
-          reportingInterval: budgetForm.reportingInterval,
-          varianceThresholdPercent,
-        }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        throw new Error(data?.message || "Unable to save budget configuration")
-      }
-      setBudgetSaveMessage(data?.message || "Settings updated successfully.")
-      refreshBudgetConfig()
-    } catch (err: any) {
-      setBudgetSaveError(err.message || "Unable to save budget configuration")
-    } finally {
-      setBudgetSaving(false)
-    }
-  }
-
-  const handleBudgetReset = async () => {
-    setBudgetSaveMessage(null)
-    setBudgetSaveError(null)
-    setBudgetSaving(true)
-    try {
-      const res = await fetch(`${API_V1}/settings/budget-config/reset`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        throw new Error(data?.message || "Unable to reset budget configuration")
-      }
-      setBudgetSaveMessage(data?.message || "Settings reset successfully.")
-      refreshBudgetConfig()
-    } catch (err: any) {
-      setBudgetSaveError(err.message || "Unable to reset budget configuration")
-    } finally {
-      setBudgetSaving(false)
-    }
-  }
-
   useEffect(() => {
     fetchTemplates()
     fetchHeaderFooters()
@@ -1081,7 +1016,7 @@ export default function Page() {
                         {
                           id: `stream-${Date.now()}`,
                           code: "NB",
-                          title: "New Budget",
+                          title: "",
                           desc: "Describe this budget stream",
                           avatar: "bg-[#F1F5F9] text-[#6B7280]",
                           heads: [],
@@ -1103,21 +1038,43 @@ export default function Page() {
                           {stream.code}
                         </div>
                         <div>
-                          <div className="text-[14px] font-bold text-[#111827]">{stream.title}</div>
-                          <div className="text-[12px] text-[#9CA3AF]">{stream.desc}</div>
+                          <input
+                            type="text"
+                            value={stream.title}
+                            onChange={(e) => updateBudgetStreamTitle(stream.id, e.target.value)}
+                            placeholder="Budget stream name"
+                            aria-label="Budget stream name"
+                            className="w-full rounded-[8px] border border-transparent bg-transparent px-1 text-[14px] font-bold text-[#111827] outline-none hover:border-[#E5E7EB] focus:border-[#3B5BDB] focus:bg-white"
+                          />
+                          <input
+                            type="text"
+                            value={stream.desc}
+                            onChange={(e) => updateBudgetStreamDesc(stream.id, e.target.value)}
+                            placeholder="Describe this budget stream"
+                            aria-label="Budget stream description"
+                            className="mt-0.5 w-full rounded-[8px] border border-transparent bg-transparent px-1 text-[12px] text-[#9CA3AF] outline-none hover:border-[#E5E7EB] focus:border-[#3B5BDB] focus:bg-white focus:text-[#4B5563]"
+                          />
                         </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-2 md:max-w-[55%] md:justify-end">
                         {stream.heads.map((head) => (
                           <span
-                            key={head}
+                            key={head.id}
                             className="inline-flex items-center gap-1 rounded-full border border-[#E5E7EB] bg-white px-3 py-1 text-[12px] font-medium text-[#374151]"
                           >
-                            {head}
+                            <input
+                              type="text"
+                              value={head.name}
+                              onChange={(e) => updateBudgetHead(stream.id, head.id, e.target.value)}
+                              placeholder="Head name"
+                              aria-label="Budget head name"
+                              size={Math.max(head.name.length, 8)}
+                              className="bg-transparent text-[12px] font-medium text-[#374151] outline-none"
+                            />
                             <button
                               type="button"
-                              onClick={() => removeBudgetHead(stream.id, head)}
-                              aria-label={`Remove ${head}`}
+                              onClick={() => removeBudgetHead(stream.id, head.id)}
+                              aria-label="Remove head"
                               className="text-[#9CA3AF] hover:text-[#EF4444]"
                             >
                               <X className="h-3 w-3" />
@@ -1138,312 +1095,6 @@ export default function Page() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                <div className="rounded-[12px] border border-[#EEF1F6] bg-white p-4">
-                  <div className="flex items-center gap-2 text-[19.11px] leading-[29.72px] font-bold text-[#111827]">
-                    <SlidersHorizontal className="h-4 w-4 text-[#3B5BDB]" />
-                    Variation Tolerance
-                  </div>
-                  <div className="mt-3 text-[14.86px] leading-[21.23px] font-semibold text-[#6B7280]">
-                    Global Tolerance Flex
-                  </div>
-                  <div className="mt-2 flex items-center gap-2">
-                    <Input
-                      className="h-8 w-16 rounded-[10px] border-[#E5E7EB] text-[12.74px] leading-[16.98px]"
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={budgetForm.varianceThresholdPercent}
-                      onChange={(e) =>
-                        setBudgetForm((prev) => ({
-                          ...prev,
-                          varianceThresholdPercent: e.target.value,
-                        }))
-                      }
-                    />
-                    <span className="text-[14.86px] leading-[21.23px] font-bold text-[#9CA3AF]">%</span>
-                  </div>
-                  <div className="mt-2 text-[11.68px] leading-[14.6px] font-normal text-[#9CA3AF]">
-                    Allowed spending above budget before restriction.
-                  </div>
-                  <div className="mt-4 text-[14.86px] leading-[21.23px] font-semibold text-[#6B7280]">
-                    Enforcement Action
-                  </div>
-                  <div className="mt-2 inline-flex rounded-[10px] border border-[#E5E7EB] bg-[#F8FAFC] p-1">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setBudgetForm((prev) => ({ ...prev, enforcementAction: "warn_only" }))
-                      }
-                      className={`rounded-[8px] px-4 py-1.5 text-[12.74px] leading-[16.98px] font-semibold transition-colors ${
-                        isWarnOnly
-                          ? "bg-white text-[#3B5BDB] shadow-sm"
-                          : "text-[#6B7280] hover:text-[#111827]"
-                      }`}
-                    >
-                      Soft Warning
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setBudgetForm((prev) => ({
-                          ...prev,
-                          enforcementAction: "block_transactions",
-                        }))
-                      }
-                      className={`rounded-[8px] px-4 py-1.5 text-[12.74px] leading-[16.98px] font-semibold transition-colors ${
-                        isBlockTransactions
-                          ? "bg-white text-[#3B5BDB] shadow-sm"
-                          : "text-[#6B7280] hover:text-[#111827]"
-                      }`}
-                    >
-                      Hard Block
-                    </button>
-                  </div>
-                </div>
-
-                <div className="rounded-[12px] border border-[#EEF1F6] bg-white p-4">
-                  <div className="flex items-center gap-2 text-[19.11px] leading-[29.72px] font-bold text-[#111827]">
-                    <Calendar className="h-4 w-4 text-[#3B5BDB]" />
-                    Time Segmentation
-                  </div>
-                  <div className="mt-3 text-[12.74px] leading-[16.98px] font-normal text-[#6B7280]">
-                    Reporting Interval
-                  </div>
-                  <div className="mt-2 space-y-2">
-                    <div
-                      onClick={() =>
-                        setBudgetForm((prev) => ({ ...prev, reportingInterval: "monthly" }))
-                      }
-                      className={`flex items-start gap-2 rounded-[12px] border p-3 ${
-                        reportingInterval === "monthly"
-                          ? "border-[#DBEAFE] bg-[#F0F7FF]"
-                          : "border-[#EEF1F6] bg-white"
-                      } cursor-pointer`}
-                    >
-                      <div
-                        className={`mt-0.5 h-3.5 w-3.5 rounded-full border ${
-                          reportingInterval === "monthly"
-                            ? "border-[#3B5BDB] bg-[#3B5BDB]"
-                            : "border-[#D1D5DB] bg-white"
-                        }`}
-                      />
-                      <div>
-                        <div
-                          className={`text-[12.74px] leading-[16.98px] font-semibold ${
-                            reportingInterval === "monthly" ? "text-[#1E3A8A]" : "text-[#111827]"
-                          }`}
-                        >
-                          Monthly Defaults
-                        </div>
-                        <div className="text-[12.74px] leading-[16.98px] font-normal text-[#6B7280]">
-                          12 budgeting cycles per year
-                        </div>
-                      </div>
-                    </div>
-                    <div
-                      onClick={() =>
-                        setBudgetForm((prev) => ({ ...prev, reportingInterval: "quarterly" }))
-                      }
-                      className={`flex items-start gap-2 rounded-[12px] border p-3 ${
-                        reportingInterval === "quarterly"
-                          ? "border-[#DBEAFE] bg-[#F0F7FF]"
-                          : "border-[#EEF1F6] bg-white"
-                      } cursor-pointer`}
-                    >
-                      <div
-                        className={`mt-0.5 h-3.5 w-3.5 rounded-full border ${
-                          reportingInterval === "quarterly"
-                            ? "border-[#3B5BDB] bg-[#3B5BDB]"
-                            : "border-[#D1D5DB] bg-white"
-                        }`}
-                      />
-                      <div>
-                        <div
-                          className={`text-[12.74px] leading-[16.98px] font-semibold ${
-                            reportingInterval === "quarterly" ? "text-[#1E3A8A]" : "text-[#111827]"
-                          }`}
-                        >
-                          Quarterly Defaults
-                        </div>
-                        <div className="text-[12.74px] leading-[16.98px] font-normal text-[#6B7280]">
-                          4 budgeting cycles per year
-                        </div>
-                      </div>
-                    </div>
-                    <div
-                      onClick={() =>
-                        setBudgetForm((prev) => ({ ...prev, reportingInterval: "annually" }))
-                      }
-                      className={`flex items-start gap-2 rounded-[12px] border p-3 ${
-                        reportingInterval === "annually"
-                          ? "border-[#DBEAFE] bg-[#F0F7FF]"
-                          : "border-[#EEF1F6] bg-white"
-                      } cursor-pointer`}
-                    >
-                      <div
-                        className={`mt-0.5 h-3.5 w-3.5 rounded-full border ${
-                          reportingInterval === "annually"
-                            ? "border-[#3B5BDB] bg-[#3B5BDB]"
-                            : "border-[#D1D5DB] bg-white"
-                        }`}
-                      />
-                      <div>
-                        <div
-                          className={`text-[12.74px] leading-[16.98px] font-semibold ${
-                            reportingInterval === "annually" ? "text-[#1E3A8A]" : "text-[#111827]"
-                          }`}
-                        >
-                          Annual Defaults
-                        </div>
-                        <div className="text-[12.74px] leading-[16.98px] font-normal text-[#6B7280]">
-                          1 budgeting cycle per year
-                        </div>
-                      </div>
-                    </div>
-                    {!budgetConfigLoading &&
-                    reportingInterval &&
-                    reportingInterval !== "monthly" &&
-                    reportingInterval !== "quarterly" &&
-                    reportingInterval !== "annually" ? (
-                      <div className="text-[11.68px] leading-[14.6px] font-normal text-[#9CA3AF]">
-                        Current interval: {reportingInterval}
-                      </div>
-                    ) : null}
-                    {!budgetConfigLoading && !reportingInterval ? (
-                      <div className="text-[11.68px] leading-[14.6px] font-normal text-[#9CA3AF]">
-                        Reporting interval not configured yet.
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-
-              {/* Default Thresholds (₦) — image #1 */}
-              <div className="rounded-[12px] border border-[#EEF1F6] bg-white p-4">
-                <div className="flex items-center gap-2 text-[19.11px] leading-[29.72px] font-bold text-[#111827]">
-                  <ShieldCheck className="h-4 w-4 text-[#3B5BDB]" />
-                  Default Thresholds (₦)
-                </div>
-                <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
-                  {([
-                    { key: "minApproval", label: "Min. Approval Level 1" },
-                    { key: "pettyCash", label: "Petty Cash Limit" },
-                    { key: "auditTrigger", label: "Audit Trigger" },
-                  ] as const).map((field) => (
-                    <div key={field.key} className="space-y-1">
-                      <div className="text-[12.74px] leading-[16.98px] font-semibold text-[#6B7280]">
-                        {field.label}
-                      </div>
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] font-semibold text-[#9CA3AF]">
-                          ₦
-                        </span>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          value={defaultThresholds[field.key]}
-                          onChange={(e) =>
-                            setDefaultThresholds((prev) => ({ ...prev, [field.key]: e.target.value }))
-                          }
-                          className="h-10 w-full rounded-[10px] border border-[#E5E7EB] bg-white pl-7 pr-3 text-[14px] font-semibold text-[#111827]"
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* PREVIOUS "Fiscal Year & Currency" card — not part of image #1.
-                  Commented out (not deleted) per instruction; restore if needed.
-              <div className="rounded-[12px] border border-[#EEF1F6] bg-white p-4">
-                <div className="flex items-center gap-2 text-[19.11px] leading-[29.72px] font-bold text-[#111827]">
-                  <ShieldCheck className="h-4 w-4 text-[#3B5BDB]" />
-                  Fiscal Year and Currency
-                </div>
-                <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-                  <div className="space-y-1">
-                    <div className="text-[14.86px] leading-[21.23px] font-semibold text-[#6B7280]">
-                      Fiscal Year Starts
-                    </div>
-                    <select
-                      value={budgetForm.fiscalYearStart}
-                      onChange={(e) =>
-                        setBudgetForm((prev) => ({ ...prev, fiscalYearStart: e.target.value }))
-                      }
-                      className="h-8 w-full rounded-[10px] border border-[#E5E7EB] bg-white px-2 text-[14.86px] leading-[21.23px] font-semibold text-[#111827]"
-                    >
-                      <option value="">Select month</option>
-                      {monthNames.map((month, index) => (
-                        <option key={month} value={String(index + 1)}>
-                          {month} (Month {index + 1})
-                        </option>
-                      ))}
-                    </select>
-                    {fiscalYearStartMonth ? (
-                      <div className="text-[11.68px] leading-[14.6px] text-[#9CA3AF]">
-                        Current selection: {fiscalYearStartMonth}
-                      </div>
-                    ) : null}
-                  </div>
-                  <div className="space-y-1">
-                    <div className="text-[14.86px] leading-[21.23px] font-semibold text-[#6B7280]">
-                      Default Currency
-                    </div>
-                    <select
-                      value={budgetForm.defaultCurrency}
-                      onChange={(e) =>
-                        setBudgetForm((prev) => ({ ...prev, defaultCurrency: e.target.value }))
-                      }
-                      className="h-8 w-full rounded-[10px] border border-[#E5E7EB] bg-white px-2 text-[14.86px] leading-[21.23px] font-semibold text-[#111827]"
-                    >
-                      <option value="">Select currency</option>
-                      <option value="NGN">NGN</option>
-                      <option value="USD">USD</option>
-                      <option value="GBP">GBP</option>
-                      <option value="EUR">EUR</option>
-                      <option value="CAD">CAD</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-              */}
-
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="text-[12.74px] leading-[16.98px] italic font-normal text-[#9CA3AF]">
-                  <div className="flex items-center gap-2">
-                    <Layers className="h-3 w-3" />
-                    {lastUpdatedLabel
-                      ? `Last updated on ${lastUpdatedLabel}`
-                      : "Last updated timestamp unavailable"}
-                  </div>
-                </div>
-                <div className="flex flex-col items-end gap-2">
-                  {budgetSaveMessage ? (
-                    <div className="text-[12px] text-emerald-600 font-[700]">
-                      {budgetSaveMessage}
-                    </div>
-                  ) : null}
-                  {budgetSaveError ? (
-                    <div className="text-[12px] text-rose-600 font-[700]">
-                      {budgetSaveError}
-                    </div>
-                  ) : null}
-                  <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={handleBudgetReset} disabled={budgetSaving}>
-                      {budgetSaving ? "Resetting..." : "Reset Defaults"}
-                    </Button>
-                    <Button size="sm" onClick={handleBudgetSave} disabled={budgetSaving}>
-                      {budgetSaving ? "Saving..." : "Save All Configuration"}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Active Sessions */}
-            <ActiveSessionsManager />
-
-          
 
               {/* Email Templates */}
               <div className="mt-8 rounded-[12px] border border-[#EEF1F6] bg-white">
@@ -1940,12 +1591,14 @@ export default function Page() {
                     type="date"
                     value={auditFilters.startDate}
                     onChange={(e) => setAuditFilters((prev) => ({ ...prev, startDate: e.target.value }))}
+                    onClick={(e) => e.currentTarget.showPicker?.()}
                     className="h-[38px] px-3 rounded-[8px] border border-[#E5E7EB] bg-white text-[12px] font-[500]"
                   />
                   <input
                     type="date"
                     value={auditFilters.endDate}
                     onChange={(e) => setAuditFilters((prev) => ({ ...prev, endDate: e.target.value }))}
+                    onClick={(e) => e.currentTarget.showPicker?.()}
                     className="h-[38px] px-3 rounded-[8px] border border-[#E5E7EB] bg-white text-[12px] font-[500]"
                   />
                   <input

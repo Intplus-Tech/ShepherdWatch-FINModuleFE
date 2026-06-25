@@ -34,6 +34,11 @@ export default function Page() {
   const [batchProgress, setBatchProgress] = useState<{ processed: number; total: number; failed: number } | null>(null)
   const [batchSuccess, setBatchSuccess] = useState<string | null>(null)
   const [rowActioningId, setRowActioningId] = useState<string | null>(null)
+  const [search, setSearch] = useState("")
+  const [regionFilter, setRegionFilter] = useState("All")
+  const [statusFilter, setStatusFilter] = useState("All")
+  const [fiscalYearFilter, setFiscalYearFilter] = useState("All")
+  const [periodFilter, setPeriodFilter] = useState("All")
 
   const tenantId = useMemo(
     () => user?.tenantId ?? user?.tenant?.id ?? "",
@@ -85,6 +90,21 @@ export default function Page() {
       }),
     [controlData.items, selectedIds]
   )
+
+  const regionOptions = useMemo(
+    () => ["All", ...Array.from(new Set(branches.map((b) => b.name).filter(Boolean)))],
+    [branches]
+  )
+
+  const filteredBranches = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return branches.filter((b) => {
+      if (regionFilter !== "All" && b.name.toLowerCase() !== regionFilter.toLowerCase()) return false
+      if (statusFilter !== "All" && b.status.toLowerCase() !== statusFilter.toLowerCase()) return false
+      if (q && !b.name.toLowerCase().includes(q)) return false
+      return true
+    })
+  }, [branches, search, regionFilter, statusFilter])
 
   const selectedCount = useMemo(() => selectedIds.size, [selectedIds])
 
@@ -183,9 +203,10 @@ export default function Page() {
 
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
-      <aside className="fixed inset-y-0 left-0 z-20 hidden w-[260px] border-r border-[#EEF1F6] bg-white xl:flex">
-        <SidebarNav activeHref="/director-screen/budgeting" className="border-0" />
-      </aside>
+      <SidebarNav
+        activeHref="/director-screen/budgeting"
+        className="fixed inset-y-0 left-0 z-20 w-[260px] rounded-none bg-[#FAFBFF] border-r border-[#EEF1F6]"
+      />
 
       <main className="flex-1 xl:ml-[260px] text-[#111827]">
         <div className="mx-auto w-full px-6 pt-6 pb-6 lg:px-8 lg:pt-8 lg:pb-8 max-w-7xl">
@@ -305,19 +326,71 @@ export default function Page() {
 
           <div className="mt-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-[12px] text-[#6B7280] w-full lg:w-[300px]">
-              <Search className="h-4 w-4" /> Search by branch name...
+              <Search className="h-4 w-4 shrink-0" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by branch name..."
+                className="w-full bg-transparent text-[12px] text-[#111827] placeholder:text-[#9CA3AF] focus:outline-none"
+              />
             </div>
 
-            <div className="flex items-center gap-2">
-              <button className={`flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-3.5 py-2 ${smallText} text-[#6B7280]`}>
-                All Regions
-                <ChevronDown className="h-3.5 w-3.5" />
-              </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative">
+                <select
+                  value={fiscalYearFilter}
+                  onChange={(e) => setFiscalYearFilter(e.target.value)}
+                  className={`appearance-none rounded-md border border-[#E5E7EB] bg-white pl-3.5 pr-8 py-2 ${smallText} text-[#6B7280] focus:border-[#3B5BDB] focus:outline-none`}
+                >
+                  <option value="All">{controlData.fiscalYear ? `FY ${controlData.fiscalYear}` : "All Fiscal Years"}</option>
+                  <option value="2025">FY 2025</option>
+                  <option value="2024">FY 2024</option>
+                  <option value="2023">FY 2023</option>
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#9CA3AF]" />
+              </div>
 
-              <button className={`flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-3.5 py-2 ${smallText} text-[#6B7280]`}>
-                Status: All
-                <ChevronDown className="h-3.5 w-3.5" />
-              </button>
+              <div className="relative">
+                <select
+                  value={periodFilter}
+                  onChange={(e) => setPeriodFilter(e.target.value)}
+                  className={`appearance-none rounded-md border border-[#E5E7EB] bg-white pl-3.5 pr-8 py-2 ${smallText} text-[#6B7280] focus:border-[#3B5BDB] focus:outline-none`}
+                >
+                  <option value="All">All Periods</option>
+                  <option value="Q1">Q1</option>
+                  <option value="Q2">Q2</option>
+                  <option value="Q3">Q3</option>
+                  <option value="Q4">Q4</option>
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#9CA3AF]" />
+              </div>
+
+              <div className="relative">
+                <select
+                  value={regionFilter}
+                  onChange={(e) => setRegionFilter(e.target.value)}
+                  className={`appearance-none rounded-md border border-[#E5E7EB] bg-white pl-3.5 pr-8 py-2 ${smallText} text-[#6B7280] focus:border-[#3B5BDB] focus:outline-none`}
+                >
+                  {regionOptions.map((opt) => (
+                    <option key={opt} value={opt}>{opt === "All" ? "All Regions" : opt}</option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#9CA3AF]" />
+              </div>
+
+              <div className="relative">
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className={`appearance-none rounded-md border border-[#E5E7EB] bg-white pl-3.5 pr-8 py-2 ${smallText} text-[#6B7280] focus:border-[#3B5BDB] focus:outline-none`}
+                >
+                  <option value="All">Status: All</option>
+                  <option value="Approved">Approved</option>
+                  <option value="Submitted">Submitted</option>
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#9CA3AF]" />
+              </div>
             </div>
           </div>
 
@@ -349,14 +422,14 @@ export default function Page() {
                         {error}
                       </td>
                     </tr>
-                  ) : branches.length === 0 ? (
+                  ) : filteredBranches.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="px-4 py-6 text-center text-[12px] text-[#6B7280]">
                         No budget control records available for this period.
                       </td>
                     </tr>
                   ) : (
-                    branches.map((branch) => (
+                    filteredBranches.map((branch) => (
                     <Fragment key={branch.id}>
                       <tr className="border-t border-[#EEF1F6]">
                         <td className="py-3 px-4">
@@ -512,7 +585,7 @@ export default function Page() {
 
             <div className={`flex items-center justify-between px-4 py-3 text-[#9CA3AF] ${smallText}`}>
               <div>
-                Showing {branches.length ? `1-${branches.length}` : 0} of {branches.length} branches
+                Showing {filteredBranches.length ? `1-${filteredBranches.length}` : 0} of {branches.length} branches
               </div>
 
               <div className="flex items-center gap-2">

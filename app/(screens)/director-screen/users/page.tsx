@@ -9,6 +9,7 @@ import {  Input } from "@/components/ui/input"
 import { useState, useEffect } from "react"
 import { useUsers, useToggleUserStatus } from "@/components/hooks/useUsers"
 import { SkeletonTable } from "@/components/ui/skeleton"
+import InviteUserModal from "@/components/director/InviteUserModal"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
@@ -40,6 +41,9 @@ export default function Page() {
   const [debouncedSearch, setDebouncedSearch] = useState("")
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(20)
+  const [inviteOpen, setInviteOpen] = useState(false)
+  const [roleFilter, setRoleFilter] = useState("")
+  const [statusFilter, setStatusFilter] = useState("")
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchTerm), 500)
@@ -81,6 +85,22 @@ export default function Page() {
       initials: `${firstName[0] || ""}${lastName[0] || ""}`.toUpperCase() || "?",
       avatar: null,
     }
+  })
+
+  const roleFilterOptions: string[] = Array.from(
+    new Set(users.map((u: any) => String(u.role)).filter(Boolean))
+  )
+
+  const filteredUsers = users.filter((u: any) => {
+    const term = debouncedSearch.trim().toLowerCase()
+    const matchesSearch = term
+      ? [u.name, u.email, u.branch]
+          .filter(Boolean)
+          .some((field: string) => field.toLowerCase().includes(term))
+      : true
+    const matchesRole = roleFilter ? u.role === roleFilter : true
+    const matchesStatus = statusFilter ? u.rawStatus === statusFilter : true
+    return matchesSearch && matchesRole && matchesStatus
   })
 
   const handleToggleStatus = (user: any) => {
@@ -173,7 +193,7 @@ export default function Page() {
                 >
                   <Download className="h-4 w-4" /> {isExporting ? "Exporting..." : "Export Report"}
                 </Button>
-                <Button onClick={() => window.location.href = "/director-screen/invite-users"} className="h-8 rounded-md bg-[#3B5BDB] text-[12px] font-medium text-white shadow hover:bg-blue-700">
+                <Button onClick={() => setInviteOpen(true)} className="h-8 rounded-md bg-[#3B5BDB] text-[12px] font-medium text-white shadow hover:bg-blue-700">
                   <UserPlus className="h-4 w-4" /> Invite New User
                 </Button>
               </div>
@@ -211,14 +231,34 @@ export default function Page() {
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 rounded-md border-[#E5E7EB] bg-white text-[12px] text-[#6B7280]"
-                >
-                  <Filter className="h-4 w-4" /> Filter
-                  <ChevronDown className="h-3.5 w-3.5" />
-                </Button>
+                <div className="relative">
+                  <Filter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
+                  <select
+                    aria-label="Filter by role"
+                    value={roleFilter}
+                    onChange={(e) => setRoleFilter(e.target.value)}
+                    className="h-9 rounded-md border border-[#E5E7EB] bg-white pl-9 pr-8 text-[12px] text-[#6B7280] outline-none appearance-none"
+                  >
+                    <option value="">All Roles</option>
+                    {roleFilterOptions.map((role: string) => (
+                      <option key={role} value={role}>{role}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9CA3AF]" />
+                </div>
+                <div className="relative">
+                  <select
+                    aria-label="Filter by status"
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className="h-9 rounded-md border border-[#E5E7EB] bg-white px-3 pr-8 text-[12px] text-[#6B7280] outline-none appearance-none"
+                  >
+                    <option value="">All Statuses</option>
+                    <option value="ACTIVE">Active</option>
+                    <option value="INACTIVE">Inactive</option>
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9CA3AF]" />
+                </div>
               </div>
               <div className={`${smallText} text-[#6B7280] flex items-center gap-2`}>
                 <span>Showing {(page - 1) * limit + 1}-{Math.min(page * limit, pagination.total || 0)} of {pagination.total || 0} users</span>
@@ -261,11 +301,11 @@ export default function Page() {
                         <SkeletonTable rows={5} columns={6} />
                       </td>
                     </tr>
-                  ) : users.length === 0 ? (
+                  ) : filteredUsers.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="py-6 text-center text-[#9CA3AF]">No users found.</td>
                     </tr>
-                  ) : users.map((user: any) => (
+                  ) : filteredUsers.map((user: any) => (
                     <tr key={user.email} className="border-t border-[#EEF1F6]">
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-3">
@@ -494,6 +534,8 @@ export default function Page() {
           </section>
         </div>
       </main>
+
+      <InviteUserModal open={inviteOpen} onClose={() => setInviteOpen(false)} />
 
       {resetMessage && (
         <div className="fixed bottom-6 right-6 z-50 rounded-[10px] border border-[#EEF1F6] bg-white px-4 py-3 text-[12px] font-medium text-[#111827] shadow-[0_10px_30px_rgba(0,0,0,0.12)]">

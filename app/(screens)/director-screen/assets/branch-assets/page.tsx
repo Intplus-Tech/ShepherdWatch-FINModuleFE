@@ -1,44 +1,21 @@
 "use client"
 
-import React, { useState, useEffect, Suspense } from "react"
-import Image from "next/image"
+import React, { useState, useEffect, useMemo, Suspense } from "react"
 import Link from "next/link"
 import {
-  LayoutDashboard,
-  ArrowLeftRight,
-  Coins,
-  Scale,
-  Wallet,
-  Building2,
-  Users,
-  Settings,
   Download,
   ChevronDown,
-  Menu,
-  X,
-  LogOut,
   Building,
   Eye,
   Plus
 } from "lucide-react"
-import { useAuth } from "@/components/auth/AuthProvider"
 import { useRouter, useSearchParams } from "next/navigation"
+import SidebarNav from "@/components/navigation/SidebarNav"
 import AssetDetailsModal, { AssetDetails } from "@/components/modals/AssetDetailsModal"
 import RecordAssetSaleModal, { AssetSaleDetails } from "@/components/modals/RecordAssetSaleModal"
 import AddNewAssetModal from "@/components/modals/AddNewAssetModal"
 import { useAssetOverview } from "@/components/hooks/useAssetOverview"
 import { useModalParam } from "@/components/hooks/useModalParam"
-
-const navItems = [
-  { label: "Dashboard", href: "/director-screen/dashboard", icon: LayoutDashboard },
-  { label: "Transactions", href: "/director-screen/transaction", icon: ArrowLeftRight },
-  { label: "Budgeting", href: "/director-screen/budgeting", icon: Coins },
-  { label: "Compliance", href: "/director-screen/compliance", icon: Scale },
-  { label: "Asset", href: "/director-screen/assets", icon: Wallet },
-  { label: "Branch Management", href: "/director-screen/branch-management", icon: Building2 },
-  { label: "Users", href: "/director-screen/users", icon: Users },
-  { label: "Settings", href: "/director-screen/settings", icon: Settings },
-]
 
 type RawAsset = Record<string, unknown> & { id?: string; _id?: string }
 
@@ -138,21 +115,13 @@ function ModalContainer({ rawAssets = [] }: { rawAssets?: RawAsset[] }) {
 }
 
 function PageInner() {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
-  const { user, logout } = useAuth()
   const router = useRouter()
 
-  const handleLogout = async () => {
-    try {
-      await logout()
-      router.replace("/login")
-    } catch (err) {
-      console.error("Logout failed", err)
-      router.replace("/login")
-    }
-  }
-
   const [assets, setAssets] = useState<any[]>([])
+  const [branchFilter, setBranchFilter] = useState("All")
+  const [categoryFilter, setCategoryFilter] = useState("All")
+  const [statusFilter, setStatusFilter] = useState("All")
+  const [search, setSearch] = useState("")
   const [rawAssets, setRawAssets] = useState<RawAsset[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -188,110 +157,45 @@ function PageInner() {
     setRawAssets((overviewItems ?? []) as RawAsset[])
   }, [overviewItems, overviewLoading, overviewError])
 
+  const branchOptions = useMemo(
+    () => ["All", ...Array.from(new Set(assets.map((a) => String(a.branch)).filter(Boolean)))],
+    [assets]
+  )
+  const categoryOptions = useMemo(
+    () => ["All", ...Array.from(new Set(assets.map((a) => String(a.category)).filter(Boolean)))],
+    [assets]
+  )
+  const statusOptions = useMemo(
+    () => ["All", ...Array.from(new Set(assets.map((a) => String(a.status)).filter(Boolean)))],
+    [assets]
+  )
+
+  const filteredAssets = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return assets.filter((row) => {
+      if (branchFilter !== "All" && String(row.branch).toLowerCase() !== branchFilter.toLowerCase()) return false
+      if (categoryFilter !== "All" && String(row.category).toLowerCase() !== categoryFilter.toLowerCase()) return false
+      if (statusFilter !== "All" && String(row.status).toLowerCase() !== statusFilter.toLowerCase()) return false
+      if (q) {
+        const haystack = `${row.branch} ${row.name} ${row.category} ${row.status}`.toLowerCase()
+        if (!haystack.includes(q)) return false
+      }
+      return true
+    })
+  }, [assets, branchFilter, categoryFilter, statusFilter, search])
+
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
-      
-      {/* Mobile Sidebar Overlay */}
-      {isSidebarOpen && (
-        <div 
-          className="fixed inset-0 z-30 bg-gray-900/50 backdrop-blur-sm lg:hidden transition-opacity"
-          onClick={() => setIsSidebarOpen(false)}
-        />
-      )}
 
-      {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-40 flex w-[260px] flex-col border-r border-[#EEF1F6] bg-[#FAFBFF] transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:static lg:flex`}>
-        <div className="flex flex-col gap-1 px-6 pt-6 lg:pt-8 pb-4 relative">
-          <div className="flex items-center gap-2">
-            <Image src="/images/logo.svg" alt="ShepherdWatch" width={160} height={36} className="object-contain" />
-          </div>
-          <button 
-            onClick={() => setIsSidebarOpen(false)}
-            className="lg:hidden absolute top-6 right-4 text-gray-500 hover:text-gray-700 bg-gray-100 p-1 rounded-full"
-          >
-            <X className="h-5 w-5" />
-          </button>
-          <span className="text-[10px] font-medium text-[#3B5BDB] ml-9 -mt-1 uppercase">
-            {user?.role ? String(user.role).replace(/_/g, ' ') : "Director"}
-          </span>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-4 py-2 mt-2">
-          <div className="flex flex-col gap-1.5">
-            {navItems.map((item) => {
-              const Icon = item.icon
-              const isActive = item.href === "/director-screen/assets"
-              return (
-                <Link
-                  key={item.label}
-                  href={item.href}
-                  className={`flex items-center gap-3 rounded-[8px] px-4 py-3 text-[13px] font-medium transition-colors ${
-                    isActive
-                      ? "bg-[#3B5BDB] text-white shadow-sm"
-                      : "text-[#6B7280] hover:bg-white hover:text-[#111827]"
-                  }`}
-                >
-                  <Icon className="h-[18px] w-[18px]" />
-                  {item.label}
-                </Link>
-              )
-            })}
-          </div>
-        </div>
-
-        <div className="border-t border-[#EEF1F6] p-5">
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center gap-3 cursor-pointer">
-              <div className="h-10 w-10 overflow-hidden rounded-full border-2 border-white shadow-sm shrink-0">
-                <Image
-                  src="/images/Beared%20Guy02-min%201.jpg"
-                  alt="User avatar"
-                  width={40}
-                  height={40}
-                  className="h-full w-full object-cover"
-                />
-              </div>
-              <div className="flex flex-col">
-                <span className="text-[13px] font-bold text-[#111827]">
-                  {user?.name && !['director user', 'super admin', 'admin user'].includes(user.name.toLowerCase()) ? user.name : user?.email || "Super Admin"}
-                </span>
-                <span className="text-[11px] font-medium text-[#6B7280] capitalize">
-                  {user?.role ? String(user.role).replace(/_/g, ' ').toLowerCase() : "Director"}
-                </span>
-              </div>
-            </div>
-
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-3 rounded-[8px] py-2.5 px-3 -mx-3 text-[13px] font-medium text-rose-600 hover:bg-rose-50 transition-colors w-[calc(100%+24px)] text-left"
-            >
-              <LogOut className="h-4.5 w-4.5" />
-              Logout
-            </button>
-          </div>
-        </div>
-      </aside>
+      <SidebarNav
+        activeHref="/director-screen/assets"
+        className="fixed inset-y-0 left-0 z-20 w-[260px] rounded-none bg-[#FAFBFF] border-r border-[#EEF1F6]"
+      />
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col min-w-0 text-[#111827]">
-        
-        {/* Mobile Header Top Bar */}
-        <header className="lg:hidden flex items-center justify-between p-4 bg-white border-b border-[#EEF1F6] sticky top-0 z-20">
-          <div className="flex items-center gap-3">
-            <button 
-              onClick={() => setIsSidebarOpen(true)}
-              className="text-gray-600 hover:text-gray-900 p-1"
-            >
-              <Menu className="h-6 w-6" />
-            </button>
-            <Image src="/images/logo.svg" alt="ShepherdWatch" width={130} height={28} className="object-contain" />
-          </div>
-          <div className="h-8 w-8 overflow-hidden rounded-full border border-gray-200">
-             <Image src="/images/Beared%20Guy02-min%201.jpg" alt="User" width={32} height={32} className="h-full w-full object-cover" />
-          </div>
-        </header>
+      <main className="flex-1 xl:ml-[260px] flex flex-col min-w-0 text-[#111827]">
 
-        <div className="mx-auto w-full px-4 sm:px-6 pt-6 pb-6 lg:px-8 lg:pt-8 lg:pb-8 max-w-[1200px] overflow-hidden">
+        <div className="mx-auto w-full px-6 pt-6 pb-8 lg:px-8 lg:pt-8 max-w-7xl">
           
           {/* Header */}
           <div className="mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-start border-b border-[#EEF1F6] pb-6">
@@ -335,20 +239,58 @@ function PageInner() {
               </h3>
             </div>
             
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search assets..."
+                className="w-[180px] rounded-[6px] border border-[#E5E7EB] bg-white px-3 py-1.5 text-[12px] font-medium text-[#4B5563] shadow-sm focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]"
+              />
+              <div className="relative flex items-center gap-2">
                 <span className="text-[12px] font-medium text-[#6B7280]">Filter:</span>
-                <button className="flex items-center gap-2 rounded-[6px] border border-[#E5E7EB] bg-white px-3 py-1.5 text-[12px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50 focus:outline-none">
-                  All Branches
-                  <ChevronDown className="h-3.5 w-3.5 text-[#9CA3AF]" />
-                </button>
+                <div className="relative">
+                  <select
+                    value={branchFilter}
+                    onChange={(e) => setBranchFilter(e.target.value)}
+                    className="appearance-none rounded-[6px] border border-[#E5E7EB] bg-white pl-3 pr-8 py-1.5 text-[12px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50 focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]"
+                  >
+                    {branchOptions.map((opt) => (
+                      <option key={opt} value={opt}>{opt === "All" ? "All Branches" : opt}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#9CA3AF]" />
+                </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="relative flex items-center gap-2">
+                <span className="text-[12px] font-medium text-[#6B7280]">Category:</span>
+                <div className="relative">
+                  <select
+                    value={categoryFilter}
+                    onChange={(e) => setCategoryFilter(e.target.value)}
+                    className="appearance-none rounded-[6px] border border-[#E5E7EB] bg-white pl-3 pr-8 py-1.5 text-[12px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50 focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]"
+                  >
+                    {categoryOptions.map((opt) => (
+                      <option key={opt} value={opt}>{opt === "All" ? "All Categories" : opt}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#9CA3AF]" />
+                </div>
+              </div>
+              <div className="relative flex items-center gap-2">
                 <span className="text-[12px] font-medium text-[#6B7280]">Status:</span>
-                <button className="flex items-center gap-2 rounded-[6px] border border-[#E5E7EB] bg-white px-3 py-1.5 text-[12px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50 focus:outline-none">
-                  Active
-                  <ChevronDown className="h-3.5 w-3.5 text-[#9CA3AF]" />
-                </button>
+                <div className="relative">
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className="appearance-none rounded-[6px] border border-[#E5E7EB] bg-white pl-3 pr-8 py-1.5 text-[12px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50 focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]"
+                  >
+                    {statusOptions.map((opt) => (
+                      <option key={opt} value={opt}>{opt === "All" ? "All Statuses" : opt}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#9CA3AF]" />
+                </div>
               </div>
             </div>
           </div>
@@ -379,14 +321,14 @@ function PageInner() {
                         {error}
                       </td>
                     </tr>
-                  ) : assets.length === 0 ? (
+                  ) : filteredAssets.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="px-6 py-8 text-center text-[13px] text-[#6B7280]">
                         No branch assets found.
                       </td>
                     </tr>
                   ) : (
-                    assets.map((row, idx) => (
+                    filteredAssets.map((row, idx) => (
                       <tr
                         key={row.id || idx}
                         onClick={() => row.id && router.push(`/director-screen/assets/branch-assets?modal=asset-details&assetId=${encodeURIComponent(row.id)}`)}

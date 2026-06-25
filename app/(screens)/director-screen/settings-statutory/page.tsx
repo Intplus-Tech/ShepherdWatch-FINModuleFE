@@ -1,24 +1,18 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import Link from "next/link"
 import SidebarNav from "@/components/navigation/SidebarNav"
 import ScreenHeader from "@/components/navigation/ScreenHeader"
 import SettingsConfigSidebar from "@/components/navigation/SettingsConfigSidebar"
 import EditDnaModal from "@/components/settings/EditDnaModal"
 import { useStatutoryConfig } from "@/components/hooks/useStatutoryConfig"
-import { Switch } from "@/components/ui/switch"
 import {
-  AlertTriangle,
   Coins,
   Landmark,
   Layers,
   PiggyBank,
   SquarePen,
 } from "lucide-react"
-
-const REMITTANCE_FREQUENCIES = ["Weekly", "Monthly", "Quarterly"] as const
-type RemittanceFrequency = (typeof REMITTANCE_FREQUENCIES)[number]
 
 export default function Page() {
   const { statutoryConfig, loading, error, lastUpdated } = useStatutoryConfig()
@@ -29,20 +23,11 @@ export default function Page() {
   const generalSavings = "1"
   const [capitalSavings, setCapitalSavings] = useState("20")
   const [editDnaOpen, setEditDnaOpen] = useState(false)
-  const [remittanceFrequency, setRemittanceFrequency] = useState<RemittanceFrequency>("Weekly")
-  const [automatedReminder, setAutomatedReminder] = useState(true)
-  const [minThreshold, setMinThreshold] = useState("500.00")
 
   useEffect(() => {
     if (!statutoryConfig) return
     if (statutoryConfig.savingsDnaRate !== undefined) {
       setCapitalSavings(String(statutoryConfig.savingsDnaRate))
-    }
-    if (statutoryConfig.remittanceFrequency) {
-      const f = String(statutoryConfig.remittanceFrequency).toLowerCase()
-      if (f.startsWith("week")) setRemittanceFrequency("Weekly")
-      else if (f.startsWith("month")) setRemittanceFrequency("Monthly")
-      else if (f.startsWith("quarter")) setRemittanceFrequency("Quarterly")
     }
   }, [statutoryConfig])
 
@@ -156,100 +141,12 @@ export default function Page() {
                 })}
               </div>
 
-              <div className="rounded-[12px] border border-[#EEF1F6] bg-white p-5">
-                <div className="flex items-center gap-2 text-[16.98px] leading-[25.48px] font-bold text-[#111827]">
-                  <Layers className="h-4 w-4 text-[#3B5BDB]" />
-                  Remittance &amp; Automation
-                </div>
-
-                <div className="mt-5 space-y-5">
-                  <div>
-                    <div className="text-[12.44px] leading-[17.78px] font-bold text-[#6B7280]">
-                      Remittance Frequency
-                    </div>
-                    <div className="mt-2 inline-flex rounded-[10px] border border-[#E5E7EB] bg-[#F8FAFC] p-1">
-                      {REMITTANCE_FREQUENCIES.map((freq) => (
-                        <button
-                          key={freq}
-                          type="button"
-                          onClick={() => setRemittanceFrequency(freq)}
-                          className={`rounded-[8px] px-4 py-1.5 text-[13px] font-semibold transition-colors ${
-                            remittanceFrequency === freq
-                              ? "bg-white text-[#3B5BDB] shadow-sm"
-                              : "text-[#6B7280] hover:text-[#111827]"
-                          }`}
-                        >
-                          {freq}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="mt-2 text-[11.68px] leading-[14.6px] font-normal text-[#9CA3AF]">
-                      Funds will be processed every Monday at 12:00 AM UTC.
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between rounded-[10px] border border-[#EEF1F6] bg-[#F8FAFC] px-4 py-3">
-                    <div>
-                      <div className="text-[13px] font-bold text-[#111827]">Automated Reminder</div>
-                      <div className="text-[12px] text-[#6B7280]">
-                        Trigger reminder transfers based on frequency.
-                      </div>
-                    </div>
-                    <Switch
-                      checked={automatedReminder}
-                      onCheckedChange={setAutomatedReminder}
-                      className="data-[state=unchecked]:bg-[#E5E7EB]"
-                    />
-                  </div>
-
-                  <div>
-                    <div className="text-[12.44px] leading-[17.78px] font-bold text-[#6B7280]">
-                      Minimum Remittance Threshold
-                    </div>
-                    <div className="relative mt-2 max-w-md">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[14px] font-semibold text-[#9CA3AF]">
-                        $
-                      </span>
-                      <input
-                        type="number"
-                        min={0}
-                        value={minThreshold}
-                        onChange={(e) => setMinThreshold(e.target.value)}
-                        className="h-10 w-full rounded-[10px] border border-[#E5E7EB] bg-white pl-7 pr-3 text-[14px] font-semibold text-[#111827]"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-[12px] border border-[#FDE68A] bg-[#FFFBEB] p-4">
-                <div className="flex items-start gap-2">
-                  <AlertTriangle className="mt-0.5 h-4 w-4 text-[#F59E0B]" />
-                  <div>
-                    <div className="text-[12.74px] leading-[16.98px] font-semibold text-[#92400E]">
-                      Caution: Global DNA Changes
-                    </div>
-                    <p className="mt-1 text-[11.68px] leading-[16px] font-normal text-[#A16207]">
-                      Updating the HQ Tithes or Savings percentages will immediately adjust the
-                      remittance calculations for all 142 active branches. New percentages will take
-                      effect from the next billing cycle on Monday, Oct 23rd.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#EEF1F6] pt-4">
                 <div className="flex items-center gap-2 text-[12.74px] leading-[16.98px] italic font-normal text-[#9CA3AF]">
                   <Layers className="h-3 w-3" />
                   Last updated by Director Adewale on {lastUpdatedLabel}
                 </div>
                 <div className="flex items-center gap-4">
-                  <Link
-                    href="/director-screen/dashboard"
-                    className="text-[14px] font-semibold text-[#6B7280] hover:text-[#374151]"
-                  >
-                    Cancel
-                  </Link>
                   <button
                     type="button"
                     className="inline-flex items-center gap-2 rounded-[10px] bg-[#3B5BDB] px-5 py-2.5 text-[14px] font-semibold text-white shadow-sm hover:bg-[#2C46B4]"
