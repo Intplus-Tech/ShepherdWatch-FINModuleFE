@@ -27,6 +27,7 @@ import Link from "next/link"
 import { useAuth } from "@/components/auth/AuthProvider"
 import { useTransactions } from "@/components/hooks/useTransactions"
 import { TransactionCreateModal } from "@/components/financial/TransactionCreateModal"
+import BranchLeadPastorSidebar from "@/components/navigation/BranchLeadPastorSidebar"
 
 export default function Page() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -78,99 +79,7 @@ export default function Page() {
         flowType="expense"
         tenantId={tenantId}
       />
-      {/* Mobile Sidebar Overlay */}
-      {isMobileMenuOpen && (
-        <div 
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
-          onClick={() => setIsMobileMenuOpen(false)}
-        />
-      )}
-
-      {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-[260px] bg-white border-r border-[#EEF1F6] flex flex-col overflow-y-auto transition-transform duration-300 ease-in-out lg:static lg:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="px-5 py-6">
-          <div className="flex items-center justify-between gap-3 pb-8">
-            <div className="flex items-center gap-3">
-              <Image src="/images/icon-shepherdwatch.svg" alt="ShepherdWatch" width={28} height={28} />
-              <div>
-                <div className="text-[14px] font-bold text-[#111827] tracking-tight">ShepherdWatch</div>
-                <div className="text-[11px] font-semibold text-[#6B7280]">Lead Pastor View</div>
-              </div>
-            </div>
-            <button className="lg:hidden text-[#6B7280] hover:text-[#111827]" onClick={() => setIsMobileMenuOpen(false)}>
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-
-          <nav className="space-y-1.5 flex-1">
-            {/* Dashboard */}
-            <Link href="/branchlead-pastor/dashboard" className="flex items-center gap-3 rounded-[10px] px-3.5 py-3 text-[13px] text-[#6B7280] font-semibold hover:bg-[#F9FAFB] hover:text-[#111827] cursor-pointer transition-colors">
-              <LayoutDashboard className="h-4.5 w-4.5" strokeWidth={2} />
-              Dashboard
-            </Link>
-
-            {/* Financial Management (Expanded) */}
-            <div className="flex flex-col gap-1">
-              <div className="flex items-center justify-between rounded-[10px] px-3.5 py-3 text-[13px] bg-[#EFF6FF] text-[#2563EB] font-bold cursor-pointer transition-colors">
-                <div className="flex items-center gap-3">
-                  <FileText className="h-4.5 w-4.5" strokeWidth={2.5} />
-                  Financial Management
-                </div>
-                <ChevronDown className="h-4 w-4" strokeWidth={2.5} />
-              </div>
-              
-              {/* Expanded Sub-items */}
-              <div className="flex flex-col gap-1 pl-11 pr-3 py-1">
-                <Link href="/branchlead-pastor/financial-management/income-tracking" className="block text-[13px] font-semibold text-[#6B7280] hover:text-[#111827] py-2 cursor-pointer transition-colors">Income Tracking</Link>
-                <Link href="/branchlead-pastor/financial-management/expense-tracking" className="block text-[13px] font-bold text-[#2563EB] py-2 cursor-pointer">Expense Tracking</Link>
-                <Link href="/branchlead-pastor/financial-management/requisition" className="block text-[13px] font-semibold text-[#6B7280] hover:text-[#111827] py-2 cursor-pointer transition-colors">Requisition</Link>
-              </div>
-            </div>
-
-            {/* Other Nav Items */}
-            {[
-              { label: "Assets", icon: Wallet, href: "/branchlead-pastor/assets" },
-              { label: "Budget", icon: ShieldCheck, href: "/branchlead-pastor/budget" },
-              { label: "Compliance & Remittance", icon: BarChart3, href: "/branchlead-pastor/compliance-remittance" },
-            ].map((item) => {
-              const Icon = item.icon
-              return (
-                <Link
-                  key={item.label}
-                  href={item.href}
-                  className="flex items-center gap-3 rounded-[10px] px-3.5 py-3 text-[13px] text-[#6B7280] font-semibold hover:bg-[#F9FAFB] hover:text-[#111827] cursor-pointer transition-colors"
-                >
-                  <Icon className="h-4.5 w-4.5" strokeWidth={2} />
-                  {item.label}
-                </Link>
-              )
-            })}
-          </nav>
-        </div>
-
-        <div className="mt-auto px-5 pb-6">
-          <div className="space-y-1.5 pt-6 border-t border-[#EEF1F6] text-[13px] font-semibold text-[#6B7280]">
-            <div className="flex items-center gap-3 px-3.5 py-3 rounded-[10px] hover:bg-[#F9FAFB] hover:text-[#111827] cursor-pointer transition-colors">
-              <ShieldCheck className="h-[18px] w-[18px]" />
-              Settings
-            </div>
-            <div className="flex items-center gap-3 px-3.5 py-3 rounded-[10px] hover:bg-[#F9FAFB] hover:text-[#111827] cursor-pointer transition-colors">
-              <Info className="h-[18px] w-[18px]" />
-              Help Center
-            </div>
-          </div>
-
-          <div className="mt-4 flex items-center gap-3 pt-6 border-t border-[#EEF1F6]">
-            <div className="h-10 w-10 rounded-full border border-[#E5E7EB] overflow-hidden bg-[#F9FAFB] shrink-0">
-              <Image src="/images/login%20page%20picture.jpg" alt="Alex" width={40} height={40} className="h-full w-full object-cover" />
-            </div>
-            <div className="min-w-0">
-              <div className="text-[13px] font-bold text-[#111827] truncate">{displayName}</div>
-              <div className="text-[11px] font-medium text-[#6B7280] truncate">{roleLabel}</div>
-            </div>
-          </div>
-        </div>
-      </aside>
+      <BranchLeadPastorSidebar />
 
       {/* Main Workspace */}
       <main className="flex-1 flex flex-col bg-[#F9FAFB] overflow-hidden min-w-0">
@@ -207,9 +116,6 @@ export default function Page() {
               <p className="text-[13px] md:text-[14px] font-medium text-[#6B7280]">Monitor and verify all financial outflows for the branch.</p>
             </div>
             <div className="flex items-center gap-3">
-              <Button onClick={() => setIsModalOpen(true)} className="h-[44px] flex-1 lg:flex-none rounded-[10px] bg-[#2563EB] px-5 text-[14px] font-bold text-white shadow-sm hover:bg-blue-700 flex items-center justify-center gap-2">
-                <Plus className="h-[18px] w-[18px]" strokeWidth={2.5} /> Record Expense
-              </Button>
               <Button variant="outline" className="h-[44px] flex-1 lg:flex-none rounded-[10px] border-[#E5E7EB] bg-white px-5 text-[14px] font-bold text-[#111827] shadow-sm hover:bg-gray-50 flex items-center justify-center gap-2">
                 <Upload className="h-[18px] w-[18px] text-[#4B5563]" strokeWidth={2.5} /> Import
               </Button>

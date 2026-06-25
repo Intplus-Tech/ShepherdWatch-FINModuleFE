@@ -14,9 +14,7 @@ import {
   Building2,
   Users,
   Settings,
-  Calendar,
   Download,
-  ChevronDown,
   Menu,
   X,
   LogOut,
@@ -26,7 +24,6 @@ import {
 } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
 import { useRouter, useSearchParams } from "next/navigation"
-import BranchesDropdown from "@/components/navigation/BranchesDropdown"
 import { useModalParam } from "@/components/hooks/useModalParam"
 import RecordAssetSaleModal, { AssetSaleDetails, AssetSaleFormValues } from "@/components/modals/RecordAssetSaleModal"
 import { useToast } from "@/components/ui/toast"
@@ -500,20 +497,6 @@ function PageInner() {
             </div>
             
             <div className="flex flex-wrap items-center gap-3">
-              <BranchesDropdown label="All Branches" className="text-[12px]" />
-              
-              <button className="flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-3.5 py-2 text-[12px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50 flex-1 sm:flex-none justify-center sm:justify-start">
-                <Calendar className="h-4 w-4 text-[#6B7280]" />
-                This Month
-                <ChevronDown className="h-3.5 w-3.5 text-[#6B7280] ml-1" />
-              </button>
-
-              <div className="flex items-center rounded-md border border-[#E5E7EB] bg-white p-0.5 shadow-sm w-full sm:w-auto justify-between sm:justify-start">
-                <button className="rounded px-3 py-1.5 text-[11px] font-bold bg-[#3B5BDB] text-white">NGN</button>
-                <button className="rounded px-3 py-1.5 text-[11px] font-bold text-[#9CA3AF] hover:text-[#4B5563]">USD</button>
-                <button className="rounded px-3 py-1.5 text-[11px] font-bold text-[#9CA3AF] hover:text-[#4B5563]">EUR</button>
-              </div>
-
               <button className="flex items-center justify-center sm:justify-start gap-2 rounded-md bg-[#3B5BDB] px-4 py-2 text-[12px] font-medium text-white shadow hover:bg-blue-700 w-full sm:w-auto sm:ml-2">
                 <Download className="h-4 w-4" />
                 Export

@@ -3,16 +3,33 @@
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { LayoutDashboard, ShieldCheck, Wallet, Settings, HelpCircle, ArrowRightLeft, Database, LogOut, X } from "lucide-react"
+import { LayoutDashboard, ShieldCheck, Wallet, Settings, ArrowRightLeft, Database, LogOut, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/components/auth/AuthProvider"
+
+const ROLE_LABELS: Record<string, string> = {
+  accountant: "Accountant",
+  branch_accountant: "Branch Accountant",
+}
+
+function formatRoleLabel(role?: string | null): string {
+  if (!role) return "Accountant"
+  const key = String(role).trim().toLowerCase()
+  if (ROLE_LABELS[key]) return ROLE_LABELS[key]
+  return key
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ")
+}
 
 const navItems = [
   { label: "Dashboard", href: "/branchaccount-pastor/dashboard", icon: LayoutDashboard },
   { label: "Transaction", href: "/branchaccount-pastor/transaction", icon: ArrowRightLeft },
   { label: "Budget", href: "/branchaccount-pastor/budget", icon: Wallet },
-  { label: "Assets", href: "/branchaccount-pastor/asset-register", icon: Database },
-  { label: "Compliance & Remittance", href: "/branchaccount-pastor/compliance-remittance", icon: ShieldCheck },
+  { label: "Assets", href: "/branchaccount-pastor/asset", icon: Database },
+  // Compliance temporarily hidden for now (kept for later re-enable):
+  // { label: "Compliance & Remittance", href: "/branchaccount-pastor/compliance-remittance", icon: ShieldCheck },
 ]
 
 type Props = {
@@ -24,8 +41,15 @@ type Props = {
 
 export default function BranchAccountantSidebar({ activeHref, mobileOpen, onMobileClose }: Props) {
   const router = useRouter()
-  const { logout } = useAuth()
+  const { logout, user } = useAuth()
   const drawerMode = typeof mobileOpen === "boolean"
+
+  const displayName =
+    [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim() ||
+    user?.name ||
+    user?.email ||
+    "User"
+  const roleLabel = formatRoleLabel(user?.role)
 
   const handleLogout = async () => {
     try {
@@ -67,7 +91,12 @@ export default function BranchAccountantSidebar({ activeHref, mobileOpen, onMobi
       <nav className="space-y-1.5">
         {navItems.map((item) => {
           const Icon = item.icon
-          const isActive = activeHref ? item.href === activeHref : item.label === "Dashboard"
+          const isAssetGroup = item.label === "Assets"
+          const isActive = activeHref
+            ? isAssetGroup
+              ? /\/(asset|asset-register|depreciation|maintenance)(\/|$)/.test(activeHref)
+              : item.href === activeHref
+            : item.label === "Dashboard"
           return (
             <Link
               key={item.label}
@@ -94,14 +123,6 @@ export default function BranchAccountantSidebar({ activeHref, mobileOpen, onMobi
           <Settings className="h-4 w-4" />
           Settings
         </Link>
-        <Link
-          href="/branchaccount-pastor/help-center"
-          onClick={() => onMobileClose?.()}
-          className="flex items-center gap-3 w-full py-1 hover:text-[#111827] transition-colors"
-        >
-          <HelpCircle className="h-4 w-4" />
-          Help Center
-        </Link>
         <button
           onClick={handleLogout}
           className="flex items-center gap-3 w-full rounded-[8px] px-0 py-1 text-[12px] text-rose-600 hover:text-rose-700 transition-colors"
@@ -121,9 +142,9 @@ export default function BranchAccountantSidebar({ activeHref, mobileOpen, onMobi
             className="h-full w-full object-cover"
           />
         </div>
-        <div className="text-[11px]">
-          <div className="font-semibold text-[#111827]">Alex Morgan</div>
-          <div className="text-[#9CA3AF]">Accountant</div>
+        <div className="text-[11px] min-w-0">
+          <div className="font-semibold text-[#111827] truncate">{displayName}</div>
+          <div className="text-[#9CA3AF] truncate">{roleLabel}</div>
         </div>
       </div>
     </aside>

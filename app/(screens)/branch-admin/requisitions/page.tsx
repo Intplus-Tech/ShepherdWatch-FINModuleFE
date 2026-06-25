@@ -6,7 +6,7 @@ import React, { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { Inter } from "next/font/google"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard,
   List,
@@ -30,9 +30,12 @@ import {
   Send,
   Calendar,
   Pencil,
+  LogOut,
 } from "lucide-react"
 
 import { useRequisitions } from "@/components/hooks/useRequisitions"
+import RequisitionDetailModal from "@/components/requisitions/RequisitionDetailModal"
+import { useAuth } from "@/components/auth/AuthProvider"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -47,6 +50,17 @@ type AuditTimelineItem = {
 export default function RequisitionsHub() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const pathname = usePathname()
+  const router = useRouter()
+  const { logout } = useAuth()
+  const handleLogout = async () => {
+    try {
+      await logout()
+      router.replace("/login")
+    } catch {
+      router.replace("/login")
+    }
+  }
+  const [viewReqId, setViewReqId] = useState<string | null>(null)
   const [auditItems, setAuditItems] = useState<AuditTimelineItem[]>([])
   const [auditLoading, setAuditLoading] = useState(true)
   const [auditError, setAuditError] = useState<string | null>(null)
@@ -494,8 +508,15 @@ export default function RequisitionsHub() {
           </div>
 
           {/* Bottom Section */}
-          <div className="mt-auto px-3 mb-2">
-            <div className="pt-6 border-t border-[#EEF1F6] flex items-center gap-3.5 px-4 cursor-pointer hover:opacity-80 transition-opacity">
+          <div className="mt-auto px-3 mb-2 pt-6 border-t border-[#EEF1F6]">
+            <button
+              onClick={handleLogout}
+              className="mb-3 flex w-full items-center gap-3 rounded-[8px] px-4 py-2.5 text-[13px] font-semibold text-rose-600 hover:bg-rose-50 transition-colors"
+            >
+              <LogOut className="h-4.5 w-4.5" />
+              Logout
+            </button>
+            <div className="flex items-center gap-3.5 px-4 cursor-pointer hover:opacity-80 transition-opacity">
               <div className="h-10 w-10 relative rounded-full overflow-hidden bg-gray-200 shrink-0 border border-gray-200 flex items-center justify-center">
                 <Image src="/images/Beared%20Guy02-min%201.jpg" alt="Profile avatar" fill className="object-cover" />
               </div>
@@ -567,7 +588,10 @@ export default function RequisitionsHub() {
                   <Printer className="h-4 w-4 text-[#6B7280]" strokeWidth={2.5} />
                   Print Voucher
                 </button>
-                <button className="h-[44px] px-5 sm:px-6 rounded-[8px] bg-[#2563EB] hover:bg-[#1D4ED8] flex items-center justify-center gap-2 text-[14px] font-[800] text-white transition-colors shadow-sm shrink-0">
+                <button
+                  onClick={() => router.push("/branch-admin/new-requisition")}
+                  className="h-[44px] px-5 sm:px-6 rounded-[8px] bg-[#2563EB] hover:bg-[#1D4ED8] flex items-center justify-center gap-2 text-[14px] font-[800] text-white transition-colors shadow-sm shrink-0"
+                >
                   <Plus className="h-4.5 w-4.5" strokeWidth={2.5} />
                   Create New Requisition
                 </button>
@@ -795,7 +819,12 @@ export default function RequisitionsHub() {
                           <div className="flex items-center justify-center w-full">
                             <div className="flex items-center gap-2">
                               <button
-                                onClick={(event) => event.stopPropagation()}
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  setSelectedReqId(req.rawId)
+                                  setViewReqId(req.rawId)
+                                }}
+                                title="View requisition details"
                                 className={`h-8 w-8 rounded-[8px] flex items-center justify-center transition-colors ${
                                   req.selected
                                     ? "bg-[#DBEAFE] text-[#2563EB]"
@@ -1011,6 +1040,12 @@ export default function RequisitionsHub() {
           </div>
         </main>
       </div>
+
+      <RequisitionDetailModal
+        open={Boolean(viewReqId)}
+        onClose={() => setViewReqId(null)}
+        requisition={requisitions.find((req) => req.id === viewReqId) ?? null}
+      />
     </div>
   )
 }

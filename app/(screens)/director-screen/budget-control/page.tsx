@@ -15,12 +15,10 @@ import {
   X,
   CheckCircle2,
   AlertTriangle,
-  Calendar,
 } from "lucide-react"
 import { useBudgetControlDashboard } from "@/components/hooks/useBudgetControlDashboard"
 import { useBudgetApproval } from "@/components/hooks/useBudgetApproval"
 import { useAuth } from "@/components/auth/AuthProvider"
-import BranchesDropdown from "@/components/navigation/BranchesDropdown"
 
 const bigText = "text-[14.36px] leading-[22.33px] font-bold"
 const smallText = "text-[11.17px] leading-[15.95px] font-semibold"
@@ -198,29 +196,6 @@ export default function Page() {
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              <BranchesDropdown label="All Branches" />
-
-              <button className="flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-3.5 py-2 text-[12px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50">
-                <Calendar className="h-4 w-4 text-[#6B7280]" />
-                This Month
-                <ChevronDown className="h-3.5 w-3.5 text-[#6B7280] ml-1" />
-              </button>
-
-              <div className="flex items-center rounded-md border border-[#E5E7EB] bg-white p-0.5 shadow-sm">
-                {"NGN USD EUR".split(" ").map((c) => (
-                  <span
-                    key={c}
-                    className={
-                      c === "NGN"
-                        ? "rounded px-3 py-1.5 text-[11px] font-bold bg-[#3B5BDB] text-white"
-                        : "rounded px-3 py-1.5 text-[11px] font-bold text-[#9CA3AF] hover:text-[#4B5563]"
-                    }
-                  >
-                    {c}
-                  </span>
-                ))}
-              </div>
-
               <button
                 onClick={handleExport}
                 disabled={exporting}

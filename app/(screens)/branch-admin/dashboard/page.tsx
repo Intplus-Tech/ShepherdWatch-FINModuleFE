@@ -53,10 +53,9 @@ function formatDate(value?: string) {
 
 function mapStatusTone(status: string) {
   const normalized = status.toLowerCase()
-  if (normalized.includes("approved")) return "bg-green-50 text-green-600"
-  if (normalized.includes("paid")) return "bg-purple-50 text-purple-600"
+  if (normalized.includes("approved") || normalized.includes("paid")) return "bg-green-50 text-green-600"
   if (normalized.includes("declined")) return "bg-rose-50 text-rose-600"
-  if (normalized.includes("draft")) return "bg-gray-100 text-gray-700"
+  // Draft and Submitted both render blue.
   return "bg-blue-50 text-blue-600"
 }
 
@@ -89,6 +88,12 @@ export default function Dashboard() {
     () =>
       requisitions.map((item, index) => {
         const status = (item.currentStatus ?? "pending").replace(/_/g, " ")
+        const normalized = status.toLowerCase()
+        const action = normalized.includes("draft")
+          ? "edit"
+          : normalized.includes("paid")
+            ? "download-menu"
+            : "view"
         return {
           realId: item.id,
           id: item.reference ? `#${item.reference}` : `#${item.id.slice(0, 8).toUpperCase()}`,
@@ -99,7 +104,7 @@ export default function Dashboard() {
           amount: formatCurrency(item.amount || 0),
           status: status.replace(/\b\w/g, (value) => value.toUpperCase()),
           statusColors: mapStatusTone(status),
-          action: "view",
+          action,
         }
       }),
     [requisitions]
@@ -174,6 +179,14 @@ export default function Dashboard() {
           {/* Bottom Section */}
           <div className="mt-auto px-3 mb-2">
             <div className="pt-6 border-t border-[#EEF1F6] flex flex-col gap-4 px-4">
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-3 rounded-[8px] py-2.5 px-2 -mx-2 text-[13px] font-medium text-rose-600 hover:bg-rose-50 transition-colors w-[calc(100%+16px)] text-left"
+              >
+                <LogOut className="h-4.5 w-4.5" />
+                Logout
+              </button>
+
               <div className="flex items-center gap-3.5 cursor-pointer hover:opacity-80 transition-opacity">
                 <div className="h-10 w-10 relative rounded-full overflow-hidden bg-gray-200 shrink-0 border border-gray-200 flex items-center justify-center">
                   <Image src="/images/Beared%20Guy02-min%201.jpg" alt="Profile avatar" fill className="object-cover" />
@@ -183,14 +196,6 @@ export default function Dashboard() {
                   <div className="text-[12px] font-medium text-[#9CA3AF] leading-tight">Branch Officer</div>
                 </div>
               </div>
-
-              <button
-                onClick={handleLogout}
-                className="flex items-center gap-3 rounded-[8px] py-2.5 px-2 -mx-2 text-[13px] font-medium text-rose-600 hover:bg-rose-50 transition-colors w-[calc(100%+16px)] text-left"
-              >
-                <LogOut className="h-4.5 w-4.5" />
-                Logout
-              </button>
             </div>
           </div>
         </div>
@@ -230,7 +235,10 @@ export default function Dashboard() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6 mb-10">
               
               {/* Card 1: New Requisition */}
-              <div className="rounded-[16px] bg-white border border-[#EEF1F6] shadow-sm p-6 relative flex flex-col justify-between overflow-hidden group cursor-pointer hover:shadow-md transition-shadow">
+              <Link
+                href="/branch-admin/new-requisition"
+                className="rounded-[16px] bg-white border border-[#EEF1F6] shadow-sm p-6 relative flex flex-col justify-between overflow-hidden group cursor-pointer hover:shadow-md transition-shadow"
+              >
                 <div className="flex items-start justify-between mb-8">
                   <div className="h-10 w-10 rounded-[10px] bg-[#EEF2FF] border border-[#BFDBFE] flex items-center justify-center text-[#2563EB]">
                     <Plus className="h-5 w-5" strokeWidth={2.5} />
@@ -246,10 +254,13 @@ export default function Dashboard() {
                     Start Request <ArrowRight className="h-4 w-4" />
                   </div>
                 </div>
-              </div>
+              </Link>
 
               {/* Card 2: Track My Requests */}
-              <div className="rounded-[16px] bg-white border border-[#EEF1F6] shadow-sm p-6 flex flex-col justify-between">
+              <Link
+                href="/branch-admin/requests"
+                className="rounded-[16px] bg-white border border-[#EEF1F6] shadow-sm p-6 flex flex-col justify-between hover:border-[#C7D2FE] hover:shadow-md transition-all"
+              >
                 <div className="flex items-start justify-between mb-8">
                   <div className="h-10 w-10 rounded-[10px] bg-[#EEF2FF] flex items-center justify-center text-[#6B7280]">
                     <History className="h-5 w-5 text-[#2563EB]" strokeWidth={2} />
@@ -262,7 +273,7 @@ export default function Dashboard() {
                   <h3 className="text-[16px] font-[800] text-[#111827] mb-1.5">Track My Requests</h3>
                   <p className="text-[13px] font-medium text-[#6B7280] leading-snug">Monitor status of your recent submissions.</p>
                 </div>
-              </div>
+              </Link>
 
               {/* Card 3: My Requisition History */}
               <div className="rounded-[16px] bg-white border border-[#EEF1F6] shadow-sm p-6 flex flex-col justify-between">

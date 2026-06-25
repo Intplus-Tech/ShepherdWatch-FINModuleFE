@@ -42,6 +42,7 @@ interface InviteUserPayload {
   role: string;
   branchId: string;
   phone?: string;
+  status?: string;
 }
 
 export function useInviteUser() {

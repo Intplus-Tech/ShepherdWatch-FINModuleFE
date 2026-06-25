@@ -3,37 +3,27 @@
 import { API_V1 } from "@/lib/api";
 
 import React, { useEffect, useMemo, useState } from "react"
-import Image from "next/image"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { useAuth } from "@/components/auth/AuthProvider"
 import {
   ArrowLeft,
   Building2,
   ChevronDown,
   ChevronRight,
   FolderOpen,
-  HelpCircle,
-  LayoutDashboard,
   PiggyBank,
-
-  Settings,
-  ShieldCheck,
   TrendingUp,
   Undo2,
   Users,
   Wallet,
-  AlertTriangle,
-  BarChart3,
   Check,
   Search,
   Bell,
   Landmark,
   MessageCircle,
-  Menu,
-  X
 } from "lucide-react"
 import { useBudgetEntries } from "@/components/hooks/useBudgetEntries"
+import BranchLeadPastorSidebar from "@/components/navigation/BranchLeadPastorSidebar"
 
 type BudgetChild = {
   id: string
@@ -59,12 +49,9 @@ type BudgetRow = {
 }
 
 export function BudgetReviewContent({ rightSidebar, activeRowId }: { rightSidebar?: React.ReactNode, activeRowId?: string }) {
-  const { user } = useAuth()
-  const displayName = user?.name || user?.email || "User"
-  const roleLabel = user?.role ? String(user.role).replace(/_/g, " ") : "Lead Pastor"
+  const router = useRouter()
   const { entries, loading, error } = useBudgetEntries()
   const [data, setData] = useState<BudgetRow[]>([])
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [approvingId, setApprovingId] = useState<string | null>(null)
   const [approvedIds, setApprovedIds] = useState<Set<string>>(new Set())
   const [approveError, setApproveError] = useState<string | null>(null)
@@ -256,82 +243,7 @@ export function BudgetReviewContent({ rightSidebar, activeRowId }: { rightSideba
 
   return (
     <div className="flex flex-col xl:flex-row min-h-screen overflow-hidden bg-[#F8FAFC] relative w-full font-sans" style={{ fontFamily: '"Inter", sans-serif' }}>
-      
-      {/* Mobile Drawer Overlay */}
-      {isMobileMenuOpen && (
-        <div 
-          className="xl:hidden fixed inset-0 z-40 bg-gray-900/40 backdrop-blur-sm transition-opacity" 
-          onClick={() => setIsMobileMenuOpen(false)}
-        />
-      )}
-
-      {/* Sidebar */}
-      <aside className={`w-[260px] border-r border-[#EEF1F6] bg-white flex flex-col shrink-0 h-[100dvh] fixed xl:sticky top-0 z-50 transition-transform duration-300 ease-in-out ${isMobileMenuOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full xl:translate-x-0"}`}>
-        <button 
-          onClick={() => setIsMobileMenuOpen(false)}
-          className="xl:hidden absolute top-5 right-5 h-8 w-8 flex items-center justify-center rounded-full bg-gray-50 text-gray-500 hover:text-gray-900 transition-colors"
-        >
-          <X className="h-4.5 w-4.5" />
-        </button>
-        <div className="p-6 flex flex-col h-full overflow-y-auto">
-          <div className="flex items-center gap-3 pb-8">
-            <Image src="/images/icon-shepherdwatch.svg" alt="ShepherdWatch logo" width={28} height={28} className="shrink-0" />
-            <div>
-              <div className="text-[15px] font-bold text-[#111827] leading-none tracking-tight">ShepherdWatch</div>
-              <div className="text-[11px] text-[#9CA3AF] font-bold mt-1 tracking-wide uppercase">Lead Pastor View</div>
-            </div>
-          </div>
-
-          <nav className="space-y-1.5 flex-1">
-            {[
-              { label: "Dashboard", icon: LayoutDashboard },
-              { label: "Financial Management", icon: BarChart3, hasChevron: true },
-              { label: "Assets", icon: Building2 },
-              { label: "Budget", icon: Wallet, active: true },
-              { label: "Compliance & Remittance", icon: ShieldCheck },
-            ].map((item) => {
-              const Icon = item.icon
-              return (
-                <div
-                  key={item.label}
-                  className={`flex items-center justify-between rounded-[8px] px-3.5 py-3 text-[13px] font-semibold cursor-pointer transition-colors ${
-                    item.active ? "bg-[#EEF2FF] text-[#3B5BDB]" : "text-[#4B5563] hover:bg-gray-50"
-                  }`}
-                >
-                  <div className="flex items-center gap-3.5">
-                    <Icon className={`h-4.5 w-4.5 stroke-[2] ${item.active ? "text-[#3B5BDB]" : "text-[#6B7280]"}`} />
-                    {item.label}
-                  </div>
-                  {item.hasChevron && <ChevronRight className="h-4 w-4 text-[#9CA3AF]" />}
-                </div>
-              )
-            })}
-          </nav>
-
-          <div className="mt-auto">
-            <div className="space-y-1.5 border-t border-[#EEF1F6] pt-6 text-[13px] font-semibold text-[#4B5563]">
-              <div className="flex items-center gap-3.5 rounded-[8px] px-3.5 py-3 cursor-pointer hover:bg-gray-50 transition-colors">
-                <Settings className="h-4.5 w-4.5 stroke-[2] text-[#6B7280]" />
-                Settings
-              </div>
-              <div className="flex items-center gap-3.5 rounded-[8px] px-3.5 py-3 cursor-pointer hover:bg-gray-50 transition-colors">
-                <HelpCircle className="h-4.5 w-4.5 stroke-[2] text-[#6B7280]" />
-                Help Center
-              </div>
-            </div>
-
-            <div className="mt-8 flex items-center gap-3.5 px-3.5 pb-2 cursor-pointer hover:opacity-80 transition-opacity">
-              <div className="h-10 w-10 relative rounded-full overflow-hidden bg-gray-200 shrink-0 ring-2 ring-white shadow-sm">
-                <Image src="/images/Beared%20Guy02-min%201.jpg" alt="Profile avatar" fill className="object-cover" />
-              </div>
-              <div>
-                <div className="text-[14px] font-bold text-[#111827]">{displayName}</div>
-                <div className="text-[11px] text-[#9CA3AF] font-medium">{roleLabel}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </aside>
+      <BranchLeadPastorSidebar />
 
       {/* Main Layout Wrapping Column */}
       <div className="flex-1 flex flex-col xl:flex-row h-screen overflow-hidden bg-[#F8FAFC] relative w-full">
@@ -342,12 +254,6 @@ export function BudgetReviewContent({ rightSidebar, activeRowId }: { rightSideba
         {/* Top Header */}
         <header className="flex h-[72px] shrink-0 items-center justify-between border-b border-[#EEF1F6] bg-white px-4 sm:px-6 xl:px-8 w-full gap-3 sm:gap-6">
           <div className="flex items-center gap-3">
-            <button 
-              onClick={() => setIsMobileMenuOpen(true)}
-              className="xl:hidden -ml-1 h-9 w-9 flex items-center justify-center rounded-[8px] text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#111827] transition-colors"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
             <div className="hidden sm:block text-[14px] font-semibold text-[#111827]">
               Dashboard
             </div>
@@ -374,7 +280,7 @@ export function BudgetReviewContent({ rightSidebar, activeRowId }: { rightSideba
           
           {/* Header Actions Row */}
           <div className="mb-0 border-none bg-transparent">
-            <button className="flex items-center gap-1.5 text-[13px] font-medium text-[#6B7280] hover:text-[#111827] transition-colors mb-4 md:mb-3 mt-1 md:mt-0">
+            <button onClick={() => router.back()} className="flex items-center gap-1.5 text-[13px] font-medium text-[#6B7280] hover:text-[#111827] transition-colors mb-4 md:mb-3 mt-1 md:mt-0">
               <ArrowLeft className="h-4 w-4" />
               Back
             </button>
@@ -552,37 +458,77 @@ export function BudgetReviewContent({ rightSidebar, activeRowId }: { rightSideba
                           </td>
                         </tr>
 
-                        {row.isExpanded && row.children?.map((child) => (
-                          <tr key={child.id} className="border-b border-[#F1F5F9] bg-white">
+                        {row.isExpanded && row.children?.map((child) => {
+                          const isActive =
+                            !!activeRowId &&
+                            (child.id === activeRowId ||
+                              child.name.toLowerCase().includes(activeRowId.toLowerCase()))
+                          const openThread = () =>
+                            router.push(
+                              `/branchlead-pastor/budget-communication?budgetId=${encodeURIComponent(
+                                child.id
+                              )}&lineItemRef=${encodeURIComponent(child.name)}`
+                            )
+                          return (
+                          <tr
+                            key={child.id}
+                            className={`border-b border-[#F1F5F9] ${
+                              isActive ? "bg-[#F8FAFF] border-l-2 border-l-[#2563EB]" : "bg-white"
+                            }`}
+                          >
                             <td className="px-6 py-4">
                               <div className="flex flex-col">
                                 <span className="font-semibold text-[#0F172A]">{child.name}</span>
                                 <span className="text-[12px] text-[#94A3B8]">{child.desc || "—"}</span>
                               </div>
                             </td>
-                            <td className="px-6 py-4 text-[#64748B]">?</td>
+                            <td className="px-6 py-4 text-[#64748B]">{child.lastYear}</td>
                             <td className="px-6 py-4 text-right text-[#0F172A] font-semibold">{child.proposed}</td>
-                            <td className="px-6 py-4 text-right text-[#64748B]">{child.allocated}</td>
-                            <td className="px-6 py-4 text-right text-[#64748B]">{child.variance}</td>
                             <td className="px-6 py-4 text-right">
-                              {approvedIds.has(child.id) ? (
-                                <div className="inline-flex items-center gap-1 text-[12px] font-semibold text-emerald-600">
-                                  <Check className="h-3.5 w-3.5" />
-                                  Approved
-                                </div>
-                              ) : (
+                              <span
+                                className={`inline-flex items-center justify-end rounded-[6px] px-2 py-1 text-[#0F172A] font-semibold ${
+                                  isActive ? "bg-[#FEF9C3] ring-1 ring-[#FDE68A]" : "text-[#64748B]"
+                                }`}
+                              >
+                                {child.allocated}
+                              </span>
+                            </td>
+                            <td className={`px-6 py-4 text-right ${child.varianceColor || "text-[#64748B]"}`}>{child.variance}</td>
+                            <td className="px-6 py-4 text-right">
+                              <div className="inline-flex items-center gap-2">
                                 <button
-                                  onClick={() => approveEntry(child.id)}
-                                  disabled={approvingId === child.id}
-                                  className="inline-flex items-center gap-1 rounded-full border border-[#E5E7EB] px-3 py-1 text-[11px] font-semibold text-[#374151] hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed"
+                                  type="button"
+                                  onClick={openThread}
+                                  aria-label={`Open feedback thread for ${child.name}`}
+                                  title="Discuss this line item"
+                                  className={`inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
+                                    isActive
+                                      ? "text-[#2563EB] bg-[#EEF2FF]"
+                                      : "text-[#94A3B8] hover:text-[#2563EB] hover:bg-[#EEF2FF]"
+                                  }`}
                                 >
-                                  <Check className="h-3.5 w-3.5" />
-                                  {approvingId === child.id ? "Approving..." : "Approve"}
+                                  <MessageCircle className="h-4 w-4" />
                                 </button>
-                              )}
+                                {approvedIds.has(child.id) ? (
+                                  <div className="inline-flex items-center gap-1 text-[12px] font-semibold text-emerald-600">
+                                    <Check className="h-3.5 w-3.5" />
+                                    Approved
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => approveEntry(child.id)}
+                                    disabled={approvingId === child.id}
+                                    className="inline-flex items-center gap-1 rounded-full border border-[#E5E7EB] px-3 py-1 text-[11px] font-semibold text-[#374151] hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed"
+                                  >
+                                    <Check className="h-3.5 w-3.5" />
+                                    {approvingId === child.id ? "Approving..." : "Approve"}
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           </tr>
-                        ))}
+                          )
+                        })}
                       </React.Fragment>
                     ))
                   )}

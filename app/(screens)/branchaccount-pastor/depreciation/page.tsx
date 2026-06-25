@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState } from "react"
 import Image from "next/image"
+import { useRouter } from "next/navigation"
 import {
   LayoutDashboard,
   ArrowRightLeft,
@@ -64,6 +65,7 @@ const pickString = (raw: unknown, ...keys: string[]): string => {
 }
 
 export default function Page() {
+  const router = useRouter()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const currentYear = new Date().getFullYear()
   const [fiscalYear, setFiscalYear] = useState<number>(currentYear)
@@ -202,7 +204,7 @@ export default function Page() {
           <div className="mx-auto w-full max-w-[1440px]">
 
             {/* Back Button */}
-            <button className="flex items-center gap-1.5 text-[#6B7280] hover:text-[#111827] transition-colors mb-4 text-[13px] font-semibold tracking-wide">
+            <button onClick={() => router.back()} className="flex items-center gap-1.5 text-[#6B7280] hover:text-[#111827] transition-colors mb-4 text-[13px] font-semibold tracking-wide">
               <ArrowLeft className="h-4 w-4" />
               Back
             </button>

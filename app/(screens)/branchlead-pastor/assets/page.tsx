@@ -2,36 +2,22 @@
 
 import { API_V1 } from "@/lib/api";
 
-import Image from "next/image"
-import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
   Bell,
   Search,
-  ChevronDown,
-  LayoutDashboard,
-  Wallet,
-  ShieldCheck,
-  BarChart3,
-  FolderKanban,
-  Settings,
-  HelpCircle,
   AlertTriangle,
   TrendingUp,
   ArrowRight,
   Menu
 } from "lucide-react"
-import { useAuth } from "@/components/auth/AuthProvider"
+import BranchLeadPastorSidebar from "@/components/navigation/BranchLeadPastorSidebar"
 
 export default function Page() {
-  const pathname = usePathname()
   const router = useRouter()
-  const { user } = useAuth()
-  const displayName = user?.name || user?.email || "User"
-  const roleLabel = user?.role ? String(user.role).replace(/_/g, " ") : "Lead Pastor"
   const [assetRows, setAssetRows] = useState<
     { name: string; category: string; date: string; value: string; condition: string; statusColor: string }[]
   >([])
@@ -101,71 +87,7 @@ export default function Page() {
       style={{ fontFamily: '"Public Sans", sans-serif' }}
     >
       <div className="flex h-screen overflow-hidden">
-        {/* Sidebar */}
-        <aside className="w-65 border-r border-[#EEF1F6] bg-white flex-col justify-between hidden lg:flex shrink-0">
-          <div className="p-6">
-            <div className="flex items-center gap-3 mb-10">
-              <div className="bg-[#EEF2FF] p-1.5 rounded-lg flex items-center justify-center">
-                <Image src="/images/icon-shepherdwatch.svg" alt="Logo" width={22} height={22} className="brightness-100" />
-              </div>
-              <div>
-                <div className="text-[15px] font-bold text-[#111827] leading-none tracking-tight">ShepherdWatch</div>
-                <div className="text-[11px] text-[#9CA3AF] font-medium mt-1">Lead Pastor View</div>
-              </div>
-            </div>
-
-            <nav className="space-y-1.5">
-              {[
-                { label: "Dashboard", icon: LayoutDashboard, href: "/branchlead-pastor/dashboard" },
-                { label: "Financial Management", icon: FolderKanban, hasDropdown: true, href: "/branchlead-pastor/financial-management/income-tracking" },
-                { label: "Assets", icon: Wallet, href: "/branchlead-pastor/assets" },
-                { label: "Budget", icon: ShieldCheck, href: "/branchlead-pastor/budget" },
-                { label: "Compliance & Remittance", icon: BarChart3, href: "/branchlead-pastor/compliance-remittance" },
-              ].map((item) => {
-                const Icon = item.icon
-                const isActive = pathname === item.href
-                return (
-                  <Link
-                    key={item.label}
-                    href={item.href}
-                    className={`flex items-center justify-between rounded-[10px] px-3.5 py-3 text-[13px] font-semibold cursor-pointer transition-colors ${
-                      isActive ? "bg-[#EEF2FF] text-[#3B5BDB]" : "text-[#6B7280] hover:bg-gray-50 hover:text-gray-900"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3.5">
-                      <Icon className="h-4.5 w-4.5" />
-                      {item.label}
-                    </div>
-                    {item.hasDropdown && <ChevronDown className="h-4 w-4" />}
-                  </Link>
-                )
-              })}
-            </nav>
-          </div>
-
-          <div className="p-6 border-t border-[#EEF1F6]">
-            <div className="space-y-1.5 mb-6">
-              <Link href="/branchlead-pastor/settings" className="flex items-center gap-3.5 rounded-[10px] px-3.5 py-3 text-[13px] font-semibold text-[#6B7280] hover:bg-gray-50 cursor-pointer">
-                <Settings className="h-4.5 w-4.5" />
-                Settings
-              </Link>
-              <Link href="/branchlead-pastor/dashboard" className="flex items-center gap-3.5 rounded-[10px] px-3.5 py-3 text-[13px] font-semibold text-[#6B7280] hover:bg-gray-50 cursor-pointer">
-                <HelpCircle className="h-4.5 w-4.5" />
-                Help Center
-              </Link>
-            </div>
-
-            <div className="flex items-center gap-3.5 px-3.5">
-                <div className="h-10 w-10 rounded-full overflow-hidden bg-gray-100 ring-2 ring-white">
-                <img src="/images/Beared%20Guy02-min%201.jpg" alt="Profile avatar" className="h-full w-full object-cover" />
-                </div>
-              <div>
-                <div className="text-[14px] font-bold text-[#111827]">{displayName}</div>
-                <div className="text-[12px] text-[#9CA3AF] font-medium">{roleLabel}</div>
-              </div>
-            </div>
-          </div>
-        </aside>
+        <BranchLeadPastorSidebar />
 
         {/* Main Content */}
         <main className="flex-1 overflow-y-auto w-full relative max-w-[100vw]">

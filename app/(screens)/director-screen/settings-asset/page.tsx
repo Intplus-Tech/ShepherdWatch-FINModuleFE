@@ -3,10 +3,12 @@
 import { API_V1 } from "@/lib/api";
 
 import { useEffect, useMemo, useState } from "react"
-import Link from "next/link"
 import SidebarNav from "@/components/navigation/SidebarNav"
 import ScreenHeader from "@/components/navigation/ScreenHeader"
+import SettingsConfigSidebar from "@/components/navigation/SettingsConfigSidebar"
+import AddAssetClassModal from "@/components/settings/AddAssetClassModal"
 import { useAssetConfig, AssetClassConfig } from "@/components/hooks/useAssetConfig"
+import { useAssetClasses } from "@/components/hooks/useAssetClasses"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/components/ui/toast"
 import { SkeletonTable } from "@/components/ui/skeleton"
@@ -14,22 +16,12 @@ import {
   AlertTriangle,
   Building2,
   Cpu,
-  Info,
   Layers,
   Mountain,
   Plus,
-  Settings,
   ShieldCheck,
   Truck,
 } from "lucide-react"
-
-const sideItems = [
-  { label: "Budget" },
-  { label: "Asset", active: true },
-  { label: "Departmental" },
-  { label: "Audit Logs" },
-  { label: "Permissions" },
-]
 
 type DepreciationMethod = "Straight Line" | "Reducing Balance" | "Non-Depreciable"
 
@@ -48,8 +40,38 @@ function isNonDepreciable(cls: AssetClassConfig): boolean {
   return (cls.depreciationMethod || "").toLowerCase().includes("non")
 }
 
+// Map a backend depreciation method key (e.g. "straight_line") to the label
+// the policy table displays (e.g. "Straight Line").
+function methodLabel(raw?: string): string | undefined {
+  if (!raw) return undefined
+  const key = raw.trim().toLowerCase().replace(/[\s-]+/g, "_")
+  if (key === "straight_line" || key === "straightline") return "Straight Line"
+  if (key === "declining_balance" || key === "reducing_balance" || key === "decliningbalance")
+    return "Reducing Balance"
+  if (key === "units_of_production") return "Units of Production"
+  return raw
+}
+
+// Normalize an `/asset-classes` record into the shape the policy table renders.
+function assetClassToConfig(c: Record<string, unknown>): AssetClassConfig {
+  const salvage =
+    (c.defaultResidualValuePercent as number | undefined) ??
+    (c.residualValuePercent as number | undefined)
+  return {
+    _id: String((c._id as string) ?? (c.id as string) ?? (c.name as string) ?? ""),
+    name: (c.name as string) ?? "Unnamed",
+    depreciationMethod: methodLabel(c.defaultDepreciationMethod as string | undefined),
+    usefulLifeYears: c.defaultUsefulLifeYears as number | undefined,
+    salvageValuePercent: salvage,
+    nonDepreciable: false,
+  }
+}
+
 export default function Page() {
-  const { assetConfig, loading, error, lastUpdated, refresh } = useAssetConfig()
+  const { assetConfig, loading, lastUpdated, refresh } = useAssetConfig()
+  // Master list of asset classes (where "Add New Class" creates records). Merged
+  // into the policy table below so newly-created classes appear immediately.
+  const { assetClasses, refetch: refetchAssetClasses } = useAssetClasses({ limit: 100 })
   const { pushToast } = useToast()
 
   const [disposalApproval, setDisposalApproval] = useState(true)
@@ -57,21 +79,35 @@ export default function Page() {
   const [classes, setClasses] = useState<AssetClassConfig[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [addClassOpen, setAddClassOpen] = useState(false)
 
   useEffect(() => {
-    if (!assetConfig) return
-    setDisposalApproval(assetConfig.disposalApprovalRequired ?? true)
-    setGlobalSalvage(
-      assetConfig.globalSalvageValuePercent !== undefined
-        ? String(assetConfig.globalSalvageValuePercent)
-        : ""
+    if (assetConfig) {
+      setDisposalApproval(assetConfig.disposalApprovalRequired ?? true)
+      setGlobalSalvage(
+        assetConfig.globalSalvageValuePercent !== undefined
+          ? String(assetConfig.globalSalvageValuePercent)
+          : ""
+      )
+    }
+
+    // Merge the asset-config policy classes with the master /asset-classes list
+    // so classes created via "Add New Class" show up here too. Dedupe by name.
+    const configClasses = Array.isArray(assetConfig?.classes) ? assetConfig!.classes : []
+    const seen = new Set(
+      configClasses.map((c) => (c.name || "").trim().toLowerCase()).filter(Boolean)
     )
-    setClasses(
-      Array.isArray(assetConfig.classes) && assetConfig.classes.length > 0
-        ? assetConfig.classes
-        : []
-    )
-  }, [assetConfig])
+    const extras = (Array.isArray(assetClasses) ? assetClasses : [])
+      .map((c) => assetClassToConfig(c as Record<string, unknown>))
+      .filter((c) => {
+        const key = (c.name || "").trim().toLowerCase()
+        if (!key || seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+
+    setClasses([...configClasses, ...extras])
+  }, [assetConfig, assetClasses])
 
   const lastReviewLabel = useMemo(() => {
     const raw = assetConfig?.lastPolicyReviewAt
@@ -149,40 +185,7 @@ export default function Page() {
           <ScreenHeader title="Financial Overview" subtitle="Global financial health monitoring" />
 
           <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[260px_1fr]">
-            <aside className="space-y-4">
-              <div className="rounded-[12px] border border-[#EEF1F6] bg-white p-4">
-                <div className="text-[12.74px] leading-[16.98px] font-bold uppercase tracking-[1.27px] text-[#9CA3AF]">
-                  SUPER ADMIN
-                </div>
-                <div className="text-[14.86px] leading-[21.23px] font-semibold text-[#111827]">Global Configuration</div>
-                <div className="mt-3 space-y-1">
-                  {sideItems.map((item) => (
-                    <button
-                      key={item.label}
-                      type="button"
-                      className={`flex w-full items-center gap-2 rounded-[8px] px-2.5 py-2 text-[14.86px] leading-[21.23px] ${
-                        item.active
-                          ? "bg-[#E9EEFF] text-[#3B5BDB] font-bold"
-                          : "text-[#6B7280] font-medium hover:bg-[#F3F5F9]"
-                      }`}
-                    >
-                      <Settings className="h-4 w-4" />
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="rounded-[12px] border border-[#DBEAFE] bg-[#F0F7FF] p-4">
-                <div className="flex items-center gap-2 text-[10px] font-medium text-[#2563EB]">
-                  <Info className="h-3.5 w-3.5" />
-                  Director&apos;s Note
-                </div>
-                <p className="mt-2 text-[9px] text-[#6B7280]">
-                  These settings are global. Changes here affect all department budgets and fiscal cycles immediately.
-                </p>
-              </div>
-            </aside>
+            <SettingsConfigSidebar active="asset" />
 
             <section className="space-y-6">
               <div>
@@ -192,9 +195,6 @@ export default function Page() {
                 <p className="text-[16.98px] leading-[25.48px] font-normal text-[#9CA3AF]">
                   Define organization-wide depreciation standards, life expectancy, and disposal rules.
                 </p>
-                {error ? (
-                  <div className="mt-2 text-[12px] text-rose-600 font-bold">{error}</div>
-                ) : null}
               </div>
 
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -274,13 +274,14 @@ export default function Page() {
                   <div className="text-[16.98px] leading-[25.48px] font-bold text-[#111827]">
                     Asset Class Defaults
                   </div>
-                  <Link
-                    href="/director-screen/new-class-modal"
+                  <button
+                    type="button"
+                    onClick={() => setAddClassOpen(true)}
                     className="inline-flex items-center gap-1 text-[14px] font-semibold text-[#3B5BDB] hover:underline"
                   >
                     <Plus className="h-4 w-4" />
                     Add New Class
-                  </Link>
+                  </button>
                 </div>
 
                 <div className="mt-4 overflow-x-auto">
@@ -464,6 +465,16 @@ export default function Page() {
           </div>
         </div>
       </main>
+
+      <AddAssetClassModal
+        open={addClassOpen}
+        onClose={() => setAddClassOpen(false)}
+        onCreated={() => {
+          pushToast("Asset class created successfully.", "success")
+          refetchAssetClasses()
+          refresh()
+        }}
+      />
     </div>
   )
 }

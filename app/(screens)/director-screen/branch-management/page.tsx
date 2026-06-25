@@ -8,17 +8,27 @@ import ScreenHeader from "@/components/navigation/ScreenHeader"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useToast } from "@/components/ui/toast"
+import { ModalShell } from "@/components/ui/modal-shell"
 import {
   AlertTriangle,
   ArrowUpDown,
+  Ban,
   Banknote,
   Building2,
+  Calculator,
   ChevronDown,
   Download,
+  History,
+  Pencil,
   Plus,
   Search,
+  Shield,
+  Trash2,
   TrendingUp,
   ShieldAlert,
+  User,
+  Users,
+  X,
 } from "lucide-react"
 
 type RegionApiItem = {
@@ -51,7 +61,14 @@ type TenantApiItem = {
   name?: string
   status?: string
   location?: string
+  country?: string
   branchType?: string
+  averageIncome?: number | string
+  currency?: string
+  residentPastor?: string
+  leadPastorName?: string
+  email?: string
+  contactEmail?: string
 }
 
 type TenantCard = {
@@ -61,6 +78,10 @@ type TenantCard = {
   status: string
   statusTone: string
   statusDot: string
+  branchType: string
+  averageIncome: string
+  residentPastor: string
+  email: string
 }
 
 type UserApiItem = {
@@ -94,9 +115,18 @@ type BranchHealthSummary = {
 
 const normalizeTenant = (tenant: TenantApiItem, index: number): TenantCard => {
   const name = tenant.branchName ?? tenant.name ?? `Branch ${index + 1}`
-  const location = tenant.location ?? "Location not specified"
+  const location = tenant.location ?? tenant.country ?? "Location not specified"
   const statusRaw = (tenant.status ?? "ACTIVE").toUpperCase()
   const statusStyle = statusStyles[statusRaw] ?? statusStyles.ACTIVE
+
+  const averageIncomeRaw = tenant.averageIncome
+  let averageIncome = "—"
+  if (averageIncomeRaw !== undefined && averageIncomeRaw !== null && `${averageIncomeRaw}`.trim() !== "") {
+    const numeric = Number(averageIncomeRaw)
+    averageIncome = Number.isFinite(numeric)
+      ? `${tenant.currency ? `${tenant.currency} ` : ""}${numeric.toLocaleString()}`
+      : `${averageIncomeRaw}`
+  }
 
   return {
     id: tenant._id ?? tenant.tenantId ?? tenant.id ?? `${index + 1}`,
@@ -105,15 +135,19 @@ const normalizeTenant = (tenant: TenantApiItem, index: number): TenantCard => {
     status: statusRaw,
     statusTone: statusStyle.tone,
     statusDot: statusStyle.dot,
+    branchType: tenant.branchType?.trim() || "—",
+    averageIncome,
+    residentPastor: tenant.residentPastor?.trim() || tenant.leadPastorName?.trim() || "—",
+    email: tenant.email?.trim() || tenant.contactEmail?.trim() || "—",
   }
 }
 const statusStyles: Record<string, { tone: string; dot: string }> = {
   ACTIVE: { tone: "bg-emerald-50 text-emerald-600", dot: "bg-emerald-500" },
   INACTIVE: { tone: "bg-rose-50 text-rose-600", dot: "bg-rose-500" },
   PENDING: { tone: "bg-amber-50 text-amber-600", dot: "bg-amber-500" },
-  REVIEW: { tone: "bg-blue-50 text-blue-600", dot: "bg-blue-500" },
+  REVIEW: { tone: "bg-amber-50 text-amber-600", dot: "bg-amber-500" },
   SUSPENDED: { tone: "bg-rose-50 text-rose-600", dot: "bg-rose-500" },
-  ONBOARDING: { tone: "bg-amber-50 text-amber-600", dot: "bg-amber-500" },
+  ONBOARDING: { tone: "bg-blue-50 text-blue-600", dot: "bg-blue-500" },
 }
 
 const normalizeRegion = (region: RegionApiItem, index: number): RegionCard => {
@@ -201,6 +235,9 @@ export default function Page() {
   const [optimisticUpdate, setOptimisticUpdate] = useState<RegionCard | null>(null)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [togglingRegionId, setTogglingRegionId] = useState<string | null>(null)
+  const [showRegionsModal, setShowRegionsModal] = useState(false)
+  const [showAddRegion, setShowAddRegion] = useState(false)
+  const [deletingRegionId, setDeletingRegionId] = useState<string | null>(null)
   const { pushToast } = useToast()
   const [searchTerm, setSearchTerm] = useState("")
   const [nameFilter, setNameFilter] = useState("")
@@ -256,6 +293,18 @@ export default function Page() {
   const [branchHealthSummary, setBranchHealthSummary] = useState<BranchHealthSummary | null>(null)
   const [branchSummaryLoading, setBranchSummaryLoading] = useState(false)
   const [branchSummaryError, setBranchSummaryError] = useState<string | null>(null)
+  const [viewBranch, setViewBranch] = useState<TenantCard | null>(null)
+  const [viewBranchOpen, setViewBranchOpen] = useState(false)
+  const [viewTab, setViewTab] = useState<"details" | "personnel">("details")
+  const [viewEditMode, setViewEditMode] = useState(false)
+  const [deactivateConfirmOpen, setDeactivateConfirmOpen] = useState(false)
+
+  const handleViewBranchOpen = (tenant: TenantCard) => {
+    setViewBranch(tenant)
+    setViewTab("details")
+    setViewEditMode(false)
+    setViewBranchOpen(true)
+  }
 
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat("en-NG", {
@@ -449,7 +498,7 @@ export default function Page() {
   const displayTotal = totalItems ?? regionCards.length
   const displayPage = totalPages ?? Math.max(1, Math.ceil(displayTotal / pageSize))
 
-  const handleFetchTenants = async () => {
+  const handleFetchTenants = async (silent = false) => {
     setTenantsLoading(true)
     setTenantsError("")
     try {
@@ -464,13 +513,45 @@ export default function Page() {
         : payload?.data?.content ?? payload?.data?.items ?? payload?.data ?? payload
       const list = Array.isArray(data) ? data : []
       setTenants(list.map((item: TenantApiItem, index: number) => normalizeTenant(item, index)))
-      pushToast("Branches loaded.", "success")
+      if (!silent) pushToast("Branches loaded.", "success")
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to fetch branches"
       setTenantsError(message)
-      pushToast(message, "error")
+      if (!silent) pushToast(message, "error")
     } finally {
       setTenantsLoading(false)
+    }
+  }
+
+  // Branches load automatically on mount (the manual "Get All Branches" button
+  // was removed).
+  useEffect(() => {
+    void handleFetchTenants(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const handleDeleteRegion = async (region: RegionCard) => {
+    if (deletingRegionId) return
+    if (typeof window !== "undefined" && !window.confirm(`Delete region "${region.name}"?`)) {
+      return
+    }
+    setDeletingRegionId(region.id)
+    try {
+      const res = await fetch(`${API_V1}/regions/${region.id}`, {
+        method: "DELETE",
+        headers: { "X-CSRF-Token": getCsrfToken() },
+        credentials: "include",
+      })
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}))
+        throw new Error(payload?.message ?? "Unable to delete region")
+      }
+      setRegions((prev) => prev.filter((item) => item.id !== region.id))
+      pushToast("Region deleted successfully.", "success")
+    } catch (error) {
+      pushToast(error instanceof Error ? error.message : "Unable to delete region", "error")
+    } finally {
+      setDeletingRegionId(null)
     }
   }
 
@@ -637,14 +718,8 @@ export default function Page() {
       branchType: true,
     })
 
-    if (
-      !branchName.trim() ||
-      !branchCode.trim() ||
-      !branchAddress.trim() ||
-      !branchRegion.trim() ||
-      !branchType.trim()
-    ) {
-      pushToast("Please fill in all required branch fields.", "error")
+    if (!branchName.trim()) {
+      pushToast("Branch name is required.", "error")
       return
     }
 
@@ -670,10 +745,10 @@ export default function Page() {
         credentials: "include",
         body: JSON.stringify({
           name: branchName.trim(),
-          code: branchCode.trim(),
+          code: branchCode.trim() || undefined,
           branchType,
           region: branchRegion.trim(),
-          address: branchAddress.trim(),
+          address: branchAddress.trim() || undefined,
           leadPastorId: leadPastorId || undefined,
           assignedAccountantId: assignedAccountantId || undefined,
           currency: branchCurrency || undefined,
@@ -963,6 +1038,8 @@ export default function Page() {
       setOptimisticRegion(created)
       setLastCreatedRegionId(created.id)
       setRegions((prev) => [created, ...prev.filter((region) => region.id !== created.id)])
+      setBranchRegionOptions((prev) => [created, ...prev.filter((region) => region.id !== created.id)])
+      setRegionOptionsLoaded(true)
       setCreateStatus("success")
       setCreateName("")
       setCreateDescription("")
@@ -1007,221 +1084,24 @@ export default function Page() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <Button
-                  className="h-8 rounded-md border border-[#E5E7EB] bg-white text-[12px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50"
-                  variant="outline"
-                  onClick={handleFetchTenants}
-                >
-                  <Building2 className="h-4 w-4" /> Get All Branches
-                </Button>
                 <Button className="h-8 rounded-md border border-[#E5E7EB] bg-white text-[12px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50" variant="outline">
                   <Download className="h-4 w-4" /> Export Report
                 </Button>
                 <Button
                   className="h-8 rounded-md bg-[#3B5BDB] text-[12px] font-medium text-white shadow hover:bg-blue-700"
-                  onClick={() => setShowCreateBranch((prev) => !prev)}
+                  onClick={() => setShowCreateBranch(true)}
                 >
                   <Plus className="h-4 w-4" /> New Branch
                 </Button>
                 <Button
                   className="h-8 rounded-md border border-[#E5E7EB] bg-white text-[12px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50"
                   variant="outline"
-                  onClick={() => setShowCreate((prev) => !prev)}
+                  onClick={() => setShowRegionsModal(true)}
                 >
-                  <Plus className="h-4 w-4" /> New Region
+                  <Plus className="h-4 w-4" /> Regions
                 </Button>
               </div>
             </div>
-
-            {showCreateBranch && (
-              <div className="mt-5 rounded-xl border border-[#EEF1F6] bg-white p-5 shadow-sm">
-                <div className="text-[14px] font-bold text-[#111827]">Create New Branch</div>
-                <div className={`mt-4 grid grid-cols-1 gap-3 md:grid-cols-3 ${branchEditLoading ? "opacity-70 pointer-events-none" : ""}`}>
-                  <Input
-                    className={`h-10 rounded-md bg-white text-[12px] text-[#6B7280] ${
-                      branchTouched.name && !branchName.trim()
-                        ? "border-rose-300 focus-visible:ring-rose-200"
-                        : "border-[#E5E7EB]"
-                    }`}
-                    placeholder="Branch name"
-                    value={branchName}
-                    onChange={(event) => setBranchName(event.target.value)}
-                    onBlur={() => setBranchTouched((prev) => ({ ...prev, name: true }))}
-                  />
-                  <Input
-                    className={`h-10 rounded-md bg-white text-[12px] text-[#6B7280] ${
-                      branchTouched.code && !branchCode.trim()
-                        ? "border-rose-300 focus-visible:ring-rose-200"
-                        : "border-[#E5E7EB]"
-                    }`}
-                    placeholder="Branch code"
-                    value={branchCode}
-                    onChange={(event) => setBranchCode(event.target.value)}
-                    onBlur={() => setBranchTouched((prev) => ({ ...prev, code: true }))}
-                  />
-                  <Input
-                    className={`h-10 rounded-md bg-white text-[12px] text-[#6B7280] ${
-                      branchTouched.address && !branchAddress.trim()
-                        ? "border-rose-300 focus-visible:ring-rose-200"
-                        : "border-[#E5E7EB]"
-                    }`}
-                    placeholder="Branch address"
-                    value={branchAddress}
-                    onChange={(event) => setBranchAddress(event.target.value)}
-                    onBlur={() => setBranchTouched((prev) => ({ ...prev, address: true }))}
-                  />
-                  <select
-                    aria-label="Region"
-                    className={`h-10 rounded-md border bg-white px-2 text-[12px] text-[#6B7280] ${
-                      branchTouched.region && !branchRegion.trim()
-                        ? "border-rose-300 focus-visible:ring-rose-200"
-                        : "border-[#E5E7EB]"
-                    }`}
-                    value={branchRegion}
-                    onChange={(event) => setBranchRegion(event.target.value)}
-                    onBlur={() => setBranchTouched((prev) => ({ ...prev, region: true }))}
-                    disabled={regionOptionsLoading}
-                  >
-                    <option value="">
-                      {regionOptionsLoading ? "Loading regions..." : "Select region"}
-                    </option>
-                    {branchRegionOptions.map((region) => (
-                      <option key={region.id} value={region.id}>
-                        {region.name}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    aria-label="Branch type"
-                    className={`h-10 rounded-md bg-white px-2 text-[12px] text-[#6B7280] ${
-                      branchTouched.branchType && !branchType.trim()
-                        ? "border-rose-300 focus-visible:ring-rose-200"
-                        : "border-[#E5E7EB]"
-                    }`}
-                    value={branchType}
-                    onChange={(event) => setBranchType(event.target.value)}
-                    onBlur={() => setBranchTouched((prev) => ({ ...prev, branchType: true }))}
-                  >
-                    <option value="">Select branch type</option>
-                    <option value="pioneer">Pioneer</option>
-                    <option value="growing">Growing</option>
-                    <option value="established">Established</option>
-                  </select>
-                  <select
-                    aria-label="Currency"
-                    className="h-10 rounded-md border border-[#E5E7EB] bg-white px-2 text-[12px] text-[#6B7280]"
-                    value={branchCurrency}
-                    onChange={(event) => setBranchCurrency(event.target.value)}
-                  >
-                    <option value="">Currency (optional)</option>
-                    <option value="NGN">NGN</option>
-                    <option value="USD">USD</option>
-                    <option value="GBP">GBP</option>
-                    <option value="EUR">EUR</option>
-                  </select>
-                  <select
-                    aria-label="Lead pastor"
-                    className="h-10 rounded-md border border-[#E5E7EB] bg-white px-2 text-[12px] text-[#6B7280]"
-                    value={branchLeadPastorId}
-                    onChange={(event) => setBranchLeadPastorId(event.target.value)}
-                    disabled={leadPastorOptionsLoading}
-                  >
-                    <option value="">
-                      {leadPastorOptionsLoading ? "Loading lead pastors..." : "Select lead pastor (optional)"}
-                    </option>
-                    {!leadPastorOptionsLoading && leadPastorOptionsLoaded && leadPastorOptions.length === 0 && (
-                      <option value="" disabled>
-                        No lead pastors found
-                      </option>
-                    )}
-                    {leadPastorOptions.map((user) => (
-                      <option key={user.id} value={user.id}>
-                        {user.name}{user.email ? ` - ${user.email}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                  <Input
-                    className="h-10 rounded-md bg-white text-[12px] text-[#6B7280] border-[#E5E7EB]"
-                    placeholder="Accountant ID (optional)"
-                    value={branchAccountantId}
-                    onChange={(event) => setBranchAccountantId(event.target.value)}
-                  />
-                </div>
-                <div className="mt-4 flex items-center gap-2">
-                  <Button
-                    className="h-9 rounded-md bg-[#3B5BDB] text-[12px] font-medium text-white shadow hover:bg-blue-700"
-                    onClick={handleCreateBranch}
-                    disabled={branchStatus === "saving"}
-                  >
-                    {branchStatus === "saving" ? "Creating..." : "Create Branch"}
-                  </Button>
-                  <Button
-                    className="h-9 rounded-md border border-[#E5E7EB] bg-white text-[12px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50"
-                    variant="outline"
-                    onClick={() => setShowCreateBranch(false)}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {showCreate && (
-              <div className="mt-5 rounded-xl border border-[#EEF1F6] bg-white p-5 shadow-sm">
-                <div className="text-[14px] font-bold text-[#111827]">Create New Region</div>
-                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-                  <Input
-                    className={`h-10 rounded-md bg-white text-[12px] text-[#6B7280] ${
-                      createTouched.name && !createName.trim()
-                        ? "border-rose-300 focus-visible:ring-rose-200"
-                        : "border-[#E5E7EB]"
-                    }`}
-                    placeholder="Region name"
-                    value={createName}
-                    onChange={(event) => setCreateName(event.target.value)}
-                    onBlur={() => setCreateTouched((prev) => ({ ...prev, name: true }))}
-                  />
-                  <Input
-                    className={`h-10 rounded-md bg-white text-[12px] text-[#6B7280] ${
-                      createTouched.description && !createDescription.trim()
-                        ? "border-rose-300 focus-visible:ring-rose-200"
-                        : "border-[#E5E7EB]"
-                    }`}
-                    placeholder="Description"
-                    value={createDescription}
-                    onChange={(event) => setCreateDescription(event.target.value)}
-                    onBlur={() => setCreateTouched((prev) => ({ ...prev, description: true }))}
-                  />
-                  <Input
-                    className={`h-10 rounded-md bg-white text-[12px] text-[#6B7280] ${
-                      createTouched.location && !createLocation.trim()
-                        ? "border-rose-300 focus-visible:ring-rose-200"
-                        : "border-[#E5E7EB]"
-                    }`}
-                    placeholder="Location"
-                    value={createLocation}
-                    onChange={(event) => setCreateLocation(event.target.value)}
-                    onBlur={() => setCreateTouched((prev) => ({ ...prev, location: true }))}
-                  />
-                </div>
-                <div className="mt-4 flex items-center gap-2">
-                  <Button
-                    className="h-9 rounded-md bg-[#3B5BDB] text-[12px] font-medium text-white shadow hover:bg-blue-700"
-                    onClick={handleCreateRegion}
-                    disabled={createStatus === "saving"}
-                  >
-                    {createStatus === "saving" ? "Creating..." : "Create Region"}
-                  </Button>
-                  <Button
-                    className="h-9 rounded-md border border-[#E5E7EB] bg-white text-[12px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50"
-                    variant="outline"
-                    onClick={() => setShowCreate(false)}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </div>
-            )}
 
             {tenantsLoading && (
               <div className="mt-6 rounded-xl border border-dashed border-[#E5E7EB] bg-white p-6 text-[13px] text-[#6B7280]">
@@ -1404,30 +1284,6 @@ export default function Page() {
                   </select>
                   <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9CA3AF]" />
                 </div>
-                <Button
-                  className="h-8 rounded-md border border-[#E5E7EB] bg-white text-[12px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50"
-                  variant="outline"
-                >
-                  Compliance: &lt; 70
-                  <ChevronDown className="h-4 w-4" />
-                </Button>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button className="h-8 rounded-md border border-[#E5E7EB] bg-white text-[12px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50" variant="outline">
-                  <ArrowUpDown className="h-4 w-4" /> Sort: Highest Deficit
-                </Button>
-                <select
-                  className="h-8 rounded-md border border-[#E5E7EB] bg-white px-2 text-[12px] font-medium text-[#4B5563] shadow-sm"
-                  value={pageSize}
-                  onChange={(event) => {
-                    setPageSize(Number(event.target.value))
-                    setPage(1)
-                  }}
-                >
-                  <option value={6}>6 / page</option>
-                  <option value={12}>12 / page</option>
-                  <option value={18}>18 / page</option>
-                </select>
               </div>
             </div>
 
@@ -1523,7 +1379,7 @@ export default function Page() {
               </div>
             )}
 
-            <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+            <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {tenants.length === 0 && loading && (
                 <div className="rounded-xl border border-dashed border-[#E5E7EB] bg-white p-6 text-[13px] text-[#6B7280]">
                   Loading regions...
@@ -1535,43 +1391,72 @@ export default function Page() {
                 </div>
               )}
               {tenants.length > 0 &&
-                tenants.map((tenant) => (
-                  <div key={tenant.id} className="rounded-xl border border-[#EEF1F6] bg-white p-5 shadow-sm">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-[13px] font-semibold text-[#111827]">{tenant.name}</div>
-                        <div className="text-[11px] text-[#9CA3AF]">ID: {tenant.id}</div>
+                tenants.map((tenant) => {
+                  const statusLabel =
+                    tenant.status.charAt(0) + tenant.status.slice(1).toLowerCase()
+                  return (
+                    <div
+                      key={tenant.id}
+                      className="flex flex-col rounded-xl border border-[#EEF1F6] bg-white p-5 shadow-sm"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="text-[14px] font-bold text-[#111827]">{tenant.name}</div>
+                        <span
+                          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${tenant.statusTone}`}
+                        >
+                          <span className={`h-1.5 w-1.5 rounded-full ${tenant.statusDot}`} />
+                          {statusLabel}
+                        </span>
                       </div>
-                      <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium ${tenant.statusTone}`}>
-                        <span className={`h-1.5 w-1.5 rounded-full ${tenant.statusDot}`} />
-                        {tenant.status}
-                      </span>
+                      <div className="mt-1 text-[11px] text-[#9CA3AF]">
+                        ID: {tenant.id} • {tenant.location}
+                      </div>
+
+                      <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3">
+                        <div>
+                          <div className="text-[10px] font-medium uppercase tracking-wide text-[#9CA3AF]">
+                            Branch Type
+                          </div>
+                          <div className="mt-0.5 text-[13px] font-semibold capitalize text-[#111827]">
+                            {tenant.branchType}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] font-medium uppercase tracking-wide text-[#9CA3AF]">
+                            Average Income
+                          </div>
+                          <div className="mt-0.5 text-[13px] font-semibold text-[#111827]">
+                            {tenant.averageIncome}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] font-medium uppercase tracking-wide text-[#9CA3AF]">
+                            Resident Pastor
+                          </div>
+                          <div className="mt-0.5 text-[13px] font-semibold text-[#111827]">
+                            {tenant.residentPastor}
+                          </div>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-[10px] font-medium uppercase tracking-wide text-[#9CA3AF]">
+                            Email
+                          </div>
+                          <div className="mt-0.5 truncate text-[13px] font-semibold text-[#111827]">
+                            {tenant.email}
+                          </div>
+                        </div>
+                      </div>
+
+                      <Button
+                        variant="outline"
+                        className="mt-5 h-9 w-full rounded-md border-[#E5E7EB] bg-white text-[12px] font-medium text-[#4B5563]"
+                        onClick={() => handleViewBranchOpen(tenant)}
+                      >
+                        Manage
+                      </Button>
                     </div>
-                  <div className="mt-4 text-[11px] text-[#9CA3AF]">
-                    Location
-                    <div className="text-[13px] font-semibold text-[#111827]">{tenant.location}</div>
-                  </div>
-                  <Button
-                    variant="outline"
-                    className="mt-4 h-9 w-full rounded-md text-[12px] font-medium border-[#E5E7EB] bg-white text-[#4B5563]"
-                    onClick={() => handleBranchEditStart(tenant)}
-                  >
-                    Edit Branch
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="mt-2 h-9 w-full rounded-md text-[12px] font-medium border-[#E5E7EB] bg-white text-[#4B5563]"
-                    onClick={() => handleBranchStatusToggle(tenant)}
-                    disabled={branchStatusUpdatingId === tenant.id}
-                  >
-                    {branchStatusUpdatingId === tenant.id
-                      ? "Updating..."
-                      : tenant.status === "ACTIVE"
-                        ? "Suspend Branch"
-                        : "Activate Branch"}
-                  </Button>
-                </div>
-              ))}
+                  )
+                })}
               {tenants.length === 0 &&
                 regionCards.map((region) => {
                   const isNew = lastCreatedRegionId === region.id
@@ -1630,29 +1515,8 @@ export default function Page() {
                 )})}
             </div>
 
-            <div className="mt-6 flex items-center justify-center">
-              <div className="flex items-center gap-1 rounded-md border border-[#EEF1F6] bg-white px-2 py-1 text-[12px] text-[#6B7280]">
-                <button
-                  className="px-2 py-1 text-[#9CA3AF]"
-                  onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-                  disabled={page <= 1}
-                >
-                  &lt;
-                </button>
-                <button className="h-7 w-7 rounded bg-[#3B5BDB] text-white">{page}</button>
-                <span className="px-1 text-[#9CA3AF]">/</span>
-                <button className="h-7 min-w-[28px] rounded">{displayPage}</button>
-                <button
-                  className="px-2 py-1 text-[#9CA3AF]"
-                  onClick={() => setPage((prev) => Math.min(displayPage, prev + 1))}
-                  disabled={page >= displayPage}
-                >
-                  &gt;
-                </button>
-              </div>
-              <div className="ml-4 text-[12px] text-[#9CA3AF]">
-                Total: <span className="text-[#111827] font-semibold">{displayTotal}</span>
-              </div>
+            <div className="mt-6 text-center text-[12px] text-[#9CA3AF]">
+              Total branches: <span className="font-semibold text-[#111827]">{displayTotal}</span>
             </div>
 
             {editingBranchId && (
@@ -1694,6 +1558,7 @@ export default function Page() {
                     <option value="USD">USD</option>
                     <option value="GBP">GBP</option>
                     <option value="EUR">EUR</option>
+                    <option value="CAD">CAD</option>
                   </select>
                   <Input
                     className="h-10 rounded-md bg-white text-[12px] text-[#6B7280] border-[#E5E7EB]"
@@ -1747,6 +1612,702 @@ export default function Page() {
           </section>
         </div>
       </main>
+
+      <ModalShell
+        open={showRegionsModal}
+        onClose={() => setShowRegionsModal(false)}
+        className="max-w-3xl"
+      >
+        <div className="flex items-center justify-between border-b border-[#EEF1F6] px-6 py-4">
+          <div>
+            <h2 className="text-[16px] font-bold text-[#111827]">Manage Regions</h2>
+            <p className="mt-0.5 text-[12px] text-[#6B7280]">
+              All regions across the organization.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowRegionsModal(false)}
+            aria-label="Close"
+            className="rounded-full p-1 text-[#9CA3AF] hover:bg-[#F3F4F6] hover:text-[#111827]"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="max-h-[60vh] overflow-y-auto px-6 py-4">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="border-b border-[#EEF1F6] text-[11px] font-semibold uppercase tracking-wide text-[#9CA3AF]">
+                <th className="py-2 pr-3">Name</th>
+                <th className="py-2 pr-3">Location</th>
+                <th className="py-2 pr-3">Description</th>
+                <th className="py-2 pr-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {regions.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="py-6 text-center text-[13px] text-[#9CA3AF]">
+                    No regions found.
+                  </td>
+                </tr>
+              ) : (
+                regions.map((region) => (
+                  <tr key={region.id} className="border-b border-[#F3F5F9] text-[13px] text-[#374151]">
+                    <td className="py-3 pr-3 font-semibold text-[#111827]">{region.name}</td>
+                    <td className="py-3 pr-3 text-[#6B7280]">{region.location || "—"}</td>
+                    <td className="py-3 pr-3 text-[#6B7280]">{region.description || "—"}</td>
+                    <td className="py-3 pr-3">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          aria-label="Edit region"
+                          onClick={() => {
+                            handleEditStart(region)
+                            setShowRegionsModal(false)
+                          }}
+                          className="inline-flex items-center justify-center rounded-md border border-[#E5E7EB] p-1.5 text-[#3B5BDB] hover:bg-[#EEF2FF]"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Delete region"
+                          onClick={() => handleDeleteRegion(region)}
+                          disabled={deletingRegionId === region.id}
+                          className="inline-flex items-center justify-center rounded-md border border-rose-200 p-1.5 text-rose-600 hover:bg-rose-50 disabled:opacity-60"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {showCreate && (
+          <div className="border-t border-[#EEF1F6] bg-[#F8FAFC] px-6 py-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-[14px] font-bold text-[#111827]">Add Region</h3>
+              <button
+                type="button"
+                onClick={() => setShowCreate(false)}
+                aria-label="Close add region"
+                className="rounded-full p-1 text-[#9CA3AF] hover:bg-[#F3F4F6] hover:text-[#111827]"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div>
+                <label className="text-[12px] font-medium text-[#374151]">Name</label>
+                <Input
+                  className="mt-1 h-10 rounded-md border-[#E5E7EB] bg-white text-[12px] text-[#111827]"
+                  placeholder="e.g. Southwest Region"
+                  value={createName}
+                  onChange={(event) => setCreateName(event.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-[12px] font-medium text-[#374151]">Location</label>
+                <Input
+                  className="mt-1 h-10 rounded-md border-[#E5E7EB] bg-white text-[12px] text-[#111827]"
+                  placeholder="e.g. Lagos"
+                  value={createLocation}
+                  onChange={(event) => setCreateLocation(event.target.value)}
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="text-[12px] font-medium text-[#374151]">Description</label>
+                <Input
+                  className="mt-1 h-10 rounded-md border-[#E5E7EB] bg-white text-[12px] text-[#111827]"
+                  placeholder="Briefly describe the fund's purpose"
+                  value={createDescription}
+                  onChange={(event) => setCreateDescription(event.target.value)}
+                />
+              </div>
+            </div>
+            {createError && <div className="mt-2 text-[12px] text-rose-600">{createError}</div>}
+            <div className="mt-3 flex justify-end">
+              <Button
+                className="h-9 rounded-md bg-[#3B5BDB] text-[12px] font-medium text-white shadow hover:bg-blue-700"
+                onClick={handleCreateRegion}
+                disabled={createStatus === "saving"}
+              >
+                {createStatus === "saving" ? "Adding..." : "Add Region"}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between border-t border-[#EEF1F6] px-6 py-3">
+          <Button
+            className="h-9 rounded-md bg-[#3B5BDB] text-[12px] font-medium text-white shadow hover:bg-blue-700"
+            onClick={() => setShowCreate((v) => !v)}
+          >
+            <Plus className="h-4 w-4" /> Add Region
+          </Button>
+          <button
+            type="button"
+            onClick={() => {
+              setShowCreate(false)
+              setShowRegionsModal(false)
+            }}
+            className="rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[13px] font-semibold text-[#4B5563] hover:bg-gray-50"
+          >
+            Close
+          </button>
+        </div>
+      </ModalShell>
+
+      <ModalShell
+        open={showCreateBranch}
+        onClose={() => setShowCreateBranch(false)}
+        className="max-w-2xl"
+      >
+        <div className="flex items-start justify-between border-b border-[#EEF1F6] px-6 py-4">
+          <div>
+            <h2 className="text-[16px] font-bold text-[#111827]">New Branch Onboarding</h2>
+            <p className="mt-0.5 text-[12px] text-[#6B7280]">
+              Initialize a new branch entity in the registry.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowCreateBranch(false)}
+            aria-label="Close"
+            className="rounded-full p-1 text-[#9CA3AF] hover:bg-[#F3F4F6] hover:text-[#111827]"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="max-h-[70vh] overflow-y-auto px-6 py-5">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="md:col-span-2">
+              <label className="text-[12px] font-medium text-[#374151]">Branch Name</label>
+              <Input
+                className={`mt-1 h-10 rounded-md bg-white text-[12px] text-[#111827] ${
+                  branchTouched.name && !branchName.trim()
+                    ? "border-rose-300 focus-visible:ring-rose-200"
+                    : "border-[#E5E7EB]"
+                }`}
+                placeholder="Enter branch name"
+                value={branchName}
+                onChange={(event) => setBranchName(event.target.value)}
+                onBlur={() => setBranchTouched((prev) => ({ ...prev, name: true }))}
+              />
+            </div>
+
+            <div>
+              <label className="text-[12px] font-medium text-[#374151]">Assigned Lead Pastor <span className="text-[#9CA3AF] font-normal">(optional)</span></label>
+              <select
+                aria-label="Assigned Lead Pastor"
+                className="mt-1 h-10 w-full rounded-md border border-[#E5E7EB] bg-white px-2 text-[12px] text-[#111827]"
+                value={branchLeadPastorId}
+                onChange={(event) => setBranchLeadPastorId(event.target.value)}
+                disabled={leadPastorOptionsLoading}
+              >
+                <option value="">
+                  {leadPastorOptionsLoading ? "Loading lead pastors..." : "Select lead pastor"}
+                </option>
+                {!leadPastorOptionsLoading && leadPastorOptionsLoaded && leadPastorOptions.length === 0 && (
+                  <option value="" disabled>
+                    No lead pastors found
+                  </option>
+                )}
+                {leadPastorOptions.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.name}{user.email ? ` - ${user.email}` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-[12px] font-medium text-[#374151]">Assigned Accountant <span className="text-[#9CA3AF] font-normal">(optional)</span></label>
+              <Input
+                className="mt-1 h-10 rounded-md bg-white text-[12px] text-[#111827] border-[#E5E7EB]"
+                placeholder="Accountant ID"
+                value={branchAccountantId}
+                onChange={(event) => setBranchAccountantId(event.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="text-[12px] font-medium text-[#374151]">Region <span className="text-[#9CA3AF] font-normal">(optional)</span></label>
+              <select
+                aria-label="Region"
+                className="mt-1 h-10 w-full rounded-md border border-[#E5E7EB] bg-white px-2 text-[12px] text-[#111827]"
+                value={branchRegion}
+                onChange={(event) => {
+                  if (event.target.value === "__add_new__") {
+                    setShowAddRegion(true)
+                    return
+                  }
+                  setBranchRegion(event.target.value)
+                }}
+                disabled={regionOptionsLoading}
+              >
+                <option value="">
+                  {regionOptionsLoading ? "Loading regions..." : "Select region"}
+                </option>
+                {branchRegionOptions.map((region) => (
+                  <option key={region.id} value={region.id}>
+                    {region.name}
+                  </option>
+                ))}
+                <option value="__add_new__">+ Add New</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-[12px] font-medium text-[#374151]">Currency</label>
+              <select
+                aria-label="Currency"
+                className="mt-1 h-10 w-full rounded-md border border-[#E5E7EB] bg-white px-2 text-[12px] text-[#111827]"
+                value={branchCurrency}
+                onChange={(event) => setBranchCurrency(event.target.value)}
+              >
+                <option value="">Select currency</option>
+                <option value="NGN">NGN</option>
+                <option value="USD">USD</option>
+                <option value="EUR">EUR</option>
+                <option value="GBP">GBP</option>
+                <option value="CAD">CAD</option>
+              </select>
+            </div>
+
+            <div className="md:col-span-2 rounded-[10px] border border-[#EEF1F6] bg-[#F8FAFC] p-3.5">
+              <div className="flex items-center gap-2 text-[12px] font-semibold text-[#111827]">
+                <Banknote className="h-4 w-4 text-[#3B5BDB]" />
+                Mandatory Statutory Deductions
+              </div>
+              <p className="mt-0.5 text-[11px] text-[#9CA3AF]">
+                Set default remittance percentages for this branch.
+              </p>
+              <label className="mt-3 block text-[11px] font-medium text-[#6B7280]">
+                Select the most appropriate
+              </label>
+              <select
+                aria-label="Mandatory Statutory Deductions"
+                className="mt-1 h-10 w-full rounded-md border border-[#E5E7EB] bg-white px-2 text-[12px] text-[#111827]"
+                value={branchType}
+                onChange={(event) => setBranchType(event.target.value)}
+              >
+                <option value="">Select tier</option>
+                <option value="pioneer">Pioneer</option>
+                <option value="growing">Growing</option>
+                <option value="established">Established</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 border-t border-[#EEF1F6] px-6 py-3">
+          <button
+            type="button"
+            onClick={() => setShowCreateBranch(false)}
+            className="rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[13px] font-semibold text-[#4B5563] hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+          <Button
+            className="h-9 rounded-md bg-[#3B5BDB] text-[12px] font-medium text-white shadow hover:bg-blue-700"
+            onClick={handleCreateBranch}
+            disabled={branchStatus === "saving"}
+          >
+            {branchStatus === "saving" ? "Creating..." : "Create Branch"}
+          </Button>
+        </div>
+      </ModalShell>
+
+      <ModalShell open={showAddRegion} onClose={() => setShowAddRegion(false)} className="max-w-lg">
+        <div className="flex items-start justify-between border-b border-[#EEF1F6] px-6 py-4">
+          <h2 className="text-[16px] font-bold text-[#111827]">Add Region</h2>
+          <button
+            type="button"
+            onClick={() => setShowAddRegion(false)}
+            aria-label="Close"
+            className="rounded-full p-1 text-[#9CA3AF] hover:bg-[#F3F4F6] hover:text-[#111827]"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="grid grid-cols-1 gap-4 px-6 py-5">
+          <div>
+            <label className="text-[12px] font-medium text-[#374151]">Name</label>
+            <Input
+              className="mt-1 h-10 rounded-md border-[#E5E7EB] bg-white text-[12px] text-[#111827]"
+              placeholder="e.g. Southwest Region"
+              value={createName}
+              onChange={(event) => setCreateName(event.target.value)}
+            />
+          </div>
+          <div>
+            <label className="text-[12px] font-medium text-[#374151]">Location</label>
+            <Input
+              className="mt-1 h-10 rounded-md border-[#E5E7EB] bg-white text-[12px] text-[#111827]"
+              placeholder="e.g. Lagos"
+              value={createLocation}
+              onChange={(event) => setCreateLocation(event.target.value)}
+            />
+          </div>
+          <div>
+            <label className="text-[12px] font-medium text-[#374151]">Description</label>
+            <Input
+              className="mt-1 h-10 rounded-md border-[#E5E7EB] bg-white text-[12px] text-[#111827]"
+              placeholder="Briefly describe the fund's purpose"
+              value={createDescription}
+              onChange={(event) => setCreateDescription(event.target.value)}
+            />
+          </div>
+          {createError && <div className="text-[12px] text-rose-600">{createError}</div>}
+        </div>
+        <div className="flex items-center justify-end gap-2 border-t border-[#EEF1F6] px-6 py-3">
+          <button
+            type="button"
+            onClick={() => setShowAddRegion(false)}
+            className="rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[13px] font-semibold text-[#4B5563] hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+          <Button
+            className="h-9 rounded-md bg-[#3B5BDB] text-[12px] font-medium text-white shadow hover:bg-blue-700"
+            onClick={handleCreateRegion}
+            disabled={createStatus === "saving"}
+          >
+            {createStatus === "saving" ? "Adding..." : "Add Region"}
+          </Button>
+        </div>
+      </ModalShell>
+
+      <ModalShell
+        open={viewBranchOpen}
+        onClose={() => setViewBranchOpen(false)}
+        className="max-w-3xl"
+      >
+        {viewBranch && (
+          <>
+            {/* Header */}
+            <div className="flex items-start justify-between border-b border-[#EEF1F6] px-6 py-4">
+              <h2 className="text-[15px] font-bold text-[#111827]">
+                VIEW BRANCH - {viewBranch.name.toUpperCase()} ({viewBranch.id})
+              </h2>
+              <button
+                type="button"
+                onClick={() => setViewBranchOpen(false)}
+                aria-label="Close"
+                className="rounded-full p-1 text-[#9CA3AF] hover:bg-[#F3F4F6] hover:text-[#111827]"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="max-h-[72vh] overflow-y-auto px-6 py-5">
+              {/* Sub-row: status / type / region */}
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[12px]">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-[#6B7280]">Branch Status:</span>
+                  <span
+                    className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${viewBranch.statusTone}`}
+                  >
+                    <span className={`h-1.5 w-1.5 rounded-full ${viewBranch.statusDot}`} />
+                    {viewBranch.status}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-[#6B7280]">Branch Type:</span>
+                  <span className="font-medium capitalize text-[#111827]">
+                    {viewBranch.branchType !== "—" ? viewBranch.branchType : "Growing"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-[#6B7280]">Region:</span>
+                  <span className="font-medium text-[#111827]">
+                    {viewBranch.location !== "Location not specified" ? viewBranch.location : "Nigeria"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Info card */}
+              <div className="mt-4 grid grid-cols-2 gap-4 rounded-[10px] border border-[#EEF1F6] bg-[#F8FAFC] p-4">
+                <div>
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-[#9CA3AF]">
+                    Branch Established
+                  </div>
+                  <div className="mt-1 text-[13px] font-semibold text-[#111827]">Oct 20, 2024</div>
+                </div>
+                <div>
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-[#9CA3AF]">
+                    Age
+                  </div>
+                  <div className="mt-1 text-[13px] font-semibold text-[#3B5BDB]">
+                    12 Years, 4 Months
+                  </div>
+                </div>
+              </div>
+
+              {/* Tabs */}
+              <div className="mt-5 flex items-center gap-6 border-b border-[#EEF1F6]">
+                <button
+                  type="button"
+                  onClick={() => setViewTab("details")}
+                  className={`-mb-px border-b-2 pb-2.5 text-[13px] font-semibold ${
+                    viewTab === "details"
+                      ? "border-[#3B5BDB] text-[#3B5BDB]"
+                      : "border-transparent text-[#6B7280] hover:text-[#111827]"
+                  }`}
+                >
+                  Branch Details
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewTab("personnel")}
+                  className={`-mb-px border-b-2 pb-2.5 text-[13px] font-semibold ${
+                    viewTab === "personnel"
+                      ? "border-[#3B5BDB] text-[#3B5BDB]"
+                      : "border-transparent text-[#6B7280] hover:text-[#111827]"
+                  }`}
+                >
+                  Personnel
+                </button>
+              </div>
+
+              {/* Tab 1: Branch Details */}
+              {viewTab === "details" && (
+                <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
+                  {(() => {
+                    const fieldClass = viewEditMode
+                      ? "mt-1 h-10 rounded-md border-[#E5E7EB] bg-white text-[12px] text-[#111827]"
+                      : "mt-1 h-10 rounded-md border-[#E5E7EB] bg-[#F8FAFC] text-[12px] text-[#6B7280]"
+                    return (
+                      <>
+                        <div>
+                          <label className="text-[12px] font-medium text-[#374151]">Branch Name</label>
+                          <Input className={fieldClass} readOnly={!viewEditMode} defaultValue={viewBranch.name} />
+                        </div>
+                        <div>
+                          <label className="text-[12px] font-medium text-[#374151]">Region</label>
+                          <Input
+                            className={fieldClass}
+                            readOnly={!viewEditMode}
+                            defaultValue={
+                              viewBranch.location !== "Location not specified" ? viewBranch.location : "Nigeria"
+                            }
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[12px] font-medium text-[#374151]">Branch Type</label>
+                          <Input
+                            className={fieldClass}
+                            readOnly={!viewEditMode}
+                            defaultValue={viewBranch.branchType !== "—" ? viewBranch.branchType : "Growing"}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[12px] font-medium text-[#374151]">Currency</label>
+                          <Input className={fieldClass} readOnly={!viewEditMode} defaultValue="NGN ₦" />
+                        </div>
+                        <div>
+                          <label className="text-[12px] font-medium text-[#374151]">Email</label>
+                          <Input
+                            className={fieldClass}
+                            readOnly={!viewEditMode}
+                            defaultValue={
+                              viewBranch.email !== "—" ? viewBranch.email : "branch@shepherdwatch.org"
+                            }
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[12px] font-medium text-[#374151]">Phone</label>
+                          <Input className={fieldClass} readOnly={!viewEditMode} defaultValue="+234 801 234 5678" />
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className="text-[12px] font-medium text-[#374151]">Address</label>
+                          <Input
+                            className={fieldClass}
+                            readOnly={!viewEditMode}
+                            defaultValue="12 Adeyemi Crescent, Ikeja, Lagos, Nigeria"
+                          />
+                        </div>
+                      </>
+                    )
+                  })()}
+                </div>
+              )}
+
+              {/* Tab 2: Personnel */}
+              {viewTab === "personnel" && (
+                <div className="mt-5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-[12px] font-semibold uppercase tracking-wide text-[#111827]">
+                      <Users className="h-4 w-4 text-[#3B5BDB]" />
+                      Current Personnel
+                    </div>
+                    <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-600">
+                      Active Staff (3)
+                    </span>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    {[
+                      { icon: User, role: "Pastor", name: "Rev. Victor Adeyemi", started: "Jan 2020" },
+                      { icon: Calculator, role: "Accountant", name: "John Adeyemi", started: "Mar 2022" },
+                      { icon: Shield, role: "Admin", name: "Sarah Musa", started: "June 2021" },
+                    ].map((person) => {
+                      const Icon = person.icon
+                      return (
+                        <div
+                          key={person.name}
+                          className="rounded-[10px] border border-[#EEF1F6] bg-white p-4 shadow-sm"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#E9EEFF]">
+                              <Icon className="h-4 w-4 text-[#3B5BDB]" />
+                            </div>
+                            <span className="rounded-full bg-[#EEF2FF] px-2 py-0.5 text-[10px] font-semibold text-[#3B5BDB]">
+                              {person.role}
+                            </span>
+                          </div>
+                          <div className="mt-3 text-[13px] font-bold text-[#111827]">{person.name}</div>
+                          <div className="mt-0.5 text-[11px] text-[#9CA3AF]">Started: {person.started}</div>
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  <div className="mt-6 flex items-center gap-2 text-[12px] font-semibold uppercase tracking-wide text-[#111827]">
+                    <History className="h-4 w-4 text-[#6B7280]" />
+                    Personnel History
+                  </div>
+                  <div className="mt-3 overflow-x-auto rounded-[10px] border border-[#EEF1F6]">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="border-b border-[#EEF1F6] bg-[#F8FAFC] text-[10px] font-semibold uppercase tracking-wide text-[#9CA3AF]">
+                          <th className="px-4 py-2.5">Role</th>
+                          <th className="px-4 py-2.5">Name</th>
+                          <th className="px-4 py-2.5">Tenure</th>
+                          <th className="px-4 py-2.5">Departure Reason</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[
+                          { role: "Admin", dot: "bg-amber-500", name: "Michael Chen", tenure: "2019 — 2021", reason: "Relocated" },
+                          { role: "Pastor", dot: "bg-[#3B5BDB]", name: "Pastor Samuel Adebayo", tenure: "2011 — 2015", reason: "Retired" },
+                          { role: "Accountant", dot: "bg-emerald-500", name: "Deborah Martins", tenure: "2014 — 2018", reason: "Transferred to HQ" },
+                          { role: "Admin", dot: "bg-amber-500", name: "James Wilson", tenure: "2016 — 2019", reason: "Resigned" },
+                        ].map((row) => (
+                          <tr key={row.name} className="border-b border-[#F3F5F9] text-[12px] text-[#374151] last:border-0">
+                            <td className="px-4 py-3">
+                              <span className="inline-flex items-center gap-1.5">
+                                <span className={`h-1.5 w-1.5 rounded-full ${row.dot}`} />
+                                {row.role}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 font-semibold text-[#111827]">{row.name}</td>
+                            <td className="px-4 py-3 text-[#6B7280]">{row.tenure}</td>
+                            <td className="px-4 py-3">
+                              <span className="inline-flex rounded-full bg-[#F3F4F6] px-2 py-0.5 text-[10px] font-medium text-[#4B5563]">
+                                {row.reason}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between border-t border-[#EEF1F6] px-6 py-3">
+              <button
+                type="button"
+                onClick={() => setDeactivateConfirmOpen(true)}
+                className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-rose-600 hover:text-rose-700"
+              >
+                <Ban className="h-4 w-4" />
+                Deactivate Branch
+              </button>
+              {viewEditMode ? (
+                <Button
+                  className="h-9 rounded-md bg-[#3B5BDB] text-[12px] font-medium text-white shadow hover:bg-blue-700"
+                  onClick={() => setViewEditMode(false)}
+                >
+                  <Pencil className="h-4 w-4" /> Update Branch
+                </Button>
+              ) : (
+                <Button
+                  className="h-9 rounded-md bg-[#3B5BDB] text-[12px] font-medium text-white shadow hover:bg-blue-700"
+                  onClick={() => setViewEditMode(true)}
+                >
+                  <Pencil className="h-4 w-4" /> Edit Branch
+                </Button>
+              )}
+            </div>
+          </>
+        )}
+      </ModalShell>
+
+      <ModalShell
+        open={deactivateConfirmOpen}
+        onClose={() => setDeactivateConfirmOpen(false)}
+        className="max-w-lg"
+      >
+        <div className="flex items-start justify-between border-b border-[#EEF1F6] px-6 py-4">
+          <div className="flex items-center gap-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-rose-50">
+              <AlertTriangle className="h-4 w-4 text-rose-600" />
+            </span>
+            <h2 className="text-[15px] font-bold text-[#111827]">DEACTIVATE BRANCH</h2>
+          </div>
+          <button
+            type="button"
+            onClick={() => setDeactivateConfirmOpen(false)}
+            aria-label="Close"
+            className="rounded-full p-1 text-[#9CA3AF] hover:bg-[#F3F4F6] hover:text-[#111827]"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="px-6 py-5">
+          <p className="text-[13px] leading-relaxed text-[#374151]">
+            Are you sure you want to deactivate the {viewBranch?.name ?? "branch"} ({viewBranch?.id ?? "—"})?
+            This will restrict all branch users from accessing the system and halt all financial processing for
+            this location.
+          </p>
+          <div className="mt-4 rounded-md border-l-4 border-[#3B5BDB] bg-[#EEF2FF] px-4 py-3 text-[12px] text-[#3B5BDB]">
+            This action can be reversed by a Director from the Branch Management portal.
+          </div>
+        </div>
+        <div className="flex items-center justify-end gap-2 border-t border-[#EEF1F6] px-6 py-3">
+          <button
+            type="button"
+            onClick={() => setDeactivateConfirmOpen(false)}
+            className="rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[13px] font-semibold text-[#4B5563] hover:bg-gray-50"
+          >
+            CANCEL
+          </button>
+          <Button
+            className="h-9 rounded-md bg-rose-600 text-[12px] font-medium text-white shadow hover:bg-rose-700"
+            onClick={() => {
+              if (viewBranch) {
+                void handleBranchStatusToggle(viewBranch)
+              }
+              setDeactivateConfirmOpen(false)
+            }}
+          >
+            <Ban className="h-4 w-4" /> DEACTIVATE BRANCH
+          </Button>
+        </div>
+      </ModalShell>
+
     </div>
   )
 }

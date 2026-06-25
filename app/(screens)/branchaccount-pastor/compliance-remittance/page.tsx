@@ -5,7 +5,7 @@ import BranchAccountantHeader from "@/components/navigation/BranchAccountantHead
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/components/auth/AuthProvider"
 import { useEffect, useMemo, useState, type FormEvent } from "react"
-import { Bell, ChevronDown } from "lucide-react"
+import { Bell } from "lucide-react"
 import { useStatutoryDeductions, type DeductionType, type StatutoryDeduction } from "@/components/hooks/useStatutoryDeductions"
 import { useComplianceSummary } from "@/components/hooks/useComplianceSummary"
 import {
@@ -239,10 +239,6 @@ export default function Page() {
               subtitle="Monitor compliance and remittances."
               rightSlot={
                 <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" className="h-7 rounded-[8px] border-[#E5E7EB] bg-white text-[9px] text-[#6B7280]">
-                    January 2024
-                    <ChevronDown className="h-3 w-3" />
-                  </Button>
                   <div className="h-7 w-7 rounded-full border border-[#E5E7EB] bg-white flex items-center justify-center text-[#6B7280]">
                     <Bell className="h-3.5 w-3.5" />
                   </div>

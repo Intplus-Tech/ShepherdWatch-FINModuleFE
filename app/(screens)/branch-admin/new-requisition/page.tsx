@@ -4,6 +4,8 @@ import { API_V1 } from "@/lib/api";
 
 import React, { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
+import Link from "next/link"
+import { useRouter, usePathname } from "next/navigation"
 import { Inter } from "next/font/google"
 import {
   LayoutDashboard,
@@ -20,6 +22,7 @@ import {
   FileText,
   Paperclip,
   Send,
+  LogOut,
 } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
 import FileUploadDropzone from "@/components/ui/FileUploadDropzone"
@@ -57,8 +60,18 @@ function flattenCoaTree(nodes: CoaTreeNode[]): CoaTreeNode[] {
 }
 
 export default function NewRequisitionPage() {
+  const router = useRouter()
+  const pathname = usePathname()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
-  const { user } = useAuth()
+  const { user, logout } = useAuth()
+  const handleLogout = async () => {
+    try {
+      await logout()
+      router.replace("/login")
+    } catch {
+      router.replace("/login")
+    }
+  }
   const [title, setTitle] = useState("")
   const [coaId, setCoaId] = useState("")
   const [amount, setAmount] = useState("")
@@ -398,23 +411,25 @@ export default function NewRequisitionPage() {
           {/* Main Navigation */}
           <nav className="space-y-1.5 mt-2 px-3">
             {[
-              { label: "Dashboard", href: "#", icon: LayoutDashboard },
-              { label: "Requisitions", href: "#", icon: List, active: true },
-              { label: "Logistics & Repairs", href: "#", icon: Wrench },
-              { label: "Assets", href: "#", icon: Database },
+              { label: "Dashboard", href: "/branch-admin/dashboard", icon: LayoutDashboard },
+              { label: "Requisitions", href: "/branch-admin/requisitions", icon: List },
+              { label: "Logistics & Repairs", href: "/branch-admin/logistics-repair", icon: Wrench },
+              { label: "Assets", href: "/branch-admin/asset", icon: Database },
             ].map((item) => {
               const Icon = item.icon
+              const isActive = pathname === item.href || (item.href === "/branch-admin/requisitions" && pathname === "/branch-admin/new-requisition")
               return (
-                <div
+                <Link
                   key={item.label}
-                  className={`flex items-center justify-between rounded-[8px] px-4 py-3 text-[14px] font-[700] cursor-pointer transition-colors ${item.active ? "bg-[#EEF2FF] text-[#2563EB]" : "text-[#4B5563] hover:bg-gray-50"
+                  href={item.href}
+                  className={`flex items-center justify-between rounded-[8px] px-4 py-3 text-[14px] font-[700] cursor-pointer transition-colors ${isActive ? "bg-[#EEF2FF] text-[#2563EB]" : "text-[#4B5563] hover:bg-gray-50"
                     }`}
                 >
                   <div className="flex items-center gap-3.5">
-                    <Icon className={`h-5 w-5 stroke-[2] ${item.active ? "text-[#2563EB]" : "text-[#6B7280]"}`} />
+                    <Icon className={`h-5 w-5 stroke-[2] ${isActive ? "text-[#2563EB]" : "text-[#6B7280]"}`} />
                     {item.label}
                   </div>
-                </div>
+                </Link>
               )
             })}
           </nav>
@@ -423,16 +438,23 @@ export default function NewRequisitionPage() {
           <div className="px-3 mt-4">
             <div className="text-[11px] font-[800] text-[#9CA3AF] tracking-widest uppercase mb-3 px-4">System</div>
             <div className="space-y-1">
-              <div className="flex items-center gap-3.5 rounded-[8px] px-4 py-3 cursor-pointer text-[14px] font-[700] text-[#4B5563] hover:bg-gray-50 transition-colors">
+              <Link href="/branch-admin/settings" className="flex items-center gap-3.5 rounded-[8px] px-4 py-3 cursor-pointer text-[14px] font-[700] text-[#4B5563] hover:bg-gray-50 transition-colors">
                 <Settings className="h-5 w-5 stroke-[2] text-[#6B7280]" />
                 Settings
-              </div>
+              </Link>
             </div>
           </div>
 
           {/* Bottom Section */}
-          <div className="mt-auto px-3 mb-2">
-            <div className="pt-6 border-t border-[#EEF1F6] flex items-center gap-3.5 px-4 cursor-pointer hover:opacity-80 transition-opacity">
+          <div className="mt-auto px-3 mb-2 pt-6 border-t border-[#EEF1F6]">
+            <button
+              onClick={handleLogout}
+              className="mb-3 flex w-full items-center gap-3 rounded-[8px] px-4 py-2.5 text-[13px] font-semibold text-rose-600 hover:bg-rose-50 transition-colors"
+            >
+              <LogOut className="h-4.5 w-4.5" />
+              Logout
+            </button>
+            <div className="flex items-center gap-3.5 px-4 cursor-pointer hover:opacity-80 transition-opacity">
               <div className="h-10 w-10 relative rounded-full overflow-hidden bg-gray-200 shrink-0 border border-gray-200 flex items-center justify-center">
                 <Image src="/images/Beared%20Guy02-min%201.jpg" alt="Profile avatar" fill className="object-cover" />
               </div>
@@ -481,7 +503,7 @@ export default function NewRequisitionPage() {
 
             {/* Back Button */}
             <div className="mb-1 sm:mb-3">
-              <button className="flex items-center gap-1.5 text-[14px] sm:text-[15px] font-[700] text-[#4B5563] hover:text-[#111827] transition-colors">
+              <button onClick={() => router.back()} className="flex items-center gap-1.5 text-[14px] sm:text-[15px] font-[700] text-[#4B5563] hover:text-[#111827] transition-colors">
                 <ArrowLeft className="h-4.5 w-4.5" strokeWidth={2.5} />
                 Back
               </button>

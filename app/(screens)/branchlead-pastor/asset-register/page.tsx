@@ -205,7 +205,7 @@ export default function AssetRegisterPage() {
             
             {/* Main List Pane */}
             <div className="flex-1 min-w-0 flex flex-col">
-              <button className="flex items-center gap-1.5 text-[14px] font-bold text-[#3B5BDB] hover:text-[#2e4ac0] transition-colors mb-6 w-fit">
+              <button onClick={() => router.back()} className="flex items-center gap-1.5 text-[14px] font-bold text-[#3B5BDB] hover:text-[#2e4ac0] transition-colors mb-6 w-fit">
                 <ArrowLeft className="h-4 w-4 stroke-[2]" />
                 Back
               </button>

@@ -63,7 +63,7 @@ export default function Page() {
 
       <div className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm z-0" onClick={handleClose} />
 
-      <div className="relative z-10 w-[448px] h-[315px] rounded-[16px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.15)] flex flex-col p-6 animate-in zoom-in-95 duration-200">
+      <div className="relative z-10 mx-4 w-full max-w-[448px] max-h-[90vh] overflow-y-auto rounded-[16px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.15)] flex flex-col p-6 animate-in zoom-in-95 duration-200">
 
         {/* Header */}
         <div className="flex items-start justify-between">
@@ -77,12 +77,14 @@ export default function Page() {
         </div>
 
         {/* Form Body */}
-        <div className="flex flex-col gap-[14px] flex-1 mt-[14px]">
+        <div className="flex flex-col gap-[14px] mt-[14px]">
           <div className="space-y-1">
             <label className="text-[11px] font-[700] text-[#374151]">Old Password</label>
             <PasswordInput
               value={currentPassword}
               onChange={(event) => setCurrentPassword(event.target.value)}
+              initiallyVisible={false}
+              autoComplete="off"
               className="h-[36px] w-full rounded-[8px] border border-[#E2E8F0] bg-[#F8FAFC] px-4 text-[13px] font-medium text-[#111827] focus:bg-white focus:border-[#3B5BDB] focus:ring-1 focus:ring-[#3B5BDB] transition-colors outline-none"
             />
           </div>

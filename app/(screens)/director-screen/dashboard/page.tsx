@@ -2,33 +2,23 @@
 
 import React, { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
-import Link from "next/link"
 import {
-  LayoutDashboard,
-  ArrowLeftRight,
-  Coins,
-  Scale,
-  Wallet,
-  Building2,
-  Users,
-  Settings,
   Calendar,
   Download,
   CheckCircle2,
   Flag,
   Eye,
   Banknote,
+  Boxes,
   CreditCard,
   Building as BuildingIcon,
   MapPin,
   ChevronDown,
-  Menu,
-  X,
-  LogOut
 } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
-import { useRouter } from "next/navigation"
+import SidebarNav from "@/components/navigation/SidebarNav"
 import BranchesDropdown from "@/components/navigation/BranchesDropdown"
+import CurrencySwitcher from "@/components/navigation/CurrencySwitcher"
 import { useDashboardOverview } from "@/components/hooks/useDashboardOverview"
 import { SkeletonStatGrid } from "@/components/ui/skeleton"
 import { useIncomeExpenseTrend } from "@/components/hooks/useIncomeExpenseTrend"
@@ -38,39 +28,17 @@ import { useBranchSummary } from "@/components/hooks/useBranchSummary"
 import { useRecentDashboardTransactions } from "@/components/hooks/useRecentDashboardTransactions"
 import { sectionsToCsv, downloadCsv } from "@/lib/export-csv"
 
-const kpiIcons = [Banknote, CreditCard, BuildingIcon, MapPin]
+const kpiIcons = [Banknote, CreditCard, BuildingIcon, Boxes, MapPin]
 const kpiIconStyles = [
   { iconBg: "bg-blue-50", iconColor: "text-blue-500" },
   { iconBg: "bg-rose-50", iconColor: "text-rose-500" },
   { iconBg: "bg-emerald-50", iconColor: "text-emerald-500" },
+  { iconBg: "bg-amber-50", iconColor: "text-amber-500" },
   { iconBg: "bg-purple-50", iconColor: "text-purple-500" },
 ]
 
-const navItems = [
-  { label: "Dashboard", href: "/director-screen/dashboard", icon: LayoutDashboard },
-  { label: "Transactions", href: "/director-screen/transaction", icon: ArrowLeftRight },
-  { label: "Budgeting", href: "/director-screen/budgeting", icon: Coins },
-  { label: "Compliance", href: "/director-screen/compliance", icon: Scale },
-  { label: "Asset", href: "/director-screen/assets", icon: Wallet },
-  { label: "Branch Management", href: "/director-screen/branch-management", icon: Building2 },
-  { label: "Users", href: "/director-screen/users", icon: Users },
-  { label: "Settings", href: "/director-screen/settings", icon: Settings },
-]
-
 export default function Page() {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const { user, logout } = useAuth()
-  const router = useRouter()
-
-  const handleLogout = async () => {
-    try {
-      await logout()
-      router.replace("/login")
-    } catch (err) {
-      console.error("Logout failed", err)
-      router.replace("/login")
-    }
-  }
+  const { user } = useAuth()
 
   const tenantId = useMemo(
     () => user?.tenantId ?? user?.tenant?.id ?? "",
@@ -209,31 +177,43 @@ export default function Page() {
   }
 
   const statCards = useMemo(() => {
-    if (!overview) return []
+    const ov = (overview ?? {}) as {
+      totalIncome?: number
+      totalExpenses?: number
+      netPosition?: number
+      totalAssetValue?: number
+      assetValue?: number
+    }
     return [
       {
         title: "Total Income",
-        value: formatCurrency(overview.totalIncome ?? 0),
+        value: formatCurrency(ov.totalIncome ?? 0),
         trend: "", trendText: "vs last month", trendColor: "text-emerald-500", isPositive: null,
         icon: kpiIcons[0], iconBg: kpiIconStyles[0].iconBg, iconColor: kpiIconStyles[0].iconColor
       },
       {
         title: "Total Expenses",
-        value: formatCurrency(overview.totalExpenses ?? 0),
+        value: formatCurrency(ov.totalExpenses ?? 0),
         trend: "", trendText: "vs last month", trendColor: "text-rose-500", isPositive: null,
         icon: kpiIcons[1], iconBg: kpiIconStyles[1].iconBg, iconColor: kpiIconStyles[1].iconColor
       },
       {
         title: "Net Surplus",
-        value: formatCurrency(overview.netPosition ?? 0),
+        value: formatCurrency(ov.netPosition ?? 0),
         trend: "", trendText: "Healthy Margin", trendColor: "text-emerald-500", isPositive: null,
         icon: kpiIcons[2], iconBg: kpiIconStyles[2].iconBg, iconColor: kpiIconStyles[2].iconColor
+      },
+      {
+        title: "Total Asset Value",
+        value: formatCurrency(ov.totalAssetValue ?? ov.assetValue ?? 0),
+        trend: "", trendText: "Net book value", trendColor: "text-emerald-500", isPositive: null,
+        icon: kpiIcons[3], iconBg: kpiIconStyles[3].iconBg, iconColor: kpiIconStyles[3].iconColor
       },
       {
         title: "Active Branches",
         value: formatNumber(activeBranchesCount ?? 0),
         trend: "", trendText: "Reporting Live Data", trendColor: "text-emerald-500", isPositive: null,
-        icon: kpiIcons[3], iconBg: kpiIconStyles[3].iconBg, iconColor: kpiIconStyles[3].iconColor
+        icon: kpiIcons[4], iconBg: kpiIconStyles[4].iconBg, iconColor: kpiIconStyles[4].iconColor
       }
     ]
   }, [overview, activeBranchesCount])
@@ -315,100 +295,18 @@ export default function Page() {
 
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
-      
-      {/* Mobile Sidebar Overlay */}
-      {isSidebarOpen && (
-        <div 
-          className="fixed inset-0 z-30 bg-gray-900/50 backdrop-blur-sm lg:hidden transition-opacity"
-          onClick={() => setIsSidebarOpen(false)}
-        />
-      )}
 
-      {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-40 flex w-[260px] flex-col border-r border-[#EEF1F6] bg-[#FAFBFF] transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:static lg:flex`}>
-        <div className="flex flex-col gap-1 px-6 pt-6 lg:pt-8 pb-4 relative">
-          <div className="flex items-center gap-2">
-            <Image src="/images/logo.svg" alt="ShepherdWatch" width={160} height={36} className="object-contain" />
-          </div>
-          <button 
-            onClick={() => setIsSidebarOpen(false)}
-            className="lg:hidden absolute top-6 right-4 text-gray-500 hover:text-gray-700 bg-gray-100 p-1 rounded-full"
-          >
-            <X className="h-5 w-5" />
-          </button>
-          <span className="text-[10px] font-medium text-[#3B5BDB] ml-9 -mt-1 uppercase">
-            {user?.role ? String(user.role).replace(/_/g, ' ') : "Director"}
-          </span>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-4 py-2 mt-2">
-          <div className="flex flex-col gap-1.5">
-            {navItems.map((item) => {
-              const Icon = item.icon
-              const isActive = item.href === "/director-screen/dashboard"
-              return (
-                <Link
-                  key={item.label}
-                  href={item.href}
-                  className={`flex items-center gap-3 rounded-[8px] px-4 py-3 text-[13px] font-medium transition-colors ${
-                    isActive
-                      ? "bg-[#3B5BDB] text-white shadow-sm"
-                      : "text-[#6B7280] hover:bg-white hover:text-[#111827]"
-                  }`}
-                >
-                  <Icon className="h-[18px] w-[18px]" />
-                  {item.label}
-                </Link>
-              )
-            })}
-          </div>
-        </div>
-
-        <div className="border-t border-[#EEF1F6] p-5">
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center gap-3 cursor-pointer">
-              <div className="h-10 w-10 overflow-hidden rounded-full border-2 border-white shadow-sm shrink-0">
-                <Image
-                  src="/images/Beared%20Guy02-min%201.jpg"
-                  alt="User avatar"
-                  width={40}
-                  height={40}
-                  className="h-full w-full object-cover"
-                />
-              </div>
-              <div className="flex flex-col">
-                <span className="text-[13px] font-bold text-[#111827]">
-                  {user?.name && !['director user', 'super admin', 'admin user'].includes(user.name.toLowerCase()) ? user.name : user?.email || "Super Admin"}
-                </span>
-                <span className="text-[11px] font-medium text-[#6B7280] capitalize">
-                  {user?.role ? String(user.role).replace(/_/g, ' ').toLowerCase() : "Director"}
-                </span>
-              </div>
-            </div>
-
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-3 rounded-[8px] py-2.5 px-3 -mx-3 text-[13px] font-medium text-rose-600 hover:bg-rose-50 transition-colors w-[calc(100%+24px)] text-left"
-            >
-              <LogOut className="h-4.5 w-4.5" />
-              Logout
-            </button>
-          </div>
-        </div>
-      </aside>
+      <SidebarNav
+        activeHref="/director-screen/dashboard"
+        className="fixed inset-y-0 left-0 z-20 w-[260px] rounded-none bg-[#FAFBFF] border-r border-[#EEF1F6]"
+      />
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col min-w-0 text-[#111827]">
-        
+      <main className="flex-1 xl:ml-[260px] flex flex-col min-w-0 text-[#111827]">
+
         {/* Mobile Header Top Bar */}
         <header className="lg:hidden flex items-center justify-between p-4 bg-white border-b border-[#EEF1F6] sticky top-0 z-20">
           <div className="flex items-center gap-3">
-            <button 
-              onClick={() => setIsSidebarOpen(true)}
-              className="text-gray-600 hover:text-gray-900 p-1"
-            >
-              <Menu className="h-6 w-6" />
-            </button>
             <Image src="/images/logo.svg" alt="ShepherdWatch" width={130} height={28} className="object-contain" />
           </div>
           <div className="h-8 w-8 overflow-hidden rounded-full border border-gray-200">
@@ -434,11 +332,7 @@ export default function Page() {
                 <ChevronDown className="h-3.5 w-3.5 text-[#6B7280] ml-1" />
               </button>
 
-              <div className="flex items-center rounded-md border border-[#E5E7EB] bg-white p-0.5 shadow-sm w-full sm:w-auto justify-between sm:justify-start">
-                <button className="rounded px-3 py-1.5 text-[11px] font-bold bg-[#3B5BDB] text-white">NGN</button>
-                <button className="rounded px-3 py-1.5 text-[11px] font-bold text-[#9CA3AF] hover:text-[#4B5563]">USD</button>
-                <button className="rounded px-3 py-1.5 text-[11px] font-bold text-[#9CA3AF] hover:text-[#4B5563]">EUR</button>
-              </div>
+              <CurrencySwitcher className="w-full sm:w-auto justify-between sm:justify-start" />
 
               <button
                 type="button"
@@ -458,7 +352,7 @@ export default function Page() {
               <SkeletonStatGrid count={4} />
             </div>
           ) : (
-          <div className="mb-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mb-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             {analyticsError && (
               <div className="col-span-full text-[12px] font-medium text-[#EF4444]">{analyticsError}</div>
             )}

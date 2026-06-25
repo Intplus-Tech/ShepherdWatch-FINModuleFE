@@ -7,9 +7,9 @@ import {
   Archive,
   BarChart3,
   Settings,
-  HelpCircle,
   ChevronDown,
   FileText,
+  Users,
   LogOut
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -148,6 +148,17 @@ export default function BranchLeadPastorSidebar() {
           <BarChart3 className="h-5 w-5" strokeWidth={2} />
           Compliance & Remittance
         </Link>
+
+        <Link
+          href="/branchlead-pastor/users"
+          className={cn(
+            "flex items-center gap-3 rounded-[8px] px-3 py-2.5 text-[13px] font-semibold transition-colors",
+            pathname?.includes("/users") || pathname?.includes("/invite-users") ? "bg-[#EFF6FF] text-[#2563EB]" : "text-[#6B7280] hover:bg-gray-50 hover:text-[#111827]"
+          )}
+        >
+          <Users className="h-5 w-5" strokeWidth={2} />
+          Users
+        </Link>
       </nav>
 
       <div className="mt-auto px-4 pb-6 pt-4 border-t border-[#EEF1F6]">
@@ -162,12 +173,6 @@ export default function BranchLeadPastorSidebar() {
             <Settings className="h-4 w-4" />
             Settings
           </Link>
-          <button
-            className="flex items-center gap-3 w-full rounded-[8px] px-3 py-2.5 text-[13px] font-semibold text-[#6B7280] hover:bg-gray-50 hover:text-[#111827] transition-colors"
-          >
-            <HelpCircle className="h-4 w-4" />
-            Help Center
-          </button>
           <button
             onClick={handleLogout}
             className="flex items-center gap-3 w-full rounded-[8px] px-3 py-2.5 text-[13px] font-semibold text-rose-600 hover:bg-rose-50 transition-colors"

@@ -184,9 +184,15 @@ export default function Page() {
   return (
     <div className="h-screen w-full bg-[#F9FAFB] font-sans antialiased text-[#111827] flex overflow-hidden">
       <BranchLeadPastorSidebar />
-      <RequisitionDetailsModal 
-        isOpen={selectedRequisitionId !== null} 
-        onClose={() => setSelectedRequisitionId(null)} 
+      <RequisitionDetailsModal
+        isOpen={selectedRequisitionId !== null}
+        onClose={() => setSelectedRequisitionId(null)}
+        isAuthorizing={isApproving !== null}
+        onAuthorize={async () => {
+          if (!selectedRequisitionId) return
+          await handleApprove(selectedRequisitionId)
+          setSelectedRequisitionId(null)
+        }}
       />
 
 
@@ -274,11 +280,10 @@ export default function Page() {
                       </div>
 
                       <div className="flex items-center gap-6">
-                        <button 
-                          onClick={() => handleApprove(card.rawId)}
-                          disabled={isApproving === card.rawId}
-                          className="h-[44px] rounded-[8px] bg-[#2563EB] px-6 text-[14px] font-bold text-white shadow-md hover:bg-[#1D4ED8] transition-colors flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed">
-                          <LockKeyhole className="h-4 w-4" /> {isApproving === card.rawId ? "Approving..." : "Review & Approve"}
+                        <button
+                          onClick={() => setSelectedRequisitionId(card.rawId)}
+                          className="h-[44px] rounded-[8px] bg-[#2563EB] px-6 text-[14px] font-bold text-white shadow-md hover:bg-[#1D4ED8] transition-colors flex items-center gap-2">
+                          <LockKeyhole className="h-4 w-4" /> Review &amp; Approve
                         </button>
                         <button 
                           onClick={() => setSelectedRequisitionId(card.rawId)}

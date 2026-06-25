@@ -29,6 +29,7 @@ import {
 import { useAuth } from "@/components/auth/AuthProvider"
 import { useRouter } from "next/navigation"
 import { usePathname } from "next/navigation"
+import BranchLeadPastorSidebar from "@/components/navigation/BranchLeadPastorSidebar"
 import { useDashboardOverview } from "@/components/hooks/useDashboardOverview"
 import { useEffect } from "react"
 import { useExpenseDistribution } from "@/components/hooks/useExpenseDistribution"
@@ -202,70 +203,7 @@ export default function Page() {
   }, [rawTransactions])
   return (
     <div className="flex min-h-screen bg-[#F2F4F7] font-sans text-[#111827]">
-      <aside className="hidden lg:flex w-[260px] h-screen sticky top-0 border-r border-[#EEF1F6] bg-[#FAFBFF] flex-col shrink-0">
-        <div className="flex flex-col gap-1 px-6 pt-8 pb-4">
-          <div className="flex items-center gap-2">
-            <Image src="/images/logo.svg" alt="ShepherdWatch" width={160} height={36} className="object-contain" />
-          </div>
-          <span className="text-[10px] font-medium text-[#3B5BDB] ml-9 -mt-1 uppercase">Lead Pastor&apos;s View</span>
-        </div>
-
-        <nav className="px-4 py-2 mt-2 space-y-1.5">
-          {[
-            { label: "Dashboard", icon: LayoutDashboard, href: "/branchlead-pastor/dashboard" },
-            { label: "Financial Management", icon: FileText, href: "/branchlead-pastor/financial-management/income-tracking" },
-            { label: "Assets", icon: Wrench, href: "/branchlead-pastor/assets" },
-            { label: "Budget", icon: Wallet, href: "/branchlead-pastor/budget" },
-            { label: "Compliance & Remittance", icon: ShieldCheck, href: "/branchlead-pastor/compliance-remittance" },
-          ].map((item) => {
-            const Icon = item.icon
-            const isActive = pathname === item.href
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex items-center gap-3 rounded-[8px] px-4 py-3 text-[13px] font-medium transition-colors ${
-                  isActive ? "bg-[#3B5BDB] text-white shadow-sm" : "text-[#6B7280] hover:bg-white hover:text-[#111827]"
-                }`}
-              >
-                <Icon className="h-[18px] w-[18px]" />
-                {item.label}
-              </Link>
-            )
-          })}
-        </nav>
-
-        <div className="mt-auto border-t border-[#EEF1F6] p-5">
-          <div className="space-y-1.5">
-            <Link href="/branchlead-pastor/settings" className="flex items-center gap-3 rounded-[8px] px-4 py-3 text-[13px] font-medium transition-colors text-[#6B7280] hover:bg-white hover:text-[#111827]">
-              <Settings className="h-[18px] w-[18px]" />
-            Settings
-            </Link>
-            <div className="flex items-center gap-3 rounded-[8px] px-4 py-3 text-[13px] font-medium transition-colors text-[#6B7280] hover:bg-white hover:text-[#111827]">
-              <HelpCircle className="h-[18px] w-[18px]" />
-            Help Center
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 mt-6">
-            <div className="h-10 w-10 rounded-full bg-[#1F2937] text-white text-[13px] font-bold flex items-center justify-center">
-              {String(displayName)[0]?.toUpperCase() ?? "U"}
-            </div>
-            <div className="leading-tight overflow-hidden">
-              <div className="text-[13px] font-bold text-[#111827] truncate">{displayName}</div>
-              <div className="text-[11px] font-medium text-[#6B7280] truncate">{roleLabel}</div>
-            </div>
-          </div>
-
-          <button
-            onClick={handleLogout}
-            className="mt-4 flex items-center gap-3 rounded-[8px] py-2.5 px-3 -mx-3 text-[13px] font-medium text-rose-600 hover:bg-rose-50 transition-colors w-[calc(100%+24px)] text-left"
-          >
-            <LogOut className="h-[18px] w-[18px]" />
-            Logout
-          </button>
-        </div>
-      </aside>
+      <BranchLeadPastorSidebar />
 
       <main className="flex-1 px-8 pt-3 pb-6">
         <div className="flex items-center justify-between border-b border-[#EEF1F6] border-b-[0.67px] h-[42.67px]">
@@ -291,9 +229,6 @@ export default function Page() {
               <Calendar className="mr-1.5 h-3.5 w-3.5" />
               January 2024
               <ChevronDown className="ml-1.5 h-3.5 w-3.5" />
-            </Button>
-            <Button size="sm" className="h-9 rounded-[10px] bg-[#3B5BDB] px-4 text-[12px] text-white">
-              + New Request
             </Button>
           </div>
         </div>

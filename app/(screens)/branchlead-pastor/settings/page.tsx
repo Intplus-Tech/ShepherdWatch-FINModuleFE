@@ -4,31 +4,19 @@ import { API_V1 } from "@/lib/api";
 
 import React, { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
-import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
+import { useRouter } from "next/navigation"
 import {
   Bell,
-  FileText,
-  HelpCircle,
-  LayoutDashboard,
   MapPin,
   Save,
   Search,
-  Settings,
-  ShieldCheck,
-  Wallet,
-  Wrench,
-  X,
-  LogOut,
-  Menu,
 } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
+import BranchLeadPastorSidebar from "@/components/navigation/BranchLeadPastorSidebar"
 
 export default function SettingsPage() {
-  const pathname = usePathname()
   const router = useRouter()
   const { updateProfile, user } = useAuth()
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -69,7 +57,6 @@ export default function SettingsPage() {
     return user?.name || user?.email || "User"
   }, [fullName, user])
 
-  const roleLabel = user?.role ? String(user.role).replace(/_/g, " ") : "Lead Pastor"
   const employeeId = String(profile?.id ?? profile?._id ?? "").slice(0, 4) || "----"
   const workEmail = profile?.email ?? user?.email ?? ""
   const branchLabel = profile?.address ?? "Victoria Island Branch, Lagos"
@@ -94,113 +81,15 @@ export default function SettingsPage() {
     }
   }
 
-  const navItems = [
-    { label: "Dashboard", href: "/branchlead-pastor/dashboard", icon: LayoutDashboard },
-    { label: "Financial Management", href: "/branchlead-pastor/financial-management/income-tracking", icon: FileText },
-    { label: "Assets", href: "/branchlead-pastor/assets", icon: Wrench },
-    { label: "Budget", href: "/branchlead-pastor/budget", icon: Wallet },
-    { label: "Compliance & Remittance", href: "/branchlead-pastor/compliance-remittance", icon: ShieldCheck },
-  ]
-
   return (
     <div className="min-h-screen bg-[#F2F4F7] font-sans text-[#111827]">
       <div className="flex">
-        {/* Mobile Sidebar Overlay */}
-        {isSidebarOpen && (
-          <div 
-            className="fixed inset-0 z-30 bg-gray-900/50 backdrop-blur-sm lg:hidden transition-opacity"
-            onClick={() => setIsSidebarOpen(false)}
-          />
-        )}
-
-      {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-40 flex w-[260px] flex-col border-r border-[#EEF1F6] bg-[#FAFBFF] transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:static lg:flex shrink-0`}>
-        <div className="flex flex-col gap-1 px-6 pt-6 lg:pt-8 pb-4 relative">
-          <div className="flex items-center gap-2">
-            <Image src="/images/logo.svg" alt="ShepherdWatch" width={160} height={36} className="object-contain" />
-          </div>
-          <button 
-            onClick={() => setIsSidebarOpen(false)}
-            className="lg:hidden absolute top-6 right-4 text-gray-500 hover:text-gray-700 bg-gray-100 p-1 rounded-full"
-          >
-            <X className="h-5 w-5" />
-          </button>
-          <span className="text-[10px] font-medium text-[#3B5BDB] ml-9 -mt-1 uppercase">
-            {user?.role ? String(user.role).replace(/_/g, ' ') : "Lead Pastor's View"}
-          </span>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-4 py-2 mt-2">
-          <div className="flex flex-col gap-1.5">
-            {navItems.map((item) => {
-              const Icon = item.icon
-              const isActive = pathname === item.href
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`flex items-center gap-3 rounded-[8px] px-4 py-3 text-[13px] font-medium transition-colors ${
-                    isActive
-                      ? "bg-[#3B5BDB] text-white shadow-sm"
-                      : "text-[#6B7280] hover:bg-white hover:text-[#111827]"
-                  }`}
-                >
-                  <Icon className="h-[18px] w-[18px]" />
-                  {item.label}
-                </Link>
-              )
-            })}
-          </div>
-        </div>
-
-        <div className="border-t border-[#EEF1F6] p-5">
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1.5">
-              <Link href="/branchlead-pastor/settings" className="flex items-center gap-3 rounded-[8px] px-4 py-3 text-[13px] font-medium transition-colors bg-[#3B5BDB] text-white shadow-sm">
-                <Settings className="h-[18px] w-[18px]" />
-                Settings
-              </Link>
-              <div className="flex items-center gap-3 rounded-[8px] px-4 py-3 text-[13px] font-medium transition-colors text-[#6B7280] hover:bg-white hover:text-[#111827] cursor-pointer">
-                <HelpCircle className="h-[18px] w-[18px]" />
-                Help Center
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 cursor-pointer mt-2">
-              <div className="h-10 w-10 overflow-hidden rounded-full border-2 border-white shadow-sm shrink-0 bg-[#C7B299] flex items-center justify-center text-[#1F2937] font-bold">
-                {initials}
-              </div>
-              <div className="flex flex-col overflow-hidden">
-                <span className="text-[13px] font-bold text-[#111827] truncate">
-                  {displayName}
-                </span>
-                <span className="text-[11px] font-medium text-[#6B7280] capitalize truncate">
-                  {roleLabel}
-                </span>
-              </div>
-            </div>
-            
-            <button
-              onClick={() => {}} // Dummy logout for now or we can import LogOut if needed
-              className="flex items-center gap-3 rounded-[8px] py-2.5 px-3 -mx-3 text-[13px] font-medium text-rose-600 hover:bg-rose-50 transition-colors w-[calc(100%+24px)] text-left"
-            >
-              <LogOut className="h-4.5 w-4.5" />
-              Logout
-            </button>
-          </div>
-        </div>
-      </aside>
+        <BranchLeadPastorSidebar />
 
         <main className="flex-1 min-w-0 bg-[#F8FAFC] min-h-screen">
           {/* Mobile Header Top Bar */}
           <header className="lg:hidden flex items-center justify-between p-4 bg-white border-b border-[#EEF1F6] sticky top-0 z-20">
             <div className="flex items-center gap-3">
-              <button 
-                onClick={() => setIsSidebarOpen(true)}
-                className="text-gray-600 hover:text-gray-900 p-1"
-              >
-                <Menu className="h-6 w-6" />
-              </button>
               <Image src="/images/logo.svg" alt="ShepherdWatch" width={130} height={28} className="object-contain" />
             </div>
             <div className="h-8 w-8 overflow-hidden rounded-full border border-gray-200 bg-[#C7B299] flex items-center justify-center font-bold text-[#1F2937] text-[10px]">
