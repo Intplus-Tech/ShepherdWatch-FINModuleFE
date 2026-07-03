@@ -105,6 +105,8 @@ function sessionToAuthUser(session: Session | null | undefined): AuthUser | null
     lastName,
     tenantId: u.tenantId,
     tenant: u.tenantId ? { id: u.tenantId } : undefined,
+    branchId: u.branchId,
+    branch: u.branchId ? { id: u.branchId } : undefined,
   };
 }
 

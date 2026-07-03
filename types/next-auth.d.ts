@@ -7,6 +7,7 @@ declare module "next-auth" {
       email: string;
       role: string;
       tenantId?: string;
+      branchId?: string;
       firstName?: string;
       lastName?: string;
     } & DefaultSession["user"];
@@ -19,6 +20,7 @@ declare module "next-auth" {
     email: string;
     role: string;
     tenantId?: string;
+      branchId?: string;
     firstName?: string;
     lastName?: string;
     name?: string | null;
@@ -34,6 +36,7 @@ declare module "next-auth/jwt" {
     email?: string;
     role?: string;
     tenantId?: string;
+      branchId?: string;
     firstName?: string;
     lastName?: string;
     accessToken?: string;
@@ -52,6 +55,7 @@ declare module "@auth/core/jwt" {
     email?: string;
     role?: string;
     tenantId?: string;
+      branchId?: string;
     firstName?: string;
     lastName?: string;
     accessToken?: string;
@@ -68,6 +72,7 @@ declare module "@auth/core/types" {
     email: string;
     role: string;
     tenantId?: string;
+      branchId?: string;
     firstName?: string;
     lastName?: string;
     name?: string | null;
@@ -81,6 +86,7 @@ declare module "@auth/core/types" {
       email: string;
       role: string;
       tenantId?: string;
+      branchId?: string;
       firstName?: string;
       lastName?: string;
       name?: string | null;

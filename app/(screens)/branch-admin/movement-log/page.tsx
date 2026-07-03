@@ -1,11 +1,30 @@
 "use client";
 
-import React from "react";
+import React, { useMemo } from "react";
 import { Inter } from "next/font/google";
+import { useRouter } from "next/navigation";
 import { X, Calendar, ChevronDown, ListFilter, Download, Printer, LayoutGrid, Laptop, Video, Table as TableIcon } from "lucide-react";
 import AssetsHubPage from "../asset/page";
+import { useAssetMovements, type AssetMovement } from "@/components/hooks/useAssetMovements";
 
 const inter = Inter({ subsets: ["latin"] });
+
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "--";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function splitDateTime(value: string): { date: string; time: string } {
+  if (!value || value === "—") return { date: "—", time: "" };
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return { date: value, time: "" };
+  return {
+    date: d.toLocaleDateString("en-NG", { day: "2-digit", month: "short", year: "numeric" }),
+    time: d.toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" }),
+  };
+}
 
 // Mock data based directly on Figma reference
 const movementData = [
@@ -81,7 +100,42 @@ const movementData = [
   },
 ];
 
+const TO_DOTS = ["bg-[#22C55E]", "bg-[#F97316]", "bg-[#3B82F6]", "bg-[#EAB308]"];
+const HANDLER_BGS = [
+  "bg-[#E0E7FF] text-[#4338CA]",
+  "bg-[#FCE7F3] text-[#BE185D]",
+  "bg-[#E2E8F0] text-[#334155]",
+  "bg-[#CCFBF1] text-[#0F766E]",
+  "bg-[#FFEDD5] text-[#C2410C]",
+];
+
 export default function MovementLogModalPage() {
+  const router = useRouter();
+  const { items: movementItems, isLoading } = useAssetMovements();
+
+  const liveRows = useMemo(() => {
+    return movementItems.map((m: AssetMovement, idx) => {
+      const handler = String(m.handledBy ?? m.movedBy ?? "—");
+      const { date, time } = splitDateTime(String(m.movedAt ?? m.createdAt ?? ""));
+      return {
+        date,
+        time,
+        asset: String(m.assetName ?? m.assetId ?? "Asset"),
+        icon: <LayoutGrid className="w-[15px] h-[15px] text-[#64748B] stroke-[2px]" />,
+        iconBg: "bg-[#F1F5F9] border border-[#E2E8F0]",
+        from: String(m.fromLocation ?? "—"),
+        to: String(m.toLocation ?? "—"),
+        toDot: TO_DOTS[idx % TO_DOTS.length],
+        handledBy: handler,
+        handledByInitials: initialsOf(handler),
+        handledByBg: HANDLER_BGS[idx % HANDLER_BGS.length],
+        reason: String(m.reason ?? m.movementType ?? "—"),
+      };
+    });
+  }, [movementItems]);
+
+  const rows = liveRows.length > 0 ? liveRows : movementData;
+
   return (
     <div className={`relative min-h-[100dvh] w-full ${inter.className} antialiased`}>
       {/* Blurred Background Page */}
@@ -104,7 +158,7 @@ export default function MovementLogModalPage() {
               <h2 className="text-[#111827] text-[18px] sm:text-[22px] font-[800] leading-tight tracking-tight">Full Movement History</h2>
               <p className="text-[#6B7280] text-[13px] sm:text-[14px] font-[500]">Detailed log of all asset movements within the branch.</p>
             </div>
-            <button className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors shrink-0 text-[#9CA3AF]">
+            <button onClick={() => router.back()} className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors shrink-0 text-[#9CA3AF]">
               <X className="h-5 w-5 stroke-[2px]" />
             </button>
           </div>
@@ -180,7 +234,12 @@ export default function MovementLogModalPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#EEF1F6]">
-                  {movementData.map((item, idx) => (
+                  {isLoading && liveRows.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="py-6 text-[13px] font-[500] text-[#64748B]">Loading movements…</td>
+                    </tr>
+                  )}
+                  {rows.map((item, idx) => (
                     <tr key={idx} className="group hover:bg-[#F8FAFC] transition-colors w-full cursor-pointer">
                       {/* Date & Time */}
                       <td className="py-4 align-top">

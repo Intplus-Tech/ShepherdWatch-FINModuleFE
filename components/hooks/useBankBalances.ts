@@ -1,5 +1,6 @@
 import { API_V1 } from "@/lib/api";
 import { useState, useCallback } from "react"
+import { useAuth } from "@/components/auth/AuthProvider"
 
 export interface BankAccount {
   accountName: string
@@ -24,6 +25,7 @@ interface UseBankBalancesProps {
 }
 
 export function useBankBalances(initialProps?: UseBankBalancesProps) {
+  const { user } = useAuth()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [bankData, setBankData] = useState<BankBalancesData | null>(null)
@@ -34,8 +36,9 @@ export function useBankBalances(initialProps?: UseBankBalancesProps) {
       setError(null)
       try {
         const mergedProps = { ...initialProps, ...props }
+        const branchId = mergedProps.branchId ?? user?.branchId
         const qs = new URLSearchParams()
-        if (mergedProps.branchId) qs.set("branchId", mergedProps.branchId)
+        if (branchId) qs.set("branchId", branchId)
 
         const res = await fetch(`${API_V1}/dashboard/bank-balances?${qs.toString()}`)
         const payload = await res.json().catch(() => null)
@@ -53,7 +56,7 @@ export function useBankBalances(initialProps?: UseBankBalancesProps) {
         setLoading(false)
       }
     },
-    [initialProps]
+    [initialProps, user?.branchId]
   )
 
   return { loading, error, bankData, fetchBankBalances }

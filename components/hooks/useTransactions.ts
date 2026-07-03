@@ -28,6 +28,7 @@ type UseTransactionsOptions = {
   limit?: number
   search?: string
   type?: string
+  branchId?: string
 }
 
 export function useTransactions(options: UseTransactionsOptions = {}) {
@@ -38,9 +39,9 @@ export function useTransactions(options: UseTransactionsOptions = {}) {
   const [error, setError] = useState<string | null>(null)
   const [refreshIndex, setRefreshIndex] = useState(0)
 
-  const tenantId = useMemo(
-    () => user?.tenantId ?? user?.tenant?.id ?? "",
-    [user]
+  const branchId = useMemo(
+    () => options.branchId ?? user?.branchId ?? "",
+    [options.branchId, user]
   )
 
   const refresh = () => setRefreshIndex((prev) => prev + 1)
@@ -54,7 +55,7 @@ export function useTransactions(options: UseTransactionsOptions = {}) {
 
       try {
         const params = new URLSearchParams()
-        if (tenantId) params.set("tenantId", tenantId)
+        if (branchId) params.set("branchId", branchId)
         if (options.status) params.set("status", options.status)
         if (options.startDate) params.set("startDate", options.startDate)
         if (options.endDate) params.set("endDate", options.endDate)
@@ -146,8 +147,8 @@ export function useTransactions(options: UseTransactionsOptions = {}) {
       isMounted = false
     }
   }, [
-    tenantId, 
-    options.status, 
+    branchId,
+    options.status,
     options.startDate, 
     options.endDate, 
     options.page,

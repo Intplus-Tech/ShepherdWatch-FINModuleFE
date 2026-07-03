@@ -224,7 +224,7 @@ function PageInner() {
                 className="flex items-center gap-2 text-[12px] font-medium text-[#4B5563] bg-gray-50 border border-[#E5E7EB] rounded-[6px] px-3.5 py-2 hover:bg-gray-100 transition-colors shadow-sm"
               >
                 <Plus className="h-3.5 w-3.5" />
-                Add New Asset Category
+                Add New Depreciation Policy
               </button>
               <button className="rounded-[6px] bg-[#3B5BDB] px-4 py-2 text-[12px] font-[600] text-white shadow hover:bg-blue-700 transition-colors">
                 Save Policies

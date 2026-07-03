@@ -59,13 +59,8 @@ export function useRequisitionInbox(options: UseRequisitionInboxOptions = {}) {
             .branchId === "object"
           ? (user as unknown as { branchId?: { _id?: string; id?: string } }).branchId?._id ??
             (user as unknown as { branchId?: { _id?: string; id?: string } }).branchId?.id ??
-            user?.tenantId ??
-            user?.tenant?.id ??
             ""
-          : (user as unknown as { branchId?: string })?.branchId ??
-            user?.tenantId ??
-            user?.tenant?.id ??
-            ""
+          : (user as unknown as { branchId?: string })?.branchId ?? ""
       ),
     [options.branchId, user]
   )

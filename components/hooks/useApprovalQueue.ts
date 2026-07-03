@@ -1,5 +1,6 @@
 import { API_V1 } from "@/lib/api";
 import { useState, useCallback } from "react"
+import { useAuth } from "@/components/auth/AuthProvider"
 
 export interface ApprovalQueueStatus {
   count: number
@@ -20,6 +21,7 @@ interface UseApprovalQueueProps {
 }
 
 export function useApprovalQueue(initialProps?: UseApprovalQueueProps) {
+  const { user } = useAuth()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [queueData, setQueueData] = useState<ApprovalQueueData | null>(null)
@@ -30,8 +32,9 @@ export function useApprovalQueue(initialProps?: UseApprovalQueueProps) {
       setError(null)
       try {
         const mergedProps = { ...initialProps, ...props }
+        const branchId = mergedProps.branchId ?? user?.branchId
         const qs = new URLSearchParams()
-        if (mergedProps.branchId) qs.set("branchId", mergedProps.branchId)
+        if (branchId) qs.set("branchId", branchId)
 
         const res = await fetch(`${API_V1}/dashboard/approval-queue?${qs.toString()}`)
         const payload = await res.json().catch(() => null)
@@ -49,7 +52,7 @@ export function useApprovalQueue(initialProps?: UseApprovalQueueProps) {
         setLoading(false)
       }
     },
-    [initialProps]
+    [initialProps, user?.branchId]
   )
 
   return { loading, error, queueData, fetchQueue }

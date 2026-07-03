@@ -4,7 +4,7 @@ import { API_V1 } from "@/lib/api";
 import { getCsrfTokenFromCookie } from "@/lib/csrf";
 import { formatCurrency } from "@/lib/format";
 
-import React, { useEffect, useMemo, useState } from "react"
+import React, { useEffect, useMemo, useRef, useState } from "react"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { Inter } from "next/font/google"
@@ -30,6 +30,7 @@ import { useAuth } from "@/components/auth/AuthProvider"
 import BranchAccountantSidebar from "@/components/navigation/BranchAccountantSidebar"
 import { useAssetClasses } from "@/components/hooks/useAssetClasses"
 import { useDebouncedValue } from "@/components/hooks/useDebouncedValue"
+import { useFileUpload } from "@/components/hooks/useFileUpload"
 import {
   Dialog,
   DialogContent,
@@ -241,6 +242,59 @@ export default function Page() {
       isMounted = false
     }
   }, [activeCategory, tenantId, classNameToId, refreshKey])
+
+  // Attachments: upload file(s) via /file-uploads, then PATCH the resulting ids
+  // onto the active asset via /assets/{id}/attachments. Defensive throughout.
+  const { uploadFile } = useFileUpload()
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null)
+  const [attachmentIds, setAttachmentIds] = useState<string[]>([])
+  const [attaching, setAttaching] = useState(false)
+  const [attachError, setAttachError] = useState<string | null>(null)
+  const [attachSuccess, setAttachSuccess] = useState<string | null>(null)
+
+  const activeAsset = useMemo(
+    () => filteredAssets.find((a) => a.active) ?? filteredAssets[0],
+    [filteredAssets],
+  )
+
+  const handleAddAttachment = async (fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return
+    const assetId = activeAsset?.rawId
+    if (!assetId) {
+      setAttachError("Select an asset before adding attachments.")
+      return
+    }
+    setAttaching(true)
+    setAttachError(null)
+    setAttachSuccess(null)
+    try {
+      const uploaded: string[] = []
+      for (const file of Array.from(fileList)) {
+        const result = await uploadFile(file, "asset-attachments", tenantId || undefined)
+        if (result?._id) uploaded.push(result._id)
+      }
+      const nextIds = Array.from(new Set([...attachmentIds, ...uploaded]))
+
+      const response = await fetch(`${API_V1}/assets/${assetId}/attachments`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": getCsrfTokenFromCookie(),
+        },
+        credentials: "include",
+        body: JSON.stringify({ attachmentIds: nextIds, attachments: nextIds }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(payload?.message ?? "Unable to save attachments.")
+
+      setAttachmentIds(nextIds)
+      setAttachSuccess(`${uploaded.length} attachment${uploaded.length === 1 ? "" : "s"} saved.`)
+    } catch (err) {
+      setAttachError(err instanceof Error ? err.message : "Unable to save attachments.")
+    } finally {
+      setAttaching(false)
+    }
+  }
 
   const resetForm = () => {
     setForm(INITIAL_FORM)
@@ -645,8 +699,32 @@ export default function Page() {
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <h4 className="text-[11px] font-[800] text-[#6B7280] uppercase tracking-widest">ATTACHMENTS</h4>
-                    <button className="text-[12px] font-bold text-[#2563EB] hover:text-[#1D4ED8] transition-colors flex items-center gap-1">+ Add</button>
+                    <button
+                      type="button"
+                      onClick={() => attachmentInputRef.current?.click()}
+                      disabled={attaching}
+                      className="text-[12px] font-bold text-[#2563EB] hover:text-[#1D4ED8] transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {attaching ? "Saving…" : "+ Add"}
+                    </button>
+                    <input
+                      ref={attachmentInputRef}
+                      type="file"
+                      multiple
+                      accept="image/*,application/pdf"
+                      className="hidden"
+                      onChange={(e) => {
+                        handleAddAttachment(e.target.files)
+                        e.target.value = ""
+                      }}
+                    />
                   </div>
+
+                  {(attachError || attachSuccess) && (
+                    <p className={`mb-2 text-[11px] font-medium ${attachError ? "text-[#EF4444]" : "text-emerald-600"}`}>
+                      {attachError ?? attachSuccess}
+                    </p>
+                  )}
 
                   <div className="space-y-2">
                     {/* File 1 */}

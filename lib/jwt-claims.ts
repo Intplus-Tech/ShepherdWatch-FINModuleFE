@@ -59,3 +59,17 @@ export function extractBranchIdFromJwt(token: string): string {
     pickString(payload, ["tenantId", "tenant_id"])
   );
 }
+
+/**
+ * Extract branchId and tenantId as distinct values from a backend access token.
+ * Branch-scoped backend validators expect `branchId`; conflating it with
+ * tenantId (as older code did) makes them reject otherwise-valid requests.
+ */
+export function extractIdsFromJwt(token: string): { branchId: string; tenantId: string } {
+  const payload = decodeJwtPayload(token);
+  if (!payload) return { branchId: "", tenantId: "" };
+  return {
+    branchId: pickString(payload, ["branchId", "branch_id"]),
+    tenantId: pickString(payload, ["tenantId", "tenant_id"]),
+  };
+}

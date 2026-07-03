@@ -1,5 +1,6 @@
 import { API_V1 } from "@/lib/api";
 import { useState, useCallback } from "react"
+import { useAuth } from "@/components/auth/AuthProvider"
 
 export interface IncomeExpenseTrendItem {
   month: string
@@ -19,6 +20,7 @@ interface UseIncomeExpenseTrendProps {
 }
 
 export function useIncomeExpenseTrend(initialProps?: UseIncomeExpenseTrendProps) {
+  const { user } = useAuth()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [trendData, setTrendData] = useState<IncomeExpenseTrendData | null>(null)
@@ -29,8 +31,9 @@ export function useIncomeExpenseTrend(initialProps?: UseIncomeExpenseTrendProps)
       setError(null)
       try {
         const mergedProps = { ...initialProps, ...props }
+        const branchId = mergedProps.branchId ?? user?.branchId
         const qs = new URLSearchParams()
-        if (mergedProps.branchId) qs.set("branchId", mergedProps.branchId)
+        if (branchId) qs.set("branchId", branchId)
         if (mergedProps.startDate) qs.set("startDate", mergedProps.startDate)
         if (mergedProps.endDate) qs.set("endDate", mergedProps.endDate)
 
@@ -55,7 +58,7 @@ export function useIncomeExpenseTrend(initialProps?: UseIncomeExpenseTrendProps)
         setLoading(false)
       }
     },
-    [initialProps]
+    [initialProps, user?.branchId]
   )
 
   return { loading, error, trendData, fetchTrend }
