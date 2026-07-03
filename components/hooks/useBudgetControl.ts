@@ -1,5 +1,6 @@
 import { API_V1 } from "@/lib/api";
 import { useState, useCallback } from "react"
+import { useAuth } from "@/components/auth/AuthProvider"
 
 export interface BudgetHierarchicalItem {
   name: string
@@ -40,6 +41,7 @@ interface UseBudgetControlProps {
 }
 
 export function useBudgetControl(initialProps?: UseBudgetControlProps) {
+  const { user } = useAuth()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [controlData, setControlData] = useState<BudgetControlData | null>(null)
@@ -50,8 +52,9 @@ export function useBudgetControl(initialProps?: UseBudgetControlProps) {
       setError(null)
       try {
         const mergedProps = { ...initialProps, ...props }
+        const branchId = mergedProps.branchId ?? user?.branchId
         const qs = new URLSearchParams()
-        if (mergedProps.branchId) qs.set("branchId", mergedProps.branchId)
+        if (branchId) qs.set("branchId", branchId)
         if (mergedProps.fiscalYear) qs.set("fiscalYear", mergedProps.fiscalYear.toString())
 
         const res = await fetch(`${API_V1}/financial/budgets/control?${qs.toString()}`, {
@@ -72,7 +75,7 @@ export function useBudgetControl(initialProps?: UseBudgetControlProps) {
         setLoading(false)
       }
     },
-    [initialProps]
+    [initialProps, user?.branchId]
   )
 
   return { loading, error, controlData, fetchControlData }

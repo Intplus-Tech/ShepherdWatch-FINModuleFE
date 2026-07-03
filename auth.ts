@@ -14,7 +14,7 @@ import {
   InvalidCredentialsError,
   mapLoginErrorToAuthError,
 } from "@/lib/auth-errors";
-import { extractBranchIdFromJwt } from "@/lib/jwt-claims";
+import { extractBranchIdFromJwt, extractIdsFromJwt } from "@/lib/jwt-claims";
 
 const ACCESS_TOKEN_TTL_MS = ACCESS_TOKEN_MAX_AGE_SECONDS * 1000;
 
@@ -164,6 +164,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const firstName = pickString(userSrc, ["firstName"]);
         const lastName = pickString(userSrc, ["lastName"]);
         const tenantId = pickString(userSrc, ["tenantId", "branchId", "branch_id"]) ?? pickString(data, ["tenantId", "branchId", "branch_id"]);
+        const branchId =
+          pickString(userSrc, ["branchId", "branch_id"]) ??
+          pickString(data, ["branchId", "branch_id"]) ??
+          (accessToken ? extractIdsFromJwt(accessToken).branchId || undefined : undefined);
         const fullName =
           pickString(userSrc, ["fullName", "name"]) ??
           (firstName && lastName ? `${firstName} ${lastName}` : firstName);
@@ -176,6 +180,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           email,
           role,
           tenantId,
+          branchId,
           firstName,
           lastName,
           name: fullName ?? null,
@@ -194,6 +199,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.email = user.email;
         token.role = user.role;
         token.tenantId = user.tenantId;
+        token.branchId = user.branchId;
         token.firstName = user.firstName;
         token.lastName = user.lastName;
         token.accessToken = user.accessToken;
@@ -208,11 +214,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         return token;
       }
 
-      // Backfill tenantId for sessions created before the fix was applied.
-      // The access token (a backend JWT) carries branchId/tenantId as a claim.
-      if (!token.tenantId && typeof token.accessToken === "string" && token.accessToken) {
-        const extracted = extractBranchIdFromJwt(token.accessToken);
-        if (extracted) token.tenantId = extracted;
+      // Backfill tenantId/branchId for sessions created before the fix was
+      // applied. The access token (a backend JWT) carries them as claims.
+      if (typeof token.accessToken === "string" && token.accessToken) {
+        if (!token.tenantId) {
+          const extracted = extractBranchIdFromJwt(token.accessToken);
+          if (extracted) token.tenantId = extracted;
+        }
+        if (!token.branchId) {
+          // Use ONLY the distinct branch claim — never the tenantId fallback —
+          // so org-level users (Director/Super Admin) keep an empty branchId
+          // and continue to see cross-branch data.
+          const { branchId } = extractIdsFromJwt(token.accessToken);
+          token.branchId = branchId || undefined;
+        }
       }
 
       // Access token still valid — nothing to do.
@@ -258,6 +273,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         email: token.email ?? session.user?.email ?? "",
         role: token.role ?? "",
         tenantId: token.tenantId,
+        branchId: token.branchId,
         firstName: token.firstName,
         lastName: token.lastName,
         name:

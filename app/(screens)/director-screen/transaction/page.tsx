@@ -3,7 +3,7 @@
 
 import Image from "next/image"
 import Link from "next/link"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import {
   LayoutDashboard,
   ArrowLeftRight,
@@ -35,10 +35,19 @@ import {
   TrendingUp,
   Hourglass,
   Save,
+  ShieldCheck,
+  Flag,
+  Sparkles,
+  UploadCloud,
+  CheckSquare,
 } from "lucide-react"
 import SidebarNav from "@/components/navigation/SidebarNav"
 import { ModalShell } from "@/components/ui/modal-shell"
 import { AmountInput, parseAmount } from "@/components/ui/amount-input"
+import { API_V1 } from "@/lib/api"
+import { getCsrfTokenFromCookie } from "@/lib/csrf"
+import { useTransactions, type TransactionItem } from "@/components/hooks/useTransactions"
+import { useAuth } from "@/components/auth/AuthProvider"
 
 const navItems = [
   { label: "Dashboard", href: "/director-screen/dashboard", icon: LayoutDashboard },
@@ -76,9 +85,6 @@ export default function Page() {
   )
 }
 
-// ---------------------------------------------------------------------------
-// Shared Bank Transactions flow (used by Super Admin & Branch Accountant pages)
-// ---------------------------------------------------------------------------
 
 type RowStatus = "pending" | "uncategorized" | "cleared" | "none"
 
@@ -96,206 +102,6 @@ type DemoRow = {
   linkedGroup: "G1" | null
   reconcilable?: boolean
 }
-
-const DEMO_ROWS: DemoRow[] = [
-  {
-    id: "1",
-    date: "Oct 23, 2023",
-    txId: "TXN-89021",
-    payee: "Sunday General Offering",
-    description: "",
-    account: "General Offerings (0012337821)",
-    expense: null,
-    income: 14250,
-    category: "General Offering",
-    status: "cleared",
-    linkedGroup: "G1",
-  },
-  {
-    id: "2",
-    date: "Oct 23, 2023",
-    txId: "TXN-89022",
-    payee: "Monthly Tithe - John Doe",
-    description: "",
-    account: "General Offerings (0012337821)",
-    expense: null,
-    income: 123250,
-    category: "General Offering",
-    status: "cleared",
-    linkedGroup: "G1",
-  },
-  {
-    id: "3",
-    date: "Oct 23, 2023",
-    txId: "TXN-89023",
-    payee: "Building Fund Donation",
-    description: "",
-    account: "Capital Project (0012117811)",
-    expense: null,
-    income: 14250,
-    category: "Capital Project",
-    status: "pending",
-    linkedGroup: null,
-  },
-  {
-    id: "4",
-    date: "Oct 23, 2023",
-    txId: "TXN-89024",
-    payee: "Benevolence Fund - Smith Family",
-    description: "",
-    account: "Thanksgiving (7820176218)",
-    expense: null,
-    income: 14250,
-    category: "-",
-    status: "uncategorized",
-    linkedGroup: null,
-  },
-  {
-    id: "5",
-    date: "Oct 23, 2023",
-    txId: "TXN-89021",
-    payee: "Sunday General Offering",
-    description: "",
-    account: "General Offerings (0012337821)",
-    expense: null,
-    income: 14250,
-    category: "General Offering",
-    status: "cleared",
-    linkedGroup: null,
-    reconcilable: true,
-  },
-  {
-    id: "6",
-    date: "Oct 23, 2023",
-    txId: "TXN-89021",
-    payee: "Sunday General Offering",
-    description: "",
-    account: "General Offerings (0012337821)",
-    expense: null,
-    income: 14250,
-    category: "General Offering",
-    status: "none",
-    linkedGroup: null,
-  },
-  {
-    id: "7",
-    date: "Oct 23, 2023",
-    txId: "TXN-89021",
-    payee: "New AC Purchase for church",
-    description: "",
-    account: "",
-    expense: 14250,
-    income: null,
-    category: "Operational Expense",
-    status: "none",
-    linkedGroup: null,
-  },
-  {
-    id: "8",
-    date: "Oct 23, 2023",
-    txId: "TXN-89021",
-    payee: "ShopForFree",
-    description: "",
-    account: "",
-    expense: 14250,
-    income: null,
-    category: "Program Project",
-    status: "none",
-    linkedGroup: null,
-  },
-  {
-    id: "9",
-    date: "Oct 23, 2023",
-    txId: "TXN-89021",
-    payee: "Building Project",
-    description: "",
-    account: "",
-    expense: 14250,
-    income: null,
-    category: "Capital Project",
-    status: "none",
-    linkedGroup: null,
-  },
-  {
-    id: "10",
-    date: "Oct 22, 2023",
-    txId: "TXN-89030",
-    payee: "Wednesday Service Offering",
-    description: "",
-    account: "General Offerings (0012337821)",
-    expense: null,
-    income: 58400,
-    category: "General Offering",
-    status: "cleared",
-    linkedGroup: null,
-    reconcilable: true,
-  },
-  {
-    id: "11",
-    date: "Oct 22, 2023",
-    txId: "TXN-89031",
-    payee: "Harvest Thanksgiving",
-    description: "",
-    account: "Thanksgiving (7820176218)",
-    expense: null,
-    income: 240000,
-    category: "Thanksgiving",
-    status: "pending",
-    linkedGroup: null,
-  },
-  {
-    id: "12",
-    date: "Oct 21, 2023",
-    txId: "TXN-89032",
-    payee: "Generator Diesel Supply",
-    description: "",
-    account: "",
-    expense: 96500,
-    income: null,
-    category: "Operational Expense",
-    status: "none",
-    linkedGroup: null,
-  },
-  {
-    id: "13",
-    date: "Oct 21, 2023",
-    txId: "TXN-89033",
-    payee: "Monthly Tithe - Mary Grace",
-    description: "",
-    account: "General Offerings (0012337821)",
-    expense: null,
-    income: 75000,
-    category: "Tithe",
-    status: "cleared",
-    linkedGroup: null,
-  },
-  {
-    id: "14",
-    date: "Oct 20, 2023",
-    txId: "TXN-89034",
-    payee: "Unidentified Bank Credit",
-    description: "",
-    account: "Thanksgiving (7820176218)",
-    expense: null,
-    income: 32000,
-    category: "-",
-    status: "uncategorized",
-    linkedGroup: null,
-  },
-  {
-    id: "15",
-    date: "Oct 20, 2023",
-    txId: "TXN-89035",
-    payee: "Youth Camp Materials",
-    description: "",
-    account: "",
-    expense: 41200,
-    income: null,
-    category: "Program Project",
-    status: "pending",
-    linkedGroup: null,
-  },
-]
 
 const INCOME_CATEGORIES = ["General Offering", "Thanksgiving", "Tithe", "Capital Project"]
 const EXPENSE_CATEGORIES = ["Program Project", "Operational Expense", "Capital Project"]
@@ -332,15 +138,63 @@ function formatUSD(value: number) {
   }).format(value)
 }
 
+function formatRowDate(value?: string) {
+  if (!value) return ""
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return value
+  return parsed.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" })
+}
+
+// Treat CREDIT / INFLOW / INCOME as income; everything else as an expense.
+function isCreditFlow(flowType?: string) {
+  const f = (flowType ?? "").toUpperCase()
+  return f === "CREDIT" || f === "INFLOW" || f === "INCOME"
+}
+
+function statusFromApi(status?: string): RowStatus {
+  const s = (status ?? "").toUpperCase()
+  if (s === "VERIFIED" || s === "CLEARED" || s === "RECONCILED") return "cleared"
+  if (s === "PENDING") return "pending"
+  if (s === "UNVERIFIED" || s === "UNCATEGORIZED") return "uncategorized"
+  return "none"
+}
+
+// Map the live API transaction shape to the existing DemoRow shape the table renders.
+function mapTransactionToRow(tx: TransactionItem): DemoRow {
+  const credit = isCreditFlow(tx.flowType)
+  const amount = Number(tx.amount ?? 0)
+  return {
+    id: tx.id,
+    date: formatRowDate(tx.date),
+    txId: tx.id,
+    payee: tx.description || "—",
+    description: "",
+    account: tx.coaName ?? "",
+    expense: credit ? null : amount,
+    income: credit ? amount : null,
+    category: tx.category || "-",
+    status: statusFromApi(tx.status),
+    linkedGroup: null,
+  }
+}
+
 export function BankTransactions() {
   const [tab, setTab] = useState<"ALL" | "CREDIT" | "DEBIT">("ALL")
   const [search, setSearch] = useState("")
-  const [rows, setRows] = useState<DemoRow[]>(DEMO_ROWS)
   const [accountFilter, setAccountFilter] = useState("All Accounts")
   const [month, setMonth] = useState("Oct 2023")
   const [page, setPage] = useState(0)
 
   const PAGE_SIZE = 5
+
+  // Live data
+  const { transactions, loading, error, refresh } = useTransactions({ limit: 200 })
+
+  // Local copy of the mapped rows so category edits can be applied optimistically.
+  const [rows, setRows] = useState<DemoRow[]>([])
+  useEffect(() => {
+    setRows(transactions.map(mapTransactionToRow))
+  }, [transactions])
 
   const accountNames = useMemo(
     () => Array.from(new Set(rows.map((r) => r.account).filter(Boolean))),
@@ -350,14 +204,102 @@ export function BankTransactions() {
   // Modal open state
   const [uploadOpen, setUploadOpen] = useState(false)
   const [summaryOpen, setSummaryOpen] = useState(false)
+  const [uploadSummary, setUploadSummary] = useState<UploadSummary | null>(null)
   const [incomeOpen, setIncomeOpen] = useState(false)
   const [expenseOpen, setExpenseOpen] = useState(false)
   const [accountsOpen, setAccountsOpen] = useState(false)
   const [reconcileOpen, setReconcileOpen] = useState(false)
   const [groupDetailsOpen, setGroupDetailsOpen] = useState(false)
 
-  const updateCategory = (id: string, category: string) => {
+  // Per-row action state (verify/flag in flight, and AI category suggestions).
+  const [actionRowId, setActionRowId] = useState<string | null>(null)
+  const [suggestRowId, setSuggestRowId] = useState<string | null>(null)
+  const [suggestions, setSuggestions] = useState<Record<string, string[]>>({})
+
+  // PATCH verify/flag a transaction, then refetch the list. Defensive: a failed
+  // request just clears the in-flight flag and leaves the row unchanged.
+  const verifyTransaction = async (id: string, status: "VERIFIED" | "FLAGGED") => {
+    setActionRowId(id)
+    try {
+      const response = await fetch(`${API_V1}/financial/transactions/${id}/verify`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": getCsrfTokenFromCookie(),
+        },
+        credentials: "include",
+        body: JSON.stringify({ status }),
+      })
+      if (!response.ok) throw new Error("verify failed")
+      refresh()
+    } catch {
+      // Swallow; UI stays as-is.
+    } finally {
+      setActionRowId(null)
+    }
+  }
+
+  // POST for ranked chart-of-account suggestions, then expose them as extra
+  // options in this row's category dropdown. Defensive on shape and failure.
+  const suggestCategories = async (id: string) => {
+    setSuggestRowId(id)
+    try {
+      const response = await fetch(
+        `${API_V1}/financial/transactions/${id}/categorize-suggestions`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-csrf-token": getCsrfTokenFromCookie(),
+          },
+          credentials: "include",
+          body: JSON.stringify({}),
+        },
+      )
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error("suggest failed")
+      const raw = Array.isArray(data?.data)
+        ? data.data
+        : Array.isArray(data?.suggestions)
+          ? data.suggestions
+          : Array.isArray(data)
+            ? data
+            : []
+      const names = raw
+        .map((s: any) =>
+          typeof s === "string"
+            ? s
+            : String(s?.coaName ?? s?.name ?? s?.category ?? s?.label ?? ""),
+        )
+        .filter((s: string) => s.length > 0)
+      setSuggestions((prev) => ({ ...prev, [id]: names }))
+    } catch {
+      setSuggestions((prev) => ({ ...prev, [id]: [] }))
+    } finally {
+      setSuggestRowId(null)
+    }
+  }
+
+  // PATCH category, optimistically update, then refetch from the server.
+  const updateCategory = async (id: string, category: string) => {
+    const previous = rows
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, category } : r)))
+    try {
+      const response = await fetch(`${API_V1}/financial/transactions/${id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": getCsrfTokenFromCookie(),
+        },
+        credentials: "include",
+        body: JSON.stringify({ category }),
+      })
+      if (!response.ok) throw new Error("patch failed")
+      refresh()
+    } catch {
+      // Roll back the optimistic update on failure.
+      setRows(previous)
+    }
   }
 
   const filteredRows = useMemo(() => {
@@ -570,7 +512,19 @@ export function BankTransactions() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#EEF1F6]">
-              {filteredRows.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={10} className="px-6 py-8 text-center text-[12px] text-[#6B7280]">
+                    Loading transactions…
+                  </td>
+                </tr>
+              ) : error ? (
+                <tr>
+                  <td colSpan={10} className="px-6 py-8 text-center text-[12px] text-[#6B7280]">
+                    Unable to load transactions. No data to display.
+                  </td>
+                </tr>
+              ) : filteredRows.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="px-6 py-8 text-center text-[12px] text-[#6B7280]">
                     No transactions match your filters.
@@ -598,23 +552,76 @@ export function BankTransactions() {
                       {row.income != null ? formatMoney(row.income) : "-"}
                     </td>
                     <td className="px-4 py-4">
-                      <div className="relative">
-                        <select
-                          value={categoriesForRow(row).includes(row.category) ? row.category : "-"}
-                          onChange={(e) => updateCategory(row.id, e.target.value)}
-                          className="h-[34px] w-full min-w-[150px] appearance-none rounded-md border border-[#E5E7EB] bg-white pl-3 pr-8 text-[12px] font-semibold text-[#4B5563] focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]/20"
+                      <div className="flex items-center gap-1.5">
+                        <div className="relative flex-1">
+                          {(() => {
+                            const baseOptions = categoriesForRow(row)
+                            const suggested = (suggestions[row.id] ?? []).filter(
+                              (s) => !baseOptions.includes(s),
+                            )
+                            const options = [...baseOptions, ...suggested]
+                            return (
+                              <select
+                                value={options.includes(row.category) ? row.category : "-"}
+                                onChange={(e) => updateCategory(row.id, e.target.value)}
+                                className="h-[34px] w-full min-w-[150px] appearance-none rounded-md border border-[#E5E7EB] bg-white pl-3 pr-8 text-[12px] font-semibold text-[#4B5563] focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]/20"
+                              >
+                                {baseOptions.map((c) => (
+                                  <option key={c} value={c}>
+                                    {c}
+                                  </option>
+                                ))}
+                                {suggested.length > 0 && (
+                                  <optgroup label="Suggested">
+                                    {suggested.map((c) => (
+                                      <option key={c} value={c}>
+                                        {c}
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                )}
+                              </select>
+                            )
+                          })()}
+                          <ChevronDown className="absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9CA3AF] pointer-events-none" />
+                        </div>
+                        <button
+                          onClick={() => suggestCategories(row.id)}
+                          disabled={suggestRowId === row.id}
+                          title="Suggest categories"
+                          aria-label="Suggest categories"
+                          className="inline-flex h-[34px] w-8 shrink-0 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[#3B5BDB] hover:bg-[#EEF2FF] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          {categoriesForRow(row).map((c) => (
-                            <option key={c} value={c}>
-                              {c}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown className="absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9CA3AF] pointer-events-none" />
+                          <Sparkles className={`h-3.5 w-3.5 ${suggestRowId === row.id ? "animate-pulse" : ""}`} />
+                        </button>
                       </div>
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap">
-                      <StatusPill status={row.status} />
+                      <div className="flex items-center gap-2">
+                        <StatusPill status={row.status} />
+                        {row.status !== "cleared" && (
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => verifyTransaction(row.id, "VERIFIED")}
+                              disabled={actionRowId === row.id}
+                              title="Verify"
+                              aria-label="Verify transaction"
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <ShieldCheck className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => verifyTransaction(row.id, "FLAGGED")}
+                              disabled={actionRowId === row.id}
+                              title="Flag"
+                              aria-label="Flag transaction"
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <Flag className="h-4 w-4" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-4 text-center">
                       <LinkCell
@@ -658,14 +665,23 @@ export function BankTransactions() {
       <UploadTransactionsModal
         open={uploadOpen}
         onClose={() => setUploadOpen(false)}
-        onProcess={() => {
+        onProcess={(summary) => {
+          setUploadSummary(summary)
           setUploadOpen(false)
           setSummaryOpen(true)
         }}
       />
-      <StatementUploadSummaryModal open={summaryOpen} onClose={() => setSummaryOpen(false)} />
-      <RecordIncomeModal open={incomeOpen} onClose={() => setIncomeOpen(false)} />
-      <RecordExpenseModal open={expenseOpen} onClose={() => setExpenseOpen(false)} />
+      <StatementUploadSummaryModal
+        open={summaryOpen}
+        onClose={() => setSummaryOpen(false)}
+        onConfirm={() => {
+          setSummaryOpen(false)
+          refresh()
+        }}
+        summary={uploadSummary}
+      />
+      <RecordIncomeModal open={incomeOpen} onClose={() => setIncomeOpen(false)} onSaved={refresh} />
+      <RecordExpenseModal open={expenseOpen} onClose={() => setExpenseOpen(false)} onSaved={refresh} />
       <ManageAccountsModal open={accountsOpen} onClose={() => setAccountsOpen(false)} />
       <ReconcileBankDepositModal open={reconcileOpen} onClose={() => setReconcileOpen(false)} />
       <ReconciledGroupDetailsModal open={groupDetailsOpen} onClose={() => setGroupDetailsOpen(false)} />
@@ -770,14 +786,23 @@ function ModalHeader({
   title,
   onClose,
   titleClassName = "text-[#111827]",
+  icon,
 }: {
   title: string
   onClose: () => void
   titleClassName?: string
+  icon?: React.ReactNode
 }) {
   return (
     <div className="flex items-center justify-between px-6 py-5 border-b border-[#EEF1F6]">
-      <h2 className={`text-[16px] font-bold ${titleClassName}`}>{title}</h2>
+      <div className="flex items-center gap-3">
+        {icon && (
+          <span className="flex h-9 w-9 items-center justify-center rounded-[8px] bg-[#EEF2FF] text-[#3B5BDB]">
+            {icon}
+          </span>
+        )}
+        <h2 className={`text-[18px] font-bold ${titleClassName}`}>{title}</h2>
+      </div>
       <button
         onClick={onClose}
         className="text-[#9CA3AF] hover:text-[#4B5563] transition-colors"
@@ -1010,32 +1035,99 @@ function ReconcileBankDepositModal({ open, onClose }: { open: boolean; onClose: 
 // 2. Statement Upload Summary modal
 // ---------------------------------------------------------------------------
 
-function StatementUploadSummaryModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export type UploadSummary = {
+  totalTransactions: number
+  netAmount: number
+  totalCredit: number
+  totalDebit: number
+  accountLabel: string
+  dateRange: string
+  fileName: string
+}
+
+// Map an upload-csv response into the summary shape, tolerating various backend
+// field names. Falls back to sensible blanks when a field is absent.
+function buildUploadSummary(
+  payload: any,
+  ctx: { accountLabel?: string; fileName?: string },
+): UploadSummary {
+  const p = payload ?? {}
+  const num = (...keys: string[]) => {
+    for (const k of keys) {
+      const v = p?.[k] ?? p?.summary?.[k] ?? p?.totals?.[k]
+      if (v != null && !Number.isNaN(Number(v))) return Number(v)
+    }
+    return 0
+  }
+  const totalCredit = num("totalCredit", "creditTotal", "totalInflow")
+  const totalDebit = num("totalDebit", "debitTotal", "totalOutflow")
+  const rows = Array.isArray(p?.transactions) ? p.transactions.length : 0
+  const startDate = p?.startDate ?? p?.periodStart ?? p?.dateFrom
+  const endDate = p?.endDate ?? p?.periodEnd ?? p?.dateTo
+  const dateRange =
+    startDate && endDate
+      ? `${formatDateLabel(startDate)} - ${formatDateLabel(endDate)}`
+      : (p?.dateRange ?? "—")
+  return {
+    totalTransactions: num("totalTransactions", "count", "transactionCount") || rows,
+    netAmount: num("netAmount", "net") || totalCredit - totalDebit,
+    totalCredit,
+    totalDebit,
+    accountLabel: String(p?.accountLabel ?? ctx.accountLabel ?? "—"),
+    dateRange,
+    fileName: String(p?.fileName ?? ctx.fileName ?? "—"),
+  }
+}
+
+function formatDateLabel(value: string) {
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return value
+  return d.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" })
+}
+
+function StatementUploadSummaryModal({
+  open,
+  onClose,
+  onConfirm,
+  summary,
+}: {
+  open: boolean
+  onClose: () => void
+  onConfirm?: () => void
+  summary: UploadSummary | null
+}) {
+  const s = summary
   const tiles = [
-    { label: "Total Transactions", value: "42", color: "text-[#111827]" },
-    { label: "Net Amount", value: formatMoney(6299750), color: "text-[#111827]" },
-    { label: "Total Credit", value: `+${formatMoney(8450200)}`, color: "text-emerald-600" },
-    { label: "Total Debit", value: `-${formatMoney(2150450)}`, color: "text-rose-600" },
+    { label: "Total Transactions", value: String(s?.totalTransactions ?? 0), color: "text-[#111827]" },
+    { label: "Net Amount", value: formatMoney(s?.netAmount ?? 0), color: "text-[#111827]" },
+    { label: "Total Credit", value: `+${formatMoney(s?.totalCredit ?? 0)}`, color: "text-emerald-600" },
+    { label: "Total Debit", value: `-${formatMoney(s?.totalDebit ?? 0)}`, color: "text-rose-600" },
   ]
   const details = [
-    { label: "Account", value: "General Offerings (0012337821)" },
-    { label: "Date Range", value: "Oct 01 - Oct 31, 2024" },
-    { label: "File Name", value: "firstbank_stmt_oct.csv" },
+    { label: "Account", value: s?.accountLabel ?? "—" },
+    { label: "Date Range", value: s?.dateRange ?? "—" },
+    { label: "File Name", value: s?.fileName ?? "—" },
   ]
 
   return (
     <ModalShell open={open} onClose={onClose} className="max-w-2xl">
-      <ModalHeader title="Statement Upload Summary" onClose={onClose} />
+      <ModalHeader
+        title="Statement Upload Summary"
+        onClose={onClose}
+        icon={<CheckSquare className="h-5 w-5" />}
+      />
 
       <div className="px-6 py-5 space-y-5">
         {/* Success banner */}
         <div className="flex items-center gap-3 rounded-[10px] bg-emerald-50 border border-emerald-100 p-4">
           <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
-          <p className="text-[13px] font-bold text-emerald-700">File processed successfully. 42 transactions identified.</p>
+          <p className="text-[13px] font-bold text-emerald-700">
+            File processed successfully. {s?.totalTransactions ?? 0} transactions identified.
+          </p>
         </div>
 
         {/* Stat tiles */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           {tiles.map((t) => (
             <div key={t.label} className="rounded-[10px] border border-[#EEF1F6] bg-white p-4">
               <p className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">{t.label}</p>
@@ -1068,10 +1160,10 @@ function StatementUploadSummaryModal({ open, onClose }: { open: boolean; onClose
           Cancel
         </button>
         <button
-          onClick={onClose}
-          className="rounded-md bg-[#3B5BDB] px-4 py-2.5 text-[12px] font-bold text-white shadow-sm hover:bg-blue-700 transition-colors"
+          onClick={() => (onConfirm ? onConfirm() : onClose())}
+          className="flex items-center gap-2 rounded-md bg-[#3B5BDB] px-5 py-2.5 text-[12px] font-bold text-white shadow-sm hover:bg-blue-700 transition-colors"
         >
-          Confirm &amp; Import
+          <CheckCircle2 className="h-4 w-4" /> Confirm &amp; Import
         </button>
       </div>
     </ModalShell>
@@ -1087,40 +1179,96 @@ type AccountRow = {
   number: string
   name: string
   description: string
+  bankName?: string
+  branchId?: string
+  currency?: string
 }
 
-const INITIAL_ACCOUNTS: AccountRow[] = [
-  { id: "a1", number: "0012337821", name: "General Offering", description: "Primary operating account" },
-  { id: "a2", number: "0011298745", name: "Building Project", description: "Foreign mission support" },
-  { id: "a3", number: "0017654398", name: "ShopForFree", description: "Facility maintenance" },
-  { id: "a4", number: "0013349087", name: "Youth Ministry", description: "Events and curriculum" },
-]
+// Map a live bank-account record (various possible backend field names) to the
+// AccountRow shape the table renders. `description` repurposes bankName so the
+// existing column stays populated.
+function mapBankAccountToRow(item: any, index: number): AccountRow {
+  const bankName = item?.bankName ?? item?.bank?.name ?? ""
+  return {
+    id: String(item?.id ?? item?.bankAccountId ?? `acc-${index}`),
+    number: String(item?.accountNumber ?? item?.number ?? "—"),
+    name: String(item?.accountName ?? item?.name ?? "Untitled"),
+    description: String(item?.description ?? ""),
+    bankName,
+    branchId: item?.branchId ?? item?.branch?.id,
+    currency: item?.currency ?? "NGN",
+  }
+}
 
 function ManageAccountsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [accounts, setAccounts] = useState<AccountRow[]>(INITIAL_ACCOUNTS)
+  const { user } = useAuth()
+  const branchId = user?.branchId ?? user?.branch?.id ?? ""
+
+  const [accounts, setAccounts] = useState<AccountRow[]>([])
+  const [loading, setLoading] = useState(false)
   const [number, setNumber] = useState("")
   const [name, setName] = useState("")
+  const [bankName, setBankName] = useState("")
+  const [currency, setCurrency] = useState("NGN")
   const [description, setDescription] = useState("")
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
+
+  // Load live bank accounts whenever the modal opens. Defensive: never throws an
+  // overlay; a 401 / empty response just yields an empty table.
+  const loadAccounts = async () => {
+    setLoading(true)
+    try {
+      const response = await fetch(`${API_V1}/financial/bank-accounts?limit=200`, {
+        method: "GET",
+        credentials: "include",
+      })
+      const data = await response.json().catch(() => null)
+      const rawItems = Array.isArray(data?.data?.content)
+        ? data.data.content
+        : Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data?.items)
+            ? data.items
+            : Array.isArray(data)
+              ? data
+              : []
+      setAccounts(response.ok ? rawItems.map(mapBankAccountToRow) : [])
+    } catch {
+      setAccounts([])
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
     if (open) {
-      setAccounts(INITIAL_ACCOUNTS)
       setNumber("")
       setName("")
+      setBankName("")
+      setCurrency("NGN")
       setDescription("")
       setEditingId(null)
+      setSaving(false)
+      setFormError(null)
+      loadAccounts()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
   const resetForm = () => {
     setNumber("")
     setName("")
+    setBankName("")
+    setCurrency("NGN")
     setDescription("")
     setEditingId(null)
+    setFormError(null)
   }
 
   const removeAccount = (id: string) => {
+    // Delete endpoint is not yet wired; just drop locally and reset the form.
     setAccounts((prev) => prev.filter((a) => a.id !== id))
     if (editingId === id) resetForm()
   }
@@ -1129,26 +1277,89 @@ function ManageAccountsModal({ open, onClose }: { open: boolean; onClose: () => 
     setEditingId(account.id)
     setNumber(account.number)
     setName(account.name)
+    setBankName(account.bankName ?? "")
+    setCurrency(account.currency ?? "NGN")
     setDescription(account.description)
   }
 
-  const saveAccount = () => {
-    if (!number.trim() && !name.trim()) return
-    if (editingId) {
-      setAccounts((prev) =>
-        prev.map((a) =>
-          a.id === editingId
-            ? { ...a, number: number.trim() || "—", name: name.trim() || "Untitled", description: description.trim() }
-            : a,
-        ),
-      )
-    } else {
-      setAccounts((prev) => [
-        ...prev,
-        { id: `a-${Date.now()}`, number: number.trim() || "—", name: name.trim() || "Untitled", description: description.trim() },
-      ])
+  const saveAccount = async () => {
+    if (!number.trim() || !name.trim()) {
+      setFormError("Please fill Account Number and Account Name.")
+      return
     }
+    setSaving(true)
+    setFormError(null)
+
+    const fields = {
+      number: number.trim(),
+      name: name.trim(),
+      bankName: bankName.trim(),
+      currency,
+      description: description.trim(),
+    }
+
+    if (editingId) {
+      // Reflect the edit in the table immediately, then persist in the background.
+      setAccounts((prev) => prev.map((a) => (a.id === editingId ? { ...a, ...fields } : a)))
+      const targetId = editingId
+      resetForm()
+      setSaving(false)
+      try {
+        const response = await fetch(`${API_V1}/financial/bank-accounts/${targetId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfTokenFromCookie() },
+          credentials: "include",
+          body: JSON.stringify({
+            accountName: fields.name,
+            accountNumber: fields.number,
+            bankName: fields.bankName || undefined,
+            currency: fields.currency || undefined,
+            description: fields.description || undefined,
+          }),
+        })
+        if (response.ok) await loadAccounts()
+      } catch {
+        /* keep the optimistic edit if the backend is unavailable */
+      }
+      return
+    }
+
+    // Add: show the new row in the table right away (optimistic / dummy),
+    // then attempt to persist it to the real endpoint in the background.
+    const optimistic: AccountRow = {
+      id: `local-${Date.now()}`,
+      number: fields.number,
+      name: fields.name,
+      bankName: fields.bankName,
+      currency: fields.currency,
+      description: fields.description,
+    }
+    setAccounts((prev) => [...prev, optimistic])
     resetForm()
+    setSaving(false)
+
+    if (branchId) {
+      try {
+        const response = await fetch(`${API_V1}/financial/bank-accounts`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfTokenFromCookie() },
+          credentials: "include",
+          body: JSON.stringify({
+            accountName: fields.name,
+            accountNumber: fields.number,
+            bankName: fields.bankName,
+            currency: fields.currency,
+            branchId,
+            description: fields.description || undefined,
+          }),
+        })
+        // On success, sync with the server (replaces the optimistic row with the
+        // persisted one). On failure, keep the optimistic row.
+        if (response.ok) await loadAccounts()
+      } catch {
+        /* keep the optimistic row if the backend is unavailable */
+      }
+    }
   }
 
   return (
@@ -1161,19 +1372,34 @@ function ManageAccountsModal({ open, onClose }: { open: boolean; onClose: () => 
           <table className="w-full text-left text-[13px]">
             <thead>
               <tr className="bg-[#F8FAFC]">
-                {["NUMBER", "NAME", "DESCRIPTION", "ACTIONS"].map((h, i) => (
-                  <th key={h} className={`px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF] ${i === 3 ? "text-right" : ""}`}>
+                {["NUMBER", "NAME", "BANK NAME", "CURRENCY", "DESCRIPTION", "ACTIONS"].map((h, i) => (
+                  <th key={h} className={`px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF] ${i === 5 ? "text-right" : ""}`}>
                     {h}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-[#EEF1F6]">
-              {accounts.map((a) => (
+              {loading ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-6 text-center text-[12px] text-[#6B7280]">
+                    Loading accounts…
+                  </td>
+                </tr>
+              ) : accounts.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-6 text-center text-[12px] text-[#6B7280]">
+                    No bank accounts yet. Add one below.
+                  </td>
+                </tr>
+              ) : (
+                accounts.map((a) => (
                 <tr key={a.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 text-[12px] font-bold text-[#3B5BDB] whitespace-nowrap">{a.number}</td>
                   <td className="px-4 py-3 text-[12px] font-bold text-[#111827]">{a.name}</td>
-                  <td className="px-4 py-3 text-[12px] font-medium text-[#6B7280]">{a.description}</td>
+                  <td className="px-4 py-3 text-[12px] font-medium text-[#111827] whitespace-nowrap">{a.bankName || "—"}</td>
+                  <td className="px-4 py-3 text-[12px] font-semibold text-[#6B7280] whitespace-nowrap">{a.currency || "NGN"}</td>
+                  <td className="px-4 py-3 text-[12px] font-medium text-[#6B7280]">{a.description || "—"}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-2">
                       <button
@@ -1193,7 +1419,8 @@ function ManageAccountsModal({ open, onClose }: { open: boolean; onClose: () => 
                     </div>
                   </td>
                 </tr>
-              ))}
+              ))
+              )}
             </tbody>
           </table>
         </div>
@@ -1208,6 +1435,25 @@ function ManageAccountsModal({ open, onClose }: { open: boolean; onClose: () => 
             <Field label="Account Name">
               <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Welfare" className={inputClass} />
             </Field>
+            <Field label="Bank Name">
+              <input value={bankName} onChange={(e) => setBankName(e.target.value)} placeholder="e.g. First Bank" className={inputClass} />
+            </Field>
+            <Field label="Currency">
+              <div className="relative">
+                <select
+                  value={currency}
+                  onChange={(e) => setCurrency(e.target.value)}
+                  className={`${inputClass} appearance-none pr-10`}
+                >
+                  <option value="NGN">Naira (₦)</option>
+                  <option value="USD">US Dollar ($)</option>
+                  <option value="EUR">Euro (€)</option>
+                  <option value="GBP">Pound (£)</option>
+                  <option value="CAD">Canadian Dollar (C$)</option>
+                </select>
+                <ChevronDown className="absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF] pointer-events-none" />
+              </div>
+            </Field>
             <Field label="Description">
               <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Short description" className={inputClass} />
             </Field>
@@ -1215,15 +1461,16 @@ function ManageAccountsModal({ open, onClose }: { open: boolean; onClose: () => 
           <div className="flex items-center gap-3">
             <button
               onClick={saveAccount}
-              className="flex items-center gap-2 rounded-md bg-[#3B5BDB] px-4 py-2.5 text-[12px] font-bold text-white shadow-sm hover:bg-blue-700 transition-colors"
+              disabled={saving}
+              className="flex items-center gap-2 rounded-md bg-[#3B5BDB] px-4 py-2.5 text-[12px] font-bold text-white shadow-sm hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {editingId ? (
                 <>
-                  <Save className="h-4 w-4" strokeWidth={2.5} /> Update Account
+                  <Save className="h-4 w-4" strokeWidth={2.5} /> {saving ? "Updating…" : "Update Account"}
                 </>
               ) : (
                 <>
-                  <Plus className="h-4 w-4" strokeWidth={2.5} /> Add Account
+                  <Plus className="h-4 w-4" strokeWidth={2.5} /> {saving ? "Adding…" : "Add Account"}
                 </>
               )}
             </button>
@@ -1236,6 +1483,9 @@ function ManageAccountsModal({ open, onClose }: { open: boolean; onClose: () => 
               </button>
             )}
           </div>
+          {formError && (
+            <p className="text-[12px] font-medium text-rose-600">{formError}</p>
+          )}
         </div>
       </div>
 
@@ -1261,13 +1511,15 @@ function ManageAccountsModal({ open, onClose }: { open: boolean; onClose: () => 
 // 4. Record New Expense modal
 // ---------------------------------------------------------------------------
 
-function RecordExpenseModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+function RecordExpenseModal({ open, onClose, onSaved }: { open: boolean; onClose: () => void; onSaved?: () => void }) {
   const [date, setDate] = useState("")
   const [amount, setAmount] = useState("")
   const [type, setType] = useState("Transfer")
   const [payee, setPayee] = useState("")
   const [category, setCategory] = useState("Operational Expense")
   const [notes, setNotes] = useState("")
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   useEffect(() => {
     if (open) {
@@ -1277,8 +1529,42 @@ function RecordExpenseModal({ open, onClose }: { open: boolean; onClose: () => v
       setPayee("")
       setCategory("Operational Expense")
       setNotes("")
+      setSaving(false)
+      setSaveError(null)
     }
   }, [open])
+
+  const handleSave = async () => {
+    setSaving(true)
+    setSaveError(null)
+    try {
+      const response = await fetch(`${API_V1}/financial/transactions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": getCsrfTokenFromCookie(),
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          flowType: "DEBIT",
+          amount: parseAmount(amount),
+          date: date || undefined,
+          transactionType: type,
+          payee: payee || undefined,
+          category,
+          description: notes || payee || undefined,
+        }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.message ?? "Unable to save expense.")
+      onSaved?.()
+      onClose()
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Unable to save expense.")
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <ModalShell open={open} onClose={onClose} className="max-w-xl">
@@ -1337,6 +1623,10 @@ function RecordExpenseModal({ open, onClose }: { open: boolean; onClose: () => v
         </Field>
       </div>
 
+      {saveError && (
+        <p className="px-6 -mt-2 pb-1 text-[12px] font-medium text-rose-600">{saveError}</p>
+      )}
+
       <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[#EEF1F6]">
         <button
           onClick={onClose}
@@ -1345,10 +1635,11 @@ function RecordExpenseModal({ open, onClose }: { open: boolean; onClose: () => v
           Cancel
         </button>
         <button
-          onClick={onClose}
-          className="rounded-md bg-[#3B5BDB] px-4 py-2.5 text-[12px] font-bold text-white shadow-sm hover:bg-blue-700 transition-colors"
+          onClick={handleSave}
+          disabled={saving}
+          className="rounded-md bg-[#3B5BDB] px-4 py-2.5 text-[12px] font-bold text-white shadow-sm hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          Save Expense
+          {saving ? "Saving…" : "Save Expense"}
         </button>
       </div>
     </ModalShell>
@@ -1367,12 +1658,14 @@ const CURRENCY_RATES: Record<string, { label: string; rate: number }> = {
   CAD: { label: "Canadian Dollar (C$)", rate: 1130 },
 }
 
-function RecordIncomeModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+function RecordIncomeModal({ open, onClose, onSaved }: { open: boolean; onClose: () => void; onSaved?: () => void }) {
   const [date, setDate] = useState("")
   const [currency, setCurrency] = useState("NGN")
   const [amount, setAmount] = useState("")
   const [incomeType, setIncomeType] = useState("General Offering")
   const [notes, setNotes] = useState("")
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   useEffect(() => {
     if (open) {
@@ -1381,12 +1674,45 @@ function RecordIncomeModal({ open, onClose }: { open: boolean; onClose: () => vo
       setAmount("")
       setIncomeType("General Offering")
       setNotes("")
+      setSaving(false)
+      setSaveError(null)
     }
   }, [open])
 
   const isNaira = currency === "NGN"
   const numericAmount = parseAmount(amount)
   const localValue = numericAmount * (CURRENCY_RATES[currency]?.rate ?? 1)
+
+  const handleSave = async () => {
+    setSaving(true)
+    setSaveError(null)
+    try {
+      const response = await fetch(`${API_V1}/financial/transactions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": getCsrfTokenFromCookie(),
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          flowType: "CREDIT",
+          amount: numericAmount,
+          currency,
+          date: date || undefined,
+          category: incomeType,
+          description: notes || incomeType,
+        }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.message ?? "Unable to save income.")
+      onSaved?.()
+      onClose()
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Unable to save income.")
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <ModalShell open={open} onClose={onClose} className="max-w-xl">
@@ -1429,7 +1755,7 @@ function RecordIncomeModal({ open, onClose }: { open: boolean; onClose: () => vo
           </Field>
         )}
 
-        <Field label="Income Type">
+        <Field label="Account">
           <SelectField value={incomeType} onChange={setIncomeType}>
             {INCOME_CATEGORIES.map((c) => (
               <option key={c} value={c}>
@@ -1450,6 +1776,10 @@ function RecordIncomeModal({ open, onClose }: { open: boolean; onClose: () => vo
         </Field>
       </div>
 
+      {saveError && (
+        <p className="px-6 -mt-2 pb-1 text-[12px] font-medium text-rose-600">{saveError}</p>
+      )}
+
       <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[#EEF1F6]">
         <button
           onClick={onClose}
@@ -1458,11 +1788,12 @@ function RecordIncomeModal({ open, onClose }: { open: boolean; onClose: () => vo
           Cancel
         </button>
         <button
-          onClick={onClose}
-          className="inline-flex items-center gap-2 rounded-md bg-[#3B5BDB] px-5 py-2.5 text-[12px] font-bold text-white shadow-sm hover:bg-blue-700 transition-colors"
+          onClick={handleSave}
+          disabled={saving}
+          className="inline-flex items-center gap-2 rounded-md bg-[#3B5BDB] px-5 py-2.5 text-[12px] font-bold text-white shadow-sm hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Save className="h-4 w-4" />
-          Save Income
+          {saving ? "Saving…" : "Save Income"}
         </button>
       </div>
     </ModalShell>
@@ -1595,12 +1926,13 @@ type UploadFile = {
   name: string
   size: string
   progress: number
+  file: File
 }
 
-const INITIAL_FILES: UploadFile[] = [
-  { id: "f1", name: "october-statement.csv", size: "248 KB", progress: 100 },
-  { id: "f2", name: "savings-account.csv", size: "112 KB", progress: 64 },
-]
+function formatFileSize(bytes: number) {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`
+}
 
 export function UploadTransactionsModal({
   open,
@@ -1609,24 +1941,130 @@ export function UploadTransactionsModal({
 }: {
   open: boolean
   onClose: () => void
-  onProcess?: () => void
+  onProcess?: (summary: UploadSummary | null) => void
 }) {
-  const [files, setFiles] = useState<UploadFile[]>(INITIAL_FILES)
-  const [account, setAccount] = useState("")
+  const { user } = useAuth()
+  const branchId = user?.branchId ?? user?.branch?.id ?? ""
 
-  // Reset selection state whenever the modal is opened.
+  const [files, setFiles] = useState<UploadFile[]>([])
+  const [account, setAccount] = useState("")
+  const [accountOptions, setAccountOptions] = useState<AccountRow[]>([])
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+
+  // Reset selection state whenever the modal is opened, and load the branch's
+  // bank accounts so "Select Target Account" reflects real accounts.
   useEffect(() => {
-    if (open) {
-      setFiles(INITIAL_FILES)
-      setAccount("")
+    if (!open) return
+    setFiles([])
+    setAccount("")
+    setUploading(false)
+    setUploadError(null)
+
+    let active = true
+    const loadAccounts = async () => {
+      try {
+        const params = new URLSearchParams({ limit: "200" })
+        if (branchId) params.set("branchId", branchId)
+        const response = await fetch(`${API_V1}/financial/bank-accounts?${params.toString()}`, {
+          method: "GET",
+          credentials: "include",
+        })
+        const data = await response.json().catch(() => null)
+        if (!response.ok) return
+        const raw = Array.isArray(data?.data?.content)
+          ? data.data.content
+          : Array.isArray(data?.data)
+            ? data.data
+            : Array.isArray(data?.items)
+              ? data.items
+              : Array.isArray(data)
+                ? data
+                : []
+        if (active) setAccountOptions(raw.map(mapBankAccountToRow))
+      } catch {
+        /* defensive: leave the dropdown empty on failure */
+      }
     }
-  }, [open])
+    loadAccounts()
+    return () => {
+      active = false
+    }
+  }, [open, branchId])
+
+  const addFiles = (list: FileList | null) => {
+    if (!list) return
+    const next = Array.from(list).map((file) => ({
+      id: `${file.name}-${file.lastModified}-${file.size}`,
+      name: file.name,
+      size: formatFileSize(file.size),
+      progress: 10,
+      file,
+    }))
+    setFiles((prev) => {
+      const existing = new Set(prev.map((f) => f.id))
+      return [...prev, ...next.filter((f) => !existing.has(f.id))]
+    })
+  }
 
   const removeFile = (id: string) => setFiles((prev) => prev.filter((f) => f.id !== id))
 
+  // Animate per-file upload progress so a freshly added file shows an
+  // "Uploading X%" state that settles to "Complete" (matches the design).
+  useEffect(() => {
+    if (!files.some((f) => f.progress < 100)) return
+    const timer = setInterval(() => {
+      setFiles((prev) =>
+        prev.map((f) => (f.progress < 100 ? { ...f, progress: Math.min(100, f.progress + 17) } : f))
+      )
+    }, 280)
+    return () => clearInterval(timer)
+  }, [files])
+
+  const handleProcess = async () => {
+    if (files.length === 0) {
+      setUploadError("Please select a CSV file to upload.")
+      return
+    }
+    setUploading(true)
+    setUploadError(null)
+    try {
+      let lastPayload: any = null
+      for (const f of files) {
+        const formData = new FormData()
+        formData.append("file", f.file)
+        if (account) formData.append("bankAccountId", account)
+        const response = await fetch(`${API_V1}/financial/transactions/upload-csv`, {
+          method: "POST",
+          headers: { "x-csrf-token": getCsrfTokenFromCookie() },
+          credentials: "include",
+          body: formData,
+        })
+        const data = await response.json().catch(() => null)
+        if (!response.ok) throw new Error(data?.message ?? "Unable to upload statement.")
+        lastPayload = data?.data ?? data ?? null
+      }
+      const selected = accountOptions.find((a) => a.id === account)
+      const summary = buildUploadSummary(lastPayload, {
+        accountLabel: selected ? `${selected.name} (${selected.number})` : undefined,
+        fileName: files[files.length - 1]?.name,
+      })
+      onProcess ? onProcess(summary) : onClose()
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Unable to upload statement.")
+    } finally {
+      setUploading(false)
+    }
+  }
+
   return (
     <ModalShell open={open} onClose={onClose} className="max-w-xl">
-      <ModalHeader title="Upload Transactions" onClose={onClose} />
+      <ModalHeader
+        title="Upload Transactions"
+        onClose={onClose}
+        icon={<FileText className="h-5 w-5" />}
+      />
 
       {/* Body */}
       <div className="px-6 py-5 space-y-5">
@@ -1639,25 +2077,50 @@ export function UploadTransactionsModal({
               onChange={(e) => setAccount(e.target.value)}
               className="h-[42px] w-full appearance-none rounded-[8px] border border-[#E5E7EB] bg-white pl-3.5 pr-10 text-[13px] font-medium text-[#111827] focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]/20"
             >
-              <option value="">Choose an account...</option>
-              <option value="current">Current Account - 1023456789</option>
-              <option value="savings">Savings Account - 2098765432</option>
-              <option value="building">Building Fund Account - 3055512345</option>
+              <option value="">
+                {accountOptions.length ? "Choose an account..." : "No accounts found"}
+              </option>
+              {accountOptions.map((acc) => (
+                <option key={acc.id} value={acc.id}>
+                  {acc.name} - {acc.number}
+                </option>
+              ))}
             </select>
             <ChevronDown className="absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF] pointer-events-none" />
           </div>
         </div>
 
         {/* Drag & drop */}
-        <div className="flex flex-col items-center justify-center gap-3 rounded-[10px] border-2 border-dashed border-[#D1D5DB] bg-[#F8FAFC] px-6 py-8 text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#EEF2FF]">
-            <Upload className="h-5 w-5 text-[#3B5BDB]" />
+        <div
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => {
+            e.preventDefault()
+            addFiles(e.dataTransfer.files)
+          }}
+          className="flex flex-col items-center justify-center gap-3 rounded-[10px] border-2 border-dashed border-[#D1D5DB] bg-[#F8FAFC] px-6 py-8 text-center"
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              addFiles(e.target.files)
+              e.target.value = ""
+            }}
+          />
+          <div className="flex h-14 w-14 items-center justify-center rounded-[12px] bg-[#EEF1F6]">
+            <UploadCloud className="h-6 w-6 text-[#64748B]" />
           </div>
           <div>
-            <p className="text-[13px] font-bold text-[#111827]">Drag &amp; drop statement of account here</p>
-            <p className="text-[11px] text-[#9CA3AF] mt-0.5">Upload CSV only</p>
+            <p className="text-[14px] font-bold text-[#111827]">Drag &amp; drop statement of account here</p>
+            <p className="text-[12px] text-[#9CA3AF] mt-0.5">Upload CSV only</p>
           </div>
-          <button className="mt-1 flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[12px] font-bold text-[#4B5563] shadow-sm hover:bg-gray-50 transition-colors">
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="mt-1 flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[12px] font-bold text-[#4B5563] shadow-sm hover:bg-gray-50 transition-colors"
+          >
             Browse Files
           </button>
         </div>
@@ -1665,40 +2128,51 @@ export function UploadTransactionsModal({
         {/* Selected files */}
         {files.length > 0 && (
           <div className="space-y-3">
-            {files.map((file) => (
-              <div key={file.id} className="flex items-center gap-3 rounded-[10px] border border-[#EEF1F6] bg-white p-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#EEF2FF] shrink-0">
-                  <FileSpreadsheet className="h-4 w-4 text-[#3B5BDB]" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[12px] font-bold text-[#111827] truncate">{file.name}</span>
-                    <span className="text-[11px] font-medium text-[#9CA3AF] shrink-0">{file.size}</span>
+            {files.map((file) => {
+              const complete = file.progress >= 100
+              return (
+                <div key={file.id} className="flex items-center gap-3 rounded-[10px] border border-[#EEF1F6] bg-white p-3.5">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 shrink-0">
+                    <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
                   </div>
-                  <div className="mt-1.5 flex items-center gap-2">
-                    <div className="h-1.5 flex-1 rounded-full bg-[#EEF1F6] overflow-hidden">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[12px] font-bold text-[#111827] truncate">{file.name}</span>
+                      <span className={`text-[11px] font-bold shrink-0 ${complete ? "text-emerald-600" : "text-amber-500"}`}>
+                        {complete ? "Complete" : "Uploading"}
+                      </span>
+                    </div>
+                    <div className="mt-1 flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-medium text-[#9CA3AF] shrink-0">{file.size}</span>
+                      {!complete && (
+                        <span className="text-[11px] font-bold text-amber-500 shrink-0">{file.progress}%</span>
+                      )}
+                    </div>
+                    <div className="mt-1.5 h-1.5 w-full rounded-full bg-[#EEF1F6] overflow-hidden">
                       <div
-                        className={`h-full rounded-full ${file.progress >= 100 ? "bg-emerald-500" : "bg-[#3B5BDB]"}`}
+                        className={`h-full rounded-full transition-all ${complete ? "bg-emerald-500" : "bg-amber-500"}`}
                         style={{ width: `${file.progress}%` }}
                       />
                     </div>
-                    <span className={`text-[10px] font-bold shrink-0 ${file.progress >= 100 ? "text-emerald-600" : "text-[#3B5BDB]"}`}>
-                      {file.progress >= 100 ? "Complete" : `Uploading ${file.progress}%`}
-                    </span>
                   </div>
+                  <button
+                    onClick={() => removeFile(file.id)}
+                    className={`shrink-0 transition-colors ${complete ? "text-rose-500 hover:text-rose-600" : "text-[#9CA3AF] hover:text-[#4B5563]"}`}
+                    aria-label={`Remove ${file.name}`}
+                  >
+                    {complete ? <Trash2 className="h-4 w-4" /> : <X className="h-4 w-4" />}
+                  </button>
                 </div>
-                <button
-                  onClick={() => removeFile(file.id)}
-                  className="text-[#9CA3AF] hover:text-rose-500 transition-colors shrink-0"
-                  aria-label={`Remove ${file.name}`}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
+
       </div>
+
+      {uploadError && (
+        <p className="px-6 pb-1 text-[12px] font-medium text-rose-600">{uploadError}</p>
+      )}
 
       {/* Footer */}
       <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[#EEF1F6]">
@@ -1709,10 +2183,11 @@ export function UploadTransactionsModal({
           Cancel
         </button>
         <button
-          onClick={() => (onProcess ? onProcess() : onClose())}
-          className="rounded-md bg-[#3B5BDB] px-4 py-2.5 text-[12px] font-bold text-white shadow-sm hover:bg-blue-700 transition-colors"
+          onClick={handleProcess}
+          disabled={uploading}
+          className="rounded-md bg-[#3B5BDB] px-4 py-2.5 text-[12px] font-bold text-white shadow-sm hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          Process Upload
+          {uploading ? "Processing…" : "Process Upload"}
         </button>
       </div>
     </ModalShell>

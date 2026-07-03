@@ -1,5 +1,6 @@
 import { API_V1 } from "@/lib/api";
-import { useEffect, useState } from "react"
+import { getCsrfTokenFromCookie } from "@/lib/csrf";
+import { useCallback, useEffect, useState } from "react"
 
 export type BudgetConfig = {
   _id?: string
@@ -17,7 +18,37 @@ export function useBudgetConfig() {
   const [lastUpdated, setLastUpdated] = useState<string | null>(null)
   const [refreshIndex, setRefreshIndex] = useState(0)
 
+  const [resetting, setResetting] = useState(false)
+
   const refresh = () => setRefreshIndex((prev) => prev + 1)
+
+  // POST /settings/budget-config/reset — restore organization-wide budget
+  // configuration to system defaults, then refetch the latest config.
+  const resetConfig = useCallback(async () => {
+    setResetting(true)
+    setError(null)
+    try {
+      const response = await fetch(`${API_V1}/settings/budget-config/reset`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": getCsrfTokenFromCookie(),
+        },
+        credentials: "include",
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(data?.message ?? "Unable to reset budget config.")
+      }
+      setRefreshIndex((prev) => prev + 1)
+      return true
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to reset budget config.")
+      throw err
+    } finally {
+      setResetting(false)
+    }
+  }, [])
 
   useEffect(() => {
     let isMounted = true
@@ -71,5 +102,5 @@ export function useBudgetConfig() {
     }
   }, [refreshIndex])
 
-  return { budgetConfig, loading, error, refresh, lastUpdated }
+  return { budgetConfig, loading, error, refresh, lastUpdated, resetConfig, resetting }
 }

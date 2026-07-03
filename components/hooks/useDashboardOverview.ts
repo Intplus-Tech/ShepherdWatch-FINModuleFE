@@ -1,5 +1,6 @@
 import { API_V1 } from "@/lib/api";
 import { useState, useCallback } from "react"
+import { useAuth } from "@/components/auth/AuthProvider"
 
 export interface DashboardOverview {
   totalIncome: number
@@ -16,6 +17,7 @@ interface UseDashboardOverviewProps {
 }
 
 export function useDashboardOverview(initialProps?: UseDashboardOverviewProps) {
+  const { user } = useAuth()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [overview, setOverview] = useState<DashboardOverview | null>(null)
@@ -26,8 +28,9 @@ export function useDashboardOverview(initialProps?: UseDashboardOverviewProps) {
       setError(null)
       try {
         const mergedProps = { ...initialProps, ...props }
+        const branchId = mergedProps.branchId ?? user?.branchId
         const qs = new URLSearchParams()
-        if (mergedProps.branchId) qs.set("branchId", mergedProps.branchId)
+        if (branchId) qs.set("branchId", branchId)
         if (mergedProps.startDate) qs.set("startDate", mergedProps.startDate)
         if (mergedProps.endDate) qs.set("endDate", mergedProps.endDate)
 
@@ -47,7 +50,7 @@ export function useDashboardOverview(initialProps?: UseDashboardOverviewProps) {
         setLoading(false)
       }
     },
-    [initialProps]
+    [initialProps, user?.branchId]
   )
 
   return { loading, error, overview, fetchOverview }

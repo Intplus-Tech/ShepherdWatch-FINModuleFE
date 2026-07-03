@@ -2,14 +2,45 @@
 
 import React, { useState } from "react";
 import { Inter } from "next/font/google";
+import { useRouter } from "next/navigation";
 import { X, Printer, CloudUpload, ChevronDown, Check } from "lucide-react";
 import AssetsHubPage from "../asset/page";
 import FileUploadDropzone from "@/components/ui/FileUploadDropzone";
+import { useStockAdjustment } from "@/components/hooks/useAssetMovements";
 
 const inter = Inter({ subsets: ["latin"] });
 
+const STOCK_ASSET_ID = "AS-1045";
+
 export default function UpdateStockModalPage() {
+  const router = useRouter();
   const [linkRequisition, setLinkRequisition] = useState(true);
+  const [quantityAdded, setQuantityAdded] = useState("");
+  const [totalCost, setTotalCost] = useState("");
+  const [category, setCategory] = useState("office");
+  const [error, setError] = useState<string | null>(null);
+
+  const stockAdjustment = useStockAdjustment(STOCK_ASSET_ID);
+
+  const handleSubmit = async () => {
+    setError(null);
+    const qty = Number(quantityAdded);
+    if (!Number.isFinite(qty) || qty === 0) {
+      setError("Enter a quantity to adjust.");
+      return;
+    }
+    try {
+      await stockAdjustment.mutateAsync({
+        quantityAdded: qty,
+        totalCost: linkRequisition && totalCost ? Number(totalCost) : undefined,
+        category: linkRequisition ? category : undefined,
+        linkRequisition,
+      });
+      router.back();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to update stock.");
+    }
+  };
 
   return (
     <div className={`relative min-h-[100dvh] w-full ${inter.className} antialiased`}>
@@ -33,7 +64,10 @@ export default function UpdateStockModalPage() {
               <h2 className="text-[#111827] text-[18px] sm:text-[20px] font-[800] leading-tight tracking-tight">Update Stock Level</h2>
               <p className="text-[#6B7280] text-[13px] sm:text-[14px] font-[500]">Manage inventory quantities and costs</p>
             </div>
-            <button className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors shrink-0 text-[#9CA3AF]">
+            <button
+              onClick={() => router.back()}
+              className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors shrink-0 text-[#9CA3AF]"
+            >
               <X className="h-5 w-5 stroke-[2px]" />
             </button>
           </div>
@@ -62,9 +96,11 @@ export default function UpdateStockModalPage() {
               <div className="flex-1 flex flex-col gap-1.5">
                 <label className="text-[#374151] text-[13px] font-[700]">Quantity Added</label>
                 <div className="relative flex items-center h-[44px] w-full rounded-[8px] border border-[#D1D5DB] bg-white overflow-hidden focus-within:ring-2 focus-within:ring-[#2563EB]/20 focus-within:border-[#2563EB] transition-all transition-shadow">
-                  <input 
-                    type="text" 
-                    placeholder="0" 
+                  <input
+                    type="number"
+                    value={quantityAdded}
+                    onChange={(e) => setQuantityAdded(e.target.value)}
+                    placeholder="0"
                     className="flex-1 h-full w-full bg-transparent px-3.5 text-[#111827] text-[15px] font-[500] placeholder:text-[#9CA3AF] outline-none"
                   />
                   <div className="h-full pr-4 flex items-center justify-center text-[#9CA3AF] text-[13px] font-[500] shrink-0 bg-transparent">
@@ -126,9 +162,11 @@ export default function UpdateStockModalPage() {
                       <div className="h-full px-3.5 flex items-center justify-center text-[#9CA3AF] text-[14px] font-[600] shrink-0">
                         ₦
                       </div>
-                      <input 
-                        type="text" 
-                        placeholder="0.00" 
+                      <input
+                        type="number"
+                        value={totalCost}
+                        onChange={(e) => setTotalCost(e.target.value)}
+                        placeholder="0.00"
                         className="flex-1 h-full w-full bg-transparent text-[#111827] text-[14px] font-[500] placeholder:text-[#9CA3AF] outline-none"
                       />
                     </div>
@@ -137,7 +175,11 @@ export default function UpdateStockModalPage() {
                   <div className="flex-1 flex flex-col gap-1.5">
                     <label className="text-[#6B7280] text-[12px] sm:text-[12.5px] font-[600]">Budget Category</label>
                     <div className="relative flex items-center h-[40px] w-full rounded-[6px] border border-[#E5E7EB] bg-white overflow-hidden cursor-pointer focus-within:ring-1 focus-within:ring-[#2563EB]/50 focus-within:border-[#2563EB] transition-all">
-                      <select className="flex-1 h-full w-full bg-transparent text-[#111827] text-[14px] font-[500] pl-3.5 pr-8 outline-none appearance-none cursor-pointer">
+                      <select
+                        value={category}
+                        onChange={(e) => setCategory(e.target.value)}
+                        className="flex-1 h-full w-full bg-transparent text-[#111827] text-[14px] font-[500] pl-3.5 pr-8 outline-none appearance-none cursor-pointer"
+                      >
                         <option value="office">Office Supplies</option>
                         <option value="equipment">Equipment</option>
                         <option value="furniture">Furniture</option>
@@ -151,13 +193,24 @@ export default function UpdateStockModalPage() {
 
           </div>
 
+          {error && (
+            <p className="px-6 sm:px-7 -mt-2 pb-2 text-[13px] font-[600] text-[#EF4444]">{error}</p>
+          )}
+
           {/* Footer Divider & Buttons */}
           <div className="px-6 sm:px-7 py-4 sm:py-5 border-t border-[#EEF1F6] bg-[#F8FAFC] flex flex-col sm:flex-row justify-end gap-3 rounded-b-[16px]">
-            <button className="h-[44px] px-6 rounded-[8px] bg-white border border-[#D1D5DB] text-[#4B5563] text-[14px] font-[800] hover:bg-gray-50 transition-colors shadow-sm w-full sm:w-auto">
+            <button
+              onClick={() => router.back()}
+              className="h-[44px] px-6 rounded-[8px] bg-white border border-[#D1D5DB] text-[#4B5563] text-[14px] font-[800] hover:bg-gray-50 transition-colors shadow-sm w-full sm:w-auto"
+            >
               Cancel
             </button>
-            <button className="h-[44px] px-6 rounded-[8px] bg-[#2563EB] text-white text-[14px] font-[800] hover:bg-[#1D4ED8] transition-colors shadow-sm w-full sm:w-auto">
-              Update Stock
+            <button
+              onClick={handleSubmit}
+              disabled={stockAdjustment.isPending}
+              className="h-[44px] px-6 rounded-[8px] bg-[#2563EB] text-white text-[14px] font-[800] hover:bg-[#1D4ED8] transition-colors shadow-sm w-full sm:w-auto disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {stockAdjustment.isPending ? "Updating…" : "Update Stock"}
             </button>
           </div>
           

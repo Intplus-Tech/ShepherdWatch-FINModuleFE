@@ -22,6 +22,8 @@ import { useIncomeDistribution } from "@/components/hooks/useIncomeDistribution"
 import { useBudgetVsActuals } from "@/components/hooks/useBudgetVsActuals"
 import { useBranchSummary } from "@/components/hooks/useBranchSummary"
 import { useRecentDashboardTransactions } from "@/components/hooks/useRecentDashboardTransactions"
+import { useDashboardComplianceSummary } from "@/components/hooks/useDashboardComplianceSummary"
+import { useDashboardTransactionsSummary } from "@/components/hooks/useDashboardTransactionsSummary"
 import { sectionsToCsv, downloadCsv } from "@/lib/export-csv"
 
 const kpiIcons = [Banknote, CreditCard, BuildingIcon, Boxes, MapPin]
@@ -53,6 +55,13 @@ export default function Page() {
     error: txError,
   } = useRecentDashboardTransactions({ branchId: tenantId, limit: 10 })
 
+  // Month-over-month transactions summary — feeds the "vs last month" trend
+  // on the Total Income stat card (GET /dashboard/transactions-summary).
+  const { summary: txSummary, fetchTransactionsSummary } = useDashboardTransactionsSummary()
+  // Compliance summary (deductions / remittances). Fetched here so the data is
+  // available; surfaced via the compliance integration point below.
+  const { summary: complianceSummary, fetchComplianceSummary } = useDashboardComplianceSummary()
+
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat("en-NG", {
       style: "currency",
@@ -79,6 +88,15 @@ export default function Page() {
   useEffect(() => {
     if (tenantId) fetchTrend({ branchId: tenantId })
   }, [tenantId, fetchTrend])
+
+  useEffect(() => {
+    // Defensive: hooks swallow 401/empty into their own error state.
+    fetchTransactionsSummary(tenantId ? { branchId: tenantId } : {}).catch(() => {})
+  }, [tenantId, fetchTransactionsSummary])
+
+  useEffect(() => {
+    fetchComplianceSummary(tenantId ? { branchId: tenantId } : {}).catch(() => {})
+  }, [tenantId, fetchComplianceSummary])
 
   const formatDateLabel = (value?: string) => {
     if (!value) return "—"
@@ -159,8 +177,31 @@ export default function Page() {
         status: tx.status ?? "",
       }))
 
+      // Compliance summary (GET /dashboard/compliance-summary) — included in the
+      // export when available. This is also the integration point for any future
+      // on-screen compliance card; `complianceSummary` is fetched above.
+      const complianceRows = complianceSummary
+        ? [
+            { metric: "Total Deductions", value: Number(complianceSummary.totalDeductions ?? 0) },
+            { metric: "Total Remitted", value: Number(complianceSummary.totalRemitted ?? 0) },
+            { metric: "Outstanding", value: Number(complianceSummary.outstanding ?? 0) },
+          ]
+        : []
+
+      // Transactions month-over-month summary (GET /dashboard/transactions-summary).
+      const txSummaryRows = txSummary
+        ? [
+            { metric: "Current Month Total", value: Number(txSummary.currentMonthTotal ?? 0) },
+            { metric: "Previous Month Total", value: Number(txSummary.previousMonthTotal ?? 0) },
+            { metric: "Change %", value: Number(txSummary.changePercent ?? 0) },
+            { metric: "Transaction Count", value: Number(txSummary.transactionCount ?? 0) },
+          ]
+        : []
+
       const sections = [
         { title: "Dashboard Overview", rows: overviewRows },
+        { title: "Transactions Summary", rows: txSummaryRows },
+        { title: "Compliance Summary", rows: complianceRows },
         { title: "Income Distribution", rows: incomeRows },
         { title: "Income vs Expense Trend", rows: trendRows },
         { title: "Recent Transactions", rows: transactionRows },
@@ -180,11 +221,24 @@ export default function Page() {
       totalAssetValue?: number
       assetValue?: number
     }
+
+    // Month-over-month change from the transactions summary endpoint, used to
+    // populate the "vs last month" trend on the Total Income card.
+    const changePercent = Number(txSummary?.changePercent)
+    const hasChange = Number.isFinite(changePercent)
+    const incomeTrend = hasChange ? `${Math.abs(changePercent).toFixed(1)}%` : ""
+    const incomeIsPositive: boolean | null = hasChange ? changePercent >= 0 : null
+    const incomeTrendColor = !hasChange
+      ? "text-emerald-500"
+      : changePercent >= 0
+        ? "text-emerald-500"
+        : "text-rose-500"
+
     return [
       {
         title: "Total Income",
         value: formatCurrency(ov.totalIncome ?? 0),
-        trend: "", trendText: "vs last month", trendColor: "text-emerald-500", isPositive: null,
+        trend: incomeTrend, trendText: "vs last month", trendColor: incomeTrendColor, isPositive: incomeIsPositive,
         icon: kpiIcons[0], iconBg: kpiIconStyles[0].iconBg, iconColor: kpiIconStyles[0].iconColor
       },
       {
@@ -212,7 +266,7 @@ export default function Page() {
         icon: kpiIcons[4], iconBg: kpiIconStyles[4].iconBg, iconColor: kpiIconStyles[4].iconColor
       }
     ]
-  }, [overview, activeBranchesCount])
+  }, [overview, activeBranchesCount, txSummary])
 
   const incomeChart = useMemo(() => {
     const sorted = [...incomeItems]

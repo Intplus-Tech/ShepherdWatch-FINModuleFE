@@ -1,6 +1,7 @@
 import { API_V1 } from "@/lib/api";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import axios, { AxiosError } from "axios";
+import { useAuth } from "@/components/auth/AuthProvider";
 
 async function tryRefreshSession(): Promise<boolean> {
   try {
@@ -88,8 +89,9 @@ function extractTotals(payload: unknown): Record<string, unknown> | undefined {
 }
 
 export function useAssetOverview(options: { enabled?: boolean; branchId?: string } = {}) {
+  const { user } = useAuth();
   const enabled = options.enabled ?? true;
-  const branchId = options.branchId?.trim() || undefined;
+  const branchId = (options.branchId ?? user?.branchId)?.trim() || undefined;
 
   const query = useQuery({
     queryKey: ["asset-overview", { branchId: branchId ?? "" }],

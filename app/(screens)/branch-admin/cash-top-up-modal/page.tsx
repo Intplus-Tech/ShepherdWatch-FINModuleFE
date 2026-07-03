@@ -2,13 +2,46 @@
 
 import React, { useState } from "react";
 import { Inter } from "next/font/google";
+import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import AssetsHubPage from "../asset/page";
+import { useCashBoxTopUp } from "@/components/hooks/useAssetMovements";
 
 const inter = Inter({ subsets: ["latin"] });
 
+const CASH_BOX_ID = "AS-1024";
+
 export default function CashTopUpModalPage() {
+  const router = useRouter();
   const [autoRequisition, setAutoRequisition] = useState(true);
+  const [amount, setAmount] = useState("");
+  const [justification, setJustification] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const topUp = useCashBoxTopUp(CASH_BOX_ID);
+
+  const handleSubmit = async () => {
+    setError(null);
+    const numericAmount = Number(amount);
+    if (!numericAmount || numericAmount <= 0) {
+      setError("Enter a valid top-up amount.");
+      return;
+    }
+    if (!justification.trim()) {
+      setError("Justification is required.");
+      return;
+    }
+    try {
+      await topUp.mutateAsync({
+        amount: numericAmount,
+        justification: justification.trim(),
+        createRequisition: autoRequisition,
+      });
+      router.back();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to submit top-up request.");
+    }
+  };
 
   return (
     <div className={`relative min-h-[100dvh] w-full ${inter.className} antialiased`}>
@@ -32,7 +65,10 @@ export default function CashTopUpModalPage() {
               <h2 className="text-[#111827] text-[16px] sm:text-[18px] font-[800] leading-tight tracking-tight">Top-up Cash</h2>
               <p className="text-[#6B7280] text-[12px] sm:text-[13px] font-[500]">Petty Cash Box (AS-1024)</p>
             </div>
-            <button className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors shrink-0 text-[#9CA3AF]">
+            <button
+              onClick={() => router.back()}
+              className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors shrink-0 text-[#9CA3AF]"
+            >
               <X className="h-5 w-5 stroke-[2px]" />
             </button>
           </div>
@@ -52,9 +88,11 @@ export default function CashTopUpModalPage() {
                 <div className="h-full px-3 sm:px-4 flex items-center justify-center text-[#6B7280] text-[14px] sm:text-[15px] font-[600] shrink-0">
                   ₦
                 </div>
-                <input 
-                  type="text" 
-                  placeholder="0.00" 
+                <input
+                  type="number"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder="0.00"
                   className="flex-1 h-full w-full bg-transparent text-[#111827] text-[14px] sm:text-[15px] font-[500] placeholder:text-[#9CA3AF] outline-none"
                 />
                 <div className="h-full px-4 flex items-center justify-center text-[#9CA3AF] text-[11px] sm:text-[12px] font-[700] tracking-wide shrink-0">
@@ -68,8 +106,10 @@ export default function CashTopUpModalPage() {
               <label className="text-[#374151] text-[12.5px] sm:text-[13px] font-[600]">
                 Justification <span className="text-[#EF4444]">*</span>
               </label>
-              <textarea 
-                placeholder="Explain the reason for this cash top-up request..." 
+              <textarea
+                value={justification}
+                onChange={(e) => setJustification(e.target.value)}
+                placeholder="Explain the reason for this cash top-up request..."
                 className="w-full rounded-[8px] border border-[#D1D5DB] bg-white p-3 text-[13px] sm:text-[14px] text-[#111827] placeholder:text-[#9CA3AF] font-[400] outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB] transition-all transition-shadow min-h-[90px] sm:min-h-[100px] resize-none"
               ></textarea>
             </div>
@@ -95,13 +135,24 @@ export default function CashTopUpModalPage() {
 
           </div>
 
+          {error && (
+            <p className="px-4 sm:px-6 -mt-2 pb-2 text-[12.5px] font-[600] text-[#EF4444]">{error}</p>
+          )}
+
           {/* Footer Divider & Buttons */}
           <div className="px-4 sm:px-6 py-4 sm:py-5 border-t border-[#EEF1F6] bg-gray-50/50 flex flex-col sm:flex-row justify-end gap-3 rounded-b-[16px]">
-            <button className="h-[40px] sm:h-[44px] px-6 rounded-[8px] bg-white border border-[#D1D5DB] text-[#4B5563] text-[12.5px] sm:text-[14px] font-[700] hover:bg-gray-50 transition-colors shadow-sm w-full sm:w-auto">
+            <button
+              onClick={() => router.back()}
+              className="h-[40px] sm:h-[44px] px-6 rounded-[8px] bg-white border border-[#D1D5DB] text-[#4B5563] text-[12.5px] sm:text-[14px] font-[700] hover:bg-gray-50 transition-colors shadow-sm w-full sm:w-auto"
+            >
               Cancel
             </button>
-            <button className="h-[40px] sm:h-[44px] px-6 rounded-[8px] bg-[#2563EB] text-white text-[12.5px] sm:text-[14px] font-[700] hover:bg-[#1D4ED8] transition-colors shadow-sm w-full sm:w-auto">
-              Submit Request
+            <button
+              onClick={handleSubmit}
+              disabled={topUp.isPending}
+              className="h-[40px] sm:h-[44px] px-6 rounded-[8px] bg-[#2563EB] text-white text-[12.5px] sm:text-[14px] font-[700] hover:bg-[#1D4ED8] transition-colors shadow-sm w-full sm:w-auto disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {topUp.isPending ? "Submitting…" : "Submit Request"}
             </button>
           </div>
           

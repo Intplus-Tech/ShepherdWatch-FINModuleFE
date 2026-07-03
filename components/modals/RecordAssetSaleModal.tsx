@@ -7,6 +7,7 @@ import { z } from "zod"
 import { X, Calendar, AlertCircle, ChevronDown, Trash2 } from "lucide-react"
 
 const saleSchema = z.object({
+  assetId: z.string().optional(),
   saleDate: z.string().min(1, "Sale date is required"),
   saleAmount: z
     .string()
@@ -31,6 +32,7 @@ export type DepreciationHistoryEntry = {
 export type AssetSaleDetails = {
   branchName: string;
   location: string;
+  assetId?: string;
   assetName: string;
   saleDate: string;
   saleAmount: string;
@@ -53,6 +55,8 @@ type RecordAssetSaleModalProps = {
   submitting?: boolean;
   deleting?: boolean;
   errorMessage?: string | null;
+  /** When provided in create mode, the Asset field becomes a selectable dropdown. */
+  assetOptions?: { id: string; name: string }[];
 }
 
 const defaultSaleDetails: AssetSaleDetails = {
@@ -78,6 +82,7 @@ export default function RecordAssetSaleModal({
   submitting = false,
   deleting = false,
   errorMessage = null,
+  assetOptions,
 }: RecordAssetSaleModalProps) {
   const {
     register,
@@ -87,6 +92,7 @@ export default function RecordAssetSaleModal({
   } = useForm<AssetSaleFormValues>({
     resolver: zodResolver(saleSchema),
     defaultValues: {
+      assetId: saleDetails.assetId,
       saleDate: saleDetails.saleDate,
       saleAmount: saleDetails.saleAmount,
       buyerName: saleDetails.buyerName,
@@ -98,6 +104,7 @@ export default function RecordAssetSaleModal({
 
   useEffect(() => {
     reset({
+      assetId: saleDetails.assetId,
       saleDate: saleDetails.saleDate,
       saleAmount: saleDetails.saleAmount,
       buyerName: saleDetails.buyerName,
@@ -107,6 +114,7 @@ export default function RecordAssetSaleModal({
     })
   }, [
     reset,
+    saleDetails.assetId,
     saleDetails.saleDate,
     saleDetails.saleAmount,
     saleDetails.buyerName,
@@ -114,6 +122,8 @@ export default function RecordAssetSaleModal({
     saleDetails.reasonForSale,
     saleDetails.proceedsToAccount,
   ])
+
+  const useAssetSelect = mode === "create" && Array.isArray(assetOptions) && assetOptions.length > 0
 
   if (!isOpen) return null;
 
@@ -163,16 +173,39 @@ export default function RecordAssetSaleModal({
           )}
 
           <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-            {/* Asset (always read-only) */}
+            {/* Asset — selectable in create mode when options are supplied */}
             <div className="space-y-1 col-span-2">
               <label className="text-[12px] font-medium text-[#374151]">Asset</label>
-              <input
-                type="text"
-                value={saleDetails.assetName}
-                readOnly
-                aria-label="Asset name"
-                className={readOnlyInputClass}
-              />
+              {useAssetSelect ? (
+                <div className="relative">
+                  <select
+                    {...register("assetId")}
+                    aria-label="Asset"
+                    className={`${inputClass} appearance-none pr-9`}
+                  >
+                    <option value="">Select an asset...</option>
+                    {assetOptions!.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+                    <ChevronDown className="h-4 w-4 text-[#9CA3AF]" />
+                  </div>
+                </div>
+              ) : (
+                <input
+                  type="text"
+                  value={saleDetails.assetName}
+                  readOnly
+                  aria-label="Asset name"
+                  className={readOnlyInputClass}
+                />
+              )}
+              {errors.assetId && (
+                <p className="text-[11px] text-[#B91C1C]">{errors.assetId.message}</p>
+              )}
             </div>
 
             {/* Sale Date */}

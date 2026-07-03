@@ -24,7 +24,7 @@ export function useBranchSummary(options: Options = {}) {
   const [refreshIndex, setRefreshIndex] = useState(0)
 
   const branchId = useMemo(
-    () => options.branchId ?? user?.tenantId ?? user?.tenant?.id ?? "",
+    () => options.branchId ?? user?.branchId ?? "",
     [options.branchId, user]
   )
 

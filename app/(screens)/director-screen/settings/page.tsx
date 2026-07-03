@@ -261,6 +261,8 @@ export default function Page() {
     error: budgetConfigError,
     lastUpdated,
     refresh: refreshBudgetConfig,
+    resetConfig: resetBudgetConfig,
+    resetting: budgetConfigResetting,
   } = useBudgetConfig()
   const [revokeMessage, setRevokeMessage] = useState<string | null>(null)
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
@@ -513,6 +515,21 @@ export default function Page() {
 
 
 
+
+  const [budgetResetMessage, setBudgetResetMessage] = useState<string | null>(null)
+
+  const handleResetBudgetConfig = async () => {
+    setBudgetResetMessage(null)
+    try {
+      await resetBudgetConfig()
+      // resetConfig already triggers a refetch; refresh again defensively.
+      refreshBudgetConfig()
+      setBudgetResetMessage("Budget configuration reset to defaults.")
+      setTimeout(() => setBudgetResetMessage(null), 4000)
+    } catch {
+      // Error surfaced via budgetConfigError.
+    }
+  }
 
   const handleTemplateChange = (field: string, value: string | boolean) => {
     setTemplateForm((prev) => ({ ...prev, [field]: value }))
@@ -1008,6 +1025,18 @@ export default function Page() {
                     <FolderKanban className="h-4 w-4 text-[#3B5BDB]" />
                     Budget Streams &amp; Categories
                   </div>
+                  <div className="flex items-center gap-4">
+                  {budgetResetMessage ? (
+                    <span className="text-[12px] font-[700] text-emerald-600">{budgetResetMessage}</span>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={handleResetBudgetConfig}
+                    disabled={budgetConfigResetting}
+                    className="inline-flex items-center gap-1 text-[14px] font-semibold text-[#6B7280] hover:text-[#EF4444] disabled:opacity-60"
+                  >
+                    {budgetConfigResetting ? "Resetting..." : "Reset to defaults"}
+                  </button>
                   <button
                     type="button"
                     onClick={() =>
@@ -1028,6 +1057,7 @@ export default function Page() {
                     <Plus className="h-4 w-4" />
                     Add Stream
                   </button>
+                  </div>
                 </div>
 
                 <div className="divide-y divide-[#F3F5F9]">

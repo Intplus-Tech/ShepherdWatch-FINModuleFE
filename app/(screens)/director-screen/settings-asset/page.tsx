@@ -9,6 +9,7 @@ import SettingsConfigSidebar from "@/components/navigation/SettingsConfigSidebar
 import AddAssetClassModal from "@/components/settings/AddAssetClassModal"
 import { useAssetConfig, AssetClassConfig } from "@/components/hooks/useAssetConfig"
 import { useAssetClasses } from "@/components/hooks/useAssetClasses"
+import { useAssetConfigClasses } from "@/components/hooks/useAssetConfigClasses"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/components/ui/toast"
 import { SkeletonTable } from "@/components/ui/skeleton"
@@ -72,6 +73,13 @@ export default function Page() {
   // Master list of asset classes (where "Add New Class" creates records). Merged
   // into the policy table below so newly-created classes appear immediately.
   const { assetClasses, refetch: refetchAssetClasses } = useAssetClasses({ limit: 100 })
+  // CRUD against the global asset-policy class-defaults endpoints.
+  const {
+    saving: classSaving,
+    listClasses,
+    updateClass,
+    deleteClass,
+  } = useAssetConfigClasses()
   const { pushToast } = useToast()
 
   const [disposalApproval, setDisposalApproval] = useState(true)
@@ -80,6 +88,11 @@ export default function Page() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [addClassOpen, setAddClassOpen] = useState(false)
+  const [classesLoading, setClassesLoading] = useState(false)
+  const [classesError, setClassesError] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [classesRefreshIndex, setClassesRefreshIndex] = useState(0)
+  const refreshClasses = () => setClassesRefreshIndex((prev) => prev + 1)
 
   useEffect(() => {
     if (assetConfig) {
@@ -90,24 +103,96 @@ export default function Page() {
           : ""
       )
     }
+  }, [assetConfig])
 
-    // Merge the asset-config policy classes with the master /asset-classes list
-    // so classes created via "Add New Class" show up here too. Dedupe by name.
-    const configClasses = Array.isArray(assetConfig?.classes) ? assetConfig!.classes : []
-    const seen = new Set(
-      configClasses.map((c) => (c.name || "").trim().toLowerCase()).filter(Boolean)
-    )
-    const extras = (Array.isArray(assetClasses) ? assetClasses : [])
-      .map((c) => assetClassToConfig(c as Record<string, unknown>))
-      .filter((c) => {
-        const key = (c.name || "").trim().toLowerCase()
-        if (!key || seen.has(key)) return false
-        seen.add(key)
-        return true
+  // Source the policy table from the dedicated class-defaults endpoint
+  // (GET /settings/asset-config/classes), falling back to the asset-config
+  // payload and the master /asset-classes list when it is empty.
+  useEffect(() => {
+    let active = true
+
+    const buildFallback = (): AssetClassConfig[] => {
+      const configClasses = Array.isArray(assetConfig?.classes) ? assetConfig!.classes : []
+      const seen = new Set(
+        configClasses.map((c) => (c.name || "").trim().toLowerCase()).filter(Boolean)
+      )
+      const extras = (Array.isArray(assetClasses) ? assetClasses : [])
+        .map((c) => assetClassToConfig(c as Record<string, unknown>))
+        .filter((c) => {
+          const key = (c.name || "").trim().toLowerCase()
+          if (!key || seen.has(key)) return false
+          seen.add(key)
+          return true
+        })
+      return [...configClasses, ...extras]
+    }
+
+    const load = async () => {
+      setClassesLoading(true)
+      setClassesError(null)
+      try {
+        const live = await listClasses()
+        if (!active) return
+        if (Array.isArray(live) && live.length > 0) {
+          setClasses(live.map((c) => assetClassToConfig(c as Record<string, unknown>)))
+        } else {
+          setClasses(buildFallback())
+        }
+      } catch (err) {
+        if (!active) return
+        // Defensive: never crash on 401/empty — fall back to whatever we have.
+        setClasses(buildFallback())
+        setClassesError(err instanceof Error ? err.message : "Unable to load asset classes.")
+      } finally {
+        if (active) setClassesLoading(false)
+      }
+    }
+
+    load()
+    return () => {
+      active = false
+    }
+  }, [assetConfig, assetClasses, listClasses, classesRefreshIndex])
+
+  const handleDeleteClass = async (id: string) => {
+    if (!id) return
+    setDeletingId(id)
+    try {
+      await deleteClass(id)
+      pushToast("Asset class deleted successfully.", "success")
+      refreshClasses()
+      refresh()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to delete asset class."
+      pushToast(`Delete failed: ${message}`, "error")
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  const handleSaveClass = async (cls: AssetClassConfig) => {
+    if (!cls._id) {
+      pushToast("This class cannot be edited (missing identifier).", "error")
+      setEditingId(null)
+      return
+    }
+    try {
+      await updateClass(cls._id, {
+        name: cls.name,
+        usefulLifeYears: cls.usefulLifeYears,
+        depreciationMethod: cls.depreciationMethod,
+        salvageValuePercent: cls.salvageValuePercent,
+        nonDepreciable: isNonDepreciable(cls),
       })
-
-    setClasses([...configClasses, ...extras])
-  }, [assetConfig, assetClasses])
+      pushToast("Asset class updated successfully.", "success")
+      setEditingId(null)
+      refreshClasses()
+      refresh()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to update asset class."
+      pushToast(`Update failed: ${message}`, "error")
+    }
+  }
 
   const lastReviewLabel = useMemo(() => {
     const raw = assetConfig?.lastPolicyReviewAt
@@ -252,6 +337,191 @@ export default function Page() {
 
               </div>
 
+              {/* Asset Class Defaults — live data from GET /settings/asset-config/classes */}
+              <div className="rounded-[12px] border border-[#EEF1F6] bg-white">
+                <div className="flex items-center justify-between border-b border-[#EEF1F6] px-4 py-3">
+                  <div className="flex items-center gap-2 text-[14px] font-bold text-[#111827]">
+                    <Layers className="h-4 w-4 text-[#3B5BDB]" />
+                    Asset Class Defaults
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 rounded-[10px] text-[#3B5BDB]"
+                    onClick={() => setAddClassOpen(true)}
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add New Class
+                  </Button>
+                </div>
+
+                {classesError ? (
+                  <div className="flex items-center gap-2 px-4 py-3 text-[12px] font-bold text-amber-600">
+                    <AlertTriangle className="h-4 w-4" />
+                    {classesError}
+                  </div>
+                ) : null}
+
+                {classesLoading && classes.length === 0 ? (
+                  <div className="p-4">
+                    <SkeletonTable rows={3} />
+                  </div>
+                ) : classes.length === 0 ? (
+                  <div className="px-4 py-8 text-center text-[12px] text-[#9CA3AF]">
+                    No asset classes configured yet. Use &ldquo;Add New Class&rdquo; to create one.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[640px] text-left text-[13px]">
+                      <thead className="bg-[#F8FAFC] text-[10px] font-bold uppercase tracking-[1px] text-[#9CA3AF]">
+                        <tr>
+                          <th className="px-4 py-3">Class</th>
+                          <th className="px-4 py-3">Method</th>
+                          <th className="px-4 py-3">Useful Life</th>
+                          <th className="px-4 py-3">Salvage %</th>
+                          <th className="px-4 py-3 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#EEF1F6]">
+                        {classes.map((cls) => {
+                          const id = cls._id || ""
+                          const isEditing = editingId === id && !!id
+                          return (
+                            <tr key={id || cls.name} className="text-[#111827]">
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-2">
+                                  {classIcon(cls.name)}
+                                  {isEditing ? (
+                                    <input
+                                      type="text"
+                                      aria-label="Class name"
+                                      value={cls.name ?? ""}
+                                      onChange={(e) => updateClassField(id, "name", e.target.value)}
+                                      className="h-8 w-full rounded-[8px] border border-[#E5E7EB] px-2 text-[13px]"
+                                    />
+                                  ) : (
+                                    <span className="font-semibold">{cls.name || "Unnamed"}</span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 text-[#6B7280]">
+                                {isEditing ? (
+                                  <select
+                                    aria-label="Depreciation method"
+                                    value={cls.depreciationMethod ?? ""}
+                                    onChange={(e) => updateClassField(id, "depreciationMethod", e.target.value)}
+                                    className="h-8 rounded-[8px] border border-[#E5E7EB] px-2 text-[13px]"
+                                  >
+                                    <option value="Straight Line">Straight Line</option>
+                                    <option value="Reducing Balance">Reducing Balance</option>
+                                    <option value="Non-Depreciable">Non-Depreciable</option>
+                                  </select>
+                                ) : (
+                                  cls.depreciationMethod || (isNonDepreciable(cls) ? "Non-Depreciable" : "—")
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-[#6B7280]">
+                                {isEditing ? (
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    aria-label="Useful life years"
+                                    value={cls.usefulLifeYears ?? ""}
+                                    onChange={(e) =>
+                                      updateClassField(
+                                        id,
+                                        "usefulLifeYears",
+                                        e.target.value === "" ? undefined : Number(e.target.value)
+                                      )
+                                    }
+                                    className="h-8 w-20 rounded-[8px] border border-[#E5E7EB] px-2 text-[13px]"
+                                  />
+                                ) : cls.usefulLifeYears !== undefined ? (
+                                  `${cls.usefulLifeYears} yrs`
+                                ) : (
+                                  "—"
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-[#6B7280]">
+                                {isEditing ? (
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    max={100}
+                                    aria-label="Salvage value percent"
+                                    value={cls.salvageValuePercent ?? ""}
+                                    onChange={(e) =>
+                                      updateClassField(
+                                        id,
+                                        "salvageValuePercent",
+                                        e.target.value === "" ? undefined : Number(e.target.value)
+                                      )
+                                    }
+                                    className="h-8 w-20 rounded-[8px] border border-[#E5E7EB] px-2 text-[13px]"
+                                  />
+                                ) : cls.salvageValuePercent !== undefined ? (
+                                  `${cls.salvageValuePercent}%`
+                                ) : (
+                                  "—"
+                                )}
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="flex items-center justify-end gap-3 text-[12px] font-bold">
+                                  {isEditing ? (
+                                    <>
+                                      <button
+                                        type="button"
+                                        className="text-[#3B5BDB] hover:underline disabled:opacity-60"
+                                        onClick={() => handleSaveClass(cls)}
+                                        disabled={classSaving}
+                                      >
+                                        {classSaving ? "Saving..." : "Save"}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="text-[#6B7280] hover:underline"
+                                        onClick={() => {
+                                          setEditingId(null)
+                                          refreshClasses()
+                                        }}
+                                      >
+                                        Cancel
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <button
+                                        type="button"
+                                        className="text-[#3B5BDB] hover:underline disabled:opacity-60"
+                                        onClick={() => setEditingId(id)}
+                                        disabled={!id}
+                                        title={!id ? "This class has no identifier and cannot be edited." : undefined}
+                                      >
+                                        Edit
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="text-rose-600 hover:underline disabled:opacity-60"
+                                        onClick={() => handleDeleteClass(id)}
+                                        disabled={!id || deletingId === id}
+                                        title={!id ? "This class has no identifier and cannot be deleted." : undefined}
+                                      >
+                                        {deletingId === id ? "Deleting..." : "Delete"}
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#EEF1F6] pt-4">
                 <div className="text-[12.74px] leading-[16.98px] italic font-normal text-[#9CA3AF]">
                   <div className="flex items-center gap-2">
@@ -294,6 +564,7 @@ export default function Page() {
         onCreated={() => {
           pushToast("Asset class created successfully.", "success")
           refetchAssetClasses()
+          refreshClasses()
           refresh()
         }}
       />

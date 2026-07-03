@@ -59,7 +59,7 @@ export function useBudgetControlDashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const tenantId = useMemo(() => user?.tenantId ?? user?.tenant?.id ?? "", [user])
+  const branchId = useMemo(() => user?.branchId ?? "", [user])
 
   useEffect(() => {
     let isMounted = true
@@ -70,7 +70,7 @@ export function useBudgetControlDashboard() {
       setError(null)
       try {
         const query = new URLSearchParams({ fiscalYear })
-        if (tenantId) query.set("branchId", tenantId)
+        if (branchId) query.set("branchId", branchId)
         const response = await fetch(`${API_V1}/financial/budgets/control?${query.toString()}`, {
           method: "GET",
           credentials: "include",
@@ -141,7 +141,7 @@ export function useBudgetControlDashboard() {
     return () => {
       isMounted = false
     }
-  }, [tenantId])
+  }, [branchId])
 
   return { data, loading, error }
 }

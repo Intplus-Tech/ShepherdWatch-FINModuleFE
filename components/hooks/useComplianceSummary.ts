@@ -1,5 +1,6 @@
 import { API_V1 } from "@/lib/api";
 import { useState, useCallback } from "react"
+import { useAuth } from "@/components/auth/AuthProvider"
 
 export interface ComplianceSummaryData {
   totalDeductions: number
@@ -15,6 +16,7 @@ interface UseComplianceSummaryProps {
 }
 
 export function useComplianceSummary(initialProps?: UseComplianceSummaryProps) {
+  const { user } = useAuth()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [complianceData, setComplianceData] = useState<ComplianceSummaryData | null>(null)
@@ -25,8 +27,9 @@ export function useComplianceSummary(initialProps?: UseComplianceSummaryProps) {
       setError(null)
       try {
         const mergedProps = { ...initialProps, ...props }
+        const branchId = mergedProps.branchId ?? user?.branchId
         const qs = new URLSearchParams()
-        if (mergedProps.branchId) qs.set("branchId", mergedProps.branchId)
+        if (branchId) qs.set("branchId", branchId)
         if (mergedProps.startDate) qs.set("startDate", mergedProps.startDate)
         if (mergedProps.endDate) qs.set("endDate", mergedProps.endDate)
 
@@ -69,7 +72,7 @@ export function useComplianceSummary(initialProps?: UseComplianceSummaryProps) {
         setLoading(false)
       }
     },
-    [initialProps]
+    [initialProps, user?.branchId]
   )
 
   return { loading, error, complianceData, fetchSummary }

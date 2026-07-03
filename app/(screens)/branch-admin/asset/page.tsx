@@ -41,7 +41,12 @@ import {
 } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
 import { useAssetOverview, type AssetOverviewItem } from "@/components/hooks/useAssetOverview"
-import { formatCurrency } from "@/lib/format"
+import {
+  useAssetMovements,
+  useRecordAssetMovement,
+  type AssetMovement,
+} from "@/components/hooks/useAssetMovements"
+import { formatCurrency, formatRelative } from "@/lib/format"
 import { ModalShell } from "@/components/ui/modal-shell"
 import AssetDetailModal from "@/components/branch-admin/AssetDetailModal"
 import EditAssetDetailsModal from "@/components/branch-admin/EditAssetDetailsModal"
@@ -184,6 +189,55 @@ export default function AssetsHubPage() {
   )
 
   const { items: assetItems, isLoading: assetsLoading } = useAssetOverview({ branchId: tenantId })
+
+  const {
+    items: movementItems,
+    isLoading: movementsLoading,
+    error: movementsError,
+  } = useAssetMovements()
+
+  // Asset id targeted by the "Log Movement/Transfer" row action
+  const [movementAssetId, setMovementAssetId] = useState<string | null>(null)
+  const recordMovement = useRecordAssetMovement(movementAssetId)
+  const [movementFeedback, setMovementFeedback] = useState<string | null>(null)
+
+  const handleLogMovement = async (assetId: string) => {
+    if (!assetId) return
+    setMovementAssetId(assetId)
+    setMovementFeedback(null)
+    try {
+      await recordMovement.mutateAsync({ movementType: "TRANSFER" })
+      setMovementFeedback("Movement logged successfully.")
+    } catch (err) {
+      setMovementFeedback(err instanceof Error ? err.message : "Unable to log movement.")
+    }
+  }
+
+  // Map backend movements onto the existing Movement Log card shape
+  const displayMovementLogs = useMemo(() => {
+    if (movementItems.length === 0) return [] as typeof movementLogs
+    const palettes = [
+      { iconType: "printer", iconBg: "bg-blue-50 border-blue-100", iconCol: "text-blue-500" },
+      { iconType: "chair", iconBg: "bg-purple-50 border-purple-100", iconCol: "text-purple-500" },
+      { iconType: "laptop", iconBg: "bg-indigo-50 border-indigo-100", iconCol: "text-indigo-500" },
+    ]
+    return movementItems.slice(0, 8).map((m: AssetMovement, idx) => {
+      const palette = palettes[idx % palettes.length]
+      const itemName = String(m.assetName ?? m.assetId ?? "Asset")
+      const destination = m.toLocation ? `Moved to ${m.toLocation}` : String(m.movementType ?? "Movement recorded")
+      const handler = String(m.handledBy ?? m.movedBy ?? "")
+      const when = formatRelative(m.movedAt ?? m.createdAt)
+      return {
+        ...palette,
+        itemName,
+        actionText: destination,
+        timeText: handler ? `${when} • ${handler}` : when,
+      }
+    })
+  }, [movementItems])
+
+  const hasLiveMovements = displayMovementLogs.length > 0
+  const movementLogsToRender = hasLiveMovements ? displayMovementLogs : movementLogs
 
   const { liveCurrentAssets, liveNonCurrentAssets } = useMemo(() => {
     const isCurrent = (cat?: string) => {
@@ -785,7 +839,7 @@ export default function AssetsHubPage() {
                                         <Calendar className="h-4 w-4 text-[#9CA3AF]" /> Schedule Maintenance
                                       </button>
                                       <button
-                                        onClick={() => { setOpenActionId(null); setIsMovementHistoryOpen(true) }}
+                                        onClick={() => { setOpenActionId(null); handleLogMovement(asset.assetId) }}
                                         className="w-full text-left px-3.5 py-2.5 hover:bg-gray-50 text-[12.5px] font-[600] text-[#4B5563] flex items-center gap-2.5"
                                       >
                                         <Truck className="h-4 w-4 text-[#9CA3AF]" /> Log Movement/Transfer
@@ -828,14 +882,23 @@ export default function AssetsHubPage() {
 
                   {/* Log Items */}
                   <div className="flex flex-col flex-1 p-5 gap-7 overflow-y-auto">
-                    {movementLogs.map((log, idx) => {
+                    {movementsLoading && !hasLiveMovements && (
+                      <div className="text-[12px] font-[600] text-[#6B7280]">Loading movements…</div>
+                    )}
+                    {!movementsLoading && movementsError && !hasLiveMovements && (
+                      <div className="text-[12px] font-[600] text-[#9CA3AF]">Showing recent activity.</div>
+                    )}
+                    {movementFeedback && (
+                      <div className="text-[12px] font-[600] text-[#2563EB]">{movementFeedback}</div>
+                    )}
+                    {movementLogsToRender.map((log, idx) => {
                       let IconComponent = User;
                       if (log.iconType === "laptop") IconComponent = Laptop;
                       else if (log.iconType === "chair") IconComponent = LayoutGrid;
 
                       return (
                         <div key={idx} className="flex gap-4 items-start relative">
-                          {idx !== movementLogs.length - 1 && (
+                          {idx !== movementLogsToRender.length - 1 && (
                             <div className="absolute left-[20px] top-[40px] bottom-[-28px] w-[1.5px] bg-[#EEF1F6] z-0"></div>
                           )}
                           <div className={`h-10 w-10 sm:h-11 sm:w-11 rounded-full ${log.iconBg} flex items-center justify-center shrink-0 border z-10`}>

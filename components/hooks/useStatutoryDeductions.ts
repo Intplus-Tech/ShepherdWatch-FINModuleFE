@@ -1,5 +1,6 @@
 import { API_V1 } from "@/lib/api";
 import { useCallback, useState } from "react"
+import { useAuth } from "@/components/auth/AuthProvider"
 
 export type DeductionType = "paye" | "pension" | "nhf"
 
@@ -83,6 +84,7 @@ function mapDeduction(item: Record<string, unknown>, index: number): StatutoryDe
 }
 
 export function useStatutoryDeductions() {
+  const { user } = useAuth()
   const [creating, setCreating] = useState(false)
   const [updating, setUpdating] = useState(false)
   const [remitting, setRemitting] = useState(false)
@@ -99,12 +101,13 @@ export function useStatutoryDeductions() {
     setLoading(true)
     setListError(null)
     try {
+      const branchId = params.branchId ?? user?.branchId
       const query = new URLSearchParams()
       if (params.page !== undefined) query.set("page", String(params.page))
       if (params.limit !== undefined) query.set("limit", String(params.limit))
       if (params.type) query.set("type", params.type)
       if (params.period) query.set("period", params.period)
-      if (params.branchId) query.set("branchId", params.branchId)
+      if (branchId) query.set("branchId", branchId)
       if (params.remitted !== undefined) query.set("remitted", String(params.remitted))
 
       const response = await fetch(`${API_V1}/financial/compliance/deductions?${query.toString()}`, {
@@ -150,7 +153,7 @@ export function useStatutoryDeductions() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [user?.branchId])
 
   const createDeduction = useCallback(async (payload: CreateDeductionPayload): Promise<StatutoryDeduction> => {
     setCreating(true)

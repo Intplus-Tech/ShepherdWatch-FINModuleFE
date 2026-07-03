@@ -10,6 +10,13 @@ import {
   ChevronDown,
 } from "lucide-react"
 import { ModalShell } from "@/components/ui/modal-shell"
+import {
+  useAssetMovements,
+  useCashBoxTopUp,
+  useStockAdjustment,
+  type AssetMovement,
+} from "@/components/hooks/useAssetMovements"
+import { formatDate } from "@/lib/format"
 
 /* ------------------------------- shared bits ------------------------------ */
 
@@ -94,25 +101,61 @@ function CancelButton({ onClose }: { onClose: () => void }) {
   )
 }
 
-function PrimaryButton({ children }: { children: React.ReactNode }) {
+function PrimaryButton({
+  children,
+  onClick,
+  disabled,
+}: {
+  children: React.ReactNode
+  onClick?: () => void
+  disabled?: boolean
+}) {
   return (
     <button
       type="button"
-      className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+      onClick={onClick}
+      disabled={disabled}
+      className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
     >
       {children}
     </button>
   )
 }
 
-type Props = { open: boolean; onClose: () => void }
+type Props = { open: boolean; onClose: () => void; assetId?: string; cashBoxId?: string }
 
 /* ============================== 1. TOP-UP CASH ============================= */
 
-export function TopUpCashModal({ open, onClose }: Props) {
+export function TopUpCashModal({ open, onClose, cashBoxId }: Props) {
   const [amount, setAmount] = useState("")
   const [justification, setJustification] = useState("")
   const [createRequisition, setCreateRequisition] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const topUp = useCashBoxTopUp(cashBoxId ?? "AS-1024")
+
+  const handleSubmit = async () => {
+    setError(null)
+    const numericAmount = Number(amount)
+    if (!numericAmount || numericAmount <= 0) {
+      setError("Enter a valid top-up amount.")
+      return
+    }
+    if (!justification.trim()) {
+      setError("Justification is required.")
+      return
+    }
+    try {
+      await topUp.mutateAsync({
+        amount: numericAmount,
+        justification: justification.trim(),
+        createRequisition,
+      })
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to submit top-up request.")
+    }
+  }
 
   return (
     <ModalShell open={open} onClose={onClose} className="max-w-md">
@@ -174,11 +217,15 @@ export function TopUpCashModal({ open, onClose }: Props) {
           </div>
           <Toggle checked={createRequisition} onChange={setCreateRequisition} />
         </div>
+
+        {error && <p className="text-sm font-medium text-red-600">{error}</p>}
       </div>
 
       <div className="flex items-center justify-end gap-3 border-t border-gray-100 px-6 py-4">
         <CancelButton onClose={onClose} />
-        <PrimaryButton>Submit Request</PrimaryButton>
+        <PrimaryButton onClick={handleSubmit} disabled={topUp.isPending}>
+          {topUp.isPending ? "Submitting…" : "Submit Request"}
+        </PrimaryButton>
       </div>
     </ModalShell>
   )
@@ -186,12 +233,36 @@ export function TopUpCashModal({ open, onClose }: Props) {
 
 /* ============================= 2. UPDATE STOCK ============================ */
 
-export function UpdateStockModal({ open, onClose }: Props) {
+export function UpdateStockModal({ open, onClose, assetId }: Props) {
   const [quantityAdded, setQuantityAdded] = useState("0")
   const [newTotal, setNewTotal] = useState("24")
   const [linkRequisition, setLinkRequisition] = useState(true)
   const [totalCost, setTotalCost] = useState("")
   const [category, setCategory] = useState("Office Supplies")
+  const [error, setError] = useState<string | null>(null)
+
+  const stockAdjustment = useStockAdjustment(assetId ?? "AS-1045")
+
+  const handleSubmit = async () => {
+    setError(null)
+    const qty = Number(quantityAdded)
+    if (!Number.isFinite(qty) || qty === 0) {
+      setError("Enter a quantity to adjust.")
+      return
+    }
+    try {
+      await stockAdjustment.mutateAsync({
+        quantityAdded: qty,
+        newTotal: Number(newTotal) || undefined,
+        totalCost: linkRequisition && totalCost ? Number(totalCost) : undefined,
+        category: linkRequisition ? category : undefined,
+        linkRequisition,
+      })
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to update stock.")
+    }
+  }
 
   return (
     <ModalShell open={open} onClose={onClose} className="max-w-lg">
@@ -312,11 +383,15 @@ export function UpdateStockModal({ open, onClose }: Props) {
             </div>
           )}
         </div>
+
+        {error && <p className="text-sm font-medium text-red-600">{error}</p>}
       </div>
 
       <div className="flex items-center justify-end gap-3 border-t border-gray-100 px-6 py-4">
         <CancelButton onClose={onClose} />
-        <PrimaryButton>Update Stock</PrimaryButton>
+        <PrimaryButton onClick={handleSubmit} disabled={stockAdjustment.isPending}>
+          {stockAdjustment.isPending ? "Updating…" : "Update Stock"}
+        </PrimaryButton>
       </div>
     </ModalShell>
   )
@@ -551,10 +626,35 @@ const DOT_COLORS: Record<MovementRow["dot"], string> = {
   blue: "bg-blue-500",
 }
 
-export function FullMovementHistoryModal({ open, onClose }: Props) {
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return "--"
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
+
+function mapMovementRow(m: AssetMovement): MovementRow {
+  const handler = String(m.handledBy ?? m.movedBy ?? "—")
+  return {
+    date: formatDate(m.movedAt ?? m.createdAt, "datetime"),
+    asset: String(m.assetName ?? m.assetId ?? "Asset"),
+    from: String(m.fromLocation ?? "—"),
+    to: String(m.toLocation ?? "—"),
+    dot: "green",
+    initials: initialsOf(handler),
+    handler,
+    reason: String(m.reason ?? m.movementType ?? "—"),
+  }
+}
+
+export function FullMovementHistoryModal({ open, onClose, assetId }: Props) {
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
   const [category, setCategory] = useState("All Categories")
+
+  const { items: movementItems, isLoading } = useAssetMovements({ assetId, enabled: open })
+  const liveRows = movementItems.map(mapMovementRow)
+  const rows = liveRows.length > 0 ? liveRows : MOVEMENT_ROWS
 
   return (
     <ModalShell open={open} onClose={onClose} className="max-w-4xl">
@@ -640,7 +740,14 @@ export function FullMovementHistoryModal({ open, onClose }: Props) {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 bg-white">
-              {MOVEMENT_ROWS.map((r) => (
+              {isLoading && liveRows.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-4 py-6 text-center text-gray-500">
+                    Loading movements…
+                  </td>
+                </tr>
+              )}
+              {rows.map((r) => (
                 <tr key={`${r.date}-${r.asset}`}>
                   <td className="whitespace-nowrap px-4 py-3 text-gray-600">
                     {r.date}

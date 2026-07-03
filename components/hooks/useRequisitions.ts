@@ -97,22 +97,16 @@ export function useRequisitions(options: UseRequisitionsOptions = {}) {
   const branchId = useMemo(
     () =>
       options.branchId ??
-      options.tenantId ??
       String(
         (user as unknown as { branchId?: string | { _id?: string; id?: string } })?.branchId &&
           typeof (user as unknown as { branchId?: string | { _id?: string; id?: string } })
             .branchId === "object"
           ? (user as unknown as { branchId?: { _id?: string; id?: string } }).branchId?._id ??
             (user as unknown as { branchId?: { _id?: string; id?: string } }).branchId?.id ??
-            user?.tenantId ??
-            user?.tenant?.id ??
             ""
-          : (user as unknown as { branchId?: string })?.branchId ??
-            user?.tenantId ??
-            user?.tenant?.id ??
-            ""
+          : (user as unknown as { branchId?: string })?.branchId ?? ""
       ),
-    [options.branchId, options.tenantId, user]
+    [options.branchId, user]
   )
   const normalizedStatus = useMemo(
     () => normalizeStatus(options.status ?? options.currentStatus),

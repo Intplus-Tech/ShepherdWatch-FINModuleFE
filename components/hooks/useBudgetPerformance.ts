@@ -1,5 +1,6 @@
 import { API_V1 } from "@/lib/api";
 import { useState, useCallback } from "react"
+import { useAuth } from "@/components/auth/AuthProvider"
 
 export interface BudgetItem {
   budgetId: string
@@ -23,6 +24,7 @@ interface UseBudgetPerformanceProps {
 }
 
 export function useBudgetPerformance(initialProps?: UseBudgetPerformanceProps) {
+  const { user } = useAuth()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [performanceData, setPerformanceData] = useState<BudgetPerformanceData | null>(null)
@@ -33,8 +35,9 @@ export function useBudgetPerformance(initialProps?: UseBudgetPerformanceProps) {
       setError(null)
       try {
         const mergedProps = { ...initialProps, ...props }
+        const branchId = mergedProps.branchId ?? user?.branchId
         const qs = new URLSearchParams()
-        if (mergedProps.branchId) qs.set("branchId", mergedProps.branchId)
+        if (branchId) qs.set("branchId", branchId)
         if (mergedProps.startDate) qs.set("startDate", mergedProps.startDate)
         if (mergedProps.endDate) qs.set("endDate", mergedProps.endDate)
 
@@ -54,7 +57,7 @@ export function useBudgetPerformance(initialProps?: UseBudgetPerformanceProps) {
         setLoading(false)
       }
     },
-    [initialProps]
+    [initialProps, user?.branchId]
   )
 
   return { loading, error, performanceData, fetchPerformance }

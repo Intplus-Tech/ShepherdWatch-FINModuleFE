@@ -1,5 +1,6 @@
 import { API_V1 } from "@/lib/api";
 import { useCallback, useState } from "react"
+import { useAuth } from "@/components/auth/AuthProvider"
 
 export type ComplianceDashboardByType = {
   pending: number
@@ -38,6 +39,7 @@ function toNumber(value: unknown): number {
 }
 
 export function useComplianceDashboard() {
+  const { user } = useAuth()
   const [data, setData] = useState<ComplianceDashboardData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -46,8 +48,9 @@ export function useComplianceDashboard() {
     setLoading(true)
     setError(null)
     try {
+      const branchId = query.branchId ?? user?.branchId
       const params = new URLSearchParams()
-      if (query.branchId) params.set("branchId", query.branchId)
+      if (branchId) params.set("branchId", branchId)
       if (query.month !== undefined) params.set("month", String(query.month))
       if (query.fiscalYear !== undefined) params.set("fiscalYear", String(query.fiscalYear))
 
@@ -100,7 +103,7 @@ export function useComplianceDashboard() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [user?.branchId])
 
   return { data, loading, error, fetchDashboard, setError }
 }
