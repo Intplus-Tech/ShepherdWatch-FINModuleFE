@@ -68,7 +68,7 @@ export default function Page() {
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
       <SidebarNav
-        activeHref="/director-screen/hr/employee-directory"
+        activeHref="/director-screen/hr/requisition-approvals"
         className="fixed inset-y-0 left-0 z-20 w-[260px] rounded-none bg-[#FAFBFF] border-r border-[#EEF1F6]"
       />
       <main className="flex-1 xl:ml-[260px] text-[#111827]">
