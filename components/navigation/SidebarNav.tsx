@@ -22,6 +22,7 @@ import {
   GraduationCap,
   Banknote,
   DoorOpen,
+  ClipboardList,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/components/auth/AuthProvider"
@@ -30,6 +31,7 @@ export type SidebarItem = {
   label: string
   href: string
   icon: React.ComponentType<{ className?: string }>
+  badge?: string
 }
 
 export type SidebarUser = {
@@ -66,11 +68,12 @@ const NAV_GROUPS: NavGroup[] = [
     icon: Briefcase,
     items: [
       { label: "Dashboard", href: "/director-screen/hr/dashboard", icon: LayoutGrid },
+      { label: "Job Requisition", href: "/director-screen/hr/requisition-approvals", icon: ClipboardList },
       { label: "Employee Directory", href: "/director-screen/hr/employee-directory", icon: UsersRound },
-      { label: "Payroll Approval", href: "/director-screen/hr/payroll-approval", icon: WalletCards },
-      { label: "Leave & Attendance", href: "/director-screen/hr/leave-attendance", icon: CalendarCheck },
+      { label: "Payroll Overview", href: "/director-screen/hr/payroll-approval", icon: WalletCards },
+      { label: "Leave & Attendance", href: "/director-screen/hr/leave-attendance", icon: CalendarCheck, badge: "12" },
       { label: "Training Management", href: "/director-screen/hr/training-management", icon: GraduationCap },
-      { label: "Employee Loans", href: "/director-screen/hr/employee-loans", icon: Banknote },
+      { label: "Employee Loans", href: "/director-screen/hr/employee-loans", icon: Banknote, badge: "12" },
       { label: "Exit Clearance Oversight", href: "/director-screen/hr/exit-clearance", icon: DoorOpen },
     ],
   },
@@ -227,8 +230,18 @@ export default function SidebarNav({
                               : "text-[#6B7280] hover:bg-white hover:text-[#111827]"
                           )}
                         >
-                          <Icon className="h-4.5 w-4.5" />
-                          {item.label}
+                          <Icon className="h-4.5 w-4.5 shrink-0" />
+                          <span className="flex-1">{item.label}</span>
+                          {item.badge ? (
+                            <span
+                              className={cn(
+                                "ml-auto inline-flex min-w-[18px] items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-bold",
+                                isActive ? "bg-white/25 text-white" : "bg-[#EEF2FF] text-[#3B5BDB]"
+                              )}
+                            >
+                              {item.badge}
+                            </span>
+                          ) : null}
                         </Link>
                       )
                     })}
