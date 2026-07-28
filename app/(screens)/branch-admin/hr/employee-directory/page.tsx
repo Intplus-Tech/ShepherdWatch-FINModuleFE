@@ -2,18 +2,16 @@
 
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import BranchLeadPastorSidebar from "@/components/navigation/BranchLeadPastorSidebar"
+import BranchAdminSidebar from "@/components/navigation/BranchAdminSidebar"
+import BranchAdminAddEmployeeModal from "@/components/hr/BranchAdminAddEmployeeModal"
 import { cn } from "@/lib/utils"
 import {
   Search,
   Bell,
+  Menu,
   Download,
   Plus,
   SlidersHorizontal,
-  Users,
-  CheckCircle2,
-  Calendar,
-  UserMinus,
   Eye,
   Pencil,
   UserX,
@@ -75,17 +73,7 @@ const STATUS_STYLES: Record<Status, string> = {
   Exited: "bg-slate-100 text-slate-600",
 }
 
-const STATS = [
-  { label: "Total Staff", value: "124", icon: Users, tint: "bg-[#EEF2FF] text-[#2563EB]" },
-  { label: "Active", value: "112", icon: CheckCircle2, tint: "bg-emerald-100 text-emerald-600" },
-  { label: "On Leave", value: "8", icon: Calendar, tint: "bg-amber-100 text-amber-600" },
-  { label: "Exit Pending", value: "4", icon: UserMinus, tint: "bg-rose-100 text-rose-600" },
-]
-
 const JOB_TITLES = Array.from(new Set(EMPLOYEES.map((e) => e.title)))
-
-const CARD =
-  "rounded-[14px] border border-[#EEF1F6] bg-white shadow-[0px_4px_10px_rgba(0,0,0,0.02)]"
 
 function initials(name: string) {
   return name
@@ -98,11 +86,12 @@ function initials(name: string) {
 }
 
 export default function Page() {
-  const router = useRouter()
-
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const [addOpen, setAddOpen] = useState(false)
   const [query, setQuery] = useState("")
   const [status, setStatus] = useState<"All" | Status>("All")
   const [jobTitle, setJobTitle] = useState<"All Roles" | string>("All Roles")
+  const router = useRouter()
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -119,26 +108,45 @@ export default function Page() {
   }, [query, status, jobTitle])
 
   return (
-    <div className="flex min-h-screen bg-[#F2F4F7] font-sans text-[#111827]">
-      <BranchLeadPastorSidebar />
-      <main className="flex-1 px-8 pt-3 pb-6">
-        <div className="flex items-center justify-between border-b border-[#EEF1F6] h-[42.67px]">
-          <span className="text-[13px] font-bold text-[#111827]">Dashboard</span>
+    <div className="flex flex-col lg:flex-row min-h-screen bg-[#F8FAFC] w-full">
+      {mobileOpen && (
+        <div
+          className="lg:hidden fixed inset-0 z-40 bg-gray-900/40 backdrop-blur-sm"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+      <BranchAdminSidebar
+        activeHref="/branch-admin/hr/employee-directory"
+        mobileOpen={mobileOpen}
+        onMobileClose={() => setMobileOpen(false)}
+      />
+
+      <div className="flex-1 flex flex-col w-full relative min-h-[100dvh]">
+        <header className="flex h-[64px] shrink-0 items-center justify-between border-b border-[#EEF1F6] bg-white px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9CA3AF]" />
+            <button
+              onClick={() => setMobileOpen(true)}
+              className="lg:hidden -ml-1 h-9 w-9 flex items-center justify-center rounded-[8px] text-[#6B7280] hover:bg-[#F3F4F6]"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+            <div className="text-[15px] font-bold text-[#111827]">Dashboard</div>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="relative hidden md:block">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
               <input
+                className="h-10 w-64 rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] pl-9 pr-3 text-sm"
                 placeholder="Search requisitions..."
-                className="h-9 w-[220px] rounded-full border border-[#E5E7EB] bg-white pl-9 pr-3 text-[12px]"
               />
             </div>
             <button className="text-[#6B7280]">
               <Bell className="h-5 w-5" />
             </button>
           </div>
-        </div>
+        </header>
 
-        <div className="pt-6">
+        <main className="flex-1 p-6 lg:p-8 min-w-0">
           {/* Header row */}
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
@@ -154,40 +162,18 @@ export default function Page() {
                 <Download className="h-4 w-4" />
                 Export CSV
               </button>
-              <button className="flex items-center gap-2 rounded-md bg-[#111827] px-4 py-2 text-[12px] font-semibold text-white hover:bg-black">
+              <button
+                onClick={() => setAddOpen(true)}
+                className="flex items-center gap-2 rounded-md bg-[#111827] px-4 py-2 text-[12px] font-semibold text-white hover:bg-black"
+              >
                 <Plus className="h-4 w-4" />
                 Add Employee
               </button>
             </div>
           </div>
 
-          {/* Stat cards */}
-          <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            {STATS.map((s) => {
-              const Icon = s.icon
-              return (
-                <div key={s.label} className={cn(CARD, "relative p-5")}>
-                  <div
-                    className={cn(
-                      "absolute right-5 top-5 flex h-10 w-10 items-center justify-center rounded-[10px]",
-                      s.tint
-                    )}
-                  >
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
-                    {s.label}
-                  </div>
-                  <div className="mt-2 text-[28px] font-bold text-[#111827]">
-                    {s.value}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-
           {/* Toolbar */}
-          <div className={cn(CARD, "mt-5 p-4")}>
+          <div className="mt-6 rounded-xl border border-[#EEF1F6] bg-white p-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
@@ -227,11 +213,11 @@ export default function Page() {
           </div>
 
           {/* Table */}
-          <div className={cn(CARD, "mt-5 overflow-hidden")}>
+          <div className="mt-5 overflow-hidden rounded-xl border border-[#EEF1F6] bg-white">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[760px] border-collapse">
                 <thead>
-                  <tr className="bg-[#EFF2FF]">
+                  <tr className="bg-[#EEF2FF]">
                     <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">
                       Name
                     </th>
@@ -287,9 +273,7 @@ export default function Page() {
                         <div className="flex items-center justify-end gap-1">
                           <button
                             onClick={() =>
-                              router.push(
-                                "/branchlead-pastor/hr/employee-profile"
-                              )
+                              router.push("/branch-admin/hr/employee-profile")
                             }
                             aria-label={`View ${e.name}`}
                             className="flex h-8 w-8 items-center justify-center rounded-md text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#2563EB]"
@@ -364,8 +348,13 @@ export default function Page() {
               </div>
             </div>
           </div>
-        </div>
-      </main>
+        </main>
+      </div>
+
+      <BranchAdminAddEmployeeModal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+      />
     </div>
   )
 }

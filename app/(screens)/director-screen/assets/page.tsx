@@ -18,8 +18,8 @@ import { useModalParam } from "@/components/hooks/useModalParam"
 import NewAssetCategoryModal from "@/components/modals/NewAssetCategoryModal"
 
 function Dropdown({
-  value, 
-  options, 
+  value,
+  options,
   onChange,
   isOpen,
   setIsOpen
