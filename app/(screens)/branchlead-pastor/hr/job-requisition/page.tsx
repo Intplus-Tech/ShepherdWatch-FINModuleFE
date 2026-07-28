@@ -108,38 +108,33 @@ export default function Page() {
         </div>
 
         <div className="pt-6">
-          {/* Header row */}
-          <div className="mb-6 flex items-center justify-between gap-4">
-            <h1 className="text-[24px] font-bold text-[#111827]">
-              Job Requisition
-            </h1>
+          {/* Stat cards + New Requisition (button right-aligned, matching design) */}
+          <div className="mb-6 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+            <div className="grid flex-1 grid-cols-1 gap-5 sm:grid-cols-2 max-w-2xl">
+              <div className={cardCls}>
+                <div className="text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
+                  Active Requests
+                </div>
+                <div className="mt-2 text-[32px] font-bold text-[#111827]">12</div>
+                <div className="mt-1 text-[13px] text-[#6B7280]">
+                  Currently awaiting approval
+                </div>
+              </div>
+              <div className={cardCls}>
+                <div className="text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
+                  Approved This Month
+                </div>
+                <div className="mt-2 text-[32px] font-bold text-[#111827]">08</div>
+              </div>
+            </div>
             <button
               type="button"
               onClick={() => setModalOpen(true)}
-              className="inline-flex items-center gap-2 rounded-md bg-[#111827] px-4 py-2 text-[12px] font-semibold text-white hover:bg-black"
+              className="inline-flex shrink-0 items-center gap-2 self-end rounded-md bg-[#111827] px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-black"
             >
               <Plus className="h-4 w-4" />
-              New Role Requisition
+              New Requisition
             </button>
-          </div>
-
-          {/* Stat cards */}
-          <div className="mb-6 grid grid-cols-1 gap-5 sm:grid-cols-2 max-w-2xl">
-            <div className={cardCls}>
-              <div className="text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
-                Active Requests
-              </div>
-              <div className="mt-2 text-[32px] font-bold text-[#111827]">12</div>
-              <div className="mt-1 text-[13px] text-[#6B7280]">
-                Currently awaiting approval
-              </div>
-            </div>
-            <div className={cardCls}>
-              <div className="text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
-                Approved This Month
-              </div>
-              <div className="mt-2 text-[32px] font-bold text-[#111827]">08</div>
-            </div>
           </div>
 
           {/* Filters card */}

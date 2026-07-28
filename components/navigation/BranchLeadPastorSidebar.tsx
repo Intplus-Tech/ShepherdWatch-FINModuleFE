@@ -85,7 +85,7 @@ export default function BranchLeadPastorSidebar() {
     )
 
   return (
-    <aside className="hidden lg:flex w-[260px] h-screen border-r border-[#EEF1F6] bg-white flex-col shrink-0 overflow-y-auto">
+    <aside className="hidden lg:flex w-[260px] h-screen sticky top-0 border-r border-[#EEF1F6] bg-white flex-col shrink-0 overflow-y-auto">
       <div className="flex items-center gap-3 px-6 py-8">
         <Image src="/images/icon-shepherdwatch.svg" alt="ShepherdWatch" width={26} height={26} />
         <div>
@@ -103,11 +103,11 @@ export default function BranchLeadPastorSidebar() {
             className="flex w-full items-center justify-between rounded-[8px] px-2 py-2 transition-colors hover:bg-gray-50"
             aria-expanded={groups.financial}
           >
-            <span className="flex items-center gap-2.5">
-              <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[#111827] text-white">
+            <span className="flex min-w-0 items-center gap-2.5">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#111827] text-white">
                 <Link2 className="h-3.5 w-3.5" />
               </span>
-              <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#111827]">
+              <span className="whitespace-nowrap text-[11px] font-extrabold uppercase tracking-wide text-[#111827]">
                 Financial Accounting
               </span>
             </span>
@@ -219,11 +219,11 @@ export default function BranchLeadPastorSidebar() {
             className="flex w-full items-center justify-between rounded-[8px] px-2 py-2 transition-colors hover:bg-gray-50"
             aria-expanded={groups.hr}
           >
-            <span className="flex items-center gap-2.5">
-              <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[#111827] text-white">
+            <span className="flex min-w-0 items-center gap-2.5">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#111827] text-white">
                 <Briefcase className="h-3.5 w-3.5" />
               </span>
-              <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#111827]">
+              <span className="whitespace-nowrap text-[11px] font-extrabold uppercase tracking-wide text-[#111827]">
                 Human Resourcing
               </span>
             </span>

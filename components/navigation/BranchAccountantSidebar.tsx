@@ -3,9 +3,36 @@
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { LayoutDashboard, ShieldCheck, Wallet, Settings, ArrowRightLeft, Database, LogOut, X } from "lucide-react"
+import { useState } from "react"
+import {
+  LayoutDashboard,
+  Wallet,
+  Settings,
+  ArrowRightLeft,
+  Database,
+  LogOut,
+  X,
+  ChevronDown,
+  Link2,
+  Briefcase,
+  Clock,
+  UsersRound,
+  Banknote,
+  DoorOpen,
+} from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/components/auth/AuthProvider"
+
+// Module-level so each section's collapsed/expanded state survives navigation.
+let persistedGroups: { financial: boolean; hr: boolean } | null = null
+
+const HR_ITEMS = [
+  { label: "Dashboard", href: "/branchaccount-pastor/hr/dashboard", icon: LayoutDashboard },
+  { label: "Attendance", href: "/branchaccount-pastor/hr/attendance", icon: Clock },
+  { label: "Employee Directory", href: "/branchaccount-pastor/hr/employee-directory", icon: UsersRound },
+  { label: "Employee Loans", href: "/branchaccount-pastor/hr/employee-loans", icon: Banknote },
+  { label: "Exit Clearance Oversight", href: "/branchaccount-pastor/hr/exit-clearance", icon: DoorOpen },
+]
 
 const ROLE_LABELS: Record<string, string> = {
   accountant: "Accountant",
@@ -44,6 +71,16 @@ export default function BranchAccountantSidebar({ activeHref, mobileOpen, onMobi
   const { logout, user } = useAuth()
   const drawerMode = typeof mobileOpen === "boolean"
 
+  const [groups, setGroups] = useState<{ financial: boolean; hr: boolean }>(
+    () => persistedGroups ?? { financial: true, hr: true }
+  )
+  const toggleGroup = (key: "financial" | "hr") =>
+    setGroups((prev) => {
+      const next = { ...prev, [key]: !prev[key] }
+      persistedGroups = next
+      return next
+    })
+
   const displayName =
     [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim() ||
     user?.name ||
@@ -63,10 +100,10 @@ export default function BranchAccountantSidebar({ activeHref, mobileOpen, onMobi
 
   const asideClass = drawerMode
     ? cn(
-        "w-[260px] border-r border-[#EEF1F6] bg-white flex flex-col shrink-0 h-[100dvh] fixed xl:sticky top-0 z-50 transition-transform duration-300 ease-in-out px-5 py-6",
-        mobileOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full xl:translate-x-0"
+        "w-[260px] border-r border-[#EEF1F6] bg-white flex flex-col shrink-0 h-[100dvh] fixed lg:sticky top-0 z-50 lg:overflow-y-auto transition-transform duration-300 ease-in-out px-3 py-6",
+        mobileOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full lg:translate-x-0"
       )
-    : "w-full lg:w-60 border-b lg:border-b-0 lg:border-r border-[#EEF1F6] bg-white px-5 py-6"
+    : "w-full lg:w-[260px] shrink-0 lg:sticky lg:top-0 lg:h-screen lg:overflow-y-auto border-b lg:border-b-0 lg:border-r border-[#EEF1F6] bg-white px-3 py-6"
 
   return (
     <aside className={asideClass}>
@@ -75,7 +112,7 @@ export default function BranchAccountantSidebar({ activeHref, mobileOpen, onMobi
           type="button"
           onClick={onMobileClose}
           aria-label="Close menu"
-          className="xl:hidden absolute top-5 right-5 h-8 w-8 flex items-center justify-center rounded-full bg-gray-50 text-gray-500 hover:text-gray-900 transition-colors z-10"
+          className="lg:hidden absolute top-5 right-5 h-8 w-8 flex items-center justify-center rounded-full bg-gray-50 text-gray-500 hover:text-gray-900 transition-colors z-10"
         >
           <X className="h-4.5 w-4.5" />
         </button>
@@ -88,30 +125,101 @@ export default function BranchAccountantSidebar({ activeHref, mobileOpen, onMobi
         </div>
       </div>
 
-      <nav className="space-y-1.5">
-        {navItems.map((item) => {
-          const Icon = item.icon
-          const isAssetGroup = item.label === "Assets"
-          const isActive = activeHref
-            ? isAssetGroup
-              ? /\/(asset|asset-register|depreciation|maintenance)(\/|$)/.test(activeHref)
-              : item.href === activeHref
-            : item.label === "Dashboard"
-          return (
-            <Link
-              key={item.label}
-              href={item.href}
-              onClick={() => onMobileClose?.()}
-              className={cn(
-                "flex items-center gap-3 rounded-[10px] px-3 py-2.5 text-[13px] transition-colors",
-                isActive ? "bg-[#E9EEFF] text-[#3B5BDB] font-semibold" : "text-[#6B7280] hover:bg-gray-50"
-              )}
-            >
-              <Icon className="h-4.5 w-4.5" />
-              {item.label}
-            </Link>
-          )
-        })}
+      <nav className="space-y-4">
+        {/* FINANCIAL ACCOUNTING group */}
+        <div className="space-y-1.5">
+          <button
+            type="button"
+            onClick={() => toggleGroup("financial")}
+            className="flex w-full items-center justify-between rounded-[8px] px-2 py-2 transition-colors hover:bg-gray-50"
+            aria-expanded={groups.financial}
+          >
+            <span className="flex min-w-0 items-center gap-2.5">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#111827] text-white">
+                <Link2 className="h-3.5 w-3.5" />
+              </span>
+              <span className="whitespace-nowrap text-[11px] font-extrabold uppercase tracking-wide text-[#111827]">
+                Financial Accounting
+              </span>
+            </span>
+            <ChevronDown
+              className={cn("h-4 w-4 text-[#9CA3AF] transition-transform", !groups.financial && "-rotate-90")}
+            />
+          </button>
+
+          {groups.financial && (
+            <div className="space-y-1.5">
+              {navItems.map((item) => {
+                const Icon = item.icon
+                const isAssetGroup = item.label === "Assets"
+                const isActive = activeHref
+                  ? isAssetGroup
+                    ? /\/(asset|asset-register|depreciation|maintenance)(\/|$)/.test(activeHref)
+                    : item.href === activeHref
+                  : item.label === "Dashboard"
+                return (
+                  <Link
+                    key={item.label}
+                    href={item.href}
+                    onClick={() => onMobileClose?.()}
+                    className={cn(
+                      "flex items-center gap-3 rounded-[10px] px-3 py-2.5 text-[13px] transition-colors",
+                      isActive ? "bg-[#E9EEFF] text-[#3B5BDB] font-semibold" : "text-[#6B7280] hover:bg-gray-50"
+                    )}
+                  >
+                    <Icon className="h-4.5 w-4.5" />
+                    {item.label}
+                  </Link>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* HUMAN RESOURCING group */}
+        <div className="space-y-1.5">
+          <button
+            type="button"
+            onClick={() => toggleGroup("hr")}
+            className="flex w-full items-center justify-between rounded-[8px] px-2 py-2 transition-colors hover:bg-gray-50"
+            aria-expanded={groups.hr}
+          >
+            <span className="flex min-w-0 items-center gap-2.5">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#111827] text-white">
+                <Briefcase className="h-3.5 w-3.5" />
+              </span>
+              <span className="whitespace-nowrap text-[11px] font-extrabold uppercase tracking-wide text-[#111827]">
+                Human Resourcing
+              </span>
+            </span>
+            <ChevronDown
+              className={cn("h-4 w-4 text-[#9CA3AF] transition-transform", !groups.hr && "-rotate-90")}
+            />
+          </button>
+
+          {groups.hr && (
+            <div className="space-y-1.5">
+              {HR_ITEMS.map((item) => {
+                const Icon = item.icon
+                const isActive = item.href === activeHref
+                return (
+                  <Link
+                    key={item.label}
+                    href={item.href}
+                    onClick={() => onMobileClose?.()}
+                    className={cn(
+                      "flex items-center gap-3 rounded-[10px] px-3 py-2.5 text-[13px] transition-colors",
+                      isActive ? "bg-[#E9EEFF] text-[#3B5BDB] font-semibold" : "text-[#6B7280] hover:bg-gray-50"
+                    )}
+                  >
+                    <Icon className="h-4.5 w-4.5" />
+                    {item.label}
+                  </Link>
+                )
+              })}
+            </div>
+          )}
+        </div>
       </nav>
 
       <div className="mt-8 space-y-3 text-[12px] text-[#6B7280]">

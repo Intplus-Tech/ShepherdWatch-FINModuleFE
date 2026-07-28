@@ -22,7 +22,7 @@ export default function Page() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => setMobileOpen(true)}
-              className="xl:hidden -ml-1 h-9 w-9 flex items-center justify-center rounded-[8px] text-[#6B7280] hover:bg-[#F3F4F6]"
+              className="lg:hidden -ml-1 h-9 w-9 flex items-center justify-center rounded-[8px] text-[#6B7280] hover:bg-[#F3F4F6]"
               aria-label="Open menu"
             >
               <Menu className="h-5 w-5" />

@@ -155,11 +155,11 @@ export default function Page() {
   const breakdownColors = ["#2563EB", "#38BDF8", "#FBBF24"]
 
   return (
-    <div className={`flex flex-col xl:flex-row min-h-screen bg-[#F8FAFC] relative w-full ${inter.className} antialiased`}>
+    <div className={`flex flex-col lg:flex-row min-h-screen bg-[#F8FAFC] relative w-full ${inter.className} antialiased`}>
       {/* Mobile Drawer Overlay */}
       {isMobileMenuOpen && (
         <div
-          className="xl:hidden fixed inset-0 z-40 bg-gray-900/40 backdrop-blur-sm transition-opacity"
+          className="lg:hidden fixed inset-0 z-40 bg-gray-900/40 backdrop-blur-sm transition-opacity"
           onClick={() => setIsMobileMenuOpen(false)}
         />
       )}
@@ -178,7 +178,7 @@ export default function Page() {
           <div className="flex items-center gap-4">
             <button
               onClick={() => setIsMobileMenuOpen(true)}
-              className="xl:hidden -ml-1 h-9 w-9 flex items-center justify-center rounded-[8px] text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#111827] transition-colors"
+              className="lg:hidden -ml-1 h-9 w-9 flex items-center justify-center rounded-[8px] text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#111827] transition-colors"
             >
               <Menu className="h-5 w-5" />
             </button>
