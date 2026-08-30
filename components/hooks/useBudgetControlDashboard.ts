@@ -53,13 +53,16 @@ function toString(value: unknown): string {
   return typeof value === "string" ? value : String(value ?? "")
 }
 
-export function useBudgetControlDashboard() {
+export function useBudgetControlDashboard(options: { branchId?: string } = {}) {
   const { user } = useAuth()
   const [data, setData] = useState<BudgetControlData>(emptyData)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const branchId = useMemo(() => user?.branchId ?? "", [user])
+  const branchId = useMemo(
+    () => options.branchId ?? user?.branchId ?? "",
+    [options.branchId, user]
+  )
 
   useEffect(() => {
     let isMounted = true
@@ -100,30 +103,30 @@ export function useBudgetControlDashboard() {
           }))
         })
 
-        const monthlyUtilization = Array.isArray(raw.monthlyUtilization)
-          ? (raw.monthlyUtilization as Array<Record<string, unknown>>).map((item) => ({
-              month: toNumber(item.month),
-              allocated: toNumber(item.allocated),
-              spent: toNumber(item.spent),
-            }))
+        const rawMonthly = Array.isArray(raw.monthlyUtilization)
+          ? (raw.monthlyUtilization as Array<Record<string, unknown>>)
           : []
 
-        const mapped: BudgetControlData = {
-          fiscalYear: toNumber(raw.fiscalYear) || Number(fiscalYear),
-          budgetCount: toNumber(raw.budgetCount),
-          kpis: {
-            totalAllocated: toNumber(kpis.totalAllocated),
-            totalCommitted: toNumber(kpis.totalCommitted),
-            totalSpent: toNumber(kpis.totalSpent),
-            totalAvailable: toNumber(kpis.totalAvailable),
-            utilizationRate: toNumber(kpis.utilizationRate),
-          },
-          monthlyUtilization,
-          items,
-        }
+        const monthlyUtilization = rawMonthly.map((entry, entryIndex) => ({
+          month: toNumber(entry.month ?? entryIndex + 1),
+          allocated: toNumber(entry.allocated),
+          spent: toNumber(entry.spent),
+        }))
 
         if (isMounted) {
-          setData(mapped)
+          setData({
+            fiscalYear: toNumber(raw.fiscalYear) || new Date().getFullYear(),
+            budgetCount: toNumber(raw.budgetCount),
+            kpis: {
+              totalAllocated: toNumber(kpis.totalAllocated),
+              totalCommitted: toNumber(kpis.totalCommitted),
+              totalSpent: toNumber(kpis.totalSpent),
+              totalAvailable: toNumber(kpis.totalAvailable),
+              utilizationRate: toNumber(kpis.utilizationRate),
+            },
+            monthlyUtilization,
+            items,
+          })
         }
       } catch (err) {
         if (isMounted) {

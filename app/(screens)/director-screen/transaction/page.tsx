@@ -48,6 +48,7 @@ import { API_V1 } from "@/lib/api"
 import { getCsrfTokenFromCookie } from "@/lib/csrf"
 import { useTransactions, type TransactionItem } from "@/components/hooks/useTransactions"
 import { useAuth } from "@/components/auth/AuthProvider"
+import BranchesDropdown from "@/components/navigation/BranchesDropdown"
 
 const navItems = [
   { label: "Dashboard", href: "/director-screen/dashboard", icon: LayoutDashboard },
@@ -178,7 +179,14 @@ function mapTransactionToRow(tx: TransactionItem): DemoRow {
   }
 }
 
-export function BankTransactions() {
+export function BankTransactions({
+  defaultBranchId,
+  hideBranchSelector = false,
+}: {
+  defaultBranchId?: string
+  hideBranchSelector?: boolean
+} = {}) {
+  const [selectedBranchId, setSelectedBranchId] = useState<string>(defaultBranchId ?? "")
   const [tab, setTab] = useState<"ALL" | "CREDIT" | "DEBIT">("ALL")
   const [search, setSearch] = useState("")
   const [accountFilter, setAccountFilter] = useState("All Accounts")
@@ -188,7 +196,60 @@ export function BankTransactions() {
   const PAGE_SIZE = 5
 
   // Live data
-  const { transactions, loading, error, refresh } = useTransactions({ limit: 200 })
+  const { transactions, loading, error, refresh } = useTransactions({
+    branchId: selectedBranchId || undefined,
+    limit: 200,
+  })
+
+  // Live bank balance and summary stats
+  const [bankStats, setBankStats] = useState<{ totalBalance: number; accountCount: number }>({ totalBalance: 0, accountCount: 0 })
+  const [summaryStats, setSummaryStats] = useState<{ inflowTotal: number; outflowTotal: number; trends?: any }>({ inflowTotal: 0, outflowTotal: 0 })
+
+  useEffect(() => {
+    let isMounted = true
+    const fetchStats = async () => {
+      try {
+        const qs = new URLSearchParams()
+        if (selectedBranchId) qs.set("branchId", selectedBranchId)
+        const qStr = qs.toString()
+
+        const [bankRes, sumRes] = await Promise.all([
+          fetch(`${API_V1}/dashboard/bank-balances${qStr ? `?${qStr}` : ""}`, { credentials: "include" }),
+          fetch(`${API_V1}/dashboard/transactions-summary${qStr ? `?${qStr}` : ""}`, { credentials: "include" }),
+        ])
+
+        if (bankRes.ok) {
+          const bData = await bankRes.json().catch(() => null)
+          const payload = bData?.data ?? bData
+          if (isMounted && payload) {
+            setBankStats({
+              totalBalance: Number(payload.totalBalance ?? 0),
+              accountCount: Number(payload.accountCount ?? payload.accounts?.length ?? 0),
+            })
+          }
+        }
+
+        if (sumRes.ok) {
+          const sData = await sumRes.json().catch(() => null)
+          const payload = sData?.data ?? sData
+          if (isMounted && payload) {
+            setSummaryStats({
+              inflowTotal: Number(payload.inflowTotal ?? 0),
+              outflowTotal: Number(payload.outflowTotal ?? 0),
+              trends: payload.trends,
+            })
+          }
+        }
+      } catch {
+        // Fallback gracefully on network error
+      }
+    }
+
+    fetchStats()
+    return () => {
+      isMounted = false
+    }
+  }, [selectedBranchId])
 
   // Local copy of the mapped rows so category edits can be applied optimistically.
   const [rows, setRows] = useState<DemoRow[]>([])
@@ -333,7 +394,7 @@ export function BankTransactions() {
   const statCards = [
     {
       title: "BANK BALANCE",
-      value: formatMoneyWhole(128840250),
+      value: formatMoneyWhole(bankStats.totalBalance || 0),
       icon: Landmark,
       iconColor: "text-[#3B5BDB]",
       iconBg: "bg-[#EEF2FF]",
@@ -341,19 +402,19 @@ export function BankTransactions() {
     },
     {
       title: "EXPENSE (MONTH)",
-      value: formatMoneyWhole(8840250),
+      value: formatMoneyWhole(summaryStats.outflowTotal || 0),
       icon: ArrowUpRight,
       iconColor: "text-rose-500",
       iconBg: "bg-rose-50",
-      trend: "+12%",
+      trend: summaryStats.trends?.outflowMonth?.delta ? `${summaryStats.trends.outflowMonth.delta > 0 ? "+" : ""}${Math.round(summaryStats.trends.outflowMonth.delta * 100)}%` : null,
     },
     {
       title: "INCOME (MONTH)",
-      value: formatMoneyWhole(8840250),
+      value: formatMoneyWhole(summaryStats.inflowTotal || 0),
       icon: ArrowDownLeft,
       iconColor: "text-emerald-500",
       iconBg: "bg-emerald-50",
-      trend: "+12%",
+      trend: summaryStats.trends?.inflowMonth?.delta ? `${summaryStats.trends.inflowMonth.delta > 0 ? "+" : ""}${Math.round(summaryStats.trends.inflowMonth.delta * 100)}%` : null,
     },
   ]
 
@@ -368,6 +429,12 @@ export function BankTransactions() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3 mt-2 md:mt-0">
+          {!hideBranchSelector && (
+            <BranchesDropdown
+              value={selectedBranchId}
+              onChange={(id) => setSelectedBranchId(id)}
+            />
+          )}
           <button
             onClick={() => setUploadOpen(true)}
             className="flex w-full sm:w-auto items-center justify-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 py-2.5 text-[12px] font-bold text-[#4B5563] shadow-sm hover:bg-gray-50 transition-colors"
@@ -417,7 +484,7 @@ export function BankTransactions() {
         <div className="rounded-xl border border-[#EEF1F6] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
           <p className="text-[11px] font-bold text-[#6B7280] tracking-wider mb-2">ACCOUNTS</p>
           <div className="flex items-end justify-between mt-1">
-            <h3 className="text-[22px] sm:text-[26px] leading-tight font-bold text-[#111827]">3</h3>
+            <h3 className="text-[22px] sm:text-[26px] leading-tight font-bold text-[#111827]">{bankStats.accountCount || 1}</h3>
             <div className="flex flex-col items-center gap-1">
               <button
                 onClick={() => setAccountsOpen(true)}

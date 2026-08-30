@@ -19,6 +19,7 @@ import { useAuth } from "@/components/auth/AuthProvider"
 import { BudgetUpdateModal } from "@/components/budgets/BudgetUpdateModal"
 import { BudgetApprovalModal } from "@/components/budgets/BudgetApprovalModal"
 import { Edit3, ShieldCheck } from "lucide-react"
+import BranchesDropdown from "@/components/navigation/BranchesDropdown"
 
 
 
@@ -31,21 +32,18 @@ export default function Page() {
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
   
+  const [selectedBranchId, setSelectedBranchId] = useState<string>("")
   const [selectedBudget, setSelectedBudget] = useState<any>(null)
   const [editModalOpen, setEditModalOpen] = useState(false)
   const [approvalModalOpen, setApprovalModalOpen] = useState(false)
 
   // Financial Overview header filters
   const [fiscalYear, setFiscalYear] = useState("2024 (Present)")
-  const [branchFilter, setBranchFilter] = useState("Maryland, Lagos")
   const [currencyFilter, setCurrencyFilter] = useState("NGN (₦)")
-  
-
-
 
   const tenantId = useMemo(
-    () => user?.tenantId ?? user?.tenant?.id ?? "",
-    [user]
+    () => selectedBranchId || (user?.tenantId ?? user?.tenant?.id ?? ""),
+    [selectedBranchId, user]
   )
 
   const formatCurrency = (value: number) =>
@@ -59,21 +57,19 @@ export default function Page() {
     let isMounted = true
 
     const fetchBva = async () => {
-      if (!tenantId) {
-        setBvaError("Tenant is required to load BVA report.")
-        return
-      }
       try {
         setBvaLoading(true)
         setBvaError(null)
         const now = new Date()
-        const periodStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0]
-        const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0]
+        const periodStart = new Date(now.getFullYear(), 0, 1).toISOString().split("T")[0]
+        const periodEnd = new Date(now.getFullYear(), 11, 31).toISOString().split("T")[0]
         const params = new URLSearchParams({
-          tenantId,
           periodStart,
           periodEnd,
         })
+        if (selectedBranchId) {
+          params.set("branchId", selectedBranchId)
+        }
         const response = await fetch(`${API_V1}/financial/reports/bva?${params.toString()}`, {
           method: "GET",
           credentials: "include",
@@ -107,7 +103,8 @@ export default function Page() {
     return () => {
       isMounted = false
     }
-  }, [tenantId])
+  }, [selectedBranchId])
+
 
   const summary = useMemo(() => {
     const yearly = bva?.totalBudgeted ?? 0
@@ -233,10 +230,14 @@ export default function Page() {
             </div>
             
             <div className="flex flex-wrap items-center gap-3">
+              <BranchesDropdown
+                value={selectedBranchId}
+                onChange={(id) => setSelectedBranchId(id)}
+              />
               <button
                 onClick={handleExport}
                 disabled={exporting}
-                className="flex items-center gap-2 rounded-md bg-[#3B5BDB] px-4 py-2 text-[12px] font-medium text-white shadow hover:bg-blue-700 ml-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 rounded-md bg-[#3B5BDB] px-4 py-2 text-[12px] font-medium text-white shadow hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <Download className="h-4 w-4" />
                 {exporting ? "Exporting..." : "Export"}
@@ -320,23 +321,11 @@ export default function Page() {
                       </div>
                       <div className="flex flex-col gap-1.5">
                         <span className="text-[11px] font-bold text-[#9CA3AF] uppercase">BRANCH</span>
-                        <div className="relative">
-                          <select
-                            value={branchFilter}
-                            onChange={(e) => setBranchFilter(e.target.value)}
-                            className="w-full appearance-none rounded-md border border-[#E5E7EB] bg-white px-3.5 py-2.5 pr-9 text-[13px] font-medium text-[#4B5563] shadow-sm outline-none focus:border-[#3B5BDB]"
-                          >
-                            <option>All Branches</option>
-                            <option>Maryland, Lagos</option>
-                            <option>HQ, Ibadan</option>
-                            <option>Victoria Island, Lagos</option>
-                            <option>Agodi, Ibadan</option>
-                            <option>London HQ</option>
-                            <option>New York Branch</option>
-                            <option>Singapore Branch</option>
-                          </select>
-                          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
-                        </div>
+                        <BranchesDropdown
+                          value={selectedBranchId}
+                          onChange={(id) => setSelectedBranchId(id)}
+                          className="w-full"
+                        />
                       </div>
                       <div className="flex flex-col gap-1.5">
                         <span className="text-[11px] font-bold text-[#9CA3AF] uppercase">CURRENCY</span>

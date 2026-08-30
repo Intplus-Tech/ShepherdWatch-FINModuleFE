@@ -25,6 +25,7 @@ import { useRecentDashboardTransactions } from "@/components/hooks/useRecentDash
 import { useDashboardComplianceSummary } from "@/components/hooks/useDashboardComplianceSummary"
 import { useDashboardTransactionsSummary } from "@/components/hooks/useDashboardTransactionsSummary"
 import { sectionsToCsv, downloadCsv } from "@/lib/export-csv"
+import BranchesDropdown from "@/components/navigation/BranchesDropdown"
 
 const kpiIcons = [Banknote, CreditCard, BuildingIcon, Boxes, MapPin]
 const kpiIconStyles = [
@@ -37,23 +38,24 @@ const kpiIconStyles = [
 
 export default function Page() {
   const { user } = useAuth()
+  const [selectedBranchId, setSelectedBranchId] = useState<string>("")
 
   const tenantId = useMemo(
-    () => user?.tenantId ?? user?.tenant?.id ?? "",
-    [user]
+    () => selectedBranchId || (user?.tenantId ?? user?.tenant?.id ?? ""),
+    [selectedBranchId, user]
   )
 
   const { overview, loading: analyticsLoading, error: analyticsError, fetchOverview } = useDashboardOverview()
   const { trendData, error: trendsError, fetchTrend } = useIncomeExpenseTrend()
-  const { items: incomeItems, loading: incomeLoading } = useIncomeDistribution({ branchId: tenantId })
-  const { series: budgetActualsSeries, loading: budgetActualsLoading, error: budgetActualsError } = useBudgetVsActuals({ branchId: tenantId, period: "Q1" })
-  const { summary: branchSummary } = useBranchSummary({ branchId: tenantId })
+  const { items: incomeItems, loading: incomeLoading } = useIncomeDistribution({ branchId: selectedBranchId })
+  const { series: budgetActualsSeries, loading: budgetActualsLoading, error: budgetActualsError } = useBudgetVsActuals({ branchId: selectedBranchId, period: "Q1" })
+  const { summary: branchSummary } = useBranchSummary({ branchId: selectedBranchId })
   const activeBranchesCount = branchSummary.activeBranches
   const {
     transactions: rawTransactions,
     loading: txLoading,
     error: txError,
-  } = useRecentDashboardTransactions({ branchId: tenantId, limit: 10 })
+  } = useRecentDashboardTransactions({ branchId: selectedBranchId, limit: 10 })
 
   // Month-over-month transactions summary — feeds the "vs last month" trend
   // on the Total Income stat card (GET /dashboard/transactions-summary).
@@ -82,21 +84,20 @@ export default function Page() {
   }
 
   useEffect(() => {
-    if (tenantId) fetchOverview({ branchId: tenantId })
-  }, [tenantId, fetchOverview])
+    fetchOverview({ branchId: selectedBranchId || undefined })
+  }, [selectedBranchId, fetchOverview])
 
   useEffect(() => {
-    if (tenantId) fetchTrend({ branchId: tenantId })
-  }, [tenantId, fetchTrend])
+    fetchTrend({ branchId: selectedBranchId || undefined })
+  }, [selectedBranchId, fetchTrend])
 
   useEffect(() => {
-    // Defensive: hooks swallow 401/empty into their own error state.
-    fetchTransactionsSummary(tenantId ? { branchId: tenantId } : {}).catch(() => {})
-  }, [tenantId, fetchTransactionsSummary])
+    fetchTransactionsSummary(selectedBranchId ? { branchId: selectedBranchId } : {}).catch(() => {})
+  }, [selectedBranchId, fetchTransactionsSummary])
 
   useEffect(() => {
-    fetchComplianceSummary(tenantId ? { branchId: tenantId } : {}).catch(() => {})
-  }, [tenantId, fetchComplianceSummary])
+    fetchComplianceSummary(selectedBranchId ? { branchId: selectedBranchId } : {}).catch(() => {})
+  }, [selectedBranchId, fetchComplianceSummary])
 
   const formatDateLabel = (value?: string) => {
     if (!value) return "—"
@@ -374,6 +375,10 @@ export default function Page() {
             </div>
             
             <div className="flex flex-wrap items-center gap-3">
+              <BranchesDropdown
+                value={selectedBranchId}
+                onChange={(id) => setSelectedBranchId(id)}
+              />
               <button
                 type="button"
                 onClick={handleExport}

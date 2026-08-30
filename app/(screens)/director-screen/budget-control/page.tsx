@@ -19,6 +19,7 @@ import {
 import { useBudgetControlDashboard } from "@/components/hooks/useBudgetControlDashboard"
 import { useBudgetApproval } from "@/components/hooks/useBudgetApproval"
 import { useAuth } from "@/components/auth/AuthProvider"
+import BranchesDropdown from "@/components/navigation/BranchesDropdown"
 
 const bigText = "text-[14.36px] leading-[22.33px] font-bold"
 const smallText = "text-[11.17px] leading-[15.95px] font-semibold"
@@ -26,7 +27,10 @@ const smallText = "text-[11.17px] leading-[15.95px] font-semibold"
 export default function Page() {
   const router = useRouter()
   const { user } = useAuth()
-  const { data: controlData, loading, error } = useBudgetControlDashboard()
+  const [selectedBranchId, setSelectedBranchId] = useState<string>("")
+  const { data: controlData, loading, error } = useBudgetControlDashboard({
+    branchId: selectedBranchId || undefined,
+  })
   const { approving, approveError, processApprovalAction } = useBudgetApproval()
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [exporting, setExporting] = useState(false)
@@ -242,7 +246,11 @@ export default function Page() {
               </p>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <BranchesDropdown
+                value={selectedBranchId}
+                onChange={(id) => setSelectedBranchId(id)}
+              />
               <button
                 onClick={handleExport}
                 disabled={exporting}
