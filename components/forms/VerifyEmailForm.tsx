@@ -9,15 +9,38 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import AuthHeader from "../auth/AuthHeader"
 import { Input } from "@/components/ui/input"
+import { PasswordInput } from "@/components/ui/password-input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import Image from "next/image"
 import { useAuth } from "@/components/auth/AuthProvider"
 
-const verifySchema = z.object({
-  email: z.string().email("Enter a valid email"),
-  code: z.string().min(6, "Enter the 6-digit OTP").max(6, "Enter the 6-digit OTP"),
-})
+const verifySchema = z
+  .object({
+    email: z.string().email("Enter a valid email"),
+    code: z.string().min(6, "Enter the 6-digit OTP").max(6, "Enter the 6-digit OTP"),
+    // Invited users set their first password here. Optional for users who already have one.
+    newPassword: z
+      .string()
+      .optional()
+      .refine((value) => !value || value.length >= 8, {
+        message: "Password must be at least 8 characters",
+      })
+      .refine((value) => !value || /[a-z]/.test(value), {
+        message: "Password must include a lowercase letter",
+      })
+      .refine((value) => !value || /[A-Z]/.test(value), {
+        message: "Password must include an uppercase letter",
+      })
+      .refine((value) => !value || /[0-9]/.test(value), {
+        message: "Password must include a number",
+      }),
+    confirmPassword: z.string().optional(),
+  })
+  .refine((values) => !values.newPassword || values.newPassword === values.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  })
 
 type VerifyValues = z.infer<typeof verifySchema>
 
@@ -47,12 +70,16 @@ export default function VerifyEmailForm() {
     register,
     handleSubmit,
     getValues,
+    setFocus,
+    setError: setFormError,
     formState: { errors, isSubmitting },
   } = useForm<VerifyValues>({
     resolver: zodResolver(verifySchema),
     defaultValues: {
       email: emailFromQuery,
       code: /^\d{6}$/.test(codeFromQuery) ? codeFromQuery : "",
+      newPassword: "",
+      confirmPassword: "",
     },
   })
 
@@ -64,28 +91,27 @@ export default function VerifyEmailForm() {
       const res = await fetch(`${API_V1}/auth/verify-email`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(values),
+        body: JSON.stringify({
+          email: values.email.trim().toLowerCase(),
+          code: values.code.trim(),
+          ...(values.newPassword ? { newPassword: values.newPassword } : {}),
+        }),
       })
 
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
-        throw new Error(data.message || "Verification failed")
+        const message = data.message || "Verification failed"
+        if (/password/i.test(message)) {
+          setFocus("newPassword")
+          setFormError("newPassword", { type: "server", message })
+        }
+        throw new Error(message)
       }
 
       setSuccessMessage(data?.message || "Email verified successfully.")
       
-      const emailPath = values.email.toLowerCase()
-      if (emailPath.includes("director") || emailPath === "super_admin@mailinator.com") {
-        router.replace("/director-screen/dashboard")
-      } else if (emailPath.includes("branch_pastor") || emailPath.includes("regional_pastor")) {
-        router.replace("/branchlead-pastor/dashboard")
-      } else if (emailPath.includes("accountant")) {
-        router.replace("/branchaccount-pastor/dashboard")
-      } else if (emailPath.includes("admin") || emailPath.includes("hr") || emailPath.includes("employee")) {
-        router.replace("/branch-admin/dashboard")
-      } else {
-        router.replace(`/login?email=${encodeURIComponent(values.email.trim().toLowerCase())}`)
-      }
+      // Verification does not return a session, so continue to login with the email pre-filled.
+      router.replace(`/login?email=${encodeURIComponent(values.email.trim().toLowerCase())}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Verification failed")
     } finally {
@@ -118,8 +144,8 @@ export default function VerifyEmailForm() {
   }
 
   return (
-    <div className="w-full h-screen bg-white overflow-y-auto md:overflow-hidden">
-      <div className="relative w-full min-h-full grid grid-cols-1 md:grid-cols-2 gap-0">
+    <div className="w-full min-h-screen bg-white overflow-y-auto">
+      <div className="relative w-full min-h-screen grid grid-cols-1 md:grid-cols-2 gap-0">
         <div className="absolute top-[-30px] left-[-40px] w-[400px] h-[400px] md:w-[680px] md:h-[680px] overflow-hidden pointer-events-none opacity-[0.08] z-0">
           <Image
             src="/images/icon-shepherdwatch.svg"
@@ -130,8 +156,8 @@ export default function VerifyEmailForm() {
           />
         </div>
 
-        <div className="relative z-10 flex flex-col items-center justify-center w-full h-full p-6 md:p-8 min-h-[100dvh] md:min-h-0">
-          <div className="flex w-full max-w-[436px] flex-col gap-6 md:gap-8 items-center text-center">
+        <div className="relative z-10 flex flex-col items-center justify-center w-full h-full px-6 py-10 md:px-8 md:py-12 min-h-[100dvh] md:min-h-0">
+          <div className="flex w-full max-w-[436px] flex-col gap-6 items-center text-center">
             <div>
               <AuthHeader />
             </div>
@@ -145,7 +171,7 @@ export default function VerifyEmailForm() {
               </p>
             </div>
 
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-5 w-full text-left">
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 w-full text-left">
               <div className="space-y-2">
                 <Label htmlFor="email" className="text-[13px] text-[#98A2B3] font-medium">Email</Label>
                 <Input
@@ -174,6 +200,42 @@ export default function VerifyEmailForm() {
                 ) : null}
               </div>
 
+              <div className="space-y-2">
+                <Label htmlFor="newPassword" className="text-[13px] text-[#98A2B3] font-medium">
+                  Password
+                </Label>
+                <PasswordInput
+                  id="newPassword"
+                  autoComplete="new-password"
+                  placeholder="Set your account password"
+                  className="h-[44px] rounded-[6px] border-[#4F63FF] focus-visible:ring-[#5871F5] px-3 w-full"
+                  {...register("newPassword")}
+                />
+                {errors.newPassword ? (
+                  <p className="text-[11px] text-rose-600">{errors.newPassword.message}</p>
+                ) : (
+                  <p className="text-[11px] text-[#98A2B3]">
+                    Required if you were invited. Min 8 characters with an uppercase, lowercase and a number.
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="confirmPassword" className="text-[13px] text-[#98A2B3] font-medium">
+                  Confirm Password
+                </Label>
+                <PasswordInput
+                  id="confirmPassword"
+                  autoComplete="new-password"
+                  placeholder="Re-enter your password"
+                  className="h-[44px] rounded-[6px] border-[#4F63FF] focus-visible:ring-[#5871F5] px-3 w-full"
+                  {...register("confirmPassword")}
+                />
+                {errors.confirmPassword ? (
+                  <p className="text-[11px] text-rose-600">{errors.confirmPassword.message}</p>
+                ) : null}
+              </div>
+
               {successMessage ? (
                 <p className="text-[12px] text-emerald-600 text-center">{successMessage}</p>
               ) : null}
@@ -182,7 +244,7 @@ export default function VerifyEmailForm() {
               ) : null}
               {error ? <p className="text-[12px] text-rose-600 text-center">{error}</p> : null}
 
-              <div className="pt-6 flex justify-center">
+              <div className="pt-2 flex justify-center">
                 <Button
                   type="submit"
                   disabled={isSubmitting || autoVerifying}
