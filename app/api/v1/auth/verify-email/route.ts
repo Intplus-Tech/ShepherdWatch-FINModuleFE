@@ -36,6 +36,7 @@ function getBackendVerifyEmailUrls(): string[] {
 type VerifyEmailPayload = {
   email: string
   code: string
+  newPassword?: string
 }
 const AUTH_REQUEST_TIMEOUT_MS = 7000;
 
@@ -46,7 +47,11 @@ function normalizeVerifyEmailPayload(body: unknown): VerifyEmailPayload | null {
   const code = String(source.code ?? "").trim()
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
   if (!emailOk || code.length !== 6) return null
-  return { email, code }
+
+  // Invited users set their first password while verifying; backend expects `newPassword`.
+  const newPassword = String(source.newPassword ?? source.password ?? "")
+  if (!newPassword) return { email, code }
+  return { email, code, newPassword }
 }
 
 export async function POST(req: NextRequest) {
