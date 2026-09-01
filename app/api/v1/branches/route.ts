@@ -13,12 +13,14 @@ type CreateBranchPayload = {
   name: string
   code: string
   branchType: "pioneer" | "growing" | "established"
-  region?: string
+  regionId?: string
   address?: string
   leadPastorId?: string
   assignedAccountantId?: string
   currency?: "NGN" | "USD" | "GBP" | "EUR"
 }
+
+const OBJECT_ID_PATTERN = /^[a-f\d]{24}$/i
 
 function normalizeBranchType(raw: unknown): CreateBranchPayload["branchType"] | null {
   const value = String(raw ?? "")
@@ -34,28 +36,34 @@ function normalizeBranchType(raw: unknown): CreateBranchPayload["branchType"] | 
   return null
 }
 
-function normalizeCreateBranchPayload(body: unknown): CreateBranchPayload | null {
-  if (!body || typeof body !== "object") return null
+function normalizeCreateBranchPayload(
+  body: unknown
+): { payload: CreateBranchPayload; missing?: undefined } | { payload?: undefined; missing: string[] } {
+  if (!body || typeof body !== "object") return { missing: ["name", "code", "branchType"] }
   const source = body as Record<string, unknown>
   const name = String(source.name ?? "").trim()
   const code = String(source.code ?? source.branchCode ?? "").trim()
   const branchType = normalizeBranchType(
     source.branchType ?? source.branch_type ?? source.type ?? source.category
   )
-  const region = String(source.region ?? "").trim()
+  const regionId = String(source.regionId ?? source.region ?? "").trim()
   const address = String(source.address ?? "").trim()
   const leadPastorId = String(source.leadPastorId ?? "").trim()
   const assignedAccountantId = String(source.assignedAccountantId ?? "").trim()
   const currencyRaw = String(source.currency ?? "").toUpperCase()
 
-  if (!name || !code || !branchType) return null
+  const missing: string[] = []
+  if (!name) missing.push("name")
+  if (!code) missing.push("code")
+  if (!branchType) missing.push("branchType")
+  if (missing.length || !branchType) return { missing }
 
   const payload: CreateBranchPayload = {
     name,
     code,
     branchType,
   }
-  if (region) payload.region = region
+  if (OBJECT_ID_PATTERN.test(regionId)) payload.regionId = regionId
   if (address) payload.address = address
   if (leadPastorId) payload.leadPastorId = leadPastorId
   if (assignedAccountantId) payload.assignedAccountantId = assignedAccountantId
@@ -63,7 +71,7 @@ function normalizeCreateBranchPayload(body: unknown): CreateBranchPayload | null
     payload.currency = currencyRaw as CreateBranchPayload["currency"]
   }
 
-  return payload
+  return { payload }
 }
 
 export async function GET(req: NextRequest) {
@@ -84,10 +92,12 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const query = new URLSearchParams();
-  ["page", "limit", "status", "branchType", "region", "search"].forEach((key) => {
+  ["page", "limit", "status", "branchType", "search"].forEach((key) => {
     const val = searchParams.get(key);
     if (val !== null && val !== "") query.set(key, val);
   });
+  const regionFilter = searchParams.get("regionId") ?? searchParams.get("region");
+  if (regionFilter && OBJECT_ID_PATTERN.test(regionFilter)) query.set("regionId", regionFilter);
   const url = query.toString() ? `${backendUrl}?${query}` : backendUrl;
 
   const { res: backendRes, refreshedTokens } = await executeWithRefreshRetry(req, (token) =>
@@ -151,11 +161,11 @@ export async function POST(req: NextRequest) {
   }
 
   const bodyJson = await req.json().catch(() => null);
-  const payload = normalizeCreateBranchPayload(bodyJson)
+  const { payload, missing } = normalizeCreateBranchPayload(bodyJson)
   if (!payload) {
     return applyCors(
       NextResponse.json(
-        { success: false, message: "Invalid payload. Required fields: name, code, branchType." },
+        { success: false, message: `Invalid payload. Missing or invalid: ${missing.join(", ")}.` },
         { status: 400 }
       ),
       req

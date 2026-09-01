@@ -199,6 +199,13 @@ const isLeadPastorOption = (user: UserOption) => user.role.toLowerCase().include
 
 const isMongoObjectId = (value: string) => /^[a-f\d]{24}$/i.test(value.trim())
 
+const suggestBranchCode = (name: string) =>
+  name
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 12)
+
 export default function Page() {
   const [regions, setRegions] = useState<RegionCard[]>([])
   const [loading, setLoading] = useState(true)
@@ -260,6 +267,7 @@ export default function Page() {
   const [showCreateBranch, setShowCreateBranch] = useState(false)
   const [branchName, setBranchName] = useState("")
   const [branchCode, setBranchCode] = useState("")
+  const [branchCodeEdited, setBranchCodeEdited] = useState(false)
   const [branchAddress, setBranchAddress] = useState("")
   const [branchRegion, setBranchRegion] = useState("")
   const [branchType, setBranchType] = useState("")
@@ -619,6 +627,17 @@ export default function Page() {
       return
     }
 
+    const code = branchCode.trim().toUpperCase()
+    if (!code) {
+      pushToast("Branch code is required.", "error")
+      return
+    }
+
+    if (!branchType) {
+      pushToast("Select a statutory deduction tier for this branch.", "error")
+      return
+    }
+
     const leadPastorId = branchLeadPastorId.trim()
     const assignedAccountantId = branchAccountantId.trim()
     if (leadPastorId && !isMongoObjectId(leadPastorId)) {
@@ -641,9 +660,9 @@ export default function Page() {
         credentials: "include",
         body: JSON.stringify({
           name: branchName.trim(),
-          code: branchCode.trim() || undefined,
+          code,
           branchType,
-          region: branchRegion.trim(),
+          regionId: isMongoObjectId(branchRegion) ? branchRegion.trim() : undefined,
           address: branchAddress.trim() || undefined,
           leadPastorId: leadPastorId || undefined,
           assignedAccountantId: assignedAccountantId || undefined,
@@ -663,6 +682,7 @@ export default function Page() {
       setShowCreateBranch(false)
       setBranchName("")
       setBranchCode("")
+      setBranchCodeEdited(false)
       setBranchAddress("")
       setBranchRegion("")
       setBranchType("")
@@ -1678,7 +1698,7 @@ export default function Page() {
 
         <div className="max-h-[70vh] overflow-y-auto px-6 py-5">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="md:col-span-2">
+            <div>
               <label className="text-[12px] font-medium text-[#374151]">Branch Name</label>
               <Input
                 className={`mt-1 h-10 rounded-md bg-white text-[12px] text-[#111827] ${
@@ -1688,9 +1708,34 @@ export default function Page() {
                 }`}
                 placeholder="Enter branch name"
                 value={branchName}
-                onChange={(event) => setBranchName(event.target.value)}
+                onChange={(event) => {
+                  const value = event.target.value
+                  setBranchName(value)
+                  if (!branchCodeEdited) setBranchCode(suggestBranchCode(value))
+                }}
                 onBlur={() => setBranchTouched((prev) => ({ ...prev, name: true }))}
               />
+            </div>
+
+            <div>
+              <label className="text-[12px] font-medium text-[#374151]">Branch Code</label>
+              <Input
+                className={`mt-1 h-10 rounded-md bg-white text-[12px] uppercase text-[#111827] ${
+                  branchTouched.code && !branchCode.trim()
+                    ? "border-rose-300 focus-visible:ring-rose-200"
+                    : "border-[#E5E7EB]"
+                }`}
+                placeholder="e.g. TESTING-BRANCH"
+                value={branchCode}
+                onChange={(event) => {
+                  setBranchCodeEdited(true)
+                  setBranchCode(event.target.value.toUpperCase())
+                }}
+                onBlur={() => setBranchTouched((prev) => ({ ...prev, code: true }))}
+              />
+              <p className="mt-1 text-[11px] text-[#9CA3AF]">
+                Unique identifier for this branch. Auto-filled from the name; edit if needed.
+              </p>
             </div>
 
             <div>
@@ -1768,7 +1813,6 @@ export default function Page() {
                 <option value="USD">USD</option>
                 <option value="EUR">EUR</option>
                 <option value="GBP">GBP</option>
-                <option value="CAD">CAD</option>
               </select>
             </div>
 
