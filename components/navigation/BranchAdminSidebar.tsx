@@ -22,6 +22,7 @@ import {
   GraduationCap,
   Banknote,
   DoorOpen,
+  Church,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/components/auth/AuthProvider"
@@ -39,6 +40,7 @@ const FINANCIAL_ITEMS = [
 const HR_ITEMS = [
   { label: "Dashboard", href: "/branch-admin/hr/dashboard", icon: LayoutDashboard },
   { label: "Attendance", href: "/branch-admin/hr/attendance", icon: Clock },
+  { label: "Service Attendance", href: "/branch-admin/hr/service-attendance", icon: Church },
   { label: "Leave", href: "/branch-admin/hr/leave", icon: CalendarDays },
   { label: "Job Requisition", href: "/branch-admin/hr/job-requisition", icon: ClipboardList },
   { label: "Employee Directory", href: "/branch-admin/hr/employee-directory", icon: UsersRound },
@@ -155,7 +157,7 @@ export default function BranchAdminSidebar({ activeHref, mobileOpen, onMobileClo
             {groups.financial && <div className="space-y-1.5">{renderItems(FINANCIAL_ITEMS)}</div>}
           </div>
           <div className="space-y-1.5">
-            {groupHeader("hr", "Human Resourcing", Briefcase)}
+            {groupHeader("hr", "Human Resources & Admin", Briefcase)}
             {groups.hr && <div className="space-y-1.5">{renderItems(HR_ITEMS)}</div>}
           </div>
         </nav>

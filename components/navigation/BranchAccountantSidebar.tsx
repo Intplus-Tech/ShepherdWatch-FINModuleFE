@@ -176,7 +176,7 @@ export default function BranchAccountantSidebar({ activeHref, mobileOpen, onMobi
           )}
         </div>
 
-        {/* HUMAN RESOURCING group */}
+        {/* HUMAN RESOURCES & ADMIN group */}
         <div className="space-y-1.5">
           <button
             type="button"
@@ -189,7 +189,7 @@ export default function BranchAccountantSidebar({ activeHref, mobileOpen, onMobi
                 <Briefcase className="h-3.5 w-3.5" />
               </span>
               <span className="whitespace-nowrap text-[11px] font-extrabold uppercase tracking-wide text-[#111827]">
-                Human Resourcing
+                Human Resources &amp; Admin
               </span>
             </span>
             <ChevronDown

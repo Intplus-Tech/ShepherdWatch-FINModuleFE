@@ -23,6 +23,7 @@ import {
   Banknote,
   DoorOpen,
   ClipboardList,
+  Church,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/components/auth/AuthProvider"
@@ -64,7 +65,7 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: "HUMAN RESOURCING",
+    label: "HUMAN RESOURCES & ADMIN",
     icon: Briefcase,
     items: [
       { label: "Dashboard", href: "/director-screen/hr/dashboard", icon: LayoutGrid },
@@ -72,6 +73,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Employee Directory", href: "/director-screen/hr/employee-directory", icon: UsersRound },
       { label: "Payroll Overview", href: "/director-screen/hr/payroll-approval", icon: WalletCards },
       { label: "Leave & Attendance", href: "/director-screen/hr/leave-attendance", icon: CalendarCheck, badge: "12" },
+      { label: "Service Attendance", href: "/director-screen/hr/service-attendance", icon: Church },
       { label: "Training Management", href: "/director-screen/hr/training-management", icon: GraduationCap },
       { label: "Employee Loans", href: "/director-screen/hr/employee-loans", icon: Banknote, badge: "12" },
       { label: "Exit Clearance Oversight", href: "/director-screen/hr/exit-clearance", icon: DoorOpen },
