@@ -22,6 +22,7 @@ import {
   GraduationCap,
   Banknote,
   DoorOpen,
+  Church,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
@@ -34,6 +35,7 @@ let persistedGroups: { financial: boolean; hr: boolean } | null = null
 const HR_ITEMS = [
   { label: "Dashboard", href: "/branchlead-pastor/hr/dashboard", icon: LayoutDashboard },
   { label: "Attendance", href: "/branchlead-pastor/hr/attendance", icon: Clock },
+  { label: "Service Attendance", href: "/branchlead-pastor/hr/service-attendance", icon: Church },
   { label: "Leave", href: "/branchlead-pastor/hr/leave", icon: CalendarDays },
   { label: "Job Requisition", href: "/branchlead-pastor/hr/job-requisition", icon: ClipboardList },
   { label: "Employee Directory", href: "/branchlead-pastor/hr/employee-directory", icon: UsersRound },
@@ -211,7 +213,7 @@ export default function BranchLeadPastorSidebar() {
           )}
         </div>
 
-        {/* HUMAN RESOURCING group */}
+        {/* HUMAN RESOURCES & ADMIN group */}
         <div className="space-y-1">
           <button
             type="button"
@@ -224,7 +226,7 @@ export default function BranchLeadPastorSidebar() {
                 <Briefcase className="h-3.5 w-3.5" />
               </span>
               <span className="whitespace-nowrap text-[11px] font-extrabold uppercase tracking-wide text-[#111827]">
-                Human Resourcing
+                Human Resources &amp; Admin
               </span>
             </span>
             <ChevronDown

@@ -18,7 +18,7 @@ export default function HrPlaceholder({
       <main className="flex-1 xl:ml-[260px] text-[#111827]">
         <div className="mx-auto w-full px-6 pt-6 pb-8 lg:px-8 lg:pt-8 max-w-7xl">
           <h1 className="text-[24px] leading-none font-bold text-[#111827]">{title}</h1>
-          <p className="text-[13px] text-[#3B5BDB] font-medium mt-2">Human Resourcing</p>
+          <p className="text-[13px] text-[#3B5BDB] font-medium mt-2">Human Resources &amp; Admin</p>
           <div className="mt-8 rounded-xl border border-[#EEF1F6] bg-white p-12 text-center">
             <p className="text-[15px] font-bold text-[#111827]">{title}</p>
             <p className="text-[13px] text-[#6B7280] mt-2">This module is coming soon.</p>
