@@ -1,98 +1,84 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useState } from "react"
 import {
   Search,
   Bell,
   Download,
   Timer,
-  Power,
   SlidersHorizontal,
   Calendar,
   AlertTriangle,
 } from "lucide-react"
 import BranchAccountantSidebar from "@/components/navigation/BranchAccountantSidebar"
+import { HrPaginationBar, HrTableStateRow } from "@/components/hr/HrTableState"
+import { useHrAttendance, useHrAttendanceMetrics } from "@/components/hooks/useHrAttendance"
+import BranchAdminAttendanceModal from "@/components/hr/BranchAdminAttendanceModal"
+import { useToast } from "@/components/ui/toast"
+import {
+  ATTENDANCE_STATUS_LABELS,
+  formatDate,
+  formatDuration,
+  formatTime,
+  initials,
+  statusLabel,
+} from "@/lib/hr/display"
+import { exportHrRows } from "@/lib/hr/export"
 import { cn } from "@/lib/utils"
 
-type AttendanceStatus = "On Time" | "Late" | null
-
-type AttendanceRow = {
-  id: string
-  name: string
-  title: string
-  initials: string
-  avatarColor: string
-  branch: string
-  date: string
-  timeIn: string
-  status: AttendanceStatus
-  timeOut: string | null
-  duration: string
-  alert?: boolean
-}
-
-const ROWS: AttendanceRow[] = [
-  {
-    id: "amaka-nwachukwu",
-    name: "Amaka Nwachukwu",
-    title: "Senior Administrator",
-    initials: "AN",
-    avatarColor: "bg-[#3B5BDB] text-white",
-    branch: "Ibadan HQ",
-    date: "Oct 19, 2023",
-    timeIn: "07:52 AM",
-    status: "On Time",
-    timeOut: "05:05 PM",
-    duration: "9h 13m",
-  },
-  {
-    id: "tunde-bakare",
-    name: "Tunde Bakare",
-    title: "Finance Officer",
-    initials: "TB",
-    avatarColor: "bg-[#0EA5A4] text-white",
-    branch: "Maryland Lagos",
-    date: "Oct 19, 2023",
-    timeIn: "08:15 AM",
-    status: "Late",
-    timeOut: "05:30 PM",
-    duration: "9h 15m",
-  },
-  {
-    id: "chidi-okechukwu",
-    name: "Chidi Okechukwu",
-    title: "Logistics Coordinator",
-    initials: "CO",
-    avatarColor: "bg-[#111827] text-white",
-    branch: "Ibadan HQ",
-    date: "Oct 19, 2023",
-    timeIn: "08:02 AM",
-    status: null,
-    timeOut: null,
-    duration: "--",
-    alert: true,
-  },
+const STATUS_FILTERS = [
+  { value: "", label: "All Status" },
+  { value: "present", label: "On Time" },
+  { value: "late", label: "Late" },
+  { value: "absent", label: "Absent" },
+  { value: "half_day", label: "Half Day" },
+  { value: "missing", label: "Missing" },
 ]
 
-const BRANCHES = ["All Branches", "Ibadan HQ", "Maryland Lagos"]
-const STATUSES = ["All Status", "On Time", "Late", "Missing"]
+const AVATAR_TINTS = ["bg-[#3B5BDB] text-white", "bg-[#111827] text-white"]
+
+const PAGE_SIZE = 20
 
 export default function Page() {
-  const [branch, setBranch] = useState("All Branches")
-  const [status, setStatus] = useState("All Status")
+  const [manualOpen, setManualOpen] = useState(false)
+  const [status, setStatus] = useState("")
+  const [startDate, setStartDate] = useState("")
+  const [endDate, setEndDate] = useState("")
+  const [page, setPage] = useState(1)
 
-  const rows = useMemo(() => {
-    return ROWS.filter((row) => {
-      if (branch !== "All Branches" && row.branch !== branch) return false
-      if (status === "All Status") return true
-      if (status === "Missing") return row.timeOut === null
-      return row.status === status
-    })
-  }, [branch, status])
+  const { logs, pagination, loading, error, refresh } = useHrAttendance({
+    page,
+    limit: PAGE_SIZE,
+    status,
+    startDate,
+    endDate,
+  })
+  const { metrics, refresh: refreshMetrics } = useHrAttendanceMetrics()
+  const { pushToast } = useToast()
+
+  const handleExport = () => {
+    const exported = exportHrRows(
+      "branch-attendance-log",
+      rows.map((row) => ({
+        Employee: row.employeeName,
+        Department: row.department,
+        Date: formatDate(row.date),
+        "Clock In": formatTime(row.clockIn),
+        "Clock Out": formatTime(row.clockOut),
+        Duration: formatDuration(row.durationMinutes),
+        Status: statusLabel(ATTENDANCE_STATUS_LABELS, row.status),
+      }))
+    )
+    if (!exported) pushToast("Nothing to export on this page", "info")
+  }
+
+  const rows = logs
 
   const resetAll = () => {
-    setBranch("All Branches")
-    setStatus("All Status")
+    setStatus("")
+    setStartDate("")
+    setEndDate("")
+    setPage(1)
   }
 
   return (
@@ -131,6 +117,7 @@ export default function Page() {
           </div>
           <button
             type="button"
+            onClick={handleExport}
             className="inline-flex items-center gap-2 rounded-md bg-[#111827] px-4 py-2 text-[12px] font-semibold text-white hover:bg-black"
           >
             <Download className="h-4 w-4" />
@@ -146,22 +133,23 @@ export default function Page() {
                 Avg. Clock-in Time
               </div>
               <div className="mt-1 text-[32px] font-bold text-[#111827]">
-                07:54 AM
+                {metrics.avgClockInTime || "—"}
               </div>
               <div className="mt-1 text-[12px] text-[#6B7280]">
-                Standard starts at 08:00 AM
+                {metrics.clockedInToday} of {metrics.totalEmployees} clocked in ·{" "}
+                {metrics.lateToday} late · {metrics.absentToday} absent
               </div>
             </div>
             <div className="flex items-center gap-3">
               <span className="inline-flex items-center rounded-full bg-amber-100 px-3 py-1 text-[11px] font-bold text-amber-700">
-                On track
+                {metrics.attendanceRate}% attendance
               </span>
               <button
                 type="button"
+                onClick={() => setManualOpen(true)}
                 className="inline-flex items-center gap-2 rounded-md bg-[#111827] px-4 py-2 text-[12px] font-semibold text-white hover:bg-black"
               >
                 <Timer className="h-4 w-4" />
-                <Power className="h-4 w-4" />
                 Manual Clock-In/Out
               </button>
             </div>
@@ -177,28 +165,39 @@ export default function Page() {
 
           <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-end">
             <div className="flex flex-col gap-1.5">
-              <label className="text-[11px] font-bold uppercase text-[#6B7280]">
-                Branch
+              <label className="text-[11px] font-bold uppercase text-[#6B7280]" htmlFor="attendance-start">
+                From
               </label>
-              <select
-                value={branch}
-                onChange={(e) => setBranch(e.target.value)}
-                className="h-[42px] rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[13px]"
-              >
-                {BRANCHES.map((b) => (
-                  <option key={b} value={b}>
-                    {b}
-                  </option>
-                ))}
-              </select>
+              <div className="flex h-[42px] items-center gap-2 rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[13px] text-[#111827]">
+                <input
+                  id="attendance-start"
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => {
+                    setStartDate(e.target.value)
+                    setPage(1)
+                  }}
+                  className="w-full bg-transparent outline-none"
+                />
+                <Calendar className="h-4 w-4 text-[#9CA3AF]" />
+              </div>
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-[11px] font-bold uppercase text-[#6B7280]">
-                Date Range
+              <label className="text-[11px] font-bold uppercase text-[#6B7280]" htmlFor="attendance-end">
+                To
               </label>
               <div className="flex h-[42px] items-center gap-2 rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[13px] text-[#111827]">
-                <span>Oct 12, 2023 - Oct 19, 2023</span>
+                <input
+                  id="attendance-end"
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => {
+                    setEndDate(e.target.value)
+                    setPage(1)
+                  }}
+                  className="w-full bg-transparent outline-none"
+                />
                 <Calendar className="h-4 w-4 text-[#9CA3AF]" />
               </div>
             </div>
@@ -209,12 +208,15 @@ export default function Page() {
               </label>
               <select
                 value={status}
-                onChange={(e) => setStatus(e.target.value)}
+                onChange={(e) => {
+                  setStatus(e.target.value)
+                  setPage(1)
+                }}
                 className="h-[42px] rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[13px]"
               >
-                {STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
+                {STATUS_FILTERS.map((option) => (
+                  <option key={option.value || "all"} value={option.value}>
+                    {option.label}
                   </option>
                 ))}
               </select>
@@ -257,48 +259,41 @@ export default function Page() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#F3F4F6]">
-                {rows.map((row) => (
-                  <tr
-                    key={row.id}
-                    className={cn(row.alert && "border-l-2 border-rose-500")}
-                  >
+                {rows.map((row, index) => (
+                  <tr key={row.id} className={cn(!row.clockOut && "border-l-2 border-rose-500")}>
                     <td className="px-4 py-4 text-[13px]">
                       <div className="flex items-center gap-3">
                         <div
                           className={cn(
                             "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[12px] font-bold",
-                            row.avatarColor
+                            AVATAR_TINTS[index % AVATAR_TINTS.length]
                           )}
                         >
-                          {row.initials}
+                          {initials(row.employeeName)}
                         </div>
                         <div className="flex flex-col">
                           <span className="font-semibold text-[#111827]">
-                            {row.name}
+                            {row.employeeName || "Unnamed staff"}
                           </span>
                           <span className="text-[12px] text-[#6B7280]">
-                            {row.title}
+                            {row.jobTitle || row.department || "—"}
                           </span>
                         </div>
                       </div>
                     </td>
                     <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                      {row.branch}
+                      {row.department || "—"}
                     </td>
-                    <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                      {row.date}
-                    </td>
+                    <td className="px-4 py-4 text-[13px] text-[#4B5563]">{formatDate(row.date)}</td>
                     <td className="px-4 py-4 text-[13px]">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium text-[#111827]">
-                          {row.timeIn}
-                        </span>
-                        {row.status === "On Time" && (
+                        <span className="font-medium text-[#111827]">{formatTime(row.clockIn)}</span>
+                        {row.status === "present" && (
                           <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
                             On Time
                           </span>
                         )}
-                        {row.status === "Late" && (
+                        {row.status === "late" && (
                           <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">
                             Late
                           </span>
@@ -306,25 +301,43 @@ export default function Page() {
                       </div>
                     </td>
                     <td className="px-4 py-4 text-[13px]">
-                      {row.timeOut === null ? (
+                      {!row.clockOut ? (
                         <span className="inline-flex items-center gap-1 font-semibold text-rose-600">
                           <AlertTriangle className="h-3.5 w-3.5" />
                           Missing
                         </span>
                       ) : (
-                        <span className="text-[#4B5563]">{row.timeOut}</span>
+                        <span className="text-[#4B5563]">{formatTime(row.clockOut)}</span>
                       )}
                     </td>
                     <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                      {row.duration}
+                      {formatDuration(row.durationMinutes)}
                     </td>
                   </tr>
                 ))}
+                <HrTableStateRow
+                  colSpan={6}
+                  loading={loading}
+                  error={error}
+                  isEmpty={rows.length === 0}
+                  emptyMessage="No attendance records for these filters."
+                  onRetry={refresh}
+                />
               </tbody>
             </table>
           </div>
+          <HrPaginationBar pagination={pagination} onPageChange={setPage} noun="records" />
         </div>
       </main>
+
+      <BranchAdminAttendanceModal
+        open={manualOpen}
+        onClose={() => setManualOpen(false)}
+        onRecorded={() => {
+          refresh()
+          refreshMetrics()
+        }}
+      />
     </div>
   )
 }

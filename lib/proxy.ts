@@ -82,12 +82,21 @@ export async function proxyRequest(req: NextRequest, opts: ProxyOptions): Promis
     if (contentType.includes("application/json")) {
       const data = await backendRes.json().catch(() => null);
       if (!backendRes.ok) {
+        // Pass the backend's own error body through untouched. It carries the
+        // field-level detail behind messages like "Validation failed", which
+        // was previously reduced to the bare message and lost.
+        const detail = data && typeof data === "object" ? (data as Record<string, unknown>) : null;
+        console.error(
+          `Backend ${opts.method} ${opts.path} -> ${backendRes.status}`,
+          JSON.stringify(detail ?? {})
+        );
         response = NextResponse.json(
           {
             success: false,
             message:
-              (data && typeof data === "object" && "message" in data ? (data as { message?: string }).message : null) ??
+              (detail && typeof detail.message === "string" ? detail.message : null) ??
               "Backend request failed",
+            ...(detail ?? {}),
           },
           { status: backendRes.status }
         );

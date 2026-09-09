@@ -1,7 +1,26 @@
 "use client"
 
-import { useRouter } from "next/navigation"
+import { Suspense, useMemo } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import BranchLeadPastorSidebar from "@/components/navigation/BranchLeadPastorSidebar"
+import { useHrEmployee } from "@/components/hooks/useHrEmployees"
+import { useHrAttendance } from "@/components/hooks/useHrAttendance"
+import { useHrLoans } from "@/components/hooks/useHrLoans"
+import { useHrLeaves } from "@/components/hooks/useHrLeaves"
+import { useHrTrainings } from "@/components/hooks/useHrTrainings"
+import { useHrDocuments } from "@/components/hooks/useHrDocuments"
+import {
+  DOCUMENT_TYPE_LABELS,
+  LEAVE_STATUS_LABELS,
+  LEAVE_STATUS_STYLES,
+  formatDate,
+  formatNaira,
+  formatShortDate,
+  formatTime,
+  initials,
+  statusLabel,
+  statusStyle,
+} from "@/lib/hr/display"
 import { cn } from "@/lib/utils"
 import {
   Search,
@@ -9,59 +28,54 @@ import {
   ChevronLeft,
   UserPlus,
   Info,
-  Laptop,
-  KeyRound,
   IdCard,
   ArrowRight,
 } from "lucide-react"
-
-type Attendance = {
-  date: string
-  clockIn: string
-  clockOut: string
-  status: "On Time" | "Late"
-}
-
-const ATTENDANCE: Attendance[] = [
-  { date: "Oct 24, 2023", clockIn: "08:02 AM", clockOut: "05:15 PM", status: "On Time" },
-  { date: "Oct 23, 2023", clockIn: "08:15 AM", clockOut: "05:30 PM", status: "Late" },
-  { date: "Oct 20, 2023", clockIn: "07:58 AM", clockOut: "05:10 PM", status: "On Time" },
-  { date: "Oct 19, 2023", clockIn: "08:01 AM", clockOut: "05:20 PM", status: "On Time" },
-  { date: "Oct 18, 2023", clockIn: "07:55 AM", clockOut: "05:12 PM", status: "On Time" },
-  { date: "Oct 17, 2023", clockIn: "08:04 AM", clockOut: "05:18 PM", status: "On Time" },
-  { date: "Oct 16, 2023", clockIn: "07:59 AM", clockOut: "05:22 PM", status: "On Time" },
-  { date: "Oct 13, 2023", clockIn: "08:03 AM", clockOut: "05:14 PM", status: "On Time" },
-]
-
-const CORE_DETAILS = [
-  { label: "Date Hired", value: "March 12, 2018" },
-  { label: "Work Email", value: "s.jenkins@shepherdwatch.org" },
-  { label: "Phone Number", value: "+234 (0) 802 555 0192" },
-  { label: "Branch Assignment", value: "Maryland LAG" },
-]
-
-const ASSETS = [
-  { icon: Laptop, name: "MacBook Pro", meta: "S/N: 8821-M3P" },
-  { icon: KeyRound, name: "Security Keycard", meta: "Access: Level 3 (Admin)" },
-  { icon: IdCard, name: "Corporate ID Card", meta: "Expiry: Dec 2025" },
-]
-
-const TRAINING = [
-  { name: "Leadership in Ministry", meta: "Scheduled: Dec 12, 2024", tone: "text-amber-600" },
-  { name: "Data Privacy Compliance", meta: "Completed: Jan 05, 2025", tone: "text-emerald-600" },
-]
-
-const LEAVE = [
-  { label: "Vacation Leave", used: 5, total: 12, color: "bg-[#2563EB]" },
-  { label: "Sick Leave", used: 4, total: 5, color: "bg-amber-500" },
-  { label: "Maternity / Parental", used: 4, total: 5, color: "bg-violet-500" },
-]
 
 const CARD =
   "rounded-[14px] border border-[#EEF1F6] bg-white shadow-[0px_4px_10px_rgba(0,0,0,0.02)]"
 
 export default function Page() {
+  return (
+    <Suspense fallback={null}>
+      <EmployeeProfileScreen />
+    </Suspense>
+  )
+}
+
+function EmployeeProfileScreen() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const employeeId = searchParams.get("employeeId") ?? ""
+
+  const { employee, loading, error } = useHrEmployee(employeeId)
+  const { logs } = useHrAttendance({ employeeId, limit: 8 })
+  const { loans } = useHrLoans({ employeeId, status: "active", limit: 20 })
+  const { leaves } = useHrLeaves({ employeeId, limit: 10 })
+  const { trainings } = useHrTrainings({ limit: 50 })
+  const { documents } = useHrDocuments(employeeId)
+
+  const outstandingLoan = useMemo(
+    () => loans.reduce((sum, loan) => sum + loan.remainingBalance, 0),
+    [loans]
+  )
+
+  const employeeTraining = useMemo(
+    () =>
+      trainings
+        .filter((training) =>
+          training.participants.some((participant) => participant.employeeId === employeeId)
+        )
+        .slice(0, 4),
+    [trainings, employeeId]
+  )
+
+  const coreDetails = [
+    { label: "Date Hired", value: formatDate(employee?.hireDate ?? "") },
+    { label: "Work Email", value: employee?.email || "—" },
+    { label: "Phone Number", value: employee?.phone || "—" },
+    { label: "Branch Assignment", value: employee?.branchName || "—" },
+  ]
 
   return (
     <div className="flex min-h-screen bg-[#F2F4F7] font-sans text-[#111827]">
@@ -93,33 +107,40 @@ export default function Page() {
               <ChevronLeft className="h-4 w-4" />
               Back
             </button>
-            <button className="inline-flex items-center gap-2 rounded-md bg-rose-600 px-4 py-2 text-[12px] font-semibold text-white hover:bg-rose-700">
+            <button
+              onClick={() => router.push("/branchlead-pastor/hr/exit-clearance")}
+              className="inline-flex items-center gap-2 rounded-md bg-rose-600 px-4 py-2 text-[12px] font-semibold text-white hover:bg-rose-700"
+            >
               <UserPlus className="h-4 w-4" />
-              Initiate Onboarding
+              Initiate Exit Clearance
             </button>
           </div>
 
           {/* Header card */}
           <div className={cn(CARD, "mt-5 p-6")}>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#EEF2FF] text-[20px] font-bold text-[#2563EB]">
-                SJ
-              </div>
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-3">
-                  <h1 className="text-[26px] font-bold text-[#111827]">
-                    Dr. Sarah Jenkins
-                  </h1>
-                  <span className="rounded-full bg-[#EEF2FF] px-2.5 py-1 text-[10px] font-bold text-[#2563EB]">
-                    ID: EL-1024
-                  </span>
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#EFF2FF] text-[20px] font-bold text-[#3B5BDB]">
+                  {initials(employee?.name ?? "")}
                 </div>
-                <p className="mt-1 text-[14px] text-[#6B7280]">
-                  Executive Pastor • Medical Services
-                </p>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <h1 className="text-[26px] font-bold text-[#111827]">
+                      {employee?.name || (loading ? "Loading…" : "Employee Profile")}
+                    </h1>
+                    {employee?.employeeCode ? (
+                      <span className="rounded-full bg-[#EFF2FF] px-2.5 py-1 text-[10px] font-bold text-[#3B5BDB]">
+                        ID: {employee.employeeCode}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="mt-1 text-[14px] text-[#6B7280]">
+                    {employee
+                      ? [employee.jobTitle, employee.department].filter(Boolean).join(" • ") || "—"
+                      : error || (employeeId ? "" : "Open a staff member from the directory")}
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
 
           {/* Grid */}
           <div className="mt-5 grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -134,7 +155,7 @@ export default function Page() {
                   </h2>
                 </div>
                 <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  {CORE_DETAILS.map((d) => (
+                  {coreDetails.map((d) => (
                     <div key={d.label}>
                       <div className="text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
                         {d.label}
@@ -153,7 +174,12 @@ export default function Page() {
                   <h2 className="text-[16px] font-bold text-[#111827]">
                     Attendance History
                   </h2>
-                  <button className="text-[13px] font-semibold text-[#2563EB]">
+                  <button
+                    onClick={() =>
+                      router.push(`/branchlead-pastor/hr/attendance?employeeId=${employeeId}`)
+                    }
+                    className="text-[13px] font-semibold text-[#2563EB]"
+                  >
                     View Full Log
                   </button>
                 </div>
@@ -176,31 +202,41 @@ export default function Page() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#F3F4F6]">
-                      {ATTENDANCE.map((a, i) => (
-                        <tr key={i} className="hover:bg-[#F9FAFB]">
+                      {logs.map((a) => (
+                        <tr key={a.id} className="hover:bg-[#F9FAFB]">
                           <td className="px-4 py-4 text-[13px] font-semibold text-[#111827]">
-                            {a.date}
+                            {formatDate(a.date)}
                           </td>
                           <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                            {a.clockIn}
+                            {formatTime(a.clockIn)}
                           </td>
                           <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                            {a.clockOut}
+                            {formatTime(a.clockOut)}
                           </td>
                           <td className="px-4 py-4 text-[13px]">
                             <span
                               className={cn(
                                 "inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold",
-                                a.status === "On Time"
+                                a.status === "present"
                                   ? "bg-emerald-100 text-emerald-700"
-                                  : "bg-amber-100 text-amber-700"
+                                  : a.status === "late"
+                                    ? "bg-amber-100 text-amber-700"
+                                    : "bg-slate-100 text-slate-600"
                               )}
                             >
-                              {a.status}
+                              {a.status === "present" ? "On Time" : a.status === "late" ? "Late" : a.status}
                             </span>
                           </td>
                         </tr>
                       ))}
+
+                      {logs.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="px-4 py-8 text-center text-[13px] text-[#9CA3AF]">
+                            No attendance recorded for this staff member.
+                          </td>
+                        </tr>
+                      ) : null}
                     </tbody>
                   </table>
                 </div>
@@ -215,12 +251,15 @@ export default function Page() {
                   Active Loans
                 </h2>
                 <div className="mt-2 text-[24px] font-bold text-[#111827]">
-                  ₦250,000.00
+                  {formatNaira(outstandingLoan)}
                 </div>
                 <div className="text-[13px] text-[#6B7280]">
                   Outstanding Balance
                 </div>
-                <button className="mt-3 inline-flex items-center gap-1 text-[13px] font-semibold text-[#2563EB]">
+                <button
+                  onClick={() => router.push("/branchlead-pastor/hr/employee-loans")}
+                  className="mt-3 inline-flex items-center gap-1 text-[13px] font-semibold text-[#2563EB]"
+                >
                   View All Loan Schedules
                   <ArrowRight className="h-3.5 w-3.5" />
                 </button>
@@ -229,27 +268,31 @@ export default function Page() {
               {/* Assigned Assets */}
               <div className={cn(CARD, "p-5")}>
                 <h2 className="text-[16px] font-bold text-[#111827]">
-                  Assigned Assets
+                  Personnel Documents
                 </h2>
                 <div className="mt-4 space-y-3">
-                  {ASSETS.map((asset) => {
-                    const Icon = asset.icon
-                    return (
-                      <div key={asset.name} className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#F3F4F6] text-[#6B7280]">
-                          <Icon className="h-4 w-4" />
+                  {documents.slice(0, 5).map((document) => (
+                    <div key={document.id} className="flex items-center gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#F3F4F6] text-[#6B7280]">
+                        <IdCard className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="truncate text-[13px] font-semibold text-[#111827]">
+                          {document.title}
                         </div>
-                        <div className="min-w-0">
-                          <div className="text-[13px] font-semibold text-[#111827]">
-                            {asset.name}
-                          </div>
-                          <div className="text-[12px] text-[#9CA3AF]">
-                            {asset.meta}
-                          </div>
+                        <div className="text-[12px] text-[#9CA3AF]">
+                          {statusLabel(DOCUMENT_TYPE_LABELS, document.documentType)} ·{" "}
+                          {document.verificationStatus}
                         </div>
                       </div>
-                    )
-                  })}
+                    </div>
+                  ))}
+
+                  {documents.length === 0 ? (
+                    <p className="text-[12px] text-[#9CA3AF]">
+                      No documents have been filed for this staff member.
+                    </p>
+                  ) : null}
                 </div>
               </div>
 
@@ -259,16 +302,31 @@ export default function Page() {
                   Recent Training
                 </h2>
                 <div className="mt-4 space-y-3">
-                  {TRAINING.map((t) => (
-                    <div key={t.name}>
-                      <div className="text-[13px] font-semibold text-[#111827]">
-                        {t.name}
+                  {employeeTraining.map((training) => {
+                    const record = training.participants.find(
+                      (participant) => participant.employeeId === employeeId
+                    )
+                    const certified = record?.status === "certified"
+                    return (
+                      <div key={training.id}>
+                        <div className="text-[13px] font-semibold text-[#111827]">
+                          {training.title}
+                        </div>
+                        <div
+                          className={cn(
+                            "text-[12px] font-medium",
+                            certified ? "text-emerald-600" : "text-amber-600"
+                          )}
+                        >
+                          {certified ? "Certified" : "Scheduled"}: {formatDate(training.startDate)}
+                        </div>
                       </div>
-                      <div className={cn("text-[12px] font-medium", t.tone)}>
-                        {t.meta}
-                      </div>
-                    </div>
-                  ))}
+                    )
+                  })}
+
+                  {employeeTraining.length === 0 ? (
+                    <p className="text-[12px] text-[#9CA3AF]">No training enrolments yet.</p>
+                  ) : null}
                 </div>
               </div>
 
@@ -276,24 +334,31 @@ export default function Page() {
               <div className={cn(CARD, "p-5")}>
                 <h2 className="text-[16px] font-bold text-[#111827]">Leave</h2>
                 <div className="mt-4 space-y-4">
-                  {LEAVE.map((l) => (
-                    <div key={l.label}>
+                  {leaves.slice(0, 5).map((leave) => (
+                    <div key={leave.id}>
                       <div className="flex items-center justify-between text-[13px]">
                         <span className="font-semibold text-[#111827]">
-                          {l.label}
+                          {leave.leaveTypeName || "Leave"}
                         </span>
-                        <span className="text-[#6B7280]">
-                          {l.used} / {l.total} Days
+                        <span
+                          className={cn(
+                            "rounded-full px-2 py-0.5 text-[10px] font-bold",
+                            statusStyle(LEAVE_STATUS_STYLES, leave.status)
+                          )}
+                        >
+                          {statusLabel(LEAVE_STATUS_LABELS, leave.status)}
                         </span>
                       </div>
-                      <div className="mt-1.5 h-2 rounded-full bg-[#EEF1F6]">
-                        <div
-                          className={cn("h-2 rounded-full", l.color)}
-                          style={{ width: `${(l.used / l.total) * 100}%` }}
-                        />
+                      <div className="mt-0.5 text-[12px] text-[#6B7280]">
+                        {formatShortDate(leave.startDate)} – {formatShortDate(leave.endDate)} ·{" "}
+                        {leave.totalDays} day{leave.totalDays === 1 ? "" : "s"}
                       </div>
                     </div>
                   ))}
+
+                  {leaves.length === 0 ? (
+                    <p className="text-[12px] text-[#9CA3AF]">No leave requests on record.</p>
+                  ) : null}
                 </div>
               </div>
             </div>

@@ -1,4 +1,6 @@
+import { API_V1 } from "@/lib/api"
 import { NextRequest, NextResponse } from "next/server"
+import { corsOptions, proxyRequest } from "@/lib/proxy"
 import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config"
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors"
 
@@ -96,6 +98,18 @@ export async function PATCH(
       req
     )
   }
+}
+
+/** One maintenance record. */
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params
+  return proxyRequest(req, {
+    path: `${API_V1}/maintenance/${id}`,
+    method: "GET",
+  })
 }
 
 export async function OPTIONS(req: NextRequest) {

@@ -1,6 +1,16 @@
 "use client"
 
-import { useState } from "react"
+import { Suspense, useMemo, useState } from "react"
+import { useSearchParams } from "next/navigation"
+import { useHrExitClearance, useExitClearanceMutations } from "@/components/hooks/useHrExitClearances"
+import { useToast } from "@/components/ui/toast"
+import {
+  CLEARANCE_STATUS_LABELS,
+  formatDate,
+  formatNaira,
+  initials,
+  statusLabel,
+} from "@/lib/hr/display"
 import { useRouter } from "next/navigation"
 import {
   Search,
@@ -14,39 +24,84 @@ import {
 import BranchLeadPastorSidebar from "@/components/navigation/BranchLeadPastorSidebar"
 import { ModalShell } from "@/components/ui/modal-shell"
 
-type Clearance = {
-  id: string
-  title: string
-  description: string
-  timestamp: string
-  signedBy: string
+export default function Page() {
+  return (
+    <Suspense fallback={null}>
+      <FinalReleaseScreen />
+    </Suspense>
+  )
 }
 
-const CLEARANCES: Clearance[] = [
-  {
-    id: "finance",
-    title: "Finance & Accounts",
-    description: "Outstanding loans, tax filings, and final pay calculations settled.",
-    timestamp: "Oct 20, 09:45 AM",
-    signedBy: "SIGNED BY S. ADEBAYO",
-  },
-  {
-    id: "admin",
-    title: "Administration",
-    description:
-      "ID cards returned, office keys surrendered, asset log cleared, Email deactivated, hardware assets (laptop/tablet) returned and audited.",
-    timestamp: "Oct 21, 02:15 PM",
-    signedBy: "SIGNED BY M. BENSON",
-  },
-]
-
-export default function Page() {
+function FinalReleaseScreen() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const clearanceId = searchParams.get("clearanceId") ?? ""
+
   const [modalOpen, setModalOpen] = useState(false)
+  const [releasing, setReleasing] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
+
+  const { pushToast } = useToast()
+  const { clearance, loading, error, refresh } = useHrExitClearance(clearanceId)
+  const { pastorRelease } = useExitClearanceMutations()
+
+  // The two sign-offs already on the dossier, in the order they happen.
+  const steps = useMemo(() => {
+    if (!clearance) return []
+    const rows: { id: string; title: string; description: string; timestamp: string; done: boolean }[] = []
+
+    rows.push({
+      id: "admin",
+      title: "Administration",
+      description:
+        clearance.adminSignOff.notes ||
+        clearance.adminSignOff.checklist
+          .map((item) => `${item.label}: ${item.isReturned ? "returned" : "outstanding"}`)
+          .join(", ") ||
+        "Assets and access reviewed.",
+      timestamp: formatDate(clearance.adminSignOff.signedOffAt),
+      done: clearance.adminSignOff.isCompleted,
+    })
+
+    rows.push({
+      id: "finance",
+      title: "Finance & Accounts",
+      description: clearance.financeSignOff.isCompleted
+        ? `Loan balance ${formatNaira(clearance.financeSignOff.outstandingLoanBalance)} · net final pay ${formatNaira(clearance.financeSignOff.netFinalPay)}.${clearance.financeSignOff.note ? ` ${clearance.financeSignOff.note}` : ""}`
+        : "Awaiting settlement of loans and final pay.",
+      timestamp: formatDate(clearance.financeSignOff.signedOffAt),
+      done: clearance.financeSignOff.isCompleted,
+    })
+
+    return rows
+  }, [clearance])
+
+  const readyForRelease = clearance?.status === "pending_pastor"
+  const alreadyReleased = clearance?.pastorRelease.isCompleted ?? false
+
+  const handleRelease = async () => {
+    if (!clearance) {
+      setFormError("Open this from the exit clearance list so the record is known.")
+      return
+    }
+
+    setReleasing(true)
+    setFormError(null)
+    try {
+      await pastorRelease(clearance.id)
+      pushToast("Final release confirmed", "success")
+      refresh()
+      setModalOpen(true)
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Unable to confirm the release.")
+    } finally {
+      setReleasing(false)
+    }
+  }
 
   const closeAndReturn = () => {
     setModalOpen(false)
-    router.push("/branchlead-pastor/hr/dashboard")
+    router.push("/branchlead-pastor/hr/exit-clearance")
   }
 
   return (
@@ -100,7 +155,11 @@ export default function Page() {
             </div>
             <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-[12px] font-semibold text-emerald-700">
               <Check className="h-3.5 w-3.5" />
-              Clearance Complete
+              {clearance
+                ? statusLabel(CLEARANCE_STATUS_LABELS, clearance.status)
+                : loading
+                  ? "Loading…"
+                  : "No clearance selected"}
             </span>
           </div>
 
@@ -110,11 +169,13 @@ export default function Page() {
             <div className="lg:col-span-1 rounded-[14px] border border-[#EEF1F6] bg-white p-6 shadow-[0px_4px_10px_rgba(0,0,0,0.02)]">
               <div className="flex flex-col items-center text-center">
                 <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#EFF2FF] text-[18px] font-bold text-[#3B5BDB]">
-                  JO
+                  {initials(clearance?.employeeName ?? "")}
                 </div>
-                <div className="mt-4 text-[20px] font-bold text-[#111827]">John Obi</div>
+                <div className="mt-4 text-[20px] font-bold text-[#111827]">
+                  {clearance?.employeeName || "—"}
+                </div>
                 <div className="mt-1 text-[13px] text-[#6B7280]">
-                  Regional Youth Coordinator
+                  {clearance?.jobTitle || clearance?.department || error || "—"}
                 </div>
               </div>
 
@@ -124,15 +185,15 @@ export default function Page() {
                     Exit Date
                   </div>
                   <div className="mt-1 text-[14px] font-semibold text-[#111827]">
-                    Oct 24, 2023
+                    {formatDate(clearance?.lastWorkingDate ?? "")}
                   </div>
                 </div>
                 <div>
                   <div className="text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
-                    Tenure
+                    Reason
                   </div>
                   <div className="mt-1 text-[14px] font-semibold text-[#111827]">
-                    4 Years, 2 Months
+                    {clearance?.reason || "—"}
                   </div>
                 </div>
               </div>
@@ -148,14 +209,20 @@ export default function Page() {
               </div>
 
               <div className="mt-6 space-y-0">
-                {CLEARANCES.map((item, index) => (
+                {steps.map((item, index) => (
                   <div key={item.id} className="flex gap-4">
                     {/* Timeline node + connector */}
                     <div className="flex flex-col items-center">
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
+                      <div
+                        className={
+                          item.done
+                            ? "flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white"
+                            : "flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#E5E7EB] text-[#6B7280]"
+                        }
+                      >
                         <Check className="h-4 w-4" />
                       </div>
-                      {index < CLEARANCES.length - 1 && (
+                      {index < steps.length - 1 && (
                         <div className="mt-1 w-px flex-1 bg-[#E5E7EB]" />
                       )}
                     </div>
@@ -163,13 +230,11 @@ export default function Page() {
                     {/* Content */}
                     <div className="flex-1 pb-6">
                       <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
-                        <div className="text-[14px] font-bold text-[#111827]">
-                          {item.title}
-                        </div>
+                        <div className="text-[14px] font-bold text-[#111827]">{item.title}</div>
                         <div className="text-right">
                           <div className="text-[12px] text-[#6B7280]">{item.timestamp}</div>
                           <div className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                            {item.signedBy}
+                            {item.done ? "SIGNED OFF" : "PENDING"}
                           </div>
                         </div>
                       </div>
@@ -177,6 +242,12 @@ export default function Page() {
                     </div>
                   </div>
                 ))}
+
+                {!loading && steps.length === 0 ? (
+                  <p className="text-[13px] text-[#9CA3AF]">
+                    Open a clearance from the exit list to see its sign-offs.
+                  </p>
+                ) : null}
               </div>
             </div>
           </div>
@@ -191,16 +262,26 @@ export default function Page() {
                 Ready for Release
               </div>
               <p className="mt-2 text-[13px] text-[#6B7280]">
-                As Branch Pastor, your confirmation will formally conclude John Obi&apos;s
-                tenure. This action generates the final service certificate and triggers the
-                pension payout workflow.
+                {alreadyReleased
+                  ? `Released on ${formatDate(clearance?.pastorRelease.releasedAt ?? "")}. The clearance is closed.`
+                  : readyForRelease
+                    ? `As Branch Pastor, your confirmation formally concludes ${clearance?.employeeName || "this staff member"}'s tenure.`
+                    : "Admin and Finance have to sign off before the release can be confirmed."}
               </p>
+
+              {formError ? (
+                <p className="mt-3 rounded-md bg-rose-50 px-3 py-2 text-[12px] text-rose-600">
+                  {formError}
+                </p>
+              ) : null}
+
               <button
                 type="button"
-                onClick={() => setModalOpen(true)}
-                className="mt-6 rounded-md bg-[#111827] px-6 py-2.5 text-[12px] font-semibold text-white hover:bg-black"
+                onClick={handleRelease}
+                disabled={releasing || !readyForRelease || alreadyReleased}
+                className="mt-6 rounded-md bg-[#111827] px-6 py-2.5 text-[12px] font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-40"
               >
-                Confirm Release
+                {releasing ? "Confirming…" : alreadyReleased ? "Released" : "Confirm Release"}
               </button>
             </div>
           </div>
@@ -215,8 +296,8 @@ export default function Page() {
           </div>
           <div className="mt-5 text-[20px] font-bold text-[#111827]">Release Confirmed</div>
           <p className="mt-2 text-[13px] text-[#6B7280]">
-            Exit clearance for John Obi is now complete. The discharge papers have been sent
-            to their primary email address.
+            Exit clearance for {clearance?.employeeName || "this staff member"} is now
+            complete.
           </p>
           <button
             type="button"

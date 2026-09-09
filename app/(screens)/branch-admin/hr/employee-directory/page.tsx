@@ -4,6 +4,18 @@ import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import BranchAdminSidebar from "@/components/navigation/BranchAdminSidebar"
 import BranchAdminAddEmployeeModal from "@/components/hr/BranchAdminAddEmployeeModal"
+import { HrPaginationBar, HrTableStateRow } from "@/components/hr/HrTableState"
+import { useToast } from "@/components/ui/toast"
+import { useHrEmployees, useEmployeeMutations } from "@/components/hooks/useHrEmployees"
+import { useDebouncedValue } from "@/components/hooks/useDebouncedValue"
+import {
+  EMPLOYMENT_STATUS_LABELS,
+  EMPLOYMENT_STATUS_STYLES,
+  initials,
+  statusLabel,
+  statusStyle,
+} from "@/lib/hr/display"
+import { exportHrRows } from "@/lib/hr/export"
 import { cn } from "@/lib/utils"
 import {
   Search,
@@ -15,97 +27,77 @@ import {
   Eye,
   Pencil,
   UserX,
-  ChevronLeft,
-  ChevronRight,
 } from "lucide-react"
 
-type Status = "Active" | "On Leave" | "Exited"
-
-type Employee = {
-  name: string
-  empId: string
-  title: string
-  email: string
-  status: Status
-}
-
-const EMPLOYEES: Employee[] = [
-  {
-    name: "Dr. Robert Henderson",
-    empId: "SW-4029",
-    title: "Lead Pastor",
-    email: "r.henderson@shepherdwatch.org",
-    status: "Active",
-  },
-  {
-    name: "Sarah Mitchell",
-    empId: "SW-4031",
-    title: "Operations Manager",
-    email: "s.mitchell@shepherdwatch.org",
-    status: "On Leave",
-  },
-  {
-    name: "James Wilson",
-    empId: "SW-3988",
-    title: "Chief Accountant",
-    email: "j.wilson@shepherdwatch.org",
-    status: "Active",
-  },
-  {
-    name: "Aaron Chen",
-    empId: "SW-4102",
-    title: "IT Administrator",
-    email: "a.chen@shepherdwatch.org",
-    status: "Exited",
-  },
-  {
-    name: "Eleanor Vance",
-    empId: "SW-3877",
-    title: "Office Secretary",
-    email: "e.vance@shepherdwatch.org",
-    status: "Active",
-  },
+/** Filter values map straight onto the backend's employmentStatus enum. */
+const STATUS_FILTERS = [
+  { value: "", label: "Status: All" },
+  { value: "active", label: "Active" },
+  { value: "on_leave", label: "On Leave" },
+  { value: "suspended", label: "Suspended" },
+  { value: "terminated", label: "Exited" },
+  { value: "resigned", label: "Resigned" },
 ]
 
-const STATUS_STYLES: Record<Status, string> = {
-  Active: "bg-emerald-100 text-emerald-700",
-  "On Leave": "bg-amber-100 text-amber-700",
-  Exited: "bg-slate-100 text-slate-600",
-}
-
-const JOB_TITLES = Array.from(new Set(EMPLOYEES.map((e) => e.title)))
-
-function initials(name: string) {
-  return name
-    .replace(/^Dr\.\s*/i, "")
-    .split(" ")
-    .map((p) => p[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase()
-}
+const PAGE_SIZE = 20
 
 export default function Page() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const [query, setQuery] = useState("")
-  const [status, setStatus] = useState<"All" | Status>("All")
-  const [jobTitle, setJobTitle] = useState<"All Roles" | string>("All Roles")
+  const [status, setStatus] = useState("")
+  const [department, setDepartment] = useState("")
+  const [page, setPage] = useState(1)
   const router = useRouter()
+  const { pushToast } = useToast()
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return EMPLOYEES.filter((e) => {
-      const matchesQuery =
-        !q ||
-        e.name.toLowerCase().includes(q) ||
-        e.email.toLowerCase().includes(q) ||
-        e.title.toLowerCase().includes(q)
-      const matchesStatus = status === "All" || e.status === status
-      const matchesTitle = jobTitle === "All Roles" || e.title === jobTitle
-      return matchesQuery && matchesStatus && matchesTitle
-    })
-  }, [query, status, jobTitle])
+  const search = useDebouncedValue(query, 350)
+  const { employees, pagination, loading, error, refresh } = useHrEmployees({
+    page,
+    limit: PAGE_SIZE,
+    search,
+    employmentStatus: status,
+    department,
+  })
+  const { updateStatus } = useEmployeeMutations()
+
+  // Department options come from whatever the current page returned — the
+  // backend has no department lookup endpoint yet.
+  const departments = useMemo(
+    () => Array.from(new Set(employees.map((employee) => employee.department).filter(Boolean))).sort(),
+    [employees]
+  )
+
+  /** Filters reset to page 1 so a narrowed result set is never shown empty. */
+  const applyFilter = (apply: () => void) => {
+    apply()
+    setPage(1)
+  }
+
+  const handleDeactivate = async (employeeId: string, name: string) => {
+    try {
+      await updateStatus(employeeId, "terminated")
+      pushToast(`${name} marked as exited`, "success")
+      refresh()
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : "Unable to update employee status", "error")
+    }
+  }
+
+  const handleExport = () => {
+    const exported = exportHrRows(
+      "branch-employee-directory",
+      employees.map((employee) => ({
+        Name: employee.name,
+        "Employee ID": employee.employeeCode,
+        "Job Title": employee.jobTitle,
+        Department: employee.department,
+        Email: employee.email,
+        Status: statusLabel(EMPLOYMENT_STATUS_LABELS, employee.employmentStatus),
+      }))
+    )
+    if (!exported) pushToast("Nothing to export on this page", "info")
+  }
 
   return (
     <div className="flex flex-col lg:flex-row min-h-screen bg-[#F8FAFC] w-full">
@@ -158,7 +150,10 @@ export default function Page() {
               </p>
             </div>
             <div className="flex items-center gap-3">
-              <button className="flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[12px] font-medium text-[#4B5563] hover:bg-[#F8FAFC]">
+              <button
+                onClick={handleExport}
+                className="flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[12px] font-medium text-[#4B5563] hover:bg-[#F8FAFC]"
+              >
                 <Download className="h-4 w-4" />
                 Export CSV
               </button>
@@ -179,30 +174,31 @@ export default function Page() {
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
                 <input
                   value={query}
-                  onChange={(e) => setQuery(e.target.value)}
+                  onChange={(e) => applyFilter(() => setQuery(e.target.value))}
                   placeholder="Search by name, email, or department..."
                   className="h-[42px] w-full rounded-[8px] border border-[#E5E7EB] bg-white pl-10 pr-3.5 text-[13px] outline-none focus:border-[#2563EB]"
                 />
               </div>
               <select
                 value={status}
-                onChange={(e) => setStatus(e.target.value as "All" | Status)}
+                onChange={(e) => applyFilter(() => setStatus(e.target.value))}
                 className="h-[42px] rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[13px] outline-none focus:border-[#2563EB]"
               >
-                <option value="All">Status: All</option>
-                <option value="Active">Active</option>
-                <option value="On Leave">On Leave</option>
-                <option value="Exited">Exited</option>
+                {STATUS_FILTERS.map((option) => (
+                  <option key={option.value || "all"} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
               <select
-                value={jobTitle}
-                onChange={(e) => setJobTitle(e.target.value)}
+                value={department}
+                onChange={(e) => applyFilter(() => setDepartment(e.target.value))}
                 className="h-[42px] rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[13px] outline-none focus:border-[#2563EB]"
               >
-                <option value="All Roles">Job Title: All Roles</option>
-                {JOB_TITLES.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
+                <option value="">Department: All</option>
+                {departments.map((entry) => (
+                  <option key={entry} value={entry}>
+                    {entry}
                   </option>
                 ))}
               </select>
@@ -236,59 +232,67 @@ export default function Page() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#F3F4F6]">
-                  {filtered.map((e) => (
-                    <tr key={e.empId} className="hover:bg-[#F9FAFB]">
+                  {employees.map((employee) => (
+                    <tr key={employee.id} className="hover:bg-[#F9FAFB]">
                       <td className="px-4 py-4 text-[13px]">
                         <div className="flex items-center gap-3">
                           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#EEF2FF] text-[12px] font-bold text-[#2563EB]">
-                            {initials(e.name)}
+                            {initials(employee.name)}
                           </div>
                           <div className="min-w-0">
                             <div className="font-bold text-[#111827]">
-                              {e.name}
+                              {employee.name || "Unnamed staff"}
                             </div>
                             <div className="text-[12px] text-[#9CA3AF]">
-                              Emp ID: #{e.empId}
+                              Emp ID: #{employee.employeeCode || "—"}
                             </div>
                           </div>
                         </div>
                       </td>
                       <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                        {e.title}
+                        {employee.jobTitle || "—"}
+                        {employee.department ? (
+                          <div className="text-[11px] text-[#9CA3AF]">{employee.department}</div>
+                        ) : null}
                       </td>
                       <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                        {e.email}
+                        {employee.email || "—"}
                       </td>
                       <td className="px-4 py-4 text-[13px]">
                         <span
                           className={cn(
                             "inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold",
-                            STATUS_STYLES[e.status]
+                            statusStyle(EMPLOYMENT_STATUS_STYLES, employee.employmentStatus)
                           )}
                         >
-                          {e.status}
+                          {statusLabel(EMPLOYMENT_STATUS_LABELS, employee.employmentStatus)}
                         </span>
                       </td>
                       <td className="px-4 py-4 text-[13px]">
                         <div className="flex items-center justify-end gap-1">
                           <button
                             onClick={() =>
-                              router.push("/branch-admin/hr/employee-profile")
+                              router.push(`/branch-admin/hr/employee-profile?employeeId=${employee.id}`)
                             }
-                            aria-label={`View ${e.name}`}
+                            aria-label={`View ${employee.name}`}
                             className="flex h-8 w-8 items-center justify-center rounded-md text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#2563EB]"
                           >
                             <Eye className="h-4 w-4" />
                           </button>
                           <button
-                            aria-label={`Edit ${e.name}`}
+                            onClick={() =>
+                              router.push(`/branch-admin/hr/employee-profile?employeeId=${employee.id}&edit=1`)
+                            }
+                            aria-label={`Edit ${employee.name}`}
                             className="flex h-8 w-8 items-center justify-center rounded-md text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#111827]"
                           >
                             <Pencil className="h-4 w-4" />
                           </button>
                           <button
-                            aria-label={`Deactivate ${e.name}`}
-                            className="flex h-8 w-8 items-center justify-center rounded-md text-rose-500 hover:bg-rose-50"
+                            onClick={() => handleDeactivate(employee.id, employee.name)}
+                            disabled={employee.employmentStatus === "terminated"}
+                            aria-label={`Deactivate ${employee.name}`}
+                            className="flex h-8 w-8 items-center justify-center rounded-md text-rose-500 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"
                           >
                             <UserX className="h-4 w-4" />
                           </button>
@@ -296,57 +300,23 @@ export default function Page() {
                       </td>
                     </tr>
                   ))}
-                  {filtered.length === 0 && (
-                    <tr>
-                      <td
-                        colSpan={5}
-                        className="px-4 py-10 text-center text-[13px] text-[#9CA3AF]"
-                      >
-                        No employees match your filters.
-                      </td>
-                    </tr>
-                  )}
+                  <HrTableStateRow
+                    colSpan={5}
+                    loading={loading}
+                    error={error}
+                    isEmpty={employees.length === 0}
+                    emptyMessage="No employees match your filters."
+                    onRetry={refresh}
+                  />
                 </tbody>
               </table>
             </div>
 
-            {/* Footer */}
-            <div className="flex flex-col gap-3 border-t border-[#EEF1F6] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-[12px] text-[#6B7280]">
-                Showing 1 - 5 of 124 records
-              </div>
-              <div className="flex items-center gap-1">
-                <button
-                  aria-label="Previous page"
-                  className="flex h-8 w-8 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[#6B7280] hover:bg-[#F8FAFC]"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
-                {["1", "2", "3"].map((p, i) => (
-                  <button
-                    key={p}
-                    className={cn(
-                      "flex h-8 min-w-8 items-center justify-center rounded-md px-2 text-[12px] font-semibold",
-                      i === 0
-                        ? "bg-[#111827] text-white"
-                        : "border border-[#E5E7EB] bg-white text-[#4B5563] hover:bg-[#F8FAFC]"
-                    )}
-                  >
-                    {p}
-                  </button>
-                ))}
-                <span className="px-1 text-[12px] text-[#9CA3AF]">…</span>
-                <button className="flex h-8 min-w-8 items-center justify-center rounded-md border border-[#E5E7EB] bg-white px-2 text-[12px] font-semibold text-[#4B5563] hover:bg-[#F8FAFC]">
-                  25
-                </button>
-                <button
-                  aria-label="Next page"
-                  className="flex h-8 w-8 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[#6B7280] hover:bg-[#F8FAFC]"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
+            <HrPaginationBar
+              pagination={pagination}
+              onPageChange={setPage}
+              noun="records"
+            />
           </div>
         </main>
       </div>
@@ -354,6 +324,10 @@ export default function Page() {
       <BranchAdminAddEmployeeModal
         open={addOpen}
         onClose={() => setAddOpen(false)}
+        onCreated={() => {
+          setPage(1)
+          refresh()
+        }}
       />
     </div>
   )

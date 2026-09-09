@@ -12,100 +12,41 @@ import {
   CalendarClock,
   SlidersHorizontal,
   MoreVertical,
-  ChevronLeft,
-  ChevronRight,
 } from "lucide-react"
 import SidebarNav from "@/components/navigation/SidebarNav"
+import { HrPaginationBar, HrTableStateRow } from "@/components/hr/HrTableState"
+import { useToast } from "@/components/ui/toast"
+import { useHrEmployees, useHrEmployeeMetrics, useEmployeeMutations } from "@/components/hooks/useHrEmployees"
+import { useDebouncedValue } from "@/components/hooks/useDebouncedValue"
+import {
+  EMPLOYMENT_STATUS_LABELS,
+  EMPLOYMENT_STATUS_STYLES,
+  initials,
+  statusLabel,
+  statusStyle,
+} from "@/lib/hr/display"
+import { exportHrRows } from "@/lib/hr/export"
 import { cn } from "@/lib/utils"
-
-type MemberStatus = "Active" | "On Leave"
-
-type Member = {
-  id: string
-  name: string
-  email: string
-  role: string
-  employeeId: string
-  status: MemberStatus
-  avatarColor: string
-}
-
-const MEMBERS: Member[] = [
-  {
-    id: "olumide-bakare",
-    name: "Pst. Olumide Bakare",
-    email: "olumide.b@lag.shepherd.org",
-    role: "Senior Pastor",
-    employeeId: "EMP-ML-001",
-    status: "Active",
-    avatarColor: "bg-[#3B5BDB] text-white",
-  },
-  {
-    id: "chioma-adeleke",
-    name: "Chioma Adeleke",
-    email: "chioma.a@lag.shepherd.org",
-    role: "Admin Officer",
-    employeeId: "EMP-ML-014",
-    status: "Active",
-    avatarColor: "bg-[#111827] text-white",
-  },
-  {
-    id: "tunde-williams",
-    name: "Tunde Williams",
-    email: "tunde.w@lag.shepherd.org",
-    role: "Finance Lead",
-    employeeId: "EMP-ML-005",
-    status: "On Leave",
-    avatarColor: "bg-[#3B5BDB] text-white",
-  },
-  {
-    id: "amaka-nnaji",
-    name: "Amaka Nnaji",
-    email: "amaka.n@lag.shepherd.org",
-    role: "Welfare Lead",
-    employeeId: "EMP-ML-022",
-    status: "Active",
-    avatarColor: "bg-[#111827] text-white",
-  },
-  {
-    id: "david-okafor",
-    name: "David Okafor",
-    email: "david.o@lag.shepherd.org",
-    role: "IT Administrator",
-    employeeId: "EMP-ML-031",
-    status: "Active",
-    avatarColor: "bg-[#3B5BDB] text-white",
-  },
-]
 
 const ROLE_TABS = ["All Roles", "Pastors", "Admin"] as const
 type RoleTab = (typeof ROLE_TABS)[number]
 
-function initialsOf(name: string): string {
-  return name
-    .replace(/^(Pst\.|Pastor|Rev\.|Dr\.)\s*/i, "")
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join("")
-}
+const PAGE_SIZE = 20
 
-function StatusBadge({ status }: { status: MemberStatus }) {
-  const isActive = status === "Active"
+/** Staff avatars alternate the two brand tints. */
+const AVATAR_TINTS = ["bg-[#3B5BDB] text-white", "bg-[#111827] text-white"]
+
+function StatusBadge({ status }: { status: string }) {
+  const isActive = status === "active"
   return (
     <span
       className={cn(
         "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold",
-        isActive
-          ? "bg-emerald-100 text-emerald-700"
-          : "bg-amber-100 text-amber-700"
+        statusStyle(EMPLOYMENT_STATUS_STYLES, status)
       )}
     >
-      {isActive && (
-        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-      )}
-      {status}
+      {isActive && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />}
+      {statusLabel(EMPLOYMENT_STATUS_LABELS, status)}
     </span>
   )
 }
@@ -113,26 +54,61 @@ function StatusBadge({ status }: { status: MemberStatus }) {
 export default function Page() {
   const router = useRouter()
 
+  const { pushToast } = useToast()
   const [tableSearch, setTableSearch] = useState("")
   const [roleTab, setRoleTab] = useState<RoleTab>("All Roles")
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
+  const [page, setPage] = useState(1)
   const menuRef = useRef<HTMLDivElement | null>(null)
 
+  const search = useDebouncedValue(tableSearch, 350)
+  // The director sees every branch, so no branchId is sent.
+  const { employees, pagination, loading, error, refresh } = useHrEmployees({
+    page,
+    limit: PAGE_SIZE,
+    search,
+  })
+  const { metrics } = useHrEmployeeMetrics()
+  const { updateStatus } = useEmployeeMutations()
+
+  // Role tabs narrow the page that came back — the API filters by department,
+  // not by the pastoral/admin split these tabs describe.
   const filtered = useMemo(() => {
-    const q = tableSearch.trim().toLowerCase()
-    return MEMBERS.filter((m) => {
-      const matchesSearch =
-        !q ||
-        m.name.toLowerCase().includes(q) ||
-        m.role.toLowerCase().includes(q) ||
-        m.employeeId.toLowerCase().includes(q)
-      const matchesRole =
-        roleTab === "All Roles" ||
-        (roleTab === "Pastors" && /pastor/i.test(m.role)) ||
-        (roleTab === "Admin" && /admin/i.test(m.role))
-      return matchesSearch && matchesRole
-    })
-  }, [tableSearch, roleTab])
+    if (roleTab === "All Roles") return employees
+    const pattern = roleTab === "Pastors" ? /pastor/i : /admin/i
+    return employees.filter((employee) => pattern.test(`${employee.jobTitle} ${employee.role}`))
+  }, [employees, roleTab])
+
+  const activeRate = metrics.totalStaff
+    ? Math.round((metrics.activeStaff / metrics.totalStaff) * 1000) / 10
+    : 0
+
+  const handleExport = () => {
+    const exported = exportHrRows(
+      "global-employee-directory",
+      employees.map((employee) => ({
+        Name: employee.name,
+        "Employee ID": employee.employeeCode,
+        "Job Title": employee.jobTitle,
+        Department: employee.department,
+        Branch: employee.branchName,
+        Email: employee.email,
+        Status: statusLabel(EMPLOYMENT_STATUS_LABELS, employee.employmentStatus),
+      }))
+    )
+    if (!exported) pushToast("Nothing to export on this page", "info")
+  }
+
+  const handleDeactivate = async (employeeId: string, name: string) => {
+    setOpenMenuId(null)
+    try {
+      await updateStatus(employeeId, "terminated")
+      pushToast(`${name} deactivated`, "success")
+      refresh()
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : "Unable to update employee status", "error")
+    }
+  }
 
   useEffect(() => {
     if (!openMenuId) return
@@ -152,9 +128,9 @@ export default function Page() {
     }
   }, [openMenuId])
 
-  const goToProfile = () => {
+  const goToProfile = (employeeId: string) => {
     setOpenMenuId(null)
-    router.push("/director-screen/hr/employee-profile")
+    router.push(`/director-screen/hr/employee-profile?employeeId=${employeeId}`)
   }
 
   return (
@@ -195,6 +171,7 @@ export default function Page() {
               </button>
               <button
                 type="button"
+                onClick={handleExport}
                 className="flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[12px] font-medium text-[#4B5563] hover:bg-gray-50"
               >
                 <Download className="h-4 w-4" />
@@ -216,10 +193,10 @@ export default function Page() {
               </button>
               <div>
                 <h2 className="text-[18px] font-bold text-[#111827]">
-                  Maryland LAG - Branch Members
+                  All Branch Members
                 </h2>
                 <p className="text-[13px] text-[#6B7280] mt-0.5">
-                  Managing 68 staff across 4 departments
+                  Managing {metrics.totalStaff} staff across every branch
                 </p>
               </div>
             </div>
@@ -227,6 +204,7 @@ export default function Page() {
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
+                onClick={handleExport}
                 className="flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[12px] font-medium text-[#4B5563] hover:bg-gray-50"
               >
                 <Download className="h-4 w-4" />
@@ -252,9 +230,9 @@ export default function Page() {
               <div className="text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
                 Total Staff
               </div>
-              <div className="mt-2 text-[28px] font-bold text-[#111827]">68</div>
-              <div className="mt-1 text-[12px] font-medium text-emerald-600">
-                +2 this month
+              <div className="mt-2 text-[28px] font-bold text-[#111827]">{metrics.totalStaff}</div>
+              <div className="mt-1 text-[12px] font-medium text-[#6B7280]">
+                {metrics.suspendedStaff} suspended · {metrics.exitPendingStaff} exit pending
               </div>
             </div>
 
@@ -265,9 +243,9 @@ export default function Page() {
               <div className="text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
                 Active
               </div>
-              <div className="mt-2 text-[28px] font-bold text-[#111827]">65</div>
+              <div className="mt-2 text-[28px] font-bold text-[#111827]">{metrics.activeStaff}</div>
               <div className="mt-1 text-[12px] text-[#6B7280]">
-                95.5% participation rate
+                {activeRate}% of headcount active
               </div>
             </div>
 
@@ -278,9 +256,9 @@ export default function Page() {
               <div className="text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
                 On Leave
               </div>
-              <div className="mt-2 text-[28px] font-bold text-[#111827]">3</div>
+              <div className="mt-2 text-[28px] font-bold text-[#111827]">{metrics.onLeaveStaff}</div>
               <div className="mt-1 text-[12px] text-[#6B7280]">
-                Returning within 14 days
+                Currently away from duty
               </div>
             </div>
           </div>
@@ -294,7 +272,10 @@ export default function Page() {
                 <input
                   type="text"
                   value={tableSearch}
-                  onChange={(e) => setTableSearch(e.target.value)}
+                  onChange={(e) => {
+                    setTableSearch(e.target.value)
+                    setPage(1)
+                  }}
                   placeholder="Search by name, role or ID..."
                   className="h-[42px] w-full rounded-[8px] border border-[#E5E7EB] bg-white pl-10 pr-3 text-[13px]"
                 />
@@ -351,163 +332,127 @@ export default function Page() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#EEF1F6]">
-                  {filtered.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan={5}
-                        className="px-4 py-8 text-center text-[13px] text-[#6B7280]"
-                      >
-                        No members match your search.
+                  {filtered.map((m, index) => (
+                    <tr key={m.id}>
+                      <td className="px-4 py-4 text-[13px]">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={cn(
+                              "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[12px] font-bold",
+                              AVATAR_TINTS[index % AVATAR_TINTS.length]
+                            )}
+                          >
+                            {initials(m.name)}
+                          </div>
+                          <div className="flex flex-col">
+                            <button
+                              type="button"
+                              onClick={() => goToProfile(m.id)}
+                              className="text-left font-semibold text-[#111827] hover:text-[#3B5BDB] hover:underline"
+                            >
+                              {m.name || "Unnamed staff"}
+                            </button>
+                            <span className="text-[12px] text-[#6B7280]">
+                              {m.email || m.branchName || "—"}
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 text-[13px] text-[#4B5563]">
+                        {m.jobTitle || "—"}
+                        {m.branchName ? (
+                          <div className="text-[11px] text-[#9CA3AF]">{m.branchName}</div>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-4 text-[13px] font-medium text-[#4B5563]">
+                        {m.employeeCode || "—"}
+                      </td>
+                      <td className="px-4 py-4 text-[13px]">
+                        <StatusBadge status={m.employmentStatus} />
+                      </td>
+                      <td className="px-4 py-4 text-[13px]">
+                        <div className="flex justify-end">
+                          <div className="relative">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setOpenMenuId((prev) => (prev === m.id ? null : m.id))
+                              }
+                              aria-label="Row actions"
+                              aria-haspopup="menu"
+                              aria-expanded={openMenuId === m.id}
+                              className="flex h-8 w-8 items-center justify-center rounded-md text-[#6B7280] hover:bg-gray-100"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </button>
+
+                            {openMenuId === m.id && (
+                              <div
+                                ref={menuRef}
+                                role="menu"
+                                className="absolute right-0 top-9 z-30 w-52 overflow-hidden rounded-lg border border-[#EEF1F6] bg-white py-1 shadow-lg"
+                              >
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => goToProfile(m.id)}
+                                  className="block w-full px-4 py-2 text-left text-[13px] text-[#111827] hover:bg-gray-50"
+                                >
+                                  View Full Profile
+                                </button>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() =>
+                                    router.push(
+                                      `/director-screen/hr/employee-profile?employeeId=${m.id}&edit=1`
+                                    )
+                                  }
+                                  className="block w-full px-4 py-2 text-left text-[13px] text-[#111827] hover:bg-gray-50"
+                                >
+                                  Edit Employment Details
+                                </button>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() =>
+                                    router.push(
+                                      `/director-screen/hr/leave-attendance?employeeId=${m.id}`
+                                    )
+                                  }
+                                  className="block w-full px-4 py-2 text-left text-[13px] text-[#111827] hover:bg-gray-50"
+                                >
+                                  Review Leave
+                                </button>
+                                <div className="my-1 border-t border-[#EEF1F6]" />
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => handleDeactivate(m.id, m.name)}
+                                  className="block w-full px-4 py-2 text-left text-[13px] font-medium text-rose-600 hover:bg-rose-50"
+                                >
+                                  Deactivate Member
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </td>
                     </tr>
-                  ) : (
-                    filtered.map((m) => (
-                      <tr key={m.id}>
-                        <td className="px-4 py-4 text-[13px]">
-                          <div className="flex items-center gap-3">
-                            <div
-                              className={cn(
-                                "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[12px] font-bold",
-                                m.avatarColor
-                              )}
-                            >
-                              {initialsOf(m.name)}
-                            </div>
-                            <div className="flex flex-col">
-                              <button
-                                type="button"
-                                onClick={goToProfile}
-                                className="text-left font-semibold text-[#111827] hover:text-[#3B5BDB] hover:underline"
-                              >
-                                {m.name}
-                              </button>
-                              <span className="text-[12px] text-[#6B7280]">
-                                {m.email}
-                              </span>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                          {m.role}
-                        </td>
-                        <td className="px-4 py-4 text-[13px] font-medium text-[#4B5563]">
-                          {m.employeeId}
-                        </td>
-                        <td className="px-4 py-4 text-[13px]">
-                          <StatusBadge status={m.status} />
-                        </td>
-                        <td className="px-4 py-4 text-[13px]">
-                          <div className="flex justify-end">
-                            <div className="relative">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setOpenMenuId((prev) =>
-                                    prev === m.id ? null : m.id
-                                  )
-                                }
-                                aria-label="Row actions"
-                                aria-haspopup="menu"
-                                aria-expanded={openMenuId === m.id}
-                                className="flex h-8 w-8 items-center justify-center rounded-md text-[#6B7280] hover:bg-gray-100"
-                              >
-                                <MoreVertical className="h-4 w-4" />
-                              </button>
-
-                              {openMenuId === m.id && (
-                                <div
-                                  ref={menuRef}
-                                  role="menu"
-                                  className="absolute right-0 top-9 z-30 w-52 overflow-hidden rounded-lg border border-[#EEF1F6] bg-white py-1 shadow-lg"
-                                >
-                                  <button
-                                    type="button"
-                                    role="menuitem"
-                                    onClick={goToProfile}
-                                    className="block w-full px-4 py-2 text-left text-[13px] text-[#111827] hover:bg-gray-50"
-                                  >
-                                    View Full Profile
-                                  </button>
-                                  <button
-                                    type="button"
-                                    role="menuitem"
-                                    onClick={() => setOpenMenuId(null)}
-                                    className="block w-full px-4 py-2 text-left text-[13px] text-[#111827] hover:bg-gray-50"
-                                  >
-                                    Edit Employment Details
-                                  </button>
-                                  <button
-                                    type="button"
-                                    role="menuitem"
-                                    onClick={() => setOpenMenuId(null)}
-                                    className="block w-full px-4 py-2 text-left text-[13px] text-[#111827] hover:bg-gray-50"
-                                  >
-                                    Request Leave
-                                  </button>
-                                  <div className="my-1 border-t border-[#EEF1F6]" />
-                                  <button
-                                    type="button"
-                                    role="menuitem"
-                                    onClick={() => setOpenMenuId(null)}
-                                    className="block w-full px-4 py-2 text-left text-[13px] font-medium text-rose-600 hover:bg-rose-50"
-                                  >
-                                    Deactivate Member
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
+                  ))}
+                  <HrTableStateRow
+                    colSpan={5}
+                    loading={loading}
+                    error={error}
+                    isEmpty={filtered.length === 0}
+                    emptyMessage="No members match your search."
+                    onRetry={refresh}
+                  />
                 </tbody>
               </table>
             </div>
 
-            {/* Footer */}
-            <div className="flex flex-col gap-4 border-t border-[#EEF1F6] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <span className="text-[13px] text-[#6B7280]">
-                Showing 1 to 5 of 68 employees
-              </span>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  aria-label="Previous page"
-                  className="flex h-8 w-8 items-center justify-center rounded-md text-[#6B7280] hover:bg-gray-100"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
-                {["1", "2", "3"].map((p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    className={cn(
-                      "flex h-8 min-w-8 items-center justify-center rounded-md px-2 text-[13px] font-semibold",
-                      p === "1"
-                        ? "bg-[#111827] text-white"
-                        : "text-[#4B5563] hover:bg-gray-100"
-                    )}
-                  >
-                    {p}
-                  </button>
-                ))}
-                <span className="px-1 text-[13px] text-[#9CA3AF]">…</span>
-                <button
-                  type="button"
-                  className="flex h-8 min-w-8 items-center justify-center rounded-md px-2 text-[13px] font-semibold text-[#4B5563] hover:bg-gray-100"
-                >
-                  14
-                </button>
-                <button
-                  type="button"
-                  aria-label="Next page"
-                  className="flex h-8 w-8 items-center justify-center rounded-md text-[#6B7280] hover:bg-gray-100"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
+            <HrPaginationBar pagination={pagination} onPageChange={setPage} noun="employees" />
           </div>
         </div>
       </main>

@@ -1,58 +1,140 @@
 "use client"
 
 import { useState } from "react"
-import {
-  X,
-  UploadCloud,
-  FileText,
-  Trash2,
-  AlertTriangle,
-} from "lucide-react"
+import { GraduationCap, Loader2, X } from "lucide-react"
 import { ModalShell } from "@/components/ui/modal-shell"
+import { useTrainingMutations } from "@/components/hooks/useHrTrainings"
+import { useHrScope } from "@/lib/hr/useHrScope"
+import { useToast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils"
 
-const labelCls =
-  "text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]"
+const labelCls = "text-[11px] font-bold uppercase tracking-wider text-[#6B7280]"
 const inputCls =
-  "mt-1.5 w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2.5 text-[13px] text-[#111827] outline-none focus:border-[#3B5BDB]"
+  "mt-1.5 w-full rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 py-2.5 text-[13px] text-[#111827] outline-none focus:border-[#2563EB]"
 
-const LOCATION_TYPES = ["Physical", "Virtual", "Hybrid"] as const
-type LocationType = (typeof LOCATION_TYPES)[number]
+const LOCATION_TYPES = [
+  { value: "in_person", label: "In Person" },
+  { value: "online", label: "Online" },
+  { value: "hybrid", label: "Hybrid" },
+]
 
-function SectionHeading({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="h-4 w-1 rounded-full bg-[#3B5BDB]" />
-      <h3 className="text-[15px] font-bold text-[#111827]">{children}</h3>
-    </div>
-  )
-}
-
+/**
+ * Creates a training event. Used by every role that can schedule one — the
+ * endpoint and required fields are identical; only who can approve the budget
+ * differs, and that happens on the list screen.
+ */
 export default function CreateTrainingEventModal({
   open,
   onClose,
+  onCreated,
 }: {
   open: boolean
   onClose: () => void
+  onCreated?: () => void
 }) {
-  const [locationType, setLocationType] = useState<LocationType>("Physical")
+  const scope = useHrScope()
+  const { pushToast } = useToast()
+  const { createTraining } = useTrainingMutations()
+
+  const [title, setTitle] = useState("")
+  const [isGlobal, setIsGlobal] = useState(false)
+  const [locationType, setLocationType] = useState("in_person")
+  const [venueOrLink, setVenueOrLink] = useState("")
+  const [startDate, setStartDate] = useState("")
+  const [endDate, setEndDate] = useState("")
+  const [startTime, setStartTime] = useState("09:00")
+  const [endTime, setEndTime] = useState("16:00")
+  const [trainerName, setTrainerName] = useState("")
+  const [trainerType, setTrainerType] = useState("internal")
+  const [maxCapacity, setMaxCapacity] = useState("")
+  const [budgetRequested, setBudgetRequested] = useState("")
+  const [budgetJustification, setBudgetJustification] = useState("")
+  const [description, setDescription] = useState("")
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const reset = () => {
+    setTitle("")
+    setIsGlobal(false)
+    setLocationType("in_person")
+    setVenueOrLink("")
+    setStartDate("")
+    setEndDate("")
+    setStartTime("09:00")
+    setEndTime("16:00")
+    setTrainerName("")
+    setTrainerType("internal")
+    setMaxCapacity("")
+    setBudgetRequested("")
+    setBudgetJustification("")
+    setDescription("")
+    setError(null)
+  }
+
+  const handleClose = () => {
+    if (saving) return
+    reset()
+    onClose()
+  }
+
+  const handleSubmit = async () => {
+    setError(null)
+
+    if (!title.trim()) return setError("Give the training a name.")
+    if (!venueOrLink.trim()) return setError("Add the venue or the meeting link.")
+    if (!startDate || !endDate) return setError("Set the start and end dates.")
+    if (!trainerName.trim()) return setError("Name the trainer.")
+
+    const branchId = scope.branchId || scope.ownBranchId
+
+    setSaving(true)
+    try {
+      await createTraining({
+        title: title.trim(),
+        branchId: isGlobal ? undefined : branchId || undefined,
+        isGlobal,
+        locationType,
+        venueOrLink: venueOrLink.trim(),
+        startDate,
+        endDate,
+        startTime,
+        endTime,
+        trainerName: trainerName.trim(),
+        trainerType,
+        maxCapacity: maxCapacity ? Number(maxCapacity) : undefined,
+        budgetRequested: budgetRequested ? Number(budgetRequested) : undefined,
+        budgetJustification: budgetJustification.trim() || undefined,
+        description: description.trim() || undefined,
+      })
+      pushToast("Training event created", "success")
+      reset()
+      onCreated?.()
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to create this training event.")
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
-    <ModalShell open={open} onClose={onClose} className="max-w-2xl">
+    <ModalShell open={open} onClose={handleClose} className="max-w-2xl">
       {/* Header */}
       <div className="flex items-start justify-between gap-4 border-b border-[#EEF1F6] px-6 py-5">
-        <div>
-          <h2 className="text-[20px] font-bold text-[#111827]">
-            Create New Training Event
-          </h2>
-          <p className="mt-1 text-[13px] text-[#6B7280]">
-            Fill in the details to schedule a new ecclesiastical development
-            session.
-          </p>
+        <div className="flex items-center gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#EEF2FF] text-[#3B5BDB]">
+            <GraduationCap className="h-5 w-5" />
+          </span>
+          <div>
+            <h2 className="text-[18px] font-bold text-[#111827]">Create Training Event</h2>
+            <p className="mt-0.5 text-[13px] text-[#6B7280]">
+              Schedule a session and request its budget.
+            </p>
+          </div>
         </div>
         <button
           type="button"
-          onClick={onClose}
+          onClick={handleClose}
           aria-label="Close"
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[#9CA3AF] hover:bg-gray-100 hover:text-[#111827]"
         >
@@ -61,167 +143,225 @@ export default function CreateTrainingEventModal({
       </div>
 
       {/* Body */}
-      <div className="flex max-h-[68vh] flex-col gap-6 overflow-y-auto px-6 py-5">
-        {/* Training Details */}
-        <section>
-          <SectionHeading>Training Details</SectionHeading>
-          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <label className={labelCls}>Name of Training</label>
-              <input
-                className={inputCls}
-                placeholder="e.g. Leadership Excellence Seminar"
-              />
-            </div>
-            <div>
-              <label className={labelCls}>Branch</label>
-              <select className={inputCls} defaultValue="All Branches">
-                <option>All Branches</option>
-                <option>Lagos Region</option>
-                <option>Ibadan Region</option>
-                <option>Virtual / Global</option>
-              </select>
-            </div>
-
-            <div>
-              <label className={labelCls}>Location Type</label>
-              <div className="mt-1.5 grid grid-cols-3 gap-1 rounded-lg bg-[#F8FAFC] p-1">
-                {LOCATION_TYPES.map((type) => (
-                  <button
-                    key={type}
-                    type="button"
-                    onClick={() => setLocationType(type)}
-                    className={cn(
-                      "rounded-md px-3 py-1.5 text-[12px] font-semibold transition-colors",
-                      locationType === type
-                        ? "bg-[#111827] text-white"
-                        : "text-[#6B7280] hover:bg-gray-100"
-                    )}
-                  >
-                    {type}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <label className={labelCls}>Location / Link</label>
-              <input className={inputCls} placeholder="Venue or Meeting Link" />
-            </div>
-
-            <div>
-              <label className={labelCls}>Start Date</label>
-              <input type="date" className={inputCls} />
-            </div>
-            <div>
-              <label className={labelCls}>End Date</label>
-              <input type="date" className={inputCls} />
-            </div>
-
-            <div>
-              <label className={labelCls}>Trainer Name</label>
-              <input
-                className={inputCls}
-                placeholder="Name of Lead Instructor"
-              />
-            </div>
-            <div>
-              <label className={labelCls}>Trainer Type</label>
-              <select className={inputCls} defaultValue="Internal">
-                <option>Internal</option>
-                <option>External</option>
-              </select>
-            </div>
-
-            <div>
-              <label className={labelCls}>Max Capacity</label>
-              <input className={inputCls} placeholder="50" />
-            </div>
+      <div className="max-h-[68vh] overflow-y-auto px-6 py-5">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <label className={labelCls} htmlFor="training-title">
+              Name of Training
+            </label>
+            <input
+              id="training-title"
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              className={inputCls}
+              placeholder="e.g. Advanced Sound Engineering Workshop"
+            />
           </div>
-        </section>
 
-        {/* Attachments */}
-        <section>
-          <SectionHeading>Attachments</SectionHeading>
-          <div className="mt-4 flex flex-col items-center rounded-xl border-2 border-dashed border-[#D1D5DB] bg-[#F9FAFB] px-6 py-8 text-center">
-            <UploadCloud className="h-9 w-9 text-[#9CA3AF]" />
-            <div className="mt-3 text-[14px] font-semibold text-[#111827]">
-              Drag &amp; drop training proposals or browse files
-            </div>
-            <div className="text-[12px] text-[#6B7280]">
-              PDF, DOCX up to 10MB
-            </div>
-          </div>
-          <div className="mt-3 flex items-center gap-3 rounded-md border border-[#EEF1F6] bg-white px-3 py-2.5 text-[12px]">
-            <FileText className="h-4 w-4 shrink-0 text-[#3B5BDB]" />
-            <div className="min-w-0 flex-1">
-              <span className="font-medium text-[#111827]">
-                training_proposal.pdf
-              </span>
-              <span className="text-[#9CA3AF]"> · 1.2 MB • Uploaded just now</span>
-            </div>
-            <button
-              type="button"
-              aria-label="Remove training_proposal.pdf"
-              className="text-[#9CA3AF] hover:text-rose-500"
+          <div>
+            <label className={labelCls} htmlFor="training-scope">
+              Scope
+            </label>
+            <select
+              id="training-scope"
+              className={inputCls}
+              value={isGlobal ? "global" : "branch"}
+              onChange={(event) => setIsGlobal(event.target.value === "global")}
             >
-              <Trash2 className="h-4 w-4" />
-            </button>
-          </div>
-        </section>
-
-        {/* Budget & Approval */}
-        <section>
-          <SectionHeading>Budget &amp; Approval</SectionHeading>
-          <div className="mt-4 flex items-start gap-3 rounded-lg border border-rose-200 bg-rose-50 p-4">
-            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-rose-500" />
-            <div>
-              <div className="text-[13px] font-bold text-rose-700">
-                Budget Cap Warning
-              </div>
-              <div className="mt-1 text-[12px] font-semibold text-rose-700">
-                Remaining Training Budget (YTD): ₦180,000 &nbsp;&nbsp; Deficit:
-                ₦70,000
-              </div>
-              <p className="mt-1 text-[12px] text-rose-600">
-                This event exceeds the remaining budget by ₦70,000.
-                Justification required for higher-level review.
-              </p>
-            </div>
+              <option value="branch">
+                {scope.branchName ? `${scope.branchName} only` : "This branch only"}
+              </option>
+              <option value="global">All branches</option>
+            </select>
           </div>
 
-          <div className="mt-4 grid grid-cols-1 gap-4">
-            <div>
-              <label className={labelCls}>Total Budget Requested</label>
-              <input className={inputCls} defaultValue="₦ 250,000" />
-            </div>
-            <div>
-              <label className={labelCls}>
-                Justification for Budget Request
-              </label>
-              <textarea
-                rows={3}
-                className={inputCls}
-                placeholder="Explain the value proposition and why this exceeds standard allocation..."
-              />
-            </div>
+          <div>
+            <label className={labelCls} htmlFor="training-location-type">
+              Location Type
+            </label>
+            <select
+              id="training-location-type"
+              className={inputCls}
+              value={locationType}
+              onChange={(event) => setLocationType(event.target.value)}
+            >
+              {LOCATION_TYPES.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </div>
-        </section>
+
+          <div className="sm:col-span-2">
+            <label className={labelCls} htmlFor="training-venue">
+              Location / Link
+            </label>
+            <input
+              id="training-venue"
+              value={venueOrLink}
+              onChange={(event) => setVenueOrLink(event.target.value)}
+              className={inputCls}
+              placeholder="Venue or Meeting Link"
+            />
+          </div>
+
+          <div>
+            <label className={labelCls} htmlFor="training-start-date">
+              Start Date
+            </label>
+            <input
+              id="training-start-date"
+              type="date"
+              value={startDate}
+              onChange={(event) => setStartDate(event.target.value)}
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls} htmlFor="training-end-date">
+              End Date
+            </label>
+            <input
+              id="training-end-date"
+              type="date"
+              value={endDate}
+              onChange={(event) => setEndDate(event.target.value)}
+              className={inputCls}
+            />
+          </div>
+
+          <div>
+            <label className={labelCls} htmlFor="training-start-time">
+              Start Time
+            </label>
+            <input
+              id="training-start-time"
+              type="time"
+              value={startTime}
+              onChange={(event) => setStartTime(event.target.value)}
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls} htmlFor="training-end-time">
+              End Time
+            </label>
+            <input
+              id="training-end-time"
+              type="time"
+              value={endTime}
+              onChange={(event) => setEndTime(event.target.value)}
+              className={inputCls}
+            />
+          </div>
+
+          <div>
+            <label className={labelCls} htmlFor="training-trainer">
+              Trainer Name
+            </label>
+            <input
+              id="training-trainer"
+              value={trainerName}
+              onChange={(event) => setTrainerName(event.target.value)}
+              className={inputCls}
+              placeholder="e.g. Pastor David Osei"
+            />
+          </div>
+          <div>
+            <label className={labelCls} htmlFor="training-trainer-type">
+              Trainer Type
+            </label>
+            <select
+              id="training-trainer-type"
+              className={inputCls}
+              value={trainerType}
+              onChange={(event) => setTrainerType(event.target.value)}
+            >
+              <option value="internal">Internal</option>
+              <option value="external">External</option>
+            </select>
+          </div>
+
+          <div>
+            <label className={labelCls} htmlFor="training-capacity">
+              Max Capacity
+            </label>
+            <input
+              id="training-capacity"
+              value={maxCapacity}
+              onChange={(event) => setMaxCapacity(event.target.value.replace(/[^\d]/g, ""))}
+              inputMode="numeric"
+              className={inputCls}
+              placeholder="50"
+            />
+          </div>
+          <div>
+            <label className={labelCls} htmlFor="training-budget">
+              Total Budget Requested
+            </label>
+            <input
+              id="training-budget"
+              value={budgetRequested}
+              onChange={(event) => setBudgetRequested(event.target.value.replace(/[^\d.]/g, ""))}
+              inputMode="decimal"
+              className={inputCls}
+              placeholder="250000"
+            />
+          </div>
+
+          <div className="sm:col-span-2">
+            <label className={labelCls} htmlFor="training-justification">
+              Budget Justification
+            </label>
+            <textarea
+              id="training-justification"
+              rows={3}
+              value={budgetJustification}
+              onChange={(event) => setBudgetJustification(event.target.value)}
+              className={cn(inputCls, "resize-none")}
+              placeholder="What the budget covers and why it is needed."
+            />
+          </div>
+
+          <div className="sm:col-span-2">
+            <label className={labelCls} htmlFor="training-description">
+              Description
+            </label>
+            <textarea
+              id="training-description"
+              rows={3}
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              className={cn(inputCls, "resize-none")}
+              placeholder="What participants will cover."
+            />
+          </div>
+        </div>
+
+        {error ? (
+          <p className="mt-4 rounded-md bg-rose-50 px-3 py-2 text-[12px] text-rose-600">{error}</p>
+        ) : null}
       </div>
 
       {/* Footer */}
       <div className="flex items-center justify-end gap-3 border-t border-[#EEF1F6] px-6 py-4">
         <button
           type="button"
-          onClick={onClose}
-          className="inline-flex items-center justify-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[12px] font-medium text-[#4B5563] hover:bg-[#F8FAFC]"
+          onClick={handleClose}
+          disabled={saving}
+          className="rounded-md border border-[#E5E7EB] bg-white px-4 py-2.5 text-[12px] font-semibold text-[#4B5563] hover:bg-[#F8FAFC] disabled:opacity-60"
         >
           Cancel
         </button>
         <button
           type="button"
-          className="inline-flex items-center justify-center gap-2 rounded-md bg-[#111827] px-4 py-2 text-[12px] font-semibold text-white hover:bg-black"
+          onClick={handleSubmit}
+          disabled={saving}
+          className="inline-flex items-center gap-2 rounded-md bg-[#111827] px-4 py-2.5 text-[12px] font-semibold text-white hover:bg-black disabled:opacity-60"
         >
-          CREATE &amp; SUBMIT FOR APPROVAL
+          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+          {saving ? "Creating…" : "Create Training Event"}
         </button>
       </div>
     </ModalShell>

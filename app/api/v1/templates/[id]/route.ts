@@ -1,4 +1,6 @@
+import { API_V1 } from "@/lib/api"
 import { NextRequest, NextResponse } from "next/server";
+import { proxyRequest } from "@/lib/proxy"
 import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config";
 import { applyCors, getCorsHeaders } from "@/lib/cors";
 import { getBackendUrl } from "@/lib/backend-auth-url";
@@ -119,6 +121,18 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ id: 
     }),
     req
   );
+}
+
+/** One document template. */
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params
+  return proxyRequest(req, {
+    path: `${API_V1}/templates/${id}`,
+    method: "GET",
+  })
 }
 
 export async function OPTIONS(req: NextRequest) {

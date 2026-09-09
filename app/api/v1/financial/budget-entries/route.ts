@@ -8,7 +8,8 @@ import { getBackendApiUrl } from "@/lib/env"
 
 function buildBackendBudgetEntriesUrl(): string {
   const baseUrl = getBackendApiUrl();
-  return `${baseUrl}/financial/budget-entries`
+  // Budget entries are budgets on the backend; there is no separate resource.
+  return `${baseUrl}/budgets`
 }
 
 export async function POST(req: NextRequest) {
@@ -108,9 +109,24 @@ export async function GET(req: NextRequest) {
 
     const baseUrl = getBackendApiUrl();
 
-    const url = new URL(`${baseUrl}/financial/budget-entries`)
-    if (req.nextUrl.search) {
-      url.search = req.nextUrl.search
+    const url = new URL(`${baseUrl}/budgets`)
+
+    // The screens filter by tenant and period; the budgets endpoint takes a
+    // branch and a fiscal year, so the query is translated rather than passed
+    // through verbatim (an unknown parameter fails validation).
+    const incoming = req.nextUrl.searchParams
+    const branchId = incoming.get("branchId") ?? incoming.get("tenantId")
+    if (branchId) url.searchParams.set("branchId", branchId)
+
+    const periodStart = incoming.get("periodStart") ?? incoming.get("fiscalYear")
+    if (periodStart) {
+      const year = periodStart.slice(0, 4)
+      if (/^\d{4}$/.test(year)) url.searchParams.set("fiscalYear", year)
+    }
+
+    for (const key of ["page", "limit", "status", "category", "search"]) {
+      const value = incoming.get(key)
+      if (value) url.searchParams.set(key, value)
     }
 
     const backendResponse = await fetch(url.toString(), {

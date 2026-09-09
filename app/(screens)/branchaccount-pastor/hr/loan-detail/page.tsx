@@ -1,6 +1,19 @@
 "use client"
 
-import { useRouter } from "next/navigation"
+import { Suspense, useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { useHrLoan, useLoanMutations } from "@/components/hooks/useHrLoans"
+import { AccountantReviewModal, RecordRepaymentModal } from "@/components/hr/LoanActionModals"
+import { useToast } from "@/components/ui/toast"
+import {
+  LOAN_STATUS_LABELS,
+  LOAN_STATUS_STYLES,
+  formatDate,
+  formatNaira,
+  initials,
+  statusLabel,
+  statusStyle,
+} from "@/lib/hr/display"
 import {
   Search,
   Bell,
@@ -11,96 +24,7 @@ import {
 import BranchAccountantSidebar from "@/components/navigation/BranchAccountantSidebar"
 import { cn } from "@/lib/utils"
 
-type ScheduleStatus = "Paid" | "UPCOMING"
-
-type ScheduleRow = {
-  id: string
-  date: string
-  installment: string
-  amount: string
-  status: ScheduleStatus
-  reference: "muted" | "actions"
-}
-
-const SCHEDULE: ScheduleRow[] = [
-  {
-    id: "s1",
-    date: "Oct 28, 2024",
-    installment: "#09 of 17",
-    amount: "₦150,000",
-    status: "Paid",
-    reference: "muted",
-  },
-  {
-    id: "s2",
-    date: "Sep 28, 2024",
-    installment: "#08 of 17",
-    amount: "₦150,000",
-    status: "Paid",
-    reference: "muted",
-  },
-  {
-    id: "s3",
-    date: "Nov 28, 2024",
-    installment: "#10 of 17",
-    amount: "₦150,000",
-    status: "UPCOMING",
-    reference: "actions",
-  },
-  {
-    id: "s4",
-    date: "Sep 28, 2024",
-    installment: "#11 of 17",
-    amount: "₦150,000",
-    status: "UPCOMING",
-    reference: "actions",
-  },
-  {
-    id: "s5",
-    date: "Nov 28, 2024",
-    installment: "#10 of 17",
-    amount: "₦150,000",
-    status: "UPCOMING",
-    reference: "actions",
-  },
-]
-
-type PastLoan = {
-  id: string
-  title: string
-  outcome: string
-  amount: string
-  date?: string
-  approved: boolean
-}
-
-const PAST_LOANS: PastLoan[] = [
-  {
-    id: "p1",
-    title: "Car Loan",
-    outcome: "Approved by Pastor Caleb",
-    amount: "₦2,500,000",
-    date: "Oct 12, 2023",
-    approved: true,
-  },
-  {
-    id: "p2",
-    title: "House Rent",
-    outcome: "Rejected by Pastor Caleb",
-    amount: "₦2,500,000",
-    approved: false,
-  },
-  {
-    id: "p3",
-    title: "Car Loan",
-    outcome: "Approved by Pastor Caleb",
-    amount: "₦2,500,000",
-    date: "Oct 12, 2023",
-    approved: true,
-  },
-]
-
-function ScheduleBadge({ status }: { status: ScheduleStatus }) {
+function ScheduleBadge({ status }: { status: "Paid" | "UPCOMING" }) {
   return (
     <span
       className={cn(
@@ -139,6 +63,79 @@ function StatCard({
 }
 
 export default function Page() {
+  return (
+    <Suspense fallback={null}>
+      <LoanDetailScreen />
+    </Suspense>
+  )
+}
+
+function LoanDetailScreen() {
+  const searchParams = useSearchParams()
+  const loanId = searchParams.get("loanId") ?? ""
+  const { pushToast } = useToast()
+  const { loan, loading, error, refresh } = useHrLoan(loanId)
+  const { withdrawLoan } = useLoanMutations()
+
+  const [repaymentOpen, setRepaymentOpen] = useState(false)
+  const [reviewOpen, setReviewOpen] = useState(false)
+  const [withdrawing, setWithdrawing] = useState(false)
+
+  const amountRepaid = loan ? Math.max(loan.amount - loan.remainingBalance, 0) : 0
+  const awaitingFinance = loan?.status === "pending_accountant"
+
+  // Recorded repayments first, then the installments still to run.
+  const schedule = (() => {
+    if (!loan)
+      return [] as {
+        id: string
+        date: string
+        installment: string
+        amount: string
+        status: "Paid" | "UPCOMING"
+        reference: string
+      }[]
+
+    const paid = loan.repayments.map((repayment, index) => ({
+      id: `paid-${index}`,
+      date: formatDate(repayment.paidAt),
+      installment: `${index + 1} of ${loan.tenureMonths || loan.repayments.length}`,
+      amount: formatNaira(repayment.amount),
+      status: "Paid" as const,
+      reference: repayment.reference || "—",
+    }))
+
+    const remaining =
+      loan.monthlyDeduction > 0 ? Math.ceil(loan.remainingBalance / loan.monthlyDeduction) : 0
+
+    const upcoming = Array.from({ length: Math.max(remaining, 0) }, (_, index) => ({
+      id: `due-${index}`,
+      date: "Scheduled",
+      installment: `${paid.length + index + 1} of ${loan.tenureMonths || paid.length + remaining}`,
+      amount: formatNaira(
+        Math.min(loan.monthlyDeduction, loan.remainingBalance - index * loan.monthlyDeduction)
+      ),
+      status: "UPCOMING" as const,
+      reference: "—",
+    }))
+
+    return [...paid, ...upcoming]
+  })()
+
+  const handleWithdraw = async () => {
+    if (!loan) return
+    setWithdrawing(true)
+    try {
+      await withdrawLoan(loan.id, "Withdrawn by finance")
+      pushToast("Loan request withdrawn", "success")
+      refresh()
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : "Unable to withdraw this request", "error")
+    } finally {
+      setWithdrawing(false)
+    }
+  }
+
   const router = useRouter()
 
   return (
@@ -186,46 +183,75 @@ export default function Page() {
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-4">
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#EFF2FF] text-[14px] font-bold text-[#3B5BDB]">
-                  JA
+                  {initials(loan?.employeeName ?? "")}
                 </div>
                 <div>
                   <div className="flex items-center gap-2.5">
                     <span className="text-[16px] font-bold text-[#111827]">
-                      John Adeyemi
+                      {loan?.employeeName || (loading ? "Loading…" : "Loan")}
                     </span>
-                    <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
-                      Active
-                    </span>
+                    {loan ? (
+                      <span
+                        className={cn(
+                          "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider",
+                          statusStyle(LOAN_STATUS_STYLES, loan.status)
+                        )}
+                      >
+                        {statusLabel(LOAN_STATUS_LABELS, loan.status)}
+                      </span>
+                    ) : null}
                   </div>
                   <div className="mt-1 text-[13px] text-[#6B7280]">
-                    ID: EMP-00219 • Lead Pastor
+                    {loan
+                      ? `ID: ${loan.employeeCode || "—"} • ${loan.jobTitle || loan.department || "Staff"}`
+                      : error || (loanId ? "" : "No loan selected")}
                   </div>
                 </div>
               </div>
 
-              <button
-                type="button"
-                className="rounded-md bg-rose-600 px-4 py-2.5 text-[12px] font-semibold text-white hover:bg-rose-700"
-              >
-                Withdraw Request
-              </button>
+              <div className="flex items-center gap-3">
+                {awaitingFinance ? (
+                  <button
+                    type="button"
+                    onClick={() => setReviewOpen(true)}
+                    className="rounded-md bg-[#111827] px-4 py-2.5 text-[12px] font-semibold text-white hover:bg-black"
+                  >
+                    Verify Application
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={handleWithdraw}
+                  disabled={
+                    withdrawing ||
+                    !loan ||
+                    ["withdrawn", "completed", "rejected"].includes(String(loan.status))
+                  }
+                  className="rounded-md bg-rose-600 px-4 py-2.5 text-[12px] font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {withdrawing ? "Withdrawing…" : "Withdraw Request"}
+                </button>
+              </div>
             </div>
           </div>
 
           {/* Stat cards */}
           <div className="mt-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
-            <StatCard label="Total Loan Amount" value="₦2,500,000" />
+            <StatCard label="Total Loan Amount" value={formatNaira(loan?.amount ?? 0)} />
             <StatCard
               label="Amount Repaid"
-              value="₦1,300,000"
+              value={formatNaira(amountRepaid)}
               valueClass="text-emerald-600"
             />
             <StatCard
               label="Outstanding"
-              value="₦1,200,000"
+              value={formatNaira(loan?.remainingBalance ?? 0)}
               valueClass="text-rose-600"
             />
-            <StatCard label="Monthly Deduction" value="₦150,000" />
+            <StatCard
+              label="Monthly Deduction"
+              value={formatNaira(loan?.monthlyDeduction ?? 0)}
+            />
           </div>
 
           {/* Two-column row */}
@@ -238,7 +264,9 @@ export default function Page() {
                 </h2>
                 <button
                   type="button"
-                  className="text-[13px] font-semibold text-[#3B5BDB] hover:underline"
+                  onClick={() => setRepaymentOpen(true)}
+                  disabled={!loan || loan.remainingBalance <= 0}
+                  className="text-[13px] font-semibold text-[#3B5BDB] hover:underline disabled:cursor-not-allowed disabled:text-[#9CA3AF] disabled:no-underline"
                 >
                   New Payment
                 </button>
@@ -266,11 +294,9 @@ export default function Page() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#F3F4F6]">
-                    {SCHEDULE.map((row) => (
+                    {schedule.map((row) => (
                       <tr key={row.id} className="hover:bg-[#F9FAFB]">
-                        <td className="px-4 py-5 text-[13px] text-[#111827]">
-                          {row.date}
-                        </td>
+                        <td className="px-4 py-5 text-[13px] text-[#111827]">{row.date}</td>
                         <td className="px-4 py-5 text-[13px] text-[#4B5563]">
                           {row.installment}
                         </td>
@@ -280,40 +306,28 @@ export default function Page() {
                         <td className="px-4 py-5 text-[13px]">
                           <ScheduleBadge status={row.status} />
                         </td>
-                        <td className="px-4 py-5 text-[13px]">
-                          {row.reference === "muted" ? (
-                            <span className="text-[#9CA3AF]">Paid | Missed</span>
-                          ) : (
-                            <span className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                className="font-semibold text-emerald-600 hover:underline"
-                              >
-                                Paid
-                              </button>
-                              <span className="text-[#D1D5DB]">|</span>
-                              <button
-                                type="button"
-                                className="font-semibold text-rose-600 hover:underline"
-                              >
-                                Missed
-                              </button>
-                            </span>
-                          )}
-                        </td>
+                        <td className="px-4 py-5 text-[13px] text-[#6B7280]">{row.reference}</td>
                       </tr>
                     ))}
+
+                    {!loading && schedule.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-8 text-center text-[13px] text-[#9CA3AF]">
+                          {loanId
+                            ? "No repayments recorded yet."
+                            : "Open a loan from the list to see its schedule."}
+                        </td>
+                      </tr>
+                    ) : null}
                   </tbody>
                 </table>
               </div>
 
               <div className="border-t border-[#F3F4F6] px-5 py-4">
-                <button
-                  type="button"
-                  className="text-[13px] font-semibold text-[#3B5BDB] hover:underline"
-                >
-                  View Full History
-                </button>
+                <span className="text-[13px] text-[#6B7280]">
+                  {loan?.repayments.length ?? 0} repayment
+                  {(loan?.repayments.length ?? 0) === 1 ? "" : "s"} recorded
+                </span>
               </div>
             </div>
 
@@ -330,7 +344,7 @@ export default function Page() {
                     Purpose
                   </div>
                   <div className="mt-1 text-[14px] font-semibold text-[#111827]">
-                    Housing (Staff Mortgage Support)
+                    {loan?.purpose || "—"}
                   </div>
                 </div>
 
@@ -340,15 +354,15 @@ export default function Page() {
                       Amount
                     </div>
                     <div className="mt-1 text-[14px] font-semibold text-[#111827]">
-                      ₦2,500,000
+                      {formatNaira(loan?.amount ?? 0)}
                     </div>
                   </div>
                   <div>
                     <div className="text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                      Approved Date
+                      Applied
                     </div>
                     <div className="mt-1 text-[14px] font-semibold text-[#111827]">
-                      Apr 2025
+                      {formatDate(loan?.createdAt ?? "")}
                     </div>
                   </div>
                 </div>
@@ -356,49 +370,71 @@ export default function Page() {
 
               {/* Past Loan */}
               <div className="rounded-xl border border-[#EEF1F6] bg-white p-5">
-                <h3 className="text-[16px] font-bold text-[#111827]">Past Loan</h3>
+                <h3 className="text-[16px] font-bold text-[#111827]">Approval Trail</h3>
 
                 <ol className="mt-4 space-y-5">
-                  {PAST_LOANS.map((loan) => (
-                    <li key={loan.id} className="flex gap-3">
-                      <span
-                        className={cn(
-                          "flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
-                          loan.approved
-                            ? "bg-emerald-100 text-emerald-600"
-                            : "bg-rose-100 text-rose-600"
-                        )}
-                      >
-                        {loan.approved ? (
-                          <Check className="h-4 w-4" />
-                        ) : (
-                          <XIcon className="h-4 w-4" />
-                        )}
-                      </span>
-                      <div className="min-w-0">
-                        <div className="text-[14px] font-bold text-[#111827]">
-                          {loan.title}
-                        </div>
-                        <div className="text-[12px] text-[#6B7280]">
-                          {loan.outcome}
-                        </div>
-                        <div className="mt-1 text-[12px] text-[#4B5563]">
-                          Amount: {loan.amount}
-                        </div>
-                        {loan.date && (
-                          <div className="text-[12px] text-[#9CA3AF]">
-                            Approved date • {loan.date}
+                  {[
+                    { key: "accountant", title: "Finance Verification", review: loan?.accountantReview },
+                    { key: "pastor", title: "Pastor Authorization", review: loan?.pastorApproval },
+                    { key: "director", title: "Director Override", review: loan?.directorOverride },
+                  ]
+                    .filter((step) => step.review)
+                    .map((step) => {
+                      const review = step.review!
+                      const declined = review.action === "declined"
+                      return (
+                        <li key={step.key} className="flex gap-3">
+                          <span
+                            className={cn(
+                              "flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
+                              declined
+                                ? "bg-rose-100 text-rose-600"
+                                : "bg-emerald-100 text-emerald-600"
+                            )}
+                          >
+                            {declined ? <XIcon className="h-4 w-4" /> : <Check className="h-4 w-4" />}
+                          </span>
+                          <div className="min-w-0">
+                            <div className="text-[14px] font-bold text-[#111827]">{step.title}</div>
+                            {review.comment ? (
+                              <div className="text-[12px] text-[#6B7280]">{review.comment}</div>
+                            ) : null}
+                            {review.at ? (
+                              <div className="mt-1 text-[12px] text-[#9CA3AF]">
+                                {formatDate(review.at)}
+                              </div>
+                            ) : null}
                           </div>
-                        )}
-                      </div>
+                        </li>
+                      )
+                    })}
+
+                  {loan &&
+                  !loan.accountantReview &&
+                  !loan.pastorApproval &&
+                  !loan.directorOverride ? (
+                    <li className="text-[13px] text-[#9CA3AF]">
+                      Awaiting the first review on this application.
                     </li>
-                  ))}
+                  ) : null}
                 </ol>
               </div>
             </div>
           </div>
         </div>
       </main>
+
+      <RecordRepaymentModal
+        loan={repaymentOpen ? loan : null}
+        onClose={() => setRepaymentOpen(false)}
+        onRecorded={refresh}
+      />
+
+      <AccountantReviewModal
+        loan={reviewOpen ? loan : null}
+        onClose={() => setReviewOpen(false)}
+        onReviewed={refresh}
+      />
     </div>
   )
 }

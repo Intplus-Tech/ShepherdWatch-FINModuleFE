@@ -50,3 +50,4 @@ CLAUDE.md
 .claude.json
 .cursor/
 .aider*
+.gstack/

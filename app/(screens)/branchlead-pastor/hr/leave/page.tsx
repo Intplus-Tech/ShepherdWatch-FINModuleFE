@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import {
   Search,
   Bell,
@@ -16,84 +16,21 @@ import {
 } from "lucide-react"
 import BranchLeadPastorSidebar from "@/components/navigation/BranchLeadPastorSidebar"
 import BranchLeadLeaveApprovalModal from "@/components/hr/BranchLeadLeaveApprovalModal"
+import BranchAdminApplyLeaveModal from "@/components/hr/BranchAdminApplyLeaveModal"
+import { HrPaginationBar, HrTableStateRow } from "@/components/hr/HrTableState"
+import { useHrLeaves, useHrLeaveCalendar, useLeaveMutations } from "@/components/hooks/useHrLeaves"
+import { useToast } from "@/components/ui/toast"
+import { formatDate, formatShortDate, initials } from "@/lib/hr/display"
+import type { HrLeave } from "@/lib/hr/types"
 import { cn } from "@/lib/utils"
 
-type LeaveRequest = {
-  id: string
-  name: string
-  department: string
-  initials: string
-  avatarColor: string
-  type: string
-  dateRange: string
-  duration: string
-  conflict: boolean
-}
+const AVATAR_TINTS = ["bg-[#EFF2FF] text-[#3B5BDB]", "bg-[#111827] text-white"]
 
-const REQUESTS: LeaveRequest[] = [
-  {
-    id: "elizabeth-okoro",
-    name: "Elizabeth Okoro",
-    department: "Admin & Finance",
-    initials: "EO",
-    avatarColor: "bg-[#2563EB] text-white",
-    type: "Vacation",
-    dateRange: "Oct 25 — Oct 30, 2023",
-    duration: "5 Business Days",
-    conflict: false,
-  },
-  {
-    id: "samuel-adeyemi",
-    name: "Samuel Adeyemi",
-    department: "Operations",
-    initials: "SA",
-    avatarColor: "bg-[#111827] text-white",
-    type: "Sick Leave",
-    dateRange: "Oct 18 — Oct 19, 2023",
-    duration: "2 Business Days",
-    conflict: true,
-  },
-  {
-    id: "grace-mensah",
-    name: "Grace Mensah",
-    department: "Music & Worship",
-    initials: "GM",
-    avatarColor: "bg-emerald-600 text-white",
-    type: "Casual",
-    dateRange: "Nov 02 — Nov 02, 2023",
-    duration: "1 Business Day",
-    conflict: false,
-  },
-  {
-    id: "david-chen",
-    name: "David Chen",
-    department: "Stewardship",
-    initials: "DC",
-    avatarColor: "bg-amber-500 text-white",
-    type: "Vacation",
-    dateRange: "Dec 15 — Dec 28, 2023",
-    duration: "10 Business Days",
-    conflict: false,
-  },
-]
+const CHIP_TONE_ORDER = ["vacation", "sick", "casual"] as const
+
+const PAGE_SIZE = 20
 
 type CalendarChip = { label: string; tone: "vacation" | "sick" | "casual" }
-
-const CALENDAR_CHIPS: Record<number, CalendarChip[]> = {
-  1: [{ label: "Rev. Samuel (V)", tone: "vacation" }],
-  2: [{ label: "Rev. Samuel (V)", tone: "vacation" }],
-  3: [{ label: "Rev. Samuel (V)", tone: "vacation" }],
-  4: [{ label: "Jane D. (S)", tone: "sick" }],
-  8: [
-    { label: "Mark A. (C)", tone: "casual" },
-    { label: "Sarah W. (S)", tone: "sick" },
-  ],
-  9: [
-    { label: "Mark A. (C)", tone: "casual" },
-    { label: "Sarah W. (S)", tone: "sick" },
-  ],
-  16: [{ label: "David K. (V)", tone: "vacation" }],
-}
 
 const CHIP_TONES: Record<CalendarChip["tone"], string> = {
   vacation: "bg-[#EFF6FF] text-[#2563EB]",
@@ -101,43 +38,42 @@ const CHIP_TONES: Record<CalendarChip["tone"], string> = {
   casual: "bg-amber-50 text-amber-600",
 }
 
-type Upcoming = {
-  name: string
-  dept: string
-  status: "PENDING" | "APPROVED"
-  dates: string
-  type: string
-}
-
-const UPCOMING: Upcoming[] = [
-  {
-    name: "Sarah Williams",
-    dept: "IT Department",
-    status: "PENDING",
-    dates: "Oct 14 - Oct 20",
-    type: "Sick Leave",
-  },
-  {
-    name: "Peter Jenkins",
-    dept: "Finance",
-    status: "APPROVED",
-    dates: "Nov 02 - Nov 05",
-    type: "Vacation",
-  },
-  {
-    name: "Grace Adesuwa",
-    dept: "Hospitality",
-    status: "PENDING",
-    dates: "Oct 25 - Oct 25",
-    type: "Casual",
-  },
-]
-
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 
 export default function Page() {
   const [calendarView, setCalendarView] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
+  const [selected, setSelected] = useState<HrLeave | null>(null)
+  const [applyOpen, setApplyOpen] = useState(false)
+  const [page, setPage] = useState(1)
+
+  const { pushToast } = useToast()
+  // The pastor works the queue that is waiting on a supervisor decision.
+  const { leaves, pagination, loading, error, refresh } = useHrLeaves({
+    page,
+    limit: PAGE_SIZE,
+    status: "pending_supervisor",
+  })
+  const { rejectLeave } = useLeaveMutations()
+  const [decliningId, setDecliningId] = useState<string | null>(null)
+
+  const openRequest = (request: HrLeave) => {
+    setSelected(request)
+    setModalOpen(true)
+  }
+
+  const quickDecline = async (request: HrLeave) => {
+    setDecliningId(request.id)
+    try {
+      await rejectLeave(request.id, "Declined by the branch pastor")
+      pushToast(`Leave declined for ${request.employeeName}`, "success")
+      refresh()
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : "Unable to decline this request", "error")
+    } finally {
+      setDecliningId(null)
+    }
+  }
 
   return (
     <div className="flex min-h-screen bg-[#F2F4F7] font-sans text-[#111827]">
@@ -211,25 +147,67 @@ export default function Page() {
             </div>
 
             {calendarView ? (
-              <CalendarView onBack={() => setCalendarView(false)} />
+              <CalendarView
+                onBack={() => setCalendarView(false)}
+                onRecordLeave={() => setApplyOpen(true)}
+              />
             ) : (
               <ListView
-                onOpenModal={() => setModalOpen(true)}
+                leaves={leaves}
+                pagination={pagination}
+                loading={loading}
+                error={error}
+                decliningId={decliningId}
+                onOpenRequest={openRequest}
+                onDecline={quickDecline}
+                onRetry={refresh}
+                onPageChange={setPage}
               />
             )}
           </div>
         </div>
       </main>
 
+      <BranchAdminApplyLeaveModal
+        open={applyOpen}
+        onClose={() => setApplyOpen(false)}
+        onApplied={refresh}
+      />
+
       <BranchLeadLeaveApprovalModal
         open={modalOpen}
-        onClose={() => setModalOpen(false)}
+        onClose={() => {
+          setModalOpen(false)
+          setSelected(null)
+        }}
+        request={selected}
+        onDecided={refresh}
       />
     </div>
   )
 }
 
-function ListView({ onOpenModal }: { onOpenModal: () => void }) {
+function ListView({
+  leaves,
+  pagination,
+  loading,
+  error,
+  decliningId,
+  onOpenRequest,
+  onDecline,
+  onRetry,
+  onPageChange,
+}: {
+  leaves: HrLeave[]
+  pagination: { total: number; page: number; limit: number; pages: number }
+  loading: boolean
+  error: string | null
+  decliningId: string | null
+  onOpenRequest: (request: HrLeave) => void
+  onDecline: (request: HrLeave) => void
+  onRetry: () => void
+  onPageChange: (page: number) => void
+}) {
   return (
     <>
       <div className="overflow-x-auto">
@@ -256,10 +234,10 @@ function ListView({ onOpenModal }: { onOpenModal: () => void }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-[#F3F4F6]">
-            {REQUESTS.map((req) => (
+            {leaves.map((req, index) => (
               <tr
                 key={req.id}
-                onClick={onOpenModal}
+                onClick={() => onOpenRequest(req)}
                 className="cursor-pointer hover:bg-[#FAFBFF]"
               >
                 <td className="px-4 py-4 text-[13px]">
@@ -267,17 +245,17 @@ function ListView({ onOpenModal }: { onOpenModal: () => void }) {
                     <div
                       className={cn(
                         "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[12px] font-bold",
-                        req.avatarColor
+                        AVATAR_TINTS[index % AVATAR_TINTS.length]
                       )}
                     >
-                      {req.initials}
+                      {initials(req.employeeName)}
                     </div>
                     <div className="flex flex-col">
                       <span className="font-semibold text-[#111827]">
-                        {req.name}
+                        {req.employeeName || "Unnamed staff"}
                       </span>
                       <span className="text-[12px] text-[#6B7280]">
-                        {req.department}
+                        {req.jobTitle || req.employeeCode || "—"}
                       </span>
                     </div>
                   </div>
@@ -285,24 +263,24 @@ function ListView({ onOpenModal }: { onOpenModal: () => void }) {
                 <td className="px-4 py-4 text-[13px]">
                   <span className="inline-flex items-center gap-1.5 rounded-md bg-[#EFF6FF] px-2.5 py-1 text-[11px] font-semibold text-[#2563EB]">
                     <Plane className="h-3 w-3" />
-                    {req.type}
+                    {req.leaveTypeName || "Leave"}
                   </span>
                 </td>
                 <td className="px-4 py-4 text-[13px]">
                   <div className="flex flex-col">
                     <span className="font-semibold text-[#111827]">
-                      {req.dateRange}
+                      {formatShortDate(req.startDate)} - {formatShortDate(req.endDate)}
                     </span>
                     <span className="text-[12px] text-[#6B7280]">
-                      {req.duration}
+                      {req.totalDays} day{req.totalDays === 1 ? "" : "s"}
                     </span>
                   </div>
                 </td>
                 <td className="px-4 py-4 text-[13px]">
-                  {req.conflict ? (
+                  {req.conflictCount ? (
                     <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-amber-600">
                       <AlertTriangle className="h-4 w-4" />
-                      1 Conflict Detected
+                      {req.conflictCount} Conflict{req.conflictCount === 1 ? "" : "s"} Detected
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-emerald-600">
@@ -315,16 +293,20 @@ function ListView({ onOpenModal }: { onOpenModal: () => void }) {
                   <div className="flex items-center justify-end gap-2">
                     <button
                       type="button"
-                      onClick={(e) => e.stopPropagation()}
-                      className="rounded-md border border-rose-200 px-3.5 py-1.5 text-[12px] font-semibold text-rose-600 hover:bg-rose-50"
+                      disabled={decliningId === req.id}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onDecline(req)
+                      }}
+                      className="rounded-md border border-rose-200 px-3.5 py-1.5 text-[12px] font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-50"
                     >
-                      Decline
+                      {decliningId === req.id ? "Declining…" : "Decline"}
                     </button>
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation()
-                        onOpenModal()
+                        onOpenRequest(req)
                       }}
                       className="rounded-md bg-[#111827] px-3.5 py-1.5 text-[12px] font-semibold text-white hover:bg-black"
                     >
@@ -334,42 +316,86 @@ function ListView({ onOpenModal }: { onOpenModal: () => void }) {
                 </td>
               </tr>
             ))}
+            <HrTableStateRow
+              colSpan={5}
+              loading={loading}
+              error={error}
+              isEmpty={leaves.length === 0}
+              emptyMessage="No leave requests are waiting on your decision."
+              onRetry={onRetry}
+            />
           </tbody>
         </table>
       </div>
 
-      {/* Footer */}
-      <div className="flex items-center justify-between border-t border-[#F3F4F6] px-5 py-4">
-        <span className="text-[12px] text-[#6B7280]">
-          Showing 4 of 12 pending requests
-        </span>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            className="rounded-md border border-[#E5E7EB] bg-white px-3.5 py-1.5 text-[12px] font-semibold text-[#4B5563] hover:bg-gray-50"
-          >
-            Previous
-          </button>
-          <button
-            type="button"
-            className="rounded-md border border-[#E5E7EB] bg-white px-3.5 py-1.5 text-[12px] font-semibold text-[#4B5563] hover:bg-gray-50"
-          >
-            Next
-          </button>
-        </div>
-      </div>
+      <HrPaginationBar
+        pagination={pagination}
+        onPageChange={onPageChange}
+        noun="pending requests"
+        className="px-5 py-4"
+      />
     </>
   )
 }
 
-function CalendarView({ onBack }: { onBack: () => void }) {
-  // October 2024 starts on a Tuesday; 31 days.
-  const firstWeekday = 2
-  const daysInMonth = 31
+function CalendarView({
+  onBack,
+  onRecordLeave,
+}: {
+  onBack: () => void
+  onRecordLeave: () => void
+}) {
+  const today = new Date()
+  const [month, setMonth] = useState(today.getMonth() + 1)
+  const [year, setYear] = useState(today.getFullYear())
+
+  const { entries, loading, error } = useHrLeaveCalendar({ month, year })
+
+  const firstWeekday = new Date(year, month - 1, 1).getDay()
+  const daysInMonth = new Date(year, month, 0).getDate()
   const cells: (number | null)[] = [
     ...Array(firstWeekday).fill(null),
     ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
   ]
+
+  // A leave spans days, so each entry is stamped onto every day it covers.
+  const chipsByDay = useMemo(() => {
+    const map = new Map<number, { label: string; tone: (typeof CHIP_TONE_ORDER)[number] }[]>()
+    entries.forEach((entry, index) => {
+      const start = new Date(entry.startDate)
+      const end = new Date(entry.endDate)
+      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return
+
+      for (let day = 1; day <= daysInMonth; day += 1) {
+        const cursor = new Date(year, month - 1, day)
+        if (cursor < new Date(start.toDateString())) continue
+        if (cursor > new Date(end.toDateString())) continue
+        const list = map.get(day) ?? []
+        list.push({
+          label: `${entry.employeeName || "Staff"} · ${entry.leaveTypeCode || entry.leaveTypeName || "Leave"}`,
+          tone: CHIP_TONE_ORDER[index % CHIP_TONE_ORDER.length],
+        })
+        map.set(day, list)
+      }
+    })
+    return map
+  }, [entries, daysInMonth, month, year])
+
+  const upcoming = useMemo(() => {
+    const now = new Date()
+    return entries
+      .filter((entry) => new Date(entry.endDate) >= now)
+      .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
+      .slice(0, 5)
+  }, [entries])
+
+  const pendingCount = entries.filter((entry) => entry.status.startsWith("pending")).length
+
+  const step = (delta: number) => {
+    const next = new Date(year, month - 1 + delta, 1)
+    setMonth(next.getMonth() + 1)
+    setYear(next.getFullYear())
+  }
 
   return (
     <div className="p-5">
@@ -386,31 +412,35 @@ function CalendarView({ onBack }: { onBack: () => void }) {
         {/* Month grid */}
         <div className="lg:col-span-2">
           <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-[16px] font-bold">October 2024</h3>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className="rounded-md border border-[#E5E7EB] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#4B5563] hover:bg-gray-50"
-              >
-                Today
-              </button>
+            <span className="text-[14px] font-bold text-[#111827]">
+              {new Date(year, month - 1, 1).toLocaleDateString("en-GB", {
+                month: "long",
+                year: "numeric",
+              })}
+            </span>
+            <span className="flex items-center gap-2">
               <button
                 type="button"
                 aria-label="Previous month"
-                className="flex h-7 w-7 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[#4B5563] hover:bg-gray-50"
+                onClick={() => step(-1)}
+                className="flex h-8 w-8 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[#4B5563] hover:bg-gray-50"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
               <button
                 type="button"
                 aria-label="Next month"
-                className="flex h-7 w-7 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[#4B5563] hover:bg-gray-50"
+                onClick={() => step(1)}
+                className="flex h-8 w-8 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[#4B5563] hover:bg-gray-50"
               >
                 <ChevronRight className="h-4 w-4" />
               </button>
-            </div>
+            </span>
           </div>
-
+          {loading ? (
+            <p className="mb-2 text-[12px] text-[#6B7280]">Loading leave calendar…</p>
+          ) : null}
+          {error ? <p className="mb-2 text-[12px] text-rose-600">{error}</p> : null}
           <div className="overflow-hidden rounded-[10px] border border-[#EEF1F6]">
             <div className="grid grid-cols-7 bg-[#F9FAFB]">
               {WEEKDAYS.map((d) => (
@@ -434,7 +464,7 @@ function CalendarView({ onBack }: { onBack: () => void }) {
                         {day}
                       </div>
                       <div className="space-y-1">
-                        {(CALENDAR_CHIPS[day] ?? []).map((chip, i) => (
+                        {(chipsByDay.get(day) ?? []).slice(0, 3).map((chip, i: number) => (
                           <div
                             key={i}
                             className={cn(
@@ -474,6 +504,7 @@ function CalendarView({ onBack }: { onBack: () => void }) {
         <div className="space-y-4 lg:col-span-1">
           <button
             type="button"
+            onClick={onRecordLeave}
             className="flex w-full items-center justify-center gap-2 rounded-md bg-[#2563EB] px-3.5 py-2.5 text-[12px] font-semibold text-white hover:bg-blue-700"
           >
             <CalendarDays className="h-4 w-4" />
@@ -484,42 +515,47 @@ function CalendarView({ onBack }: { onBack: () => void }) {
             <div className="flex items-center justify-between">
               <h3 className="text-[16px] font-bold">Upcoming Leave</h3>
               <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-600">
-                6 Pending
+                {pendingCount} Pending
               </span>
             </div>
 
             <div className="mt-4 space-y-3">
-              {UPCOMING.map((u) => (
-                <div
-                  key={u.name}
-                  className="rounded-[10px] border border-[#EEF1F6] p-3"
-                >
+              {upcoming.map((entry) => (
+                <div key={entry.id} className="rounded-[10px] border border-[#EEF1F6] p-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <div className="text-[13px] font-semibold text-[#111827]">
-                        {u.name}
+                        {entry.employeeName || "Staff member"}
                       </div>
                       <div className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                        {u.dept}
+                        {entry.jobTitle || entry.employeeCode || "—"}
                       </div>
                     </div>
                     <span
                       className={cn(
                         "shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold",
-                        u.status === "APPROVED"
+                        entry.status === "approved"
                           ? "bg-emerald-50 text-emerald-600"
                           : "bg-amber-50 text-amber-600"
                       )}
                     >
-                      {u.status}
+                      {entry.status === "approved" ? "APPROVED" : "PENDING"}
                     </span>
                   </div>
                   <div className="mt-2 flex items-center justify-between text-[12px] text-[#6B7280]">
-                    <span>{u.dates}</span>
-                    <span className="font-semibold text-[#4B5563]">{u.type}</span>
+                    <span>
+                      {formatDate(entry.startDate)} – {formatDate(entry.endDate)}
+                    </span>
+                    <span className="font-semibold text-[#4B5563]">
+                      {entry.leaveTypeName || "Leave"}
+                    </span>
                   </div>
                 </div>
               ))}
+
+              {!loading && upcoming.length === 0 ? (
+                <p className="text-[12px] text-[#9CA3AF]">No upcoming leave this month.</p>
+              ) : null}
             </div>
           </div>
         </div>

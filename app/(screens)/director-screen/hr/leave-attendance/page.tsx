@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import {
   Search,
   UserPlus,
@@ -13,100 +14,112 @@ import {
   TrendingUp,
 } from "lucide-react"
 import SidebarNav from "@/components/navigation/SidebarNav"
+import { HrTableStateRow } from "@/components/hr/HrTableState"
+import { useToast } from "@/components/ui/toast"
+import { useHrLeaves, useHrLeaveMetrics, useLeaveMutations } from "@/components/hooks/useHrLeaves"
+import { useHrAttendanceMetrics } from "@/components/hooks/useHrAttendance"
+import { useDirectorHrDashboard } from "@/components/hooks/useHrDashboard"
+import { formatShortDate, initials } from "@/lib/hr/display"
+import { exportHrRows } from "@/lib/hr/export"
 import { cn } from "@/lib/utils"
 
-type LeaveType = "Vacation" | "Sick" | "Personal"
+const AVATAR_TINTS = ["bg-[#3B5BDB] text-white", "bg-[#111827] text-white"]
 
-type LeaveRequest = {
-  id: string
-  name: string
-  title: string
-  initials: string
-  avatarColor: string
-  branch: string
-  type: LeaveType
-  duration: string
-  dateRange: string
-}
-
-type AttendanceStatus = "GOOD" | "WARNING" | "CRITICAL"
-
-type BranchAttendance = {
-  id: string
-  branch: string
-  staff: number
-  present: number
-  absent: number
-  rate: number
-  status: AttendanceStatus
-}
-
-const STATS = [
-  { label: "Pending Leaves", value: "12", icon: Clock, iconClass: "bg-amber-100 text-amber-600" },
-  { label: "Approved Leaves", value: "42", icon: CheckCircle2, iconClass: "bg-emerald-100 text-emerald-600" },
-  { label: "Absent Today", value: "18", icon: UserX, iconClass: "bg-rose-100 text-rose-600" },
-  { label: "Attendance rate", value: "94%", icon: TrendingUp, iconClass: "bg-[#EEF2FF] text-[#3B5BDB]" },
-] as const
-
-const LEAVE_REQUESTS: LeaveRequest[] = [
-  {
-    id: "sarah-musa",
-    name: "Sarah Musa",
-    title: "Senior Admin",
-    initials: "SM",
-    avatarColor: "bg-[#3B5BDB] text-white",
-    branch: "Ibadan HQ",
-    type: "Vacation",
-    duration: "4 Days",
-    dateRange: "28 - 31 Oct",
-  },
-  {
-    id: "john-obi",
-    name: "John Obi",
-    title: "IT Support",
-    initials: "JO",
-    avatarColor: "bg-[#111827] text-white",
-    branch: "Maryland LAG",
-    type: "Sick",
-    duration: "2 Days",
-    dateRange: "25 - 26 Oct",
-  },
-  {
-    id: "elizabeth-ade",
-    name: "Elizabeth Ade",
-    title: "Accounting",
-    initials: "EA",
-    avatarColor: "bg-[#0EA5A4] text-white",
-    branch: "Ado Ekiti",
-    type: "Personal",
-    duration: "1 Day",
-    dateRange: "29 Oct",
-  },
+/** Leave-type chips are tinted by the code the API returns, with a fallback. */
+const TYPE_TINTS = [
+  "bg-[#EEF2FF] text-[#3B5BDB]",
+  "bg-amber-100 text-amber-700",
+  "bg-emerald-100 text-emerald-700",
+  "bg-purple-100 text-purple-700",
 ]
 
-const ATTENDANCE_LOG: BranchAttendance[] = [
-  { id: "maryland-lagos", branch: "Maryland Lagos", staff: 68, present: 62, absent: 6, rate: 91, status: "GOOD" },
-  { id: "ibadan-hq", branch: "Ibadan HQ", staff: 120, present: 115, absent: 5, rate: 96, status: "GOOD" },
-  { id: "ado-ekiti", branch: "Ado Ekiti", staff: 42, present: 36, absent: 6, rate: 86, status: "WARNING" },
-  { id: "agodi-ibadan", branch: "Agodi Ibadan", staff: 30, present: 22, absent: 8, rate: 73, status: "CRITICAL" },
-]
-
-const LEAVE_TYPE_STYLES: Record<LeaveType, string> = {
-  Vacation: "bg-blue-100 text-blue-700",
-  Sick: "bg-rose-100 text-rose-700",
-  Personal: "bg-slate-100 text-slate-600",
-}
-
-const STATUS_STYLES: Record<
-  AttendanceStatus,
-  { pill: string; dot: string; bar: string }
-> = {
+/** Keyed by the attendanceHealth flag the dashboard endpoint returns. */
+const STATUS_STYLES: Record<string, { pill: string; dot: string; bar: string }> = {
   GOOD: { pill: "bg-emerald-100 text-emerald-700", dot: "bg-emerald-500", bar: "bg-emerald-500" },
   WARNING: { pill: "bg-amber-100 text-amber-700", dot: "bg-amber-500", bar: "bg-amber-500" },
   CRITICAL: { pill: "bg-rose-100 text-rose-700", dot: "bg-rose-500", bar: "bg-rose-500" },
 }
 
 export default function Page() {
+  const { pushToast } = useToast()
+
+  // Director view is global: no branchId is sent on any of these.
+  const { leaves, loading, error, refresh } = useHrLeaves({
+    status: "pending_supervisor",
+    limit: 10,
+  })
+  const { metrics: leaveMetrics, refresh: refreshMetrics } = useHrLeaveMetrics()
+  const { metrics: attendance } = useHrAttendanceMetrics()
+  const { dashboard } = useDirectorHrDashboard()
+  const { approveLeave, rejectLeave } = useLeaveMutations()
+
+  const [decidingId, setDecidingId] = useState<string | null>(null)
+
+  const handleExport = () => {
+    const exported = exportHrRows(
+      "leave-requests",
+      leaves.map((leave) => ({
+        Employee: leave.employeeName,
+        Type: leave.leaveTypeName,
+        From: leave.startDate,
+        To: leave.endDate,
+        Days: leave.totalDays,
+        Status: leave.status,
+      }))
+    )
+    if (!exported) pushToast("Nothing to export yet", "info")
+  }
+
+  const stats = [
+    {
+      label: "Pending Leaves",
+      value: String(leaveMetrics.pending),
+      icon: Clock,
+      iconClass: "bg-amber-100 text-amber-600",
+    },
+    {
+      label: "Approved Leaves",
+      value: String(leaveMetrics.approved),
+      icon: CheckCircle2,
+      iconClass: "bg-emerald-100 text-emerald-600",
+    },
+    {
+      label: "Absent Today",
+      value: String(attendance.absentToday),
+      icon: UserX,
+      iconClass: "bg-rose-100 text-rose-600",
+    },
+    {
+      label: "Attendance rate",
+      value: `${attendance.attendanceRate}%`,
+      icon: TrendingUp,
+      iconClass: "bg-[#EEF2FF] text-[#3B5BDB]",
+    },
+  ]
+
+  const decide = async (
+    leaveId: string,
+    name: string,
+    action: "approve" | "reject"
+  ) => {
+    setDecidingId(leaveId)
+    try {
+      if (action === "approve") {
+        await approveLeave(leaveId)
+        pushToast(`Leave approved for ${name}`, "success")
+      } else {
+        await rejectLeave(leaveId, "Declined by the director")
+        pushToast(`Leave declined for ${name}`, "success")
+      }
+      refresh()
+      refreshMetrics()
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : "Unable to record that decision", "error")
+    } finally {
+      setDecidingId(null)
+    }
+  }
+
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
       <SidebarNav
@@ -144,6 +157,7 @@ export default function Page() {
                 Add Employee
               </button>
               <button
+                onClick={handleExport}
                 type="button"
                 className="flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[12px] font-medium text-[#4B5563] hover:bg-gray-50"
               >
@@ -155,7 +169,7 @@ export default function Page() {
 
           {/* Stat cards */}
           <div className="mb-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            {STATS.map((stat) => (
+            {stats.map((stat) => (
               <div
                 key={stat.label}
                 className="relative rounded-xl border border-[#EEF1F6] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.02)]"
@@ -222,48 +236,48 @@ export default function Page() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#EEF1F6]">
-                    {LEAVE_REQUESTS.map((req) => (
+                    {leaves.map((req, index) => (
                       <tr key={req.id}>
                         <td className="px-4 py-4 text-[13px]">
                           <div className="flex items-center gap-3">
                             <div
                               className={cn(
                                 "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[12px] font-bold",
-                                req.avatarColor
+                                AVATAR_TINTS[index % AVATAR_TINTS.length]
                               )}
                             >
-                              {req.initials}
+                              {initials(req.employeeName)}
                             </div>
                             <div className="flex flex-col">
                               <span className="font-semibold text-[#111827]">
-                                {req.name}
+                                {req.employeeName || "Unnamed staff"}
                               </span>
                               <span className="text-[12px] text-[#6B7280]">
-                                {req.title}
+                                {req.jobTitle || req.employeeCode || "—"}
                               </span>
                             </div>
                           </div>
                         </td>
                         <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                          {req.branch}
+                          {req.leaveTypeCode || "—"}
                         </td>
                         <td className="px-4 py-4 text-[13px]">
                           <span
                             className={cn(
                               "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold",
-                              LEAVE_TYPE_STYLES[req.type]
+                              TYPE_TINTS[index % TYPE_TINTS.length]
                             )}
                           >
-                            {req.type}
+                            {req.leaveTypeName || "Leave"}
                           </span>
                         </td>
                         <td className="px-4 py-4 text-[13px]">
                           <div className="flex flex-col">
                             <span className="font-semibold text-[#111827]">
-                              {req.duration}
+                              {req.totalDays} {req.totalDays === 1 ? "Day" : "Days"}
                             </span>
                             <span className="text-[12px] text-[#6B7280]">
-                              {req.dateRange}
+                              {formatShortDate(req.startDate)} - {formatShortDate(req.endDate)}
                             </span>
                           </div>
                         </td>
@@ -271,15 +285,19 @@ export default function Page() {
                           <div className="flex items-center justify-end gap-2">
                             <button
                               type="button"
-                              aria-label={`Approve ${req.name}'s leave`}
-                              className="flex h-8 w-8 items-center justify-center rounded-md text-emerald-600 hover:bg-emerald-50"
+                              disabled={decidingId === req.id}
+                              onClick={() => decide(req.id, req.employeeName, "approve")}
+                              aria-label={`Approve ${req.employeeName}'s leave`}
+                              className="flex h-8 w-8 items-center justify-center rounded-md text-emerald-600 hover:bg-emerald-50 disabled:opacity-40"
                             >
                               <Check className="h-4 w-4" />
                             </button>
                             <button
                               type="button"
-                              aria-label={`Reject ${req.name}'s leave`}
-                              className="flex h-8 w-8 items-center justify-center rounded-md text-rose-600 hover:bg-rose-50"
+                              disabled={decidingId === req.id}
+                              onClick={() => decide(req.id, req.employeeName, "reject")}
+                              aria-label={`Reject ${req.employeeName}'s leave`}
+                              className="flex h-8 w-8 items-center justify-center rounded-md text-rose-600 hover:bg-rose-50 disabled:opacity-40"
                             >
                               <X className="h-4 w-4" />
                             </button>
@@ -287,6 +305,14 @@ export default function Page() {
                         </td>
                       </tr>
                     ))}
+                    <HrTableStateRow
+                      colSpan={5}
+                      loading={loading}
+                      error={error}
+                      isEmpty={leaves.length === 0}
+                      emptyMessage="No leave requests are waiting on approval."
+                      onRetry={refresh}
+                    />
                   </tbody>
                 </table>
               </div>
@@ -304,16 +330,17 @@ export default function Page() {
               </div>
 
               <div className="flex flex-col gap-4 p-5">
-                {ATTENDANCE_LOG.map((item) => {
-                  const styles = STATUS_STYLES[item.status]
+                {dashboard.headcountByBranch.map((item) => {
+                  const styles = STATUS_STYLES[item.attendanceHealth as keyof typeof STATUS_STYLES] ??
+                    STATUS_STYLES.GOOD
                   return (
                     <div
-                      key={item.id}
+                      key={item.branchId || item.branchName}
                       className="rounded-xl border border-[#EEF1F6] p-4"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-[14px] font-bold text-[#111827]">
-                          {item.branch}
+                          {item.branchName || "Unnamed branch"}
                         </span>
                         <span
                           className={cn(
@@ -322,30 +349,23 @@ export default function Page() {
                           )}
                         >
                           <span className={cn("h-1.5 w-1.5 rounded-full", styles.dot)} />
-                          {item.status}
+                          {item.attendanceHealth || "GOOD"}
                         </span>
                       </div>
 
                       <div className="mt-2 text-[12px] text-[#6B7280]">
-                        Staff: <span className="font-semibold text-[#4B5563]">{item.staff}</span>
-                        {"   "}Present: <span className="font-semibold text-[#4B5563]">{item.present}</span>
-                        {"   "}Absent: <span className="font-semibold text-rose-600">{item.absent}</span>
-                      </div>
-
-                      <div className="mt-3 flex items-center gap-3">
-                        <div className="h-2 flex-1 rounded-full bg-[#EEF1F6]">
-                          <div
-                            className={cn("h-2 rounded-full", styles.bar)}
-                            style={{ width: `${Math.round((item.present / item.staff) * 100)}%` }}
-                          />
-                        </div>
-                        <span className="text-[16px] font-bold text-[#111827]">
-                          {item.rate}%
-                        </span>
+                        Staff: <span className="font-semibold text-[#4B5563]">{item.count}</span>
+                        {item.state ? (
+                          <span className="ml-2 text-[#9CA3AF]">{item.state}</span>
+                        ) : null}
                       </div>
                     </div>
                   )
                 })}
+
+                {dashboard.headcountByBranch.length === 0 ? (
+                  <p className="text-[13px] text-[#9CA3AF]">No branch attendance reported yet.</p>
+                ) : null}
               </div>
             </div>
           </div>

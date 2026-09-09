@@ -1,146 +1,203 @@
 "use client"
 
-import { X, Download, Printer, Lock, Minus, Plus, Maximize } from "lucide-react"
+import { useState } from "react"
+import { X, Download, Flag, Loader2, ShieldCheck } from "lucide-react"
 import { ModalShell } from "@/components/ui/modal-shell"
 import { StatusBadge, SectionLabel, btnDark, btnOutline } from "./shared"
+import { useDocumentMutations } from "@/components/hooks/useHrDocuments"
+import { useToast } from "@/components/ui/toast"
+import { DOCUMENT_TYPE_LABELS, formatDate, statusLabel } from "@/lib/hr/display"
+import type { HrDocument } from "@/lib/hr/types"
 
 export default function DocumentPreviewModal({
   open,
   onClose,
+  document: record,
+  onChanged,
 }: {
   open: boolean
   onClose: () => void
+  document: HrDocument | null
+  onChanged?: () => void
 }) {
+  const { verifyDocument, flagDocument } = useDocumentMutations()
+  const { pushToast } = useToast()
+  const [flagReason, setFlagReason] = useState("")
+  const [busy, setBusy] = useState<"verify" | "flag" | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleClose = () => {
+    if (busy) return
+    setFlagReason("")
+    setError(null)
+    onClose()
+  }
+
+  const handleVerify = async () => {
+    if (!record) return
+    setBusy("verify")
+    setError(null)
+    try {
+      await verifyDocument(record.id)
+      pushToast("Document verified", "success")
+      onChanged?.()
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to verify this document.")
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const handleFlag = async () => {
+    if (!record) return
+    if (!flagReason.trim()) {
+      setError("Say what is wrong with the document.")
+      return
+    }
+    setBusy("flag")
+    setError(null)
+    try {
+      await flagDocument(record.id, flagReason.trim())
+      pushToast("Document flagged", "success")
+      setFlagReason("")
+      onChanged?.()
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to flag this document.")
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const isImage = /\.(png|jpe?g|gif|webp)$/i.test(record?.fileUrl ?? "")
+
   return (
-    <ModalShell open={open} onClose={onClose} className="max-w-4xl">
+    <ModalShell open={open} onClose={handleClose} className="max-w-4xl">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#EEF1F6] px-6 py-5">
         <div className="flex items-center gap-2">
           <h2 className="text-[16px] font-bold text-[#111827]">
-            Document Preview: Employment Contract 2020
+            Document Preview: {record?.title || "—"}
           </h2>
-          <StatusBadge status="VERIFIED" />
+          {record ? (
+            <StatusBadge status={String(record.verificationStatus).toUpperCase()} />
+          ) : null}
         </div>
         <button
           aria-label="Close"
-          onClick={onClose}
+          onClick={handleClose}
           className="rounded-md p-1 text-[#9CA3AF] hover:bg-[#F1F5F9] hover:text-[#4B5563]"
         >
           <X className="h-5 w-5" />
         </button>
       </div>
 
-      {/* Body */}
-      <div className="grid max-h-[70vh] grid-cols-1 gap-6 overflow-y-auto px-6 py-5 lg:grid-cols-3">
-        {/* Preview area */}
+      <div className="grid max-h-[70vh] grid-cols-1 gap-5 overflow-y-auto px-6 py-5 lg:grid-cols-3">
+        {/* Preview */}
         <div className="lg:col-span-2">
-          <div className="rounded-xl border border-[#EEF1F6] bg-[#F9FAFB] p-6">
-            <div className="mx-auto flex max-w-md flex-col gap-3 rounded-md bg-white p-6 shadow-sm">
-              <div className="h-3 w-1/2 rounded bg-[#EEF1F6]" />
-              <div className="h-2.5 w-full rounded bg-[#EEF1F6]" />
-              <div className="h-2.5 w-full rounded bg-[#EEF1F6]" />
-              <div className="h-2.5 w-4/5 rounded bg-[#EEF1F6]" />
-              <div className="mt-2 h-2.5 w-full rounded bg-[#EEF1F6]" />
-              <div className="h-2.5 w-full rounded bg-[#EEF1F6]" />
-              <div className="h-2.5 w-2/3 rounded bg-[#EEF1F6]" />
-              <div className="mt-2 h-2.5 w-3/4 rounded bg-[#EEF1F6]" />
-              <div className="h-2.5 w-1/2 rounded bg-[#EEF1F6]" />
-            </div>
-          </div>
-          {/* Zoom control bar */}
-          <div className="mt-3 flex items-center justify-center gap-4 rounded-md border border-[#EEF1F6] bg-white py-2 text-[#4B5563]">
-            <span className="text-[13px] font-semibold">100%</span>
-            <button aria-label="Zoom out" className="hover:text-[#3B5BDB]">
-              <Minus className="h-4 w-4" />
-            </button>
-            <button aria-label="Zoom in" className="hover:text-[#3B5BDB]">
-              <Plus className="h-4 w-4" />
-            </button>
-            <button aria-label="Fullscreen" className="hover:text-[#3B5BDB]">
-              <Maximize className="h-4 w-4" />
-            </button>
+          <div className="flex min-h-[320px] items-center justify-center rounded-xl border border-[#EEF1F6] bg-[#F9FAFB] p-4">
+            {record?.fileUrl ? (
+              isImage ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={record.fileUrl}
+                  alt={record.title}
+                  className="max-h-[420px] w-auto rounded-lg object-contain"
+                />
+              ) : (
+                <iframe
+                  src={record.fileUrl}
+                  title={record.title}
+                  className="h-[420px] w-full rounded-lg border-0"
+                />
+              )
+            ) : (
+              <p className="text-[13px] text-[#9CA3AF]">No file is attached to this record.</p>
+            )}
           </div>
         </div>
 
-        {/* Details */}
-        <div className="flex flex-col gap-5">
+        {/* Details + actions */}
+        <div className="flex flex-col gap-4">
           <div>
-            <SectionLabel>Document Details</SectionLabel>
-            <div className="mt-3 flex flex-col gap-3">
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                  Uploaded By
-                </div>
-                <div className="text-[13px] font-semibold text-[#111827]">
-                  Rev. Victor Adeyemi
-                </div>
-              </div>
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                  Date Uploaded
-                </div>
-                <div className="text-[13px] font-semibold text-[#111827]">
-                  Jan 02, 2020
-                </div>
-              </div>
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                  File Size
-                </div>
-                <div className="text-[13px] font-semibold text-[#111827]">
-                  1.2 MB
-                </div>
-              </div>
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                  Category
-                </div>
-                <div className="text-[13px] font-semibold text-[#111827]">
-                  Employment Contract
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-[10px] border border-[#EEF1F6] bg-[#F9FAFB] p-3">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-              Verification Logs
-            </div>
-            <p className="mt-1 text-[12px] text-[#4B5563]">
-              Verified by Administrative Council on Jan 05, 2020
+            <SectionLabel>Document Type</SectionLabel>
+            <p className="mt-1 text-[13px] font-semibold text-[#111827]">
+              {statusLabel(DOCUMENT_TYPE_LABELS, record?.documentType ?? "")}
             </p>
-            <button className="mt-1 text-[12px] font-semibold text-[#3B5BDB] hover:underline">
-              View History
-            </button>
+          </div>
+          <div>
+            <SectionLabel>Filed</SectionLabel>
+            <p className="mt-1 text-[13px] text-[#4B5563]">{formatDate(record?.createdAt ?? "")}</p>
+          </div>
+          {record?.expiryDate ? (
+            <div>
+              <SectionLabel>Expires</SectionLabel>
+              <p className="mt-1 text-[13px] text-[#4B5563]">{formatDate(record.expiryDate)}</p>
+            </div>
+          ) : null}
+          {record?.flagReason ? (
+            <div className="rounded-lg bg-rose-50 p-3">
+              <SectionLabel>Flagged</SectionLabel>
+              <p className="mt-1 text-[12px] text-rose-600">{record.flagReason}</p>
+            </div>
+          ) : null}
+
+          <div>
+            <label
+              className="text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]"
+              htmlFor="flag-reason"
+            >
+              Flag a discrepancy
+            </label>
+            <textarea
+              id="flag-reason"
+              rows={3}
+              value={flagReason}
+              onChange={(event) => setFlagReason(event.target.value)}
+              placeholder="e.g. Missing the guarantor signature on page 4."
+              className="mt-1.5 w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-[13px] outline-none focus:border-[#3B5BDB]"
+            />
           </div>
 
-          <div className="flex flex-col gap-2">
-            <button className="text-left text-[13px] font-semibold text-[#3B5BDB] hover:underline">
-              Share Access
-            </button>
-            <button className="text-left text-[13px] font-semibold text-rose-600 hover:underline">
-              Flag Discrepancy
-            </button>
-          </div>
+          {error ? <p className="text-[12px] text-rose-600">{error}</p> : null}
         </div>
       </div>
 
       {/* Footer */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#EEF1F6] px-6 py-4">
-        <div className="flex items-center gap-1.5 text-[12px] text-[#9CA3AF]">
-          <Lock className="h-3.5 w-3.5" />
-          Document Locked
-        </div>
-        <div className="flex items-center gap-3">
-          <button className={btnOutline}>
-            <Printer className="h-4 w-4" />
-            Print
-          </button>
-          <button className={btnDark}>
-            <Download className="h-4 w-4" />
-            Download Document
-          </button>
-        </div>
+      <div className="flex flex-wrap items-center justify-end gap-3 border-t border-[#EEF1F6] px-6 py-4">
+        <a
+          href={record?.fileUrl || undefined}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={
+            record?.fileUrl ? btnOutline : `${btnOutline} pointer-events-none opacity-50`
+          }
+        >
+          <Download className="h-4 w-4" />
+          Download
+        </a>
+        <button
+          type="button"
+          onClick={handleFlag}
+          disabled={Boolean(busy) || !record}
+          className="inline-flex items-center gap-2 rounded-md border border-amber-200 bg-white px-4 py-2 text-[12px] font-semibold text-amber-700 hover:bg-amber-50 disabled:opacity-60"
+        >
+          {busy === "flag" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Flag className="h-4 w-4" />}
+          Flag
+        </button>
+        <button
+          className={btnDark}
+          onClick={handleVerify}
+          disabled={Boolean(busy) || !record || record.verificationStatus === "verified"}
+        >
+          {busy === "verify" ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <ShieldCheck className="h-4 w-4" />
+          )}
+          {record?.verificationStatus === "verified" ? "Verified" : "Verify Document"}
+        </button>
       </div>
     </ModalShell>
   )

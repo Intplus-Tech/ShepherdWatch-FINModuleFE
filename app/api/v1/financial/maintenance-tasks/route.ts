@@ -8,7 +8,7 @@ import { getBackendApiUrl } from "@/lib/env"
 
 function buildBackendUrl(search: string): string {
   const baseUrl = getBackendApiUrl();
-  const url = new URL(`${baseUrl}/financial/maintenance-tasks`)
+  const url = new URL(`${baseUrl}/maintenance`)
   if (search) {
     url.search = search
   }

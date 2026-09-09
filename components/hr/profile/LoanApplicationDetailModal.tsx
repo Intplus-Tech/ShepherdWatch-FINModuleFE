@@ -1,258 +1,169 @@
 "use client"
 
-import { X, Printer, FileText, Check, Clock, Circle } from "lucide-react"
+import { X, Banknote, Check, XCircle } from "lucide-react"
 import { ModalShell } from "@/components/ui/modal-shell"
-import { StatusBadge, SectionLabel, btnDark, btnRoseOutline } from "./shared"
+import { SectionLabel, StatusBadge, btnOutline } from "./shared"
+import { LOAN_STATUS_LABELS, formatDate, formatNaira, statusLabel } from "@/lib/hr/display"
+import { cn } from "@/lib/utils"
+import type { HrLoan } from "@/lib/hr/types"
 
-const WORKFLOW = [
-  {
-    role: "Department Head",
-    name: "Pastor Ezekiel Ojo",
-    status: "VERIFIED",
-    time: "Oct 13",
-    state: "done",
-  },
-  {
-    role: "HR Manager",
-    name: "Deacon Moses Ade",
-    status: "CURRENTLY REVIEWING",
-    time: "",
-    state: "active",
-  },
-  {
-    role: "Finance Director",
-    name: "Rev. Victor Adeyemi",
-    status: "UPCOMING",
-    time: "",
-    state: "todo",
-  },
-]
-
+/** Read-only view of one loan application and where it sits in the chain. */
 export default function LoanApplicationDetailModal({
   open,
   onClose,
+  loan,
 }: {
   open: boolean
   onClose: () => void
+  loan: HrLoan | null
 }) {
+  const steps = [
+    { key: "accountant", title: "Finance Verification", review: loan?.accountantReview },
+    { key: "pastor", title: "Pastor Authorization", review: loan?.pastorApproval },
+    { key: "director", title: "Director Override", review: loan?.directorOverride },
+  ].filter((step) => step.review)
+
+  const repaid = loan ? Math.max(loan.amount - loan.remainingBalance, 0) : 0
+
   return (
-    <ModalShell open={open} onClose={onClose} className="max-w-3xl">
+    <ModalShell open={open} onClose={onClose} className="max-w-2xl">
       {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[#EEF1F6] px-6 py-5">
-        <div>
-          <h2 className="text-[16px] font-bold text-[#111827]">
-            Loan Application Detail
-          </h2>
-          <div className="text-[12px] text-[#6B7280]">
-            Application ID: #LN-2023-0892 · Submitted on Oct 12, 2023
+      <div className="flex items-start justify-between gap-4 border-b border-[#EEF1F6] px-6 py-5">
+        <div className="flex items-center gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#EEF2FF] text-[#3B5BDB]">
+            <Banknote className="h-5 w-5" />
+          </span>
+          <div>
+            <h2 className="text-[16px] font-bold text-[#111827]">
+              {loan?.purpose || "Loan Application"}
+            </h2>
+            <p className="mt-0.5 text-[13px] text-[#6B7280]">
+              {loan?.employeeName || "Staff member"} · applied {formatDate(loan?.createdAt ?? "")}
+            </p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <button className="flex items-center gap-1.5 text-[13px] font-semibold text-[#3B5BDB] hover:underline">
-            <Printer className="h-4 w-4" />
-            Print Application Summary
-          </button>
-          <button
-            aria-label="Close"
-            onClick={onClose}
-            className="rounded-md p-1 text-[#9CA3AF] hover:bg-[#F1F5F9] hover:text-[#4B5563]"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+        <button
+          aria-label="Close"
+          onClick={onClose}
+          className="rounded-md p-1 text-[#9CA3AF] hover:bg-[#F1F5F9] hover:text-[#4B5563]"
+        >
+          <X className="h-5 w-5" />
+        </button>
       </div>
 
-      {/* Body */}
-      <div className="grid max-h-[70vh] grid-cols-1 gap-6 overflow-y-auto px-6 py-5 lg:grid-cols-5">
-        {/* Left */}
-        <div className="flex flex-col gap-5 lg:col-span-3">
-          <div className="rounded-xl border border-[#EEF1F6] bg-white p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="text-[16px] font-bold text-[#111827]">
-                Medical Emergency Grant
-              </div>
-              <StatusBadge status="PENDING APPROVAL" />
-            </div>
-            <div className="mt-4 grid grid-cols-3 gap-4">
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                  Loan Amount
-                </div>
-                <div className="mt-1 text-[16px] font-bold text-[#111827]">
-                  ₦350,000
-                </div>
-              </div>
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                  Applicant
-                </div>
-                <div className="mt-1 text-[13px] font-semibold text-[#111827]">
-                  Deaconess Sarah Peters
-                </div>
-              </div>
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                  Role
-                </div>
-                <div className="mt-1 text-[13px] font-semibold text-[#111827]">
-                  Senior Welfare Officer
-                </div>
-              </div>
-            </div>
-          </div>
+      <div className="max-h-[68vh] overflow-y-auto px-6 py-5">
+        <StatusBadge status={statusLabel(LOAN_STATUS_LABELS, loan?.status ?? "").toUpperCase()} />
 
+        <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
           <div>
-            <SectionLabel>Purpose of Loan</SectionLabel>
-            <p className="mt-2 text-[13px] text-[#4B5563]">
-              Application for urgent surgical procedure funding for immediate
-              family member. The procedure is scheduled for next month and
-              requires a significant down payment as per the hospital&rsquo;s
-              policy.
+            <SectionLabel>Principal</SectionLabel>
+            <p className="mt-1 text-[14px] font-semibold text-[#111827]">
+              {formatNaira(loan?.amount ?? 0)}
             </p>
-            <blockquote className="mt-3 border-l-2 border-[#3B5BDB] bg-[#F9FAFB] p-3 text-[13px] italic text-[#6B7280]">
-              &ldquo;Requesting support for my mother&rsquo;s cardiac
-              intervention. Documentation from General Hospital Lagos is attached
-              below.&rdquo;
-            </blockquote>
           </div>
-
           <div>
-            <SectionLabel>Repayment Terms</SectionLabel>
-            <div className="mt-3 grid grid-cols-2 gap-4">
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                  Monthly Deduction
-                </div>
-                <div className="mt-1 text-[14px] font-semibold text-[#111827]">
-                  ₦35,000
-                </div>
-              </div>
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                  Duration
-                </div>
-                <div className="mt-1 text-[14px] font-semibold text-[#111827]">
-                  10 Months
-                </div>
-              </div>
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                  Start Date
-                </div>
-                <div className="mt-1 text-[14px] font-semibold text-[#111827]">
-                  Nov 2023
-                </div>
-              </div>
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                  End Date
-                </div>
-                <div className="mt-1 text-[14px] font-semibold text-[#111827]">
-                  Aug 2024
-                </div>
-              </div>
-            </div>
+            <SectionLabel>Monthly</SectionLabel>
+            <p className="mt-1 text-[14px] font-semibold text-[#111827]">
+              {formatNaira(loan?.monthlyDeduction ?? 0)}
+            </p>
           </div>
-
           <div>
-            <SectionLabel>Supporting Documents (2 Files Uploaded)</SectionLabel>
-            <div className="mt-3 flex flex-col gap-2">
-              {[
-                { name: "Hospital_Admission_Inv", meta: "Oct 12 · 1.2 MB" },
-                { name: "Welfare_Recommendation", meta: "Oct 12 · 890 KB" },
-              ].map((f) => (
-                <div
-                  key={f.name}
-                  className="flex items-center gap-3 rounded-[10px] border border-[#EEF1F6] bg-[#F9FAFB] p-3"
-                >
-                  <FileText className="h-5 w-5 text-[#3B5BDB]" />
-                  <div>
-                    <div className="text-[13px] font-semibold text-[#111827]">
-                      {f.name}
-                    </div>
-                    <div className="text-[12px] text-[#9CA3AF]">{f.meta}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <SectionLabel>Repaid</SectionLabel>
+            <p className="mt-1 text-[14px] font-semibold text-emerald-600">
+              {formatNaira(repaid)}
+            </p>
+          </div>
+          <div>
+            <SectionLabel>Outstanding</SectionLabel>
+            <p className="mt-1 text-[14px] font-semibold text-rose-600">
+              {formatNaira(loan?.remainingBalance ?? 0)}
+            </p>
           </div>
         </div>
 
-        {/* Right */}
-        <div className="flex flex-col gap-5 lg:col-span-2">
+        <div className="mt-5 grid grid-cols-2 gap-4">
           <div>
-            <SectionLabel>Approval Workflow</SectionLabel>
-            <ol className="mt-3 flex flex-col gap-4">
-              {WORKFLOW.map((w) => (
-                <li key={w.role} className="flex items-start gap-3">
+            <SectionLabel>Tenure</SectionLabel>
+            <p className="mt-1 text-[13px] text-[#4B5563]">
+              {loan?.tenureMonths ? `${loan.tenureMonths} months` : "—"}
+            </p>
+          </div>
+          <div>
+            <SectionLabel>Debt Service Ratio</SectionLabel>
+            <p
+              className={cn(
+                "mt-1 text-[13px] font-semibold",
+                loan?.exceedsPolicyLimit ? "text-rose-600" : "text-[#4B5563]"
+              )}
+            >
+              {loan?.debtServiceRatio ?? 0}%
+              {loan?.exceedsPolicyLimit ? " — above policy limit" : ""}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-6">
+          <SectionLabel>Approval Trail</SectionLabel>
+          <ol className="mt-3 space-y-4">
+            {steps.map((step) => {
+              const review = step.review!
+              const declined = review.action === "declined"
+              return (
+                <li key={step.key} className="flex gap-3">
                   <span
-                    className={
-                      "mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full " +
-                      (w.state === "done"
-                        ? "bg-emerald-500 text-white"
-                        : w.state === "active"
-                          ? "bg-amber-500 text-white"
-                          : "bg-[#EEF1F6] text-[#9CA3AF]")
-                    }
-                  >
-                    {w.state === "done" ? (
-                      <Check className="h-3.5 w-3.5" />
-                    ) : w.state === "active" ? (
-                      <Clock className="h-3.5 w-3.5" />
-                    ) : (
-                      <Circle className="h-3 w-3" />
+                    className={cn(
+                      "flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
+                      declined ? "bg-rose-100 text-rose-600" : "bg-emerald-100 text-emerald-600"
                     )}
+                  >
+                    {declined ? <XCircle className="h-4 w-4" /> : <Check className="h-4 w-4" />}
                   </span>
-                  <div>
-                    <div className="text-[12px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                      {w.role}
-                    </div>
-                    <div className="text-[13px] font-semibold text-[#111827]">
-                      {w.name}
-                    </div>
-                    <div className="mt-1 flex items-center gap-2">
-                      <StatusBadge status={w.status} />
-                      {w.time ? (
-                        <span className="text-[11px] text-[#9CA3AF]">
-                          {w.time}
-                        </span>
-                      ) : null}
-                    </div>
+                  <div className="min-w-0">
+                    <div className="text-[14px] font-bold text-[#111827]">{step.title}</div>
+                    {review.comment ? (
+                      <div className="text-[12px] text-[#6B7280]">{review.comment}</div>
+                    ) : null}
+                    {review.at ? (
+                      <div className="mt-0.5 text-[12px] text-[#9CA3AF]">
+                        {formatDate(review.at)}
+                      </div>
+                    ) : null}
                   </div>
                 </li>
-              ))}
-            </ol>
-          </div>
+              )
+            })}
 
-          <div className="rounded-xl bg-[#111827] p-4 text-white">
-            <div className="text-[11px] font-bold uppercase tracking-wider text-white/60">
-              Administrative Actions
-            </div>
-            <div className="mt-3 flex flex-col gap-2">
-              <button className="rounded-md bg-emerald-500 px-3 py-2 text-[12px] font-semibold text-white hover:bg-emerald-600">
-                Approve Application
-              </button>
-              <button className={btnRoseOutline + " bg-transparent"}>
-                Reject Application
-              </button>
-            </div>
-            <div className="mt-3">
-              <div className="text-[11px] text-white/60">
-                Internal Note (Optional)
-              </div>
-              <textarea
-                rows={3}
-                className="mt-1 w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-[13px] text-white outline-none placeholder:text-white/40 focus:border-white/40"
-                placeholder="Add an internal note..."
-              />
-            </div>
-          </div>
+            {steps.length === 0 ? (
+              <li className="text-[13px] text-[#9CA3AF]">
+                Awaiting the first review on this application.
+              </li>
+            ) : null}
+          </ol>
         </div>
+
+        {loan?.repayments.length ? (
+          <div className="mt-6">
+            <SectionLabel>Repayments</SectionLabel>
+            <ul className="mt-3 space-y-2">
+              {loan.repayments.map((repayment, index) => (
+                <li
+                  key={`${repayment.reference}-${index}`}
+                  className="flex items-center justify-between rounded-md bg-[#F8FAFC] px-3 py-2 text-[13px]"
+                >
+                  <span className="text-[#4B5563]">{formatDate(repayment.paidAt)}</span>
+                  <span className="font-semibold text-[#111827]">
+                    {formatNaira(repayment.amount)}
+                  </span>
+                  <span className="text-[12px] text-[#9CA3AF]">{repayment.reference || "—"}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </div>
 
-      {/* Footer */}
       <div className="flex items-center justify-end gap-3 border-t border-[#EEF1F6] px-6 py-4">
-        <button className={btnDark} onClick={onClose}>
+        <button className={btnOutline} onClick={onClose}>
           Close
         </button>
       </div>

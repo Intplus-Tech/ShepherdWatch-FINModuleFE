@@ -1,6 +1,19 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
+import { HrTableStateRow } from "@/components/hr/HrTableState"
+import { useToast } from "@/components/ui/toast"
+import { useHrExitClearances, useExitClearanceMutations } from "@/components/hooks/useHrExitClearances"
+import { useHrEmployees } from "@/components/hooks/useHrEmployees"
+import { useHrScope } from "@/lib/hr/useHrScope"
+import {
+  CLEARANCE_STATUS_LABELS,
+  CLEARANCE_STATUS_STYLES,
+  formatDate,
+  initials,
+  statusLabel,
+  statusStyle,
+} from "@/lib/hr/display"
 import { useRouter } from "next/navigation"
 import {
   Menu,
@@ -16,46 +29,6 @@ import {
 } from "lucide-react"
 import BranchAdminSidebar from "@/components/navigation/BranchAdminSidebar"
 import { cn } from "@/lib/utils"
-
-type SeparationStatus = "Awaiting Assets" | "Completed"
-
-type Separation = {
-  id: string
-  name: string
-  staffId: string
-  initials: string
-  department: string
-  exitDate: string
-  status: SeparationStatus
-}
-
-const SEPARATIONS: Separation[] = [
-  {
-    id: "robert-mensah",
-    name: "Robert Mensah",
-    staffId: "SW-8821",
-    initials: "RM",
-    department: "Protocol",
-    exitDate: "Oct 24, 2023",
-    status: "Awaiting Assets",
-  },
-  {
-    id: "anita-lowman",
-    name: "Anita Lowman",
-    staffId: "SW-7239",
-    initials: "AL",
-    department: "Choir Administration",
-    exitDate: "Oct 15, 2023",
-    status: "Completed",
-  },
-]
-
-const EMPLOYEE_OPTIONS = [
-  "Robert Mensah",
-  "Anita Lowman",
-  "Ariel Mwangi",
-  "David Wilson",
-]
 
 const REASON_OPTIONS = [
   "Resignation",
@@ -83,24 +56,15 @@ const WORKFLOW_ITEMS = [
   },
 ]
 
-function StatusPill({ status }: { status: SeparationStatus }) {
-  const isAwaiting = status === "Awaiting Assets"
+function StatusPill({ status }: { status: string }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider",
-        isAwaiting
-          ? "bg-amber-100 text-amber-700"
-          : "bg-emerald-100 text-emerald-700"
+        "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider",
+        statusStyle(CLEARANCE_STATUS_STYLES, status)
       )}
     >
-      <span
-        className={cn(
-          "h-1.5 w-1.5 rounded-full",
-          isAwaiting ? "bg-amber-500" : "bg-emerald-500"
-        )}
-      />
-      {status}
+      {statusLabel(CLEARANCE_STATUS_LABELS, status)}
     </span>
   )
 }
@@ -111,6 +75,49 @@ export default function Page() {
   const [exitDate, setExitDate] = useState("")
   const [reason, setReason] = useState("")
   const [notes, setNotes] = useState("")
+  const [submitting, setSubmitting] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
+
+  const scope = useHrScope()
+  const { pushToast } = useToast()
+  const { clearances, loading, error, refresh } = useHrExitClearances({ limit: 50 })
+  const { initiateClearance } = useExitClearanceMutations()
+  const { employees } = useHrEmployees({ limit: 100, employmentStatus: "active" })
+
+  const employeeOptions = useMemo(
+    () => employees.map((entry) => ({ id: entry.id, label: entry.name || entry.employeeCode })),
+    [employees]
+  )
+
+  const handleInitiate = async () => {
+    setFormError(null)
+
+    const selected = employees.find((entry) => entry.id === employee)
+    const branchId = selected?.branchId || scope.branchId || scope.ownBranchId
+
+    if (!employee) return setFormError("Choose the staff member exiting.")
+    if (!exitDate) return setFormError("Set the last working date.")
+    if (!reason) return setFormError("Choose the reason for separation.")
+    if (!branchId) return setFormError("No branch is attached, so this cannot be filed.")
+
+    setSubmitting(true)
+    try {
+      await initiateClearance({
+        employeeId: employee,
+        branchId,
+        // The note adds the context the dropdown reason cannot carry.
+        reason: notes.trim() ? `${reason}: ${notes.trim()}` : reason,
+        lastWorkingDate: exitDate,
+      })
+      pushToast("Exit clearance initiated", "success")
+      resetForm()
+      refresh()
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Unable to initiate this clearance.")
+    } finally {
+      setSubmitting(false)
+    }
+  }
   const router = useRouter()
 
   const resetForm = () => {
@@ -204,9 +211,10 @@ export default function Page() {
                         className="w-full appearance-none rounded-[8px] border border-[#E5E7EB] bg-white pl-10 pr-3.5 py-2.5 text-[13px] text-[#111827]"
                       >
                         <option value="">Search from branch directory...</option>
-                        {EMPLOYEE_OPTIONS.map((name) => (
-                          <option key={name} value={name}>
-                            {name}
+                        <option value="">Select a staff member</option>
+                        {employeeOptions.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.label}
                           </option>
                         ))}
                       </select>
@@ -259,14 +267,22 @@ export default function Page() {
                     />
                   </div>
 
+                  {formError ? (
+                    <p className="mt-4 rounded-md bg-rose-50 px-3 py-2 text-[12px] text-rose-600">
+                      {formError}
+                    </p>
+                  ) : null}
+
                   {/* Actions */}
                   <div className="mt-6 flex flex-wrap items-center gap-3">
                     <button
                       type="button"
-                      className="inline-flex items-center gap-2 rounded-md bg-[#111827] px-5 py-2.5 text-[13px] font-semibold text-white hover:bg-black"
+                      onClick={handleInitiate}
+                      disabled={submitting}
+                      className="inline-flex items-center gap-2 rounded-md bg-[#111827] px-5 py-2.5 text-[13px] font-semibold text-white hover:bg-black disabled:opacity-60"
                     >
                       <ArrowLeftRight className="h-4 w-4" />
-                      Initiate Clearance Process
+                      {submitting ? "Initiating…" : "Initiate Clearance Process"}
                     </button>
                     <button
                       type="button"
@@ -352,38 +368,38 @@ export default function Page() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#F3F4F6]">
-                  {SEPARATIONS.map((s) => (
-                    <tr key={s.id}>
+                  {clearances.map((row) => (
+                    <tr key={row.id}>
                       <td className="px-4 py-4 text-[13px]">
                         <div className="flex items-center gap-3">
                           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#EEF2FF] text-[12px] font-bold text-[#2563EB]">
-                            {s.initials}
+                            {initials(row.employeeName)}
                           </div>
                           <div className="flex flex-col">
                             <span className="font-bold text-[#111827]">
-                              {s.name}
+                              {row.employeeName || "Unnamed staff"}
                             </span>
                             <span className="text-[12px] text-[#9CA3AF]">
-                              ID: {s.staffId}
+                              ID: {row.employeeCode || "—"}
                             </span>
                           </div>
                         </div>
                       </td>
                       <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                        {s.department}
+                        {row.department || "—"}
                       </td>
                       <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                        {s.exitDate}
+                        {formatDate(row.lastWorkingDate)}
                       </td>
                       <td className="px-4 py-4 text-[13px]">
-                        <StatusPill status={s.status} />
+                        <StatusPill status={row.status} />
                       </td>
                       <td className="px-4 py-4 text-[13px]">
                         <button
                           type="button"
-                          aria-label={`View ${s.name}`}
+                          aria-label={`View ${row.employeeName}`}
                           onClick={() =>
-                            router.push("/branch-admin/hr/admin-clearance")
+                            router.push(`/branch-admin/hr/admin-clearance?clearanceId=${row.id}`)
                           }
                           className="flex h-8 w-8 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[#6B7280] hover:bg-[#F8FAFC] hover:text-[#2563EB]"
                         >
@@ -392,6 +408,14 @@ export default function Page() {
                       </td>
                     </tr>
                   ))}
+                  <HrTableStateRow
+                    colSpan={5}
+                    loading={loading}
+                    error={error}
+                    isEmpty={clearances.length === 0}
+                    emptyMessage="No separations in progress."
+                    onRetry={refresh}
+                  />
                 </tbody>
               </table>
             </div>

@@ -14,71 +14,35 @@ import {
 } from "lucide-react"
 import BranchAdminSidebar from "@/components/navigation/BranchAdminSidebar"
 import BranchAdminApplyLeaveModal from "@/components/hr/BranchAdminApplyLeaveModal"
+import { HrPaginationBar, HrTableStateRow } from "@/components/hr/HrTableState"
+import { useToast } from "@/components/ui/toast"
+import { useHrLeaves, useHrLeaveCalendar, useLeaveMutations } from "@/components/hooks/useHrLeaves"
+import {
+  LEAVE_STATUS_LABELS,
+  LEAVE_STATUS_STYLES,
+  formatDate,
+  formatShortDate,
+  initials,
+  statusLabel,
+  statusStyle,
+} from "@/lib/hr/display"
+import type { HrLeave } from "@/lib/hr/types"
 import { cn } from "@/lib/utils"
 
-type LeaveType = "Vacation" | "Sick Leave" | "Maternity" | "Casual"
-type Status = "Approved" | "Pending" | "Declined"
-
-type LeaveRequest = {
-  id: string
-  name: string
-  role: string
-  initials: string
-  avatarColor: string
-  type: LeaveType
-  duration: string
-  dates: string
-  status: Status
+/** Tab → the status value the leaves endpoint filters on. */
+const TAB_STATUS: Record<string, string> = {
+  All: "",
+  Pending: "pending_supervisor",
+  Approved: "approved",
+  Declined: "declined",
 }
 
-const REQUESTS: LeaveRequest[] = [
-  {
-    id: "sarah-jenkins",
-    name: "Dr. Sarah Jenkins",
-    role: "Senior Pastor",
-    initials: "SJ",
-    avatarColor: "bg-[#2563EB] text-white",
-    type: "Vacation",
-    duration: "14 Days",
-    dates: "Dec 15 - Dec 29, 2023",
-    status: "Approved",
-  },
-  {
-    id: "james-wilson",
-    name: "James Wilson",
-    role: "Youth Coordinator",
-    initials: "JW",
-    avatarColor: "bg-[#111827] text-white",
-    type: "Sick Leave",
-    duration: "3 Days",
-    dates: "Oct 24 - Oct 26, 2023",
-    status: "Pending",
-  },
-  {
-    id: "eleanor-vance",
-    name: "Eleanor Vance",
-    role: "Financial Secretary",
-    initials: "EV",
-    avatarColor: "bg-purple-600 text-white",
-    type: "Maternity",
-    duration: "90 Days",
-    dates: "Nov 01 - Jan 30, 2024",
-    status: "Declined",
-  },
-]
+const AVATAR_TINTS = ["bg-[#EEF2FF] text-[#2563EB]", "bg-[#111827] text-white"]
 
-const TYPE_DOT: Record<LeaveType, string> = {
-  Vacation: "bg-[#2563EB]",
-  "Sick Leave": "bg-rose-500",
-  Maternity: "bg-purple-500",
-  Casual: "bg-amber-500",
-}
+/** Calendar chips cycle these tints per leave type. */
+const CHIP_TONE_ORDER = ["vacation", "sick", "casual"] as const
 
-const STATUS_PILL: Record<Status, string> = {
-  Approved: "bg-emerald-50 text-emerald-600",
-  Pending: "bg-amber-50 text-amber-600",
-  Declined: "bg-rose-50 text-rose-600",
-}
+const PAGE_SIZE = 20
 
 const TABS = ["All", "Pending", "Approved", "Declined"] as const
 type Tab = (typeof TABS)[number]
@@ -87,59 +51,11 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 
 type CalendarChip = { label: string; tone: "vacation" | "sick" | "casual" }
 
-const CALENDAR_CHIPS: Record<number, CalendarChip[]> = {
-  1: [{ label: "Rev. Samuel (V)", tone: "vacation" }],
-  2: [{ label: "Rev. Samuel (V)", tone: "vacation" }],
-  3: [{ label: "Rev. Samuel (V)", tone: "vacation" }],
-  4: [{ label: "Jane D. (S)", tone: "sick" }],
-  8: [
-    { label: "Mark A. (C)", tone: "casual" },
-    { label: "Sarah W. (S)", tone: "sick" },
-  ],
-  9: [
-    { label: "Mark A. (C)", tone: "casual" },
-    { label: "Sarah W. (S)", tone: "sick" },
-  ],
-  16: [{ label: "David K. (V)", tone: "vacation" }],
-}
-
 const CHIP_TONES: Record<CalendarChip["tone"], string> = {
   vacation: "bg-[#EFF6FF] text-[#2563EB]",
   sick: "bg-rose-50 text-rose-600",
   casual: "bg-amber-50 text-amber-600",
 }
-
-type Upcoming = {
-  name: string
-  dept: string
-  status: "PENDING" | "APPROVED"
-  dates: string
-  type: string
-}
-
-const UPCOMING: Upcoming[] = [
-  {
-    name: "Sarah Williams",
-    dept: "IT Department",
-    status: "PENDING",
-    dates: "Oct 14 - Oct 20",
-    type: "Sick Leave",
-  },
-  {
-    name: "Peter Jenkins",
-    dept: "Finance",
-    status: "APPROVED",
-    dates: "Nov 02 - Nov 05",
-    type: "Vacation",
-  },
-  {
-    name: "Grace Adesuwa",
-    dept: "Hospitality",
-    status: "PENDING",
-    dates: "Oct 25 - Oct 25",
-    type: "Casual",
-  },
-]
 
 export default function Page() {
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -147,17 +63,29 @@ export default function Page() {
   const [modalOpen, setModalOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<Tab>("All")
   const [typeFilter, setTypeFilter] = useState("")
-  const [selected, setSelected] = useState<LeaveRequest | null>(null)
+  const [selected, setSelected] = useState<HrLeave | null>(null)
+  const [page, setPage] = useState(1)
 
+  const { pushToast } = useToast()
+  const { leaves, pagination, loading, error, refresh } = useHrLeaves({
+    page,
+    limit: PAGE_SIZE,
+    status: TAB_STATUS[activeTab] ?? "",
+  })
+
+  // The endpoint filters by status only, so the type box narrows what came back.
   const filtered = useMemo(() => {
-    return REQUESTS.filter((r) => {
-      const tabMatch = activeTab === "All" || r.status === activeTab
-      const typeMatch =
-        typeFilter.trim() === "" ||
-        r.type.toLowerCase().includes(typeFilter.trim().toLowerCase())
-      return tabMatch && typeMatch
-    })
-  }, [activeTab, typeFilter])
+    const term = typeFilter.trim().toLowerCase()
+    if (!term) return leaves
+    return leaves.filter((leave) =>
+      `${leave.leaveTypeName} ${leave.leaveTypeCode}`.toLowerCase().includes(term)
+    )
+  }, [leaves, typeFilter])
+
+  const handleDecision = () => {
+    setSelected(null)
+    refresh()
+  }
 
   return (
     <div className="flex flex-col lg:flex-row min-h-screen bg-[#F8FAFC] w-full">
@@ -255,7 +183,10 @@ export default function Page() {
                       <button
                         key={tab}
                         type="button"
-                        onClick={() => setActiveTab(tab)}
+                        onClick={() => {
+                          setActiveTab(tab)
+                          setPage(1)
+                        }}
                         className={cn(
                           "rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-colors",
                           activeTab === tab
@@ -306,7 +237,7 @@ export default function Page() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#F3F4F6]">
-                      {filtered.map((req) => (
+                      {filtered.map((req, index) => (
                         <tr
                           key={req.id}
                           onClick={() => setSelected(req)}
@@ -317,17 +248,17 @@ export default function Page() {
                               <div
                                 className={cn(
                                   "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[12px] font-bold",
-                                  req.avatarColor
+                                  AVATAR_TINTS[index % AVATAR_TINTS.length]
                                 )}
                               >
-                                {req.initials}
+                                {initials(req.employeeName)}
                               </div>
                               <div className="flex flex-col">
                                 <span className="font-semibold text-[#111827]">
-                                  {req.name}
+                                  {req.employeeName || "Unnamed staff"}
                                 </span>
                                 <span className="text-[12px] text-[#6B7280]">
-                                  {req.role}
+                                  {req.jobTitle || req.employeeCode || "—"}
                                 </span>
                               </div>
                             </div>
@@ -337,19 +268,23 @@ export default function Page() {
                               <span
                                 className={cn(
                                   "h-2.5 w-2.5 rounded-full",
-                                  TYPE_DOT[req.type]
+                                  index % 3 === 0
+                                    ? "bg-[#2563EB]"
+                                    : index % 3 === 1
+                                      ? "bg-amber-500"
+                                      : "bg-emerald-500"
                                 )}
                               />
-                              {req.type}
+                              {req.leaveTypeName || "Leave"}
                             </span>
                           </td>
                           <td className="px-4 py-4 text-[13px]">
                             <div className="flex flex-col">
                               <span className="font-bold text-[#111827]">
-                                {req.duration}
+                                {req.totalDays} {req.totalDays === 1 ? "Day" : "Days"}
                               </span>
                               <span className="text-[12px] text-[#6B7280]">
-                                {req.dates}
+                                {formatShortDate(req.startDate)} - {formatShortDate(req.endDate)}
                               </span>
                             </div>
                           </td>
@@ -357,50 +292,31 @@ export default function Page() {
                             <span
                               className={cn(
                                 "rounded-full px-2.5 py-1 text-[10px] font-bold",
-                                STATUS_PILL[req.status]
+                                statusStyle(LEAVE_STATUS_STYLES, req.status)
                               )}
                             >
-                              {req.status}
+                              {statusLabel(LEAVE_STATUS_LABELS, req.status)}
                             </span>
                           </td>
                         </tr>
                       ))}
-                      {filtered.length === 0 && (
-                        <tr>
-                          <td
-                            colSpan={4}
-                            className="px-4 py-10 text-center text-[13px] text-[#9CA3AF]"
-                          >
-                            No leave requests match your filters.
-                          </td>
-                        </tr>
-                      )}
+                      <HrTableStateRow
+                        colSpan={4}
+                        loading={loading}
+                        error={error}
+                        isEmpty={filtered.length === 0}
+                        emptyMessage="No leave requests match your filters."
+                        onRetry={refresh}
+                      />
                     </tbody>
                   </table>
                 </div>
 
-                {/* Footer */}
-                <div className="flex items-center justify-between border-t border-[#F3F4F6] px-5 py-4">
-                  <span className="text-[12px] text-[#6B7280]">
-                    Showing 1 to 3 of 124 requests
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      aria-label="Previous"
-                      className="flex h-8 w-8 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[#4B5563] hover:bg-gray-50"
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      aria-label="Next"
-                      className="flex h-8 w-8 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[#4B5563] hover:bg-gray-50"
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
+                <HrPaginationBar
+                  pagination={pagination}
+                  onPageChange={setPage}
+                  noun="requests"
+                />
               </div>
             </>
           )}
@@ -408,9 +324,21 @@ export default function Page() {
       </div>
 
       {/* Slide-over */}
-      <LeaveBalanceDrawer request={selected} onClose={() => setSelected(null)} />
+      <LeaveRequestDrawer
+        request={selected}
+        onClose={() => setSelected(null)}
+        onDecided={handleDecision}
+        pushToast={pushToast}
+      />
 
-      <BranchAdminApplyLeaveModal open={modalOpen} onClose={() => setModalOpen(false)} />
+      <BranchAdminApplyLeaveModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onApplied={() => {
+          setPage(1)
+          refresh()
+        }}
+      />
     </div>
   )
 }
@@ -422,13 +350,62 @@ function CalendarView({
   onBack: () => void
   onOpenModal: () => void
 }) {
-  // October 2024 starts on a Tuesday; 31 days.
-  const firstWeekday = 2
-  const daysInMonth = 31
+  const today = new Date()
+  const [month, setMonth] = useState(today.getMonth() + 1)
+  const [year, setYear] = useState(today.getFullYear())
+
+  const { entries, loading, error } = useHrLeaveCalendar({ month, year })
+
+  const firstWeekday = new Date(year, month - 1, 1).getDay()
+  const daysInMonth = new Date(year, month, 0).getDate()
   const cells: (number | null)[] = [
     ...Array(firstWeekday).fill(null),
     ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
   ]
+
+  const monthLabel = new Date(year, month - 1, 1).toLocaleDateString("en-GB", {
+    month: "long",
+    year: "numeric",
+  })
+
+  // A leave spans days, so each entry is stamped onto every day it covers.
+  const chipsByDay = useMemo(() => {
+    const map = new Map<number, { label: string; tone: (typeof CHIP_TONE_ORDER)[number] }[]>()
+    entries.forEach((entry, index) => {
+      const start = new Date(entry.startDate)
+      const end = new Date(entry.endDate)
+      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return
+
+      for (let day = 1; day <= daysInMonth; day += 1) {
+        const cursor = new Date(year, month - 1, day)
+        if (cursor < new Date(start.toDateString())) continue
+        if (cursor > new Date(end.toDateString())) continue
+        const list = map.get(day) ?? []
+        list.push({
+          label: `${entry.employeeName || "Staff"} · ${entry.leaveTypeCode || entry.leaveTypeName || "Leave"}`,
+          tone: CHIP_TONE_ORDER[index % CHIP_TONE_ORDER.length],
+        })
+        map.set(day, list)
+      }
+    })
+    return map
+  }, [entries, daysInMonth, month, year])
+
+  const upcoming = useMemo(() => {
+    const now = new Date()
+    return entries
+      .filter((entry) => new Date(entry.endDate) >= now)
+      .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
+      .slice(0, 5)
+  }, [entries])
+
+  const pendingCount = entries.filter((entry) => entry.status.startsWith("pending")).length
+
+  const step = (delta: number) => {
+    const next = new Date(year, month - 1 + delta, 1)
+    setMonth(next.getMonth() + 1)
+    setYear(next.getFullYear())
+  }
 
   return (
     <div className="mt-6">
@@ -438,38 +415,40 @@ function CalendarView({
         className="mb-4 inline-flex items-center gap-1 text-[12px] font-semibold text-[#2563EB] hover:underline"
       >
         <ChevronLeft className="h-4 w-4" />
-        Back
+        Back to list
       </button>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-        {/* Month grid */}
         <div className="lg:col-span-2">
           <div className="rounded-xl border border-[#EEF1F6] bg-white p-5">
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-[16px] font-bold text-[#111827]">October 2024</h3>
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-[16px] font-bold text-[#111827]">{monthLabel}</h3>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  className="rounded-md border border-[#E5E7EB] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#4B5563] hover:bg-gray-50"
-                >
-                  Today
-                </button>
-                <button
-                  type="button"
                   aria-label="Previous month"
-                  className="flex h-7 w-7 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[#4B5563] hover:bg-gray-50"
+                  onClick={() => step(-1)}
+                  className="flex h-8 w-8 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[#4B5563] hover:bg-gray-50"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </button>
                 <button
                   type="button"
                   aria-label="Next month"
-                  className="flex h-7 w-7 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[#4B5563] hover:bg-gray-50"
+                  onClick={() => step(1)}
+                  className="flex h-8 w-8 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[#4B5563] hover:bg-gray-50"
                 >
                   <ChevronRight className="h-4 w-4" />
                 </button>
               </div>
             </div>
+
+            {error ? (
+              <p className="mb-3 text-[12px] text-rose-600">{error}</p>
+            ) : null}
+            {loading ? (
+              <p className="mb-3 text-[12px] text-[#6B7280]">Loading leave calendar…</p>
+            ) : null}
 
             <div className="overflow-hidden rounded-[10px] border border-[#EEF1F6]">
               <div className="grid grid-cols-7 bg-[#EEF2FF]">
@@ -494,7 +473,7 @@ function CalendarView({
                           {day}
                         </div>
                         <div className="space-y-1">
-                          {(CALENDAR_CHIPS[day] ?? []).map((chip, i) => (
+                          {(chipsByDay.get(day) ?? []).slice(0, 3).map((chip, i) => (
                             <div
                               key={i}
                               className={cn(
@@ -529,40 +508,48 @@ function CalendarView({
           <div className="rounded-xl border border-[#EEF1F6] bg-white p-5">
             <div className="flex items-center justify-between">
               <h3 className="text-[16px] font-bold text-[#111827]">Upcoming Leave</h3>
-              <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-600">
-                6 Pending
-              </span>
+              {pendingCount > 0 ? (
+                <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-600">
+                  {pendingCount} Pending
+                </span>
+              ) : null}
             </div>
 
             <div className="mt-4 space-y-3">
-              {UPCOMING.map((u) => (
-                <div key={u.name} className="rounded-[10px] border border-[#EEF1F6] p-3">
+              {upcoming.map((entry) => (
+                <div key={entry.id} className="rounded-[10px] border border-[#EEF1F6] p-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <div className="text-[13px] font-semibold text-[#111827]">
-                        {u.name}
+                        {entry.employeeName || "Staff member"}
                       </div>
                       <div className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                        {u.dept}
+                        {entry.department || entry.jobTitle || "—"}
                       </div>
                     </div>
                     <span
                       className={cn(
                         "shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold",
-                        u.status === "APPROVED"
-                          ? "bg-emerald-50 text-emerald-600"
-                          : "bg-amber-50 text-amber-600"
+                        statusStyle(LEAVE_STATUS_STYLES, entry.status)
                       )}
                     >
-                      {u.status}
+                      {statusLabel(LEAVE_STATUS_LABELS, entry.status).toUpperCase()}
                     </span>
                   </div>
                   <div className="mt-2 flex items-center justify-between text-[12px] text-[#6B7280]">
-                    <span>{u.dates}</span>
-                    <span className="font-semibold text-[#4B5563]">{u.type}</span>
+                    <span>
+                      {formatShortDate(entry.startDate)} - {formatShortDate(entry.endDate)}
+                    </span>
+                    <span className="font-semibold text-[#4B5563]">
+                      {entry.leaveTypeName || "Leave"}
+                    </span>
                   </div>
                 </div>
               ))}
+
+              {!loading && upcoming.length === 0 ? (
+                <p className="text-[12px] text-[#9CA3AF]">No leave scheduled this month.</p>
+              ) : null}
             </div>
           </div>
         </div>
@@ -571,13 +558,25 @@ function CalendarView({
   )
 }
 
-function LeaveBalanceDrawer({
+/**
+ * Request dossier. Leave *balances* have no endpoint yet, so this shows what the
+ * API does return — the request itself — and carries the approve/decline actions.
+ */
+function LeaveRequestDrawer({
   request,
   onClose,
+  onDecided,
+  pushToast,
 }: {
-  request: LeaveRequest | null
+  request: HrLeave | null
   onClose: () => void
+  onDecided: () => void
+  pushToast: (message: string, type: "success" | "error" | "info") => void
 }) {
+  const { approveLeave, rejectLeave } = useLeaveMutations()
+  const [comment, setComment] = useState("")
+  const [busy, setBusy] = useState(false)
+
   useEffect(() => {
     if (!request) return
     const onKey = (e: KeyboardEvent) => {
@@ -587,13 +586,40 @@ function LeaveBalanceDrawer({
     return () => document.removeEventListener("keydown", onKey)
   }, [request, onClose])
 
+  useEffect(() => {
+    setComment("")
+  }, [request])
+
   if (!request) return null
+
+  const decided = request.status === "approved" || request.status === "declined"
+
+  const decide = async (action: "approve" | "reject") => {
+    if (action === "reject" && !comment.trim()) {
+      pushToast("A reason is required to decline a request", "error")
+      return
+    }
+    setBusy(true)
+    try {
+      if (action === "approve") {
+        await approveLeave(request.id, comment.trim() || undefined)
+        pushToast("Leave approved", "success")
+      } else {
+        await rejectLeave(request.id, comment.trim())
+        pushToast("Leave declined", "success")
+      }
+      onDecided()
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : "Unable to record that decision", "error")
+    } finally {
+      setBusy(false)
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div className="absolute right-0 top-0 flex h-full w-full max-w-[400px] flex-col overflow-y-auto bg-white shadow-2xl">
-        {/* Top */}
         <div className="flex items-center justify-between px-6 pt-6">
           <button
             type="button"
@@ -603,144 +629,125 @@ function LeaveBalanceDrawer({
           >
             <X className="h-4 w-4" />
           </button>
-          <button
-            type="button"
-            className="text-[12px] font-semibold text-[#2563EB] hover:underline"
+          <span
+            className={cn(
+              "rounded-full px-2.5 py-1 text-[10px] font-bold",
+              statusStyle(LEAVE_STATUS_STYLES, request.status)
+            )}
           >
-            History
-          </button>
+            {statusLabel(LEAVE_STATUS_LABELS, request.status)}
+          </span>
         </div>
 
         {/* Identity */}
         <div className="flex flex-col items-center px-6 pt-4 text-center">
-          <div
-            className={cn(
-              "flex h-16 w-16 items-center justify-center rounded-full text-[18px] font-bold",
-              request.avatarColor
-            )}
-          >
-            {request.initials}
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#EEF2FF] text-[18px] font-bold text-[#2563EB]">
+            {initials(request.employeeName)}
           </div>
           <div className="mt-3 text-[18px] font-bold text-[#111827]">
-            {request.name}
+            {request.employeeName || "Unnamed staff"}
           </div>
-          <div className="text-[13px] text-[#6B7280]">Senior Branch Administrator</div>
+          <div className="text-[13px] text-[#6B7280]">
+            {request.jobTitle || request.employeeCode || "—"}
+          </div>
         </div>
 
-        {/* Leave Balance */}
+        {/* Request detail */}
         <div className="px-6 pt-6">
-          <div className="flex items-center justify-between">
-            <h3 className="text-[16px] font-bold text-[#111827]">Leave Balance</h3>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-              FY 2024
-            </span>
-          </div>
-
-          <div className="mt-4 grid grid-cols-3 gap-3">
-            <div className="rounded-[10px] border border-[#EEF1F6] bg-white p-3 text-center">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                Accrued
+          <h3 className="text-[16px] font-bold text-[#111827]">Request</h3>
+          <dl className="mt-4 space-y-3 text-[13px]">
+            <div className="flex items-start justify-between gap-3">
+              <dt className="text-[#6B7280]">Type</dt>
+              <dd className="text-right font-semibold text-[#111827]">
+                {request.leaveTypeName || "Leave"}
+              </dd>
+            </div>
+            <div className="flex items-start justify-between gap-3">
+              <dt className="text-[#6B7280]">Dates</dt>
+              <dd className="text-right font-semibold text-[#111827]">
+                {formatDate(request.startDate)} — {formatDate(request.endDate)}
+              </dd>
+            </div>
+            <div className="flex items-start justify-between gap-3">
+              <dt className="text-[#6B7280]">Duration</dt>
+              <dd className="text-right font-semibold text-[#111827]">
+                {request.totalDays} {request.totalDays === 1 ? "day" : "days"}
+              </dd>
+            </div>
+            {request.conflictCount > 0 ? (
+              <div className="flex items-start justify-between gap-3">
+                <dt className="text-[#6B7280]">Clashes</dt>
+                <dd className="text-right font-semibold text-rose-600">
+                  {request.conflictCount} overlapping
+                </dd>
               </div>
-              <div className="mt-1 text-[18px] font-bold text-[#111827]">20 Days</div>
-            </div>
-            <div className="rounded-[10px] border border-[#EEF1F6] bg-white p-3 text-center">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                Taken
+            ) : null}
+          </dl>
+
+          {request.reason ? (
+            <div className="mt-4">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF]">
+                Reason
               </div>
-              <div className="mt-1 text-[18px] font-bold text-[#111827]">12 Days</div>
+              <p className="mt-1 text-[13px] leading-relaxed text-[#4B5563]">{request.reason}</p>
             </div>
-            <div className="rounded-[10px] bg-[#111827] p-3 text-center">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-white/60">
-                Left
+          ) : null}
+
+          {request.handoverNote ? (
+            <div className="mt-4">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF]">
+                Handover
               </div>
-              <div className="mt-1 text-[18px] font-bold text-white">08 Days</div>
+              <p className="mt-1 text-[13px] leading-relaxed text-[#4B5563]">
+                {request.handoverNote}
+              </p>
+            </div>
+          ) : null}
+        </div>
+
+        {/* Decision */}
+        {!decided ? (
+          <div className="mt-auto px-6 py-6">
+            <label
+              className="text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF]"
+              htmlFor="leave-comment"
+            >
+              Comment
+            </label>
+            <textarea
+              id="leave-comment"
+              rows={3}
+              value={comment}
+              onChange={(event) => setComment(event.target.value)}
+              placeholder="Required when declining."
+              className="mt-1.5 w-full rounded-[8px] border border-[#E5E7EB] px-3 py-2 text-[13px] outline-none focus:border-[#2563EB]"
+            />
+            <div className="mt-3 flex gap-3">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => decide("reject")}
+                className="flex-1 rounded-md border border-rose-200 px-4 py-3 text-[13px] font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-60"
+              >
+                Decline
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => decide("approve")}
+                className="flex-1 rounded-md bg-[#111827] px-4 py-3 text-[13px] font-semibold text-white hover:bg-black disabled:opacity-60"
+              >
+                {busy ? "Saving…" : "Approve"}
+              </button>
             </div>
           </div>
-
-          {/* Progress */}
-          <div className="mt-4">
-            <div className="h-2 rounded-full bg-[#F3F4F6]">
-              <div
-                className="h-2 rounded-full bg-[#2563EB]"
-                style={{ width: "60%" }}
-              />
-            </div>
-            <div className="mt-2 flex items-center justify-between text-[11px] text-[#6B7280]">
-              <span>12 days taken</span>
-              <span>20 days total allowance</span>
+        ) : (
+          <div className="mt-auto px-6 py-6">
+            <div className="rounded-[10px] bg-[#F8FAFC] p-3 text-[12px] leading-relaxed text-[#6B7280]">
+              This request was already {statusLabel(LEAVE_STATUS_LABELS, request.status).toLowerCase()}.
             </div>
           </div>
-        </div>
-
-        {/* Category breakdown */}
-        <div className="px-6 pt-6">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-            Category Breakdown
-          </div>
-          <div className="mt-4 space-y-4">
-            <CategoryBar
-              label="Vacation Leave"
-              value="5 / 12 Days"
-              pct={42}
-              barClass="bg-[#2563EB]"
-            />
-            <CategoryBar
-              label="Sick Leave"
-              value="4 / 5 Days"
-              pct={80}
-              barClass="bg-amber-500"
-            />
-            <CategoryBar
-              label="Maternity / Parental"
-              value="3 / 3 Days"
-              pct={100}
-              barClass="bg-emerald-500"
-            />
-          </div>
-        </div>
-
-        {/* Info note */}
-        <div className="px-6 pt-6">
-          <div className="rounded-[10px] bg-[#EFF6FF] p-3 text-[12px] leading-relaxed text-[#2563EB]">
-            Remaining days from the previous fiscal year (FY23) have been rolled over and
-            included in the current &lsquo;Accrued&rsquo; total.
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="mt-auto px-6 py-6">
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-full rounded-md bg-[#111827] px-4 py-3 text-[13px] font-semibold text-white hover:bg-black"
-          >
-            Edit Allotment
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function CategoryBar({
-  label,
-  value,
-  pct,
-  barClass,
-}: {
-  label: string
-  value: string
-  pct: number
-  barClass: string
-}) {
-  return (
-    <div>
-      <div className="flex items-center justify-between">
-        <span className="text-[13px] font-semibold text-[#111827]">{label}</span>
-        <span className="text-[12px] font-semibold text-[#6B7280]">{value}</span>
-      </div>
-      <div className="mt-2 h-2 rounded-full bg-[#F3F4F6]">
-        <div className={cn("h-2 rounded-full", barClass)} style={{ width: `${pct}%` }} />
+        )}
       </div>
     </div>
   )

@@ -260,7 +260,7 @@ export default function Page() {
       }
 
       const existingAllocationsResponse = await fetch(
-        `${API_V1}/budget-allocations?budgetId=${encodeURIComponent(String(budgetId))}&page=1&limit=200`,
+        `${API_V1}/budget-allocations?budgetId=${encodeURIComponent(String(budgetId))}&page=1&limit=100`,
         {
           method: "GET",
           credentials: "include",
@@ -329,7 +329,7 @@ export default function Page() {
       }
 
       const allocationListResponse = await fetch(
-        `${API_V1}/budget-allocations?budgetId=${encodeURIComponent(String(budgetId))}&page=1&limit=200`,
+        `${API_V1}/budget-allocations?budgetId=${encodeURIComponent(String(budgetId))}&page=1&limit=100`,
         {
           method: "GET",
           credentials: "include",

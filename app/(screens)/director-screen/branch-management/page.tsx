@@ -614,8 +614,18 @@ export default function Page() {
       branchType: true,
     })
 
+    // The API rejects the request outright without all three, so they are
+    // checked here rather than surfacing a generic 400 from the server.
     if (!branchName.trim()) {
       pushToast("Branch name is required.", "error")
+      return
+    }
+    if (!branchCode.trim()) {
+      pushToast("Branch code is required.", "error")
+      return
+    }
+    if (!branchType) {
+      pushToast("Choose a branch type.", "error")
       return
     }
 
@@ -641,7 +651,7 @@ export default function Page() {
         credentials: "include",
         body: JSON.stringify({
           name: branchName.trim(),
-          code: branchCode.trim() || undefined,
+          code: branchCode.trim(),
           branchType,
           region: branchRegion.trim(),
           address: branchAddress.trim() || undefined,

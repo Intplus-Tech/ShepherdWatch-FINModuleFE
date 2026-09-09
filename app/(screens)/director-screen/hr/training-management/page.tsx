@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import {
   Search,
   UserPlus,
@@ -11,79 +11,74 @@ import {
   Banknote,
   Wallet,
   Monitor,
-  Pencil,
-  Trash2,
 } from "lucide-react"
 import SidebarNav from "@/components/navigation/SidebarNav"
 import CreateTrainingEventModal from "@/components/hr/CreateTrainingEventModal"
+import { useToast } from "@/components/ui/toast"
+import {
+  useHrTrainings,
+  useHrTrainingBudget,
+  useTrainingMutations,
+} from "@/components/hooks/useHrTrainings"
+import { formatNaira } from "@/lib/hr/display"
 import { cn } from "@/lib/utils"
-
-type TrainingStatus = "PENDING APPROVAL" | "COMPLETED"
-
-type TrainingEvent = {
-  id: string
-  month: string
-  day: string
-  title: string
-  location: string
-  locationIcon: "map" | "monitor"
-  amount: string
-  status: TrainingStatus
-  showActions: boolean
-}
-
-const EVENTS: TrainingEvent[] = [
-  {
-    id: "financial-literacy",
-    month: "OCT",
-    day: "28",
-    title: "Financial Literacy Workshop",
-    location: "Ibadan HQ",
-    locationIcon: "map",
-    amount: "₦250,000",
-    status: "PENDING APPROVAL",
-    showActions: true,
-  },
-  {
-    id: "leadership-development",
-    month: "OCT",
-    day: "30",
-    title: "Leadership Development",
-    location: "Virtual Session",
-    locationIcon: "monitor",
-    amount: "₦50,000",
-    status: "COMPLETED",
-    showActions: false,
-  },
-]
 
 const AVATARS = ["bg-[#3B5BDB]", "bg-[#111827]", "bg-emerald-500", "bg-amber-500"]
 
-const BRANCH_SPEND = [
-  { label: "Lagos Region", amount: "₦1.2M", percent: 100 },
-  { label: "Ibadan Region", amount: "₦0.8M", percent: 67 },
-  { label: "Virtual / Global", amount: "₦0.5M", percent: 42 },
-]
-
-function StatusBadge({ status }: { status: TrainingStatus }) {
-  const isPending = status === "PENDING APPROVAL"
+function StatusBadge({ approved }: { approved: boolean }) {
   return (
     <span
       className={cn(
         "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold",
-        isPending
-          ? "bg-amber-100 text-amber-700"
-          : "bg-emerald-100 text-emerald-700"
+        approved ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
       )}
     >
-      {isPending && <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />}
-      {status}
+      {!approved && <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />}
+      {approved ? "BUDGET APPROVED" : "PENDING APPROVAL"}
     </span>
   )
 }
 
 export default function Page() {
   const [modalOpen, setModalOpen] = useState(false)
+  const [approvingId, setApprovingId] = useState<string | null>(null)
+
+  const { pushToast } = useToast()
+  // Director view is global, so no branchId is sent.
+  const { trainings, loading, error, refresh } = useHrTrainings({ limit: 50 })
+  const { budget, refresh: refreshBudget } = useHrTrainingBudget()
+  const { approveTrainingBudget } = useTrainingMutations()
+
+  const utilisation = Math.min(Math.max(budget.percentageUtilized, 0), 100)
+
+  // Spend per branch is not a served figure; group what the events carry.
+  const branchSpend = useMemo(() => {
+    const totals = new Map<string, number>()
+    for (const training of trainings) {
+      const key = training.branchId || "global"
+      totals.set(key, (totals.get(key) ?? 0) + training.budgetRequested)
+    }
+    const peak = Math.max(...Array.from(totals.values()), 0)
+    return Array.from(totals.entries()).map(([key, amount]) => ({
+      label: key === "global" ? "Global / Virtual" : `Branch ${key.slice(-4)}`,
+      amount,
+      percent: peak ? Math.round((amount / peak) * 100) : 0,
+    }))
+  }, [trainings])
+
+  const handleApproveBudget = async (id: string, title: string) => {
+    setApprovingId(id)
+    try {
+      await approveTrainingBudget(id, "Budget approved at director review.")
+      pushToast(`Budget approved for ${title}`, "success")
+      refresh()
+      refreshBudget()
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : "Unable to approve this budget", "error")
+    } finally {
+      setApprovingId(null)
+    }
+  }
 
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
@@ -158,101 +153,107 @@ export default function Page() {
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
             {/* LEFT: events list */}
             <div className="flex flex-col gap-5 lg:col-span-2">
-              {EVENTS.map((ev) => (
-                <div
-                  key={ev.id}
-                  className="rounded-xl border border-[#EEF1F6] bg-white p-5"
-                >
-                  {/* Top row */}
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-start gap-4">
-                      <div className="rounded-lg bg-[#EEF2FF] px-3 py-1.5 text-center">
-                        <div className="text-[10px] font-bold uppercase tracking-wider text-[#3B5BDB]">
-                          {ev.month}
+              {trainings.map((ev) => {
+                const start = ev.startDate ? new Date(ev.startDate) : null
+                const month = start
+                  ? start.toLocaleDateString("en-GB", { month: "short" }).toUpperCase()
+                  : "—"
+                const day = start ? String(start.getDate()).padStart(2, "0") : "--"
+                const isOnline = ev.locationType === "online"
+                return (
+                  <div key={ev.id} className="rounded-xl border border-[#EEF1F6] bg-white p-5">
+                    {/* Top row */}
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-start gap-4">
+                        <div className="rounded-lg bg-[#EEF2FF] px-3 py-1.5 text-center">
+                          <div className="text-[10px] font-bold uppercase tracking-wider text-[#3B5BDB]">
+                            {month}
+                          </div>
+                          <div className="text-[20px] font-bold leading-none text-[#111827]">
+                            {day}
+                          </div>
                         </div>
-                        <div className="text-[20px] font-bold leading-none text-[#111827]">
-                          {ev.day}
+                        <div>
+                          <h3 className="text-[15px] font-bold text-[#111827]">{ev.title}</h3>
+                          <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-[#6B7280]">
+                            <span className="flex items-center gap-1.5">
+                              {isOnline ? (
+                                <Monitor className="h-3.5 w-3.5" />
+                              ) : (
+                                <MapPin className="h-3.5 w-3.5" />
+                              )}
+                              {ev.venueOrLink || (isOnline ? "Online session" : "Venue TBC")}
+                            </span>
+                            <span className="flex items-center gap-1.5 font-semibold text-[#111827]">
+                              {ev.budgetApproved ? (
+                                <Wallet className="h-3.5 w-3.5 text-[#6B7280]" />
+                              ) : (
+                                <Banknote className="h-3.5 w-3.5 text-[#6B7280]" />
+                              )}
+                              {formatNaira(ev.budgetRequested)}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                      <div>
-                        <h3 className="text-[15px] font-bold text-[#111827]">
-                          {ev.title}
-                        </h3>
-                        <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-[#6B7280]">
-                          <span className="flex items-center gap-1.5">
-                            {ev.locationIcon === "map" ? (
-                              <MapPin className="h-3.5 w-3.5" />
-                            ) : (
-                              <Monitor className="h-3.5 w-3.5" />
-                            )}
-                            {ev.location}
-                          </span>
-                          <span className="flex items-center gap-1.5 font-semibold text-[#111827]">
-                            {ev.status === "PENDING APPROVAL" ? (
-                              <Banknote className="h-3.5 w-3.5 text-[#6B7280]" />
-                            ) : (
-                              <Wallet className="h-3.5 w-3.5 text-[#6B7280]" />
-                            )}
-                            {ev.amount}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <StatusBadge status={ev.status} />
-                  </div>
-
-                  {/* Second row */}
-                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#EEF1F6] pt-4">
-                    <div className="flex items-center">
-                      <div className="flex -space-x-2">
-                        {AVATARS.map((color, i) => (
-                          <span
-                            key={i}
-                            className={cn(
-                              "h-7 w-7 rounded-full border-2 border-white",
-                              color
-                            )}
-                          />
-                        ))}
-                      </div>
-                      <span className="ml-2 text-[12px] font-semibold text-[#6B7280]">
-                        +12
-                      </span>
+                      <StatusBadge approved={ev.budgetApproved} />
                     </div>
 
-                    {ev.showActions && (
-                      <div className="flex items-center gap-3">
-                        <button
-                          type="button"
-                          className="text-[12px] font-semibold text-[#3B5BDB] hover:underline"
-                        >
-                          View Details
-                        </button>
-                        <button
-                          type="button"
-                          className="rounded-md bg-emerald-500 px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-emerald-600"
-                        >
-                          Approve Budget
-                        </button>
-                        <button
-                          type="button"
-                          aria-label="Edit event"
-                          className="flex h-8 w-8 items-center justify-center rounded-md border border-[#E5E7EB] text-[#6B7280] hover:bg-gray-50"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          aria-label="Delete event"
-                          className="flex h-8 w-8 items-center justify-center rounded-md border border-rose-200 text-rose-500 hover:bg-rose-50"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                    {/* Second row */}
+                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#EEF1F6] pt-4">
+                      <div className="flex items-center">
+                        <div className="flex -space-x-2">
+                          {AVATARS.slice(0, Math.min(ev.enrolledCount, AVATARS.length)).map(
+                            (color, i) => (
+                              <span
+                                key={i}
+                                className={cn(
+                                  "h-7 w-7 rounded-full border-2 border-white",
+                                  color
+                                )}
+                              />
+                            )
+                          )}
+                        </div>
+                        <span className="ml-2 text-[12px] font-semibold text-[#6B7280]">
+                          {ev.enrolledCount} enrolled
+                          {ev.maxCapacity ? ` / ${ev.maxCapacity}` : ""}
+                        </span>
                       </div>
-                    )}
+
+                      {!ev.budgetApproved && ev.budgetRequested > 0 ? (
+                        <div className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => handleApproveBudget(ev.id, ev.title)}
+                            disabled={approvingId === ev.id}
+                            className="rounded-md bg-emerald-500 px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-emerald-600 disabled:opacity-50"
+                          >
+                            {approvingId === ev.id ? "Approving…" : "Approve Budget"}
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
+
+              {loading ? (
+                <p className="rounded-xl border border-[#EEF1F6] bg-white p-8 text-center text-[13px] text-[#6B7280]">
+                  Loading training events…
+                </p>
+              ) : null}
+
+              {error ? (
+                <p className="rounded-xl border border-rose-100 bg-white p-8 text-center text-[13px] text-rose-600">
+                  {error}
+                </p>
+              ) : null}
+
+              {!loading && !error && trainings.length === 0 ? (
+                <p className="rounded-xl border border-[#EEF1F6] bg-white p-8 text-center text-[13px] text-[#9CA3AF]">
+                  No training events scheduled.
+                </p>
+              ) : null}
             </div>
 
             {/* RIGHT: side cards */}
@@ -267,13 +268,13 @@ export default function Page() {
                     Annual Allocation
                   </span>
                   <span className="text-[15px] font-bold text-[#111827]">
-                    ₦2,500,000
+                    {formatNaira(budget.annualAllocation)}
                   </span>
                 </div>
                 <div className="mt-2 h-2 rounded-full bg-[#EEF1F6]">
                   <div
                     className="h-2 rounded-full bg-[#3B5BDB]"
-                    style={{ width: "78%" }}
+                    style={{ width: `${utilisation}%` }}
                   />
                 </div>
                 <div className="mt-4 rounded-lg bg-[#EEF2FF] p-4">
@@ -281,7 +282,11 @@ export default function Page() {
                     Available Now
                   </div>
                   <div className="mt-1 text-[22px] font-bold text-[#111827]">
-                    ₦180,000
+                    {formatNaira(budget.availableBalance)}
+                  </div>
+                  <div className="mt-1 text-[11px] text-[#6B7280]">
+                    {formatNaira(budget.totalSpent)} spent · {formatNaira(budget.committedPending)}{" "}
+                    committed
                   </div>
                 </div>
               </div>
@@ -292,14 +297,12 @@ export default function Page() {
                   Branch Expenditure
                 </h3>
                 <div className="mt-4 flex flex-col gap-4">
-                  {BRANCH_SPEND.map((b) => (
+                  {branchSpend.map((b) => (
                     <div key={b.label}>
                       <div className="flex items-center justify-between">
-                        <span className="text-[12px] font-medium text-[#4B5563]">
-                          {b.label}
-                        </span>
+                        <span className="text-[12px] font-medium text-[#4B5563]">{b.label}</span>
                         <span className="text-[12px] font-bold text-[#111827]">
-                          {b.amount}
+                          {formatNaira(b.amount, { compact: true })}
                         </span>
                       </div>
                       <div className="mt-1.5 h-2 rounded-full bg-[#EEF1F6]">
@@ -310,6 +313,10 @@ export default function Page() {
                       </div>
                     </div>
                   ))}
+
+                  {branchSpend.length === 0 ? (
+                    <p className="text-[12px] text-[#9CA3AF]">No training spend recorded yet.</p>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -320,6 +327,10 @@ export default function Page() {
       <CreateTrainingEventModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
+        onCreated={() => {
+          refresh()
+          refreshBudget()
+        }}
       />
     </div>
   )

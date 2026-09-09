@@ -1,6 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { Suspense, useEffect, useMemo, useState } from "react"
+import { useSearchParams } from "next/navigation"
+import { useToast } from "@/components/ui/toast"
+import { useHrExitClearance, useExitClearanceMutations } from "@/components/hooks/useHrExitClearances"
+import { formatDate, initials } from "@/lib/hr/display"
 import { useRouter } from "next/navigation"
 import {
   Menu,
@@ -54,19 +58,88 @@ const CHECKLIST: ChecklistItem[] = [
   },
 ]
 
-const META = [
-  { label: "Exit Date", value: "Oct 30, 2026", rose: true },
-  { label: "Notice Period", value: "30 Days" },
-  { label: "Department", value: "Operations" },
-  { label: "Work Location", value: "Main Office" },
-]
-
 export default function Page() {
+  return (
+    <Suspense fallback={null}>
+      <AdminClearanceScreen />
+    </Suspense>
+  )
+}
+
+function AdminClearanceScreen() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [checked, setChecked] = useState<Record<string, boolean>>({})
   const [otherNotes, setOtherNotes] = useState("")
-  const [adminName, setAdminName] = useState("Sarah Jenkins")
-  const [clearanceDate, setClearanceDate] = useState("2026-07-22")
+  const [adminName, setAdminName] = useState("")
+  const [clearanceDate, setClearanceDate] = useState(() => new Date().toISOString().split("T")[0])
+  const [saving, setSaving] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
+
+  const searchParams = useSearchParams()
+  const clearanceId = searchParams.get("clearanceId") ?? ""
+  const { pushToast } = useToast()
+  const { clearance, loading, error, refresh } = useHrExitClearance(clearanceId)
+  const { adminSignOff } = useExitClearanceMutations()
+
+  // A clearance already signed off carries its checklist; a fresh one starts
+  // from the standard asset list below.
+  const checklist = useMemo(() => {
+    if (clearance?.adminSignOff.checklist.length) {
+      return clearance.adminSignOff.checklist.map((row) => ({
+        id: row.key,
+        icon: CHECKLIST.find((item) => item.id === row.key)?.icon ?? IdCard,
+        title: row.label || row.key,
+        desc: row.itemDetails || "",
+        pill: undefined as string | undefined,
+      }))
+    }
+    return CHECKLIST
+  }, [clearance])
+
+  // Seed the tick boxes and notes from whatever was already signed off.
+  useEffect(() => {
+    if (!clearance) return
+    const seeded: Record<string, boolean> = {}
+    for (const row of clearance.adminSignOff.checklist) seeded[row.key] = row.isReturned
+    setChecked(seeded)
+    setOtherNotes(clearance.adminSignOff.notes)
+  }, [clearance])
+
+  const alreadySigned = clearance?.adminSignOff.isCompleted ?? false
+
+  const handleComplete = async () => {
+    setFormError(null)
+    if (!clearance) {
+      setFormError("Open this from the separations list so the record is known.")
+      return
+    }
+    if (!adminName.trim()) {
+      setFormError("Enter the name of the officer signing off.")
+      return
+    }
+
+    setSaving(true)
+    try {
+      await adminSignOff(
+        clearance.id,
+        checklist.map((item) => ({
+          key: item.id,
+          label: item.title,
+          isReturned: Boolean(checked[item.id]),
+          itemDetails: item.desc,
+        })),
+        [otherNotes.trim(), `Signed off by ${adminName.trim()} on ${clearanceDate}`]
+          .filter(Boolean)
+          .join(" — ")
+      )
+      pushToast("Admin clearance completed", "success")
+      refresh()
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Unable to complete this clearance.")
+    } finally {
+      setSaving(false)
+    }
+  }
   const router = useRouter()
 
   const toggle = (id: string) =>
@@ -135,31 +208,42 @@ export default function Page() {
             <div className="rounded-xl border border-[#EEF1F6] bg-white p-5">
               <div className="flex flex-col items-center text-center">
                 <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#EEF2FF] text-[18px] font-bold text-[#2563EB]">
-                  AM
+                  {initials(clearance?.employeeName ?? "")}
                 </div>
                 <h2 className="mt-3 text-[22px] font-bold text-[#111827]">
-                  Ariel Mwangi
+                  {clearance?.employeeName || (loading ? "Loading…" : "Exit Clearance")}
                 </h2>
                 <p className="mt-1 text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
-                  Operations Lead • #EM-10442
+                  {clearance
+                    ? `${clearance.jobTitle || "Staff"} • #${clearance.employeeCode || "—"}`
+                    : error || (clearanceId ? "" : "No clearance selected")}
                 </p>
               </div>
 
               {/* Meta grid */}
               <div className="mt-5 grid grid-cols-2 gap-4">
-                {META.map((m) => (
-                  <div key={m.label} className="flex flex-col gap-1">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
+                {[
+                  {
+                    label: "Exit Date",
+                    value: formatDate(clearance?.lastWorkingDate ?? ""),
+                    rose: true,
+                  },
+                  { label: "Department", value: clearance?.department || "—" },
+                  { label: "Branch", value: clearance?.branchName || "—" },
+                  { label: "Reason", value: clearance?.reason || "—" },
+                ].map((m) => (
+                  <div key={m.label}>
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
                       {m.label}
-                    </span>
-                    <span
+                    </div>
+                    <div
                       className={cn(
-                        "text-[13px] font-semibold",
+                        "mt-1 text-[13px] font-semibold",
                         m.rose ? "text-rose-600" : "text-[#111827]"
                       )}
                     >
                       {m.value}
-                    </span>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -193,7 +277,7 @@ export default function Page() {
 
               {/* Checklist */}
               <div className="mt-3 space-y-3">
-                {CHECKLIST.map((item) => {
+                {checklist.map((item) => {
                   const Icon = item.icon
                   const isChecked = !!checked[item.id]
                   return (
@@ -278,20 +362,34 @@ export default function Page() {
                 </div>
               </div>
 
+              {formError ? (
+                <p className="mt-4 rounded-md bg-rose-50 px-3 py-2 text-[12px] text-rose-600">
+                  {formError}
+                </p>
+              ) : null}
+
               {/* Footer */}
               <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-[#EEF1F6] pt-5">
+                <span className="inline-flex items-center gap-1.5 text-[13px] text-[#6B7280]">
+                  {alreadySigned ? (
+                    <>
+                      <Check className="h-4 w-4 text-emerald-600" />
+                      Signed off {formatDate(clearance?.adminSignOff.signedOffAt ?? "")}
+                    </>
+                  ) : (
+                    <>
+                      <X className="h-4 w-4" />
+                      Not yet signed off
+                    </>
+                  )}
+                </span>
                 <button
                   type="button"
-                  className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#6B7280] hover:text-[#111827]"
+                  onClick={handleComplete}
+                  disabled={saving || !clearance || alreadySigned}
+                  className="rounded-md bg-[#111827] px-5 py-2.5 text-[13px] font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  <X className="h-4 w-4" />
-                  Save Draft
-                </button>
-                <button
-                  type="button"
-                  className="rounded-md bg-[#111827] px-5 py-2.5 text-[13px] font-semibold text-white hover:bg-black"
-                >
-                  Complete Admin Clearance
+                  {saving ? "Submitting…" : "Complete Admin Clearance"}
                 </button>
               </div>
             </div>

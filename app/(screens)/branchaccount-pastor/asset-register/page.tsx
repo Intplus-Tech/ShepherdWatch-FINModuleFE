@@ -109,6 +109,13 @@ export default function Page() {
   }, [assets, debouncedSearch])
   const [form, setForm] = useState<AssetFormState>(INITIAL_FORM)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [runningDepreciation, setRunningDepreciation] = useState(false)
+  const [depreciationNotice, setDepreciationNotice] = useState<string | null>(null)
+  const [disposeTarget, setDisposeTarget] = useState<AssetRow | null>(null)
+  const [disposalDate, setDisposalDate] = useState("")
+  const [disposalAmount, setDisposalAmount] = useState("")
+  const [disposing, setDisposing] = useState(false)
+  const [disposeError, setDisposeError] = useState<string | null>(null)
   const { assetClasses, isLoading: assetClassesLoading } = useAssetClasses({ limit: 100 })
 
   const tenantId = useMemo(
@@ -117,6 +124,66 @@ export default function Page() {
   )
 
   const getCsrfToken = getCsrfTokenFromCookie
+
+  // Posts the period's depreciation journal for every asset in scope. The
+  // register reloads afterwards so the current values reflect the new charge.
+  const handleRunDepreciation = async () => {
+    if (runningDepreciation) return
+    setRunningDepreciation(true)
+    setDepreciationNotice(null)
+    try {
+      const response = await fetch(`${API_V1}/assets/depreciation/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() },
+        credentials: "include",
+        body: "{}",
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(payload?.message ?? "Unable to run depreciation.")
+      setDepreciationNotice(payload?.message ?? "Depreciation posted for the current period.")
+      setRefreshKey((key) => key + 1)
+    } catch (error) {
+      setDepreciationNotice(error instanceof Error ? error.message : "Unable to run depreciation.")
+    } finally {
+      setRunningDepreciation(false)
+    }
+  }
+
+  const openDispose = (asset: AssetRow) => {
+    setDisposeTarget(asset)
+    setDisposalDate(new Date().toISOString().slice(0, 10))
+    setDisposalAmount("")
+    setDisposeError(null)
+  }
+
+  const handleDispose = async () => {
+    if (!disposeTarget) return
+    if (!disposalDate) {
+      setDisposeError("Pick the disposal date.")
+      return
+    }
+    setDisposing(true)
+    setDisposeError(null)
+    try {
+      const response = await fetch(`${API_V1}/assets/${disposeTarget.rawId}/dispose`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() },
+        credentials: "include",
+        body: JSON.stringify({
+          disposalDate,
+          disposalAmount: Number(disposalAmount || 0),
+        }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(payload?.message ?? "Unable to dispose of this asset.")
+      setDisposeTarget(null)
+      setRefreshKey((key) => key + 1)
+    } catch (error) {
+      setDisposeError(error instanceof Error ? error.message : "Unable to dispose of this asset.")
+    } finally {
+      setDisposing(false)
+    }
+  }
 
   const formatCurrencyLocal = (amount: number) =>
     formatCurrency(amount, { maximumFractionDigits: 0 })
@@ -475,8 +542,22 @@ export default function Page() {
                 >
                   Asset Depreciation
                 </button>
+                <button
+                  type="button"
+                  onClick={handleRunDepreciation}
+                  disabled={runningDepreciation}
+                  className="flex-1 md:flex-none flex items-center justify-center h-[42px] px-6 rounded-[8px] border border-[#E5E7EB] bg-white text-[14px] font-bold text-[#374151] hover:bg-gray-50 transition-colors whitespace-nowrap tracking-wide disabled:opacity-50"
+                >
+                  {runningDepreciation ? "Running…" : "Run Depreciation"}
+                </button>
               </div>
             </header>
+
+            {depreciationNotice && (
+              <p className="mb-4 rounded-[8px] border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-2.5 text-[12px] font-semibold text-[#374151]">
+                {depreciationNotice}
+              </p>
+            )}
 
             {/* Tabs */}
             <div className="mb-6 flex overflow-x-auto no-scrollbar items-center gap-2.5 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 sm:pb-0 sm:flex-wrap">
@@ -580,6 +661,7 @@ export default function Page() {
                         <th className="py-4 px-4 text-[10px] font-[800] text-[#6B7280] uppercase tracking-widest">LOCATION</th>
                         <th className="py-4 px-4 text-[10px] font-[800] text-[#6B7280] uppercase tracking-widest">STATUS</th>
                         <th className="py-4 px-4 text-[10px] font-[800] text-[#6B7280] uppercase tracking-widest">CURRENT VALUE</th>
+                        <th className="py-4 px-4 text-right text-[10px] font-[800] text-[#6B7280] uppercase tracking-widest">ACTIONS</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#EEF1F6]/50">
@@ -623,6 +705,15 @@ export default function Page() {
                           </td>
                           <td className="py-4 px-4 align-top">
                             <div className="text-[13px] font-[900] text-[#111827] pt-[1px]">{asset.value}</div>
+                          </td>
+                          <td className="py-4 px-4 align-top text-right">
+                            <button
+                              type="button"
+                              onClick={() => openDispose(asset)}
+                              className="text-[11px] font-bold text-[#6B7280] hover:text-rose-600 transition-colors"
+                            >
+                              Dispose
+                            </button>
                           </td>
                         </tr>
                       ))}
@@ -955,6 +1046,57 @@ export default function Page() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dispose Asset Dialog */}
+      <Dialog open={Boolean(disposeTarget)} onOpenChange={(open) => (open ? null : setDisposeTarget(null))}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>Dispose of asset</DialogTitle>
+            <DialogDescription>
+              {disposeTarget ? `${disposeTarget.name} (${disposeTarget.id})` : ""} will be retired from the register.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <label htmlFor="disposal-date" className="text-[12px] font-bold text-[#374151]">
+                Disposal date
+              </label>
+              <input
+                id="disposal-date"
+                type="date"
+                value={disposalDate}
+                onChange={(event) => setDisposalDate(event.target.value)}
+                className="h-[42px] w-full rounded-[8px] border border-[#E5E7EB] px-3 text-[13px] font-medium text-[#111827] outline-none focus:border-[#2563EB]"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label htmlFor="disposal-amount" className="text-[12px] font-bold text-[#374151]">
+                Disposal amount (₦)
+              </label>
+              <input
+                id="disposal-amount"
+                type="number"
+                min="0"
+                value={disposalAmount}
+                onChange={(event) => setDisposalAmount(event.target.value)}
+                placeholder="0"
+                className="h-[42px] w-full rounded-[8px] border border-[#E5E7EB] px-3 text-[13px] font-medium text-[#111827] outline-none focus:border-[#2563EB]"
+              />
+            </div>
+            {disposeError && <p className="text-[12px] font-semibold text-[#EF4444]">{disposeError}</p>}
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setDisposeTarget(null)}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={handleDispose} disabled={disposing}>
+              {disposing ? "Disposing…" : "Confirm disposal"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

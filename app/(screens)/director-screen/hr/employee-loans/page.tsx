@@ -4,131 +4,96 @@ import { useMemo, useState } from "react"
 import { Search, UserPlus, Download, SlidersHorizontal, Eye, X } from "lucide-react"
 import SidebarNav from "@/components/navigation/SidebarNav"
 import ApproveLoanOverrideModal from "@/components/hr/ApproveLoanOverrideModal"
+import { HrTableStateRow } from "@/components/hr/HrTableState"
+import { useHrLoans, useLoanMutations } from "@/components/hooks/useHrLoans"
+import { useToast } from "@/components/ui/toast"
+import {
+  LOAN_STATUS_LABELS,
+  LOAN_STATUS_STYLES,
+  formatNaira,
+  statusLabel,
+  statusStyle,
+} from "@/lib/hr/display"
 import { cn } from "@/lib/utils"
 
-type LoanStatus = "PENDING" | "FLAGGED"
-
-type LoanRequest = {
-  id: string
-  name: string
-  employeeId: string
-  branch: string
-  amount: number
-  status: LoanStatus
-  type: string
-  tenure: string
-  totalPrincipal: number
-  monthlyRepayment: number
-  purpose: string
-}
-
-const LOAN_REQUESTS: LoanRequest[] = [
-  {
-    id: "sarah-musa",
-    name: "Sarah Musa",
-    employeeId: "EMP-0922",
-    branch: "Ibadan HQ",
-    amount: 750_000,
-    status: "PENDING",
-    type: "Staff Car Loan",
-    tenure: "12 Months",
-    totalPrincipal: 750_000,
-    monthlyRepayment: 62_500,
-    purpose:
-      "To purchase a car for official transit following the staff's recent promotion and relocation to the HQ hub. This asset will support field monitoring tasks.",
-  },
-  {
-    id: "john-obi",
-    name: "John Obi",
-    employeeId: "EMP-0481",
-    branch: "Ibadan HQ",
-    amount: 1_200_000,
-    status: "PENDING",
-    type: "Staff Car Loan",
-    tenure: "12 Months",
-    totalPrincipal: 1_200_000,
-    monthlyRepayment: 100_000,
-    purpose:
-      "To purchase a car for official transit following the staff's recent promotion and relocation to the HQ hub. This asset will support field monitoring tasks.",
-  },
-  {
-    id: "maryam-bello",
-    name: "Maryam Bello",
-    employeeId: "EMP-1104",
-    branch: "Lagos North",
-    amount: 600_000,
-    status: "FLAGGED",
-    type: "Staff Car Loan",
-    tenure: "12 Months",
-    totalPrincipal: 600_000,
-    monthlyRepayment: 50_000,
-    purpose:
-      "To purchase a car for official transit following the staff's recent promotion and relocation to the HQ hub. This asset will support field monitoring tasks.",
-  },
+const STATUS_OPTIONS = [
+  { value: "pending_director", label: "Pending Director" },
+  { value: "pending_pastor", label: "Pending Pastor" },
+  { value: "pending_accountant", label: "Pending Accountant" },
+  { value: "active", label: "Active" },
+  { value: "", label: "All Statuses" },
 ]
 
-const BRANCH_OPTIONS = ["Ibadan HQ", "Lagos North", "Abuja Regional"]
-const STATUS_OPTIONS = ["Pending Director", "Pending", "Flagged", "All Statuses"]
-
-function formatNaira(amount: number): string {
-  return `₦${amount.toLocaleString("en-NG")}`
-}
-
-function formatNairaDecimal(amount: number): string {
-  return `₦${amount.toLocaleString("en-NG", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`
-}
-
-function StatusBadge({ status }: { status: LoanStatus }) {
+function StatusBadge({ status }: { status: string }) {
   return (
     <span
       className={cn(
         "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider",
-        status === "PENDING"
-          ? "bg-amber-100 text-amber-700"
-          : "bg-rose-100 text-rose-700"
+        statusStyle(LOAN_STATUS_STYLES, status)
       )}
     >
-      {status}
+      {statusLabel(LOAN_STATUS_LABELS, status)}
     </span>
   )
 }
 
 export default function Page() {
-  const [branchFilter, setBranchFilter] = useState("Ibadan HQ")
-  const [statusFilter, setStatusFilter] = useState("Pending Director")
+  const [branchFilter, setBranchFilter] = useState("")
+  const [statusFilter, setStatusFilter] = useState("pending_director")
   const [minAmount, setMinAmount] = useState("")
-  const [selectedId, setSelectedId] = useState<string | null>("sarah-musa")
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [overrideOpen, setOverrideOpen] = useState(false)
+  const [rejecting, setRejecting] = useState(false)
 
+  const { pushToast } = useToast()
+  const { loans, loading, error, refresh } = useHrLoans({
+    limit: 50,
+    status: statusFilter,
+    branchId: branchFilter || undefined,
+  })
+  const { pastorApproval } = useLoanMutations()
+
+  // Branch and status are server-side; the amount floor trims what came back.
   const filtered = useMemo(() => {
     const min = Number(minAmount.replace(/[^0-9]/g, ""))
-    return LOAN_REQUESTS.filter((r) => {
-      const matchesBranch = branchFilter === "" || r.branch === branchFilter
-      const matchesStatus =
-        statusFilter === "All Statuses" ||
-        statusFilter === "Pending Director" ||
-        (statusFilter === "Pending" && r.status === "PENDING") ||
-        (statusFilter === "Flagged" && r.status === "FLAGGED")
-      const matchesAmount = !min || r.amount >= min
-      return matchesBranch && matchesStatus && matchesAmount
-    })
-  }, [branchFilter, statusFilter, minAmount])
+    if (!min) return loans
+    return loans.filter((loan) => loan.amount >= min)
+  }, [loans, minAmount])
 
   const selected = useMemo(
-    () => LOAN_REQUESTS.find((r) => r.id === selectedId) ?? null,
-    [selectedId]
+    () => filtered.find((loan) => loan.id === selectedId) ?? null,
+    [filtered, selectedId]
   )
 
-  const clearFilters = () => {
-    setBranchFilter("Ibadan HQ")
-    setStatusFilter("Pending Director")
-    setMinAmount("")
+  // Branch options come from whatever the current result set spans.
+  const branchOptions = useMemo(() => {
+    const seen = new Map<string, string>()
+    for (const loan of loans) {
+      if (loan.branchId && !seen.has(loan.branchId)) seen.set(loan.branchId, loan.branchName)
+    }
+    return Array.from(seen.entries())
+  }, [loans])
+
+  const handleReject = async () => {
+    if (!selected) return
+    setRejecting(true)
+    try {
+      await pastorApproval(selected.id, "declined", "Declined at director review")
+      pushToast(`Loan declined for ${selected.employeeName}`, "success")
+      setSelectedId(null)
+      refresh()
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : "Unable to decline this loan", "error")
+    } finally {
+      setRejecting(false)
+    }
   }
 
-  const openReview = (id: string) => setSelectedId(id)
+  const clearFilters = () => {
+    setBranchFilter("")
+    setStatusFilter("pending_director")
+    setMinAmount("")
+  }
 
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
@@ -193,9 +158,10 @@ export default function Page() {
                   onChange={(e) => setBranchFilter(e.target.value)}
                   className="h-[42px] rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[13px]"
                 >
-                  {BRANCH_OPTIONS.map((b) => (
-                    <option key={b} value={b}>
-                      {b}
+                  <option value="">All Branches</option>
+                  {branchOptions.map(([id, name]) => (
+                    <option key={id} value={id}>
+                      {name || "Unnamed branch"}
                     </option>
                   ))}
                 </select>
@@ -210,9 +176,9 @@ export default function Page() {
                   onChange={(e) => setStatusFilter(e.target.value)}
                   className="h-[42px] rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[13px]"
                 >
-                  {STATUS_OPTIONS.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
+                  {STATUS_OPTIONS.map((option) => (
+                    <option key={option.value || "all"} value={option.value}>
+                      {option.label}
                     </option>
                   ))}
                 </select>
@@ -276,63 +242,59 @@ export default function Page() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#EEF1F6]">
-                    {filtered.length === 0 ? (
-                      <tr>
-                        <td
-                          colSpan={5}
-                          className="px-4 py-8 text-center text-[13px] text-[#6B7280]"
-                        >
-                          No loan requests match your filters.
+                    {filtered.map((r) => (
+                      <tr
+                        key={r.id}
+                        onClick={() => setSelectedId(r.id)}
+                        className={cn(
+                          "cursor-pointer transition-colors hover:bg-[#F8FAFC]",
+                          selectedId === r.id && "border-l-2 border-[#111827] bg-[#F8FAFC]"
+                        )}
+                      >
+                        <td className="px-4 py-4 text-[13px]">
+                          <div className="flex flex-col">
+                            <span className="font-semibold text-[#111827]">
+                              {r.employeeName || "Unnamed staff"}
+                            </span>
+                            <span className="text-[12px] text-[#6B7280]">
+                              ID: {r.employeeCode || "—"}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-4 text-[13px] text-[#4B5563]">
+                          {r.branchName || "—"}
+                        </td>
+                        <td className="px-4 py-4 text-[13px] font-bold text-[#111827]">
+                          {formatNaira(r.amount)}
+                        </td>
+                        <td className="px-4 py-4 text-[13px]">
+                          <StatusBadge status={r.status} />
+                        </td>
+                        <td className="px-4 py-4 text-[13px]">
+                          <div className="flex justify-end">
+                            <button
+                              type="button"
+                              aria-label={`Review ${r.employeeName}`}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setSelectedId(r.id)
+                              }}
+                              className="flex h-8 w-8 items-center justify-center rounded-md text-[#6B7280] hover:bg-gray-100 hover:text-[#111827]"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
-                    ) : (
-                      filtered.map((r) => (
-                        <tr
-                          key={r.id}
-                          onClick={() => openReview(r.id)}
-                          className={cn(
-                            "cursor-pointer transition-colors hover:bg-[#F8FAFC]",
-                            selectedId === r.id &&
-                              "border-l-2 border-[#111827] bg-[#F8FAFC]"
-                          )}
-                        >
-                          <td className="px-4 py-4 text-[13px]">
-                            <div className="flex flex-col">
-                              <span className="font-semibold text-[#111827]">
-                                {r.name}
-                              </span>
-                              <span className="text-[12px] text-[#6B7280]">
-                                ID: {r.employeeId}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                            {r.branch}
-                          </td>
-                          <td className="px-4 py-4 text-[13px] font-bold text-[#111827]">
-                            {formatNaira(r.amount)}
-                          </td>
-                          <td className="px-4 py-4 text-[13px]">
-                            <StatusBadge status={r.status} />
-                          </td>
-                          <td className="px-4 py-4 text-[13px]">
-                            <div className="flex justify-end">
-                              <button
-                                type="button"
-                                aria-label={`Review ${r.name}`}
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  openReview(r.id)
-                                }}
-                                className="flex h-8 w-8 items-center justify-center rounded-md text-[#6B7280] hover:bg-gray-100 hover:text-[#111827]"
-                              >
-                                <Eye className="h-4 w-4" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))
-                    )}
+                    ))}
+                    <HrTableStateRow
+                      colSpan={5}
+                      loading={loading}
+                      error={error}
+                      isEmpty={filtered.length === 0}
+                      emptyMessage="No loan requests match your filters."
+                      onRetry={refresh}
+                    />
                   </tbody>
                 </table>
               </div>
@@ -362,7 +324,7 @@ export default function Page() {
                         Type
                       </div>
                       <div className="mt-1 text-[14px] font-semibold text-[#111827]">
-                        {selected.type}
+                        {selected.purpose || "Staff loan"}
                       </div>
                     </div>
                     <div className="text-right">
@@ -370,7 +332,7 @@ export default function Page() {
                         Tenure
                       </div>
                       <div className="mt-1 text-[14px] font-semibold text-[#111827]">
-                        {selected.tenure}
+                        {selected.tenureMonths ? `${selected.tenureMonths} months` : "—"}
                       </div>
                     </div>
                   </div>
@@ -384,7 +346,7 @@ export default function Page() {
                         Total Principal
                       </span>
                       <span className="text-[13px] font-bold text-[#111827]">
-                        {formatNairaDecimal(selected.totalPrincipal)}
+                        {formatNaira(selected.amount)}
                       </span>
                     </div>
                     <div className="flex items-center justify-between px-4 py-3">
@@ -392,7 +354,7 @@ export default function Page() {
                         Monthly Repayment
                       </span>
                       <span className="text-[13px] font-bold text-[#111827]">
-                        {formatNairaDecimal(selected.monthlyRepayment)}
+                        {formatNaira(selected.monthlyDeduction)}
                       </span>
                     </div>
                   </div>
@@ -401,15 +363,17 @@ export default function Page() {
                     Purpose Statement
                   </div>
                   <blockquote className="mt-3 border-l-4 border-[#3B5BDB] bg-[#F8FAFC] p-3 text-[13px] italic text-[#4B5563]">
-                    &ldquo;{selected.purpose}&rdquo;
+                    &ldquo;{selected.purpose || "No purpose recorded."}&rdquo;
                   </blockquote>
 
                   <div className="mt-6 flex items-center justify-end gap-3">
                     <button
                       type="button"
-                      className="rounded-md border border-rose-200 px-4 py-2 text-[12px] font-semibold text-rose-600 hover:bg-rose-50"
+                      onClick={handleReject}
+                      disabled={rejecting}
+                      className="rounded-md border border-rose-200 px-4 py-2 text-[12px] font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-50"
                     >
-                      REJECT
+                      {rejecting ? "DECLINING…" : "REJECT"}
                     </button>
                     <button
                       type="button"
@@ -433,6 +397,11 @@ export default function Page() {
       <ApproveLoanOverrideModal
         open={overrideOpen}
         onClose={() => setOverrideOpen(false)}
+        loan={selected}
+        onOverridden={() => {
+          setSelectedId(null)
+          refresh()
+        }}
       />
     </div>
   )

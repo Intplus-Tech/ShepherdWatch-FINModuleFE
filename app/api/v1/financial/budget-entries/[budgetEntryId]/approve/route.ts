@@ -8,7 +8,7 @@ import { getBackendApiUrl } from "@/lib/env"
 
 function buildBackendApproveUrl(budgetEntryId: string): string {
   const baseUrl = getBackendApiUrl();
-  return `${baseUrl}/financial/budget-entries/${budgetEntryId}/approve`
+  return `${baseUrl}/budgets/${budgetEntryId}/approve`
 }
 
 export async function POST(
@@ -53,7 +53,7 @@ export async function POST(
     }
 
     const backendResponse = await fetch(buildBackendApproveUrl(budgetEntryId), {
-      method: "POST",
+      method: "PATCH",
       headers: {
         Authorization: `Bearer ${backendToken}`,
         Accept: "application/json",

@@ -4,116 +4,38 @@ import { useMemo, useState } from "react"
 import { Menu, Search, Bell, Plus, SlidersHorizontal } from "lucide-react"
 import BranchAdminSidebar from "@/components/navigation/BranchAdminSidebar"
 import BranchAdminNewRoleRequisitionModal from "@/components/hr/BranchAdminNewRoleRequisitionModal"
+import ReviewRequisitionModal from "@/components/hr/ReviewRequisitionModal"
+import { HrTableStateRow } from "@/components/hr/HrTableState"
+import { useHrJobRequisitions } from "@/components/hooks/useHrJobRequisitions"
+import {
+  PRIORITY_LABELS,
+  PRIORITY_STYLES,
+  REQUISITION_STATUS_LABELS,
+  REQUISITION_STATUS_STYLES,
+  formatDate,
+  statusLabel,
+  statusStyle,
+} from "@/lib/hr/display"
+import type { HrJobRequisition } from "@/lib/hr/types"
 import { cn } from "@/lib/utils"
 
-type Urgency = "High Priority" | "Normal" | "Medium"
-type PastStatus = "Approved" | "Rejected"
-
-type Requisition = {
-  id: string
-  role: string
-  ref: string
-  department: string
-  date: string
-  urgency: Urgency
-}
-
-const AWAITING: Requisition[] = [
-  {
-    id: "req-001",
-    role: "Senior Youth Pastor",
-    ref: "Ref: #REQ-2024-001",
-    department: "Youth Ministry",
-    date: "Oct 12, 2023",
-    urgency: "High Priority",
-  },
-  {
-    id: "req-004",
-    role: "Financial Comptroller",
-    ref: "Ref: #REQ-2024-004",
-    department: "Operations & Finance",
-    date: "Oct 14, 2023",
-    urgency: "Normal",
-  },
-  {
-    id: "req-007",
-    role: "Head of Hospitality",
-    ref: "Ref: #REQ-2024-007",
-    department: "Facility Management",
-    date: "Oct 15, 2023",
-    urgency: "Medium",
-  },
+const PRIORITIES = [
+  { value: "", label: "All Priorities" },
+  { value: "critical", label: "Critical" },
+  { value: "high", label: "High" },
+  { value: "medium", label: "Medium" },
+  { value: "low", label: "Low" },
 ]
 
-const PAST: (Requisition & { status: PastStatus })[] = [
-  {
-    id: "past-001",
-    role: "Senior Youth Pastor",
-    ref: "Ref: #REQ-2024-001",
-    department: "Youth Ministry",
-    date: "Oct 12, 2023",
-    urgency: "High Priority",
-    status: "Approved",
-  },
-  {
-    id: "past-004",
-    role: "Financial Comptroller",
-    ref: "Ref: #REQ-2024-004",
-    department: "Operations & Finance",
-    date: "Oct 14, 2023",
-    urgency: "Normal",
-    status: "Rejected",
-  },
-  {
-    id: "past-007",
-    role: "Head of Hospitality",
-    ref: "Ref: #REQ-2024-007",
-    department: "Facility Management",
-    date: "Oct 15, 2023",
-    urgency: "Medium",
-    status: "Approved",
-  },
-  {
-    id: "past-009",
-    role: "Worship Coordinator",
-    ref: "Ref: #REQ-2024-009",
-    department: "Creative Arts",
-    date: "Oct 16, 2023",
-    urgency: "High Priority",
-    status: "Approved",
-  },
-]
-
-const ROLES = [
-  "All Roles",
-  "Senior Youth Pastor",
-  "Financial Comptroller",
-  "Head of Hospitality",
-  "Worship Coordinator",
-]
-
-const PRIORITIES: (Urgency | "All Priorities")[] = [
-  "All Priorities",
-  "High Priority",
-  "Normal",
-  "Medium",
-]
-
-const URGENCY_STYLES: Record<Urgency, string> = {
-  "High Priority": "bg-rose-100 text-rose-700",
-  Normal: "bg-slate-100 text-slate-600",
-  Medium: "bg-amber-100 text-amber-700",
-}
-
-function UrgencyPill({ urgency }: { urgency: Urgency }) {
+function UrgencyPill({ urgency }: { urgency: string }) {
   return (
     <span
       className={cn(
         "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold",
-        URGENCY_STYLES[urgency]
+        statusStyle(PRIORITY_STYLES, urgency)
       )}
     >
-      {urgency}
+      {statusLabel(PRIORITY_LABELS, urgency)}
     </span>
   )
 }
@@ -125,27 +47,51 @@ export default function Page() {
   const [modalOpen, setModalOpen] = useState(false)
   const [tab, setTab] = useState<Tab>("awaiting")
   const [role, setRole] = useState("All Roles")
-  const [priority, setPriority] = useState<(typeof PRIORITIES)[number]>("All Priorities")
+  const [priority, setPriority] = useState("")
+  const [viewing, setViewing] = useState<HrJobRequisition | null>(null)
 
-  const awaitingRows = useMemo(() => {
-    return AWAITING.filter((r) => {
-      if (role !== "All Roles" && r.role !== role) return false
-      if (priority !== "All Priorities" && r.urgency !== priority) return false
-      return true
-    })
-  }, [role, priority])
+  // Awaiting = still with the director; past = everything already decided.
+  const {
+    requisitions: awaiting,
+    loading: awaitingLoading,
+    error: awaitingError,
+    refresh: refreshAwaiting,
+  } = useHrJobRequisitions({ status: "pending_review", priority, limit: 50 })
 
+  const {
+    requisitions: history,
+    loading: historyLoading,
+    error: historyError,
+    refresh: refreshHistory,
+  } = useHrJobRequisitions({ priority, limit: 50 })
+
+  const roleOptions = useMemo(
+    () =>
+      Array.from(
+        new Set([...awaiting, ...history].map((row) => row.roleTitle).filter(Boolean))
+      ).sort(),
+    [awaiting, history]
+  )
+
+  const awaitingRows = useMemo(
+    () => (role === "All Roles" ? awaiting : awaiting.filter((r) => r.roleTitle === role)),
+    [awaiting, role]
+  )
+
+  // "Past" is the decided set — the list endpoint has no "not pending" filter.
   const pastRows = useMemo(() => {
-    return PAST.filter((r) => {
-      if (role !== "All Roles" && r.role !== role) return false
-      if (priority !== "All Priorities" && r.urgency !== priority) return false
-      return true
-    })
-  }, [role, priority])
+    const decided = history.filter((r) => r.status !== "pending_review")
+    return role === "All Roles" ? decided : decided.filter((r) => r.roleTitle === role)
+  }, [history, role])
 
   const resetFilters = () => {
     setRole("All Roles")
-    setPriority("All Priorities")
+    setPriority("")
+  }
+
+  const refreshAll = () => {
+    refreshAwaiting()
+    refreshHistory()
   }
 
   return (
@@ -240,7 +186,8 @@ export default function Page() {
                   onChange={(e) => setRole(e.target.value)}
                   className="h-[42px] rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[13px]"
                 >
-                  {ROLES.map((r) => (
+                  <option value="All Roles">All Roles</option>
+                  {roleOptions.map((r) => (
                     <option key={r} value={r}>
                       {r}
                     </option>
@@ -252,12 +199,12 @@ export default function Page() {
                 <label className="text-[11px] font-bold uppercase text-[#6B7280]">Priority</label>
                 <select
                   value={priority}
-                  onChange={(e) => setPriority(e.target.value as (typeof PRIORITIES)[number])}
+                  onChange={(e) => setPriority(e.target.value)}
                   className="h-[42px] rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[13px]"
                 >
-                  {PRIORITIES.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
+                  {PRIORITIES.map((option) => (
+                    <option key={option.value || "all"} value={option.value}>
+                      {option.label}
                     </option>
                   ))}
                 </select>
@@ -333,17 +280,27 @@ export default function Page() {
                   </thead>
                   <tbody className="divide-y divide-[#F3F4F6]">
                     {awaitingRows.map((row) => (
-                      <tr key={row.id}>
+                      <tr
+                        key={row.id}
+                        onClick={() => setViewing(row)}
+                        className="cursor-pointer hover:bg-[#F9FAFB]"
+                      >
                         <td className="px-4 py-4 text-[13px]">
                           <div className="flex flex-col">
-                            <span className="font-bold text-[#111827]">{row.role}</span>
-                            <span className="text-[12px] text-[#6B7280]">{row.ref}</span>
+                            <span className="font-bold text-[#111827]">{row.roleTitle}</span>
+                            <span className="text-[12px] text-[#6B7280]">
+                              {row.requisitionNumber || "—"}
+                            </span>
                           </div>
                         </td>
-                        <td className="px-4 py-4 text-[13px] text-[#4B5563]">{row.department}</td>
-                        <td className="px-4 py-4 text-[13px] text-[#4B5563]">{row.date}</td>
+                        <td className="px-4 py-4 text-[13px] text-[#4B5563]">
+                          {row.department || "—"}
+                        </td>
+                        <td className="px-4 py-4 text-[13px] text-[#4B5563]">
+                          {formatDate(row.createdAt)}
+                        </td>
                         <td className="px-4 py-4 text-[13px]">
-                          <UrgencyPill urgency={row.urgency} />
+                          <UrgencyPill urgency={row.priority} />
                         </td>
                         <td className="px-4 py-4 text-[13px]">
                           <span className="inline-flex items-center gap-2 text-[#6B7280]">
@@ -353,16 +310,14 @@ export default function Page() {
                         </td>
                       </tr>
                     ))}
-                    {awaitingRows.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={5}
-                          className="px-4 py-10 text-center text-[13px] text-[#9CA3AF]"
-                        >
-                          No requisitions match your filters.
-                        </td>
-                      </tr>
-                    )}
+                    <HrTableStateRow
+                      colSpan={5}
+                      loading={awaitingLoading}
+                      error={awaitingError}
+                      isEmpty={awaitingRows.length === 0}
+                      emptyMessage="No requisitions match your filters."
+                      onRetry={refreshAwaiting}
+                    />
                   </tbody>
                 </table>
               ) : (
@@ -387,42 +342,48 @@ export default function Page() {
                   </thead>
                   <tbody className="divide-y divide-[#F3F4F6]">
                     {pastRows.map((row) => (
-                      <tr key={row.id}>
+                      <tr
+                        key={row.id}
+                        onClick={() => setViewing(row)}
+                        className="cursor-pointer hover:bg-[#F9FAFB]"
+                      >
                         <td className="px-4 py-4 text-[13px]">
                           <div className="flex flex-col">
-                            <span className="font-bold text-[#111827]">{row.role}</span>
-                            <span className="text-[12px] text-[#6B7280]">{row.ref}</span>
+                            <span className="font-bold text-[#111827]">{row.roleTitle}</span>
+                            <span className="text-[12px] text-[#6B7280]">
+                              {row.requisitionNumber || "—"}
+                            </span>
                           </div>
                         </td>
-                        <td className="px-4 py-4 text-[13px] text-[#4B5563]">{row.department}</td>
-                        <td className="px-4 py-4 text-[13px] text-[#4B5563]">{row.date}</td>
+                        <td className="px-4 py-4 text-[13px] text-[#4B5563]">
+                          {row.department || "—"}
+                        </td>
+                        <td className="px-4 py-4 text-[13px] text-[#4B5563]">
+                          {formatDate(row.createdAt)}
+                        </td>
                         <td className="px-4 py-4 text-[13px]">
-                          <UrgencyPill urgency={row.urgency} />
+                          <UrgencyPill urgency={row.priority} />
                         </td>
                         <td className="px-4 py-4 text-[13px]">
                           <span
                             className={cn(
-                              "font-semibold",
-                              row.status === "Approved"
-                                ? "text-emerald-600"
-                                : "text-rose-600"
+                              "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold",
+                              statusStyle(REQUISITION_STATUS_STYLES, row.status)
                             )}
                           >
-                            {row.status}
+                            {statusLabel(REQUISITION_STATUS_LABELS, row.status)}
                           </span>
                         </td>
                       </tr>
                     ))}
-                    {pastRows.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={5}
-                          className="px-4 py-10 text-center text-[13px] text-[#9CA3AF]"
-                        >
-                          No requisitions match your filters.
-                        </td>
-                      </tr>
-                    )}
+                    <HrTableStateRow
+                      colSpan={5}
+                      loading={historyLoading}
+                      error={historyError}
+                      isEmpty={pastRows.length === 0}
+                      emptyMessage="No requisitions match your filters."
+                      onRetry={refreshHistory}
+                    />
                   </tbody>
                 </table>
               )}
@@ -431,7 +392,17 @@ export default function Page() {
         </main>
       </div>
 
-      <BranchAdminNewRoleRequisitionModal open={modalOpen} onClose={() => setModalOpen(false)} />
+      <BranchAdminNewRoleRequisitionModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onCreated={refreshAll}
+      />
+
+      <ReviewRequisitionModal
+        requisition={viewing}
+        onClose={() => setViewing(null)}
+        readOnly
+      />
     </div>
   )
 }

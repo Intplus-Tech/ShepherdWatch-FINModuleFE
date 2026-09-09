@@ -1,6 +1,16 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
+import { useToast } from "@/components/ui/toast"
+import {
+  useHrPayrollOverview,
+  useHrPayrollByBranch,
+  usePayrollMutations,
+} from "@/components/hooks/useHrPayroll"
+import { useDirectorHrDashboard } from "@/components/hooks/useHrDashboard"
+import { formatNaira } from "@/lib/hr/display"
+import { exportHrRows } from "@/lib/hr/export"
 import {
   Search,
   UserPlus,
@@ -9,71 +19,75 @@ import {
   Users,
 } from "lucide-react"
 import SidebarNav from "@/components/navigation/SidebarNav"
-import { cn } from "@/lib/utils"
-
-type BranchRow = {
-  id: string
-  branch: string
-  staffCount: number
-  grossPay: number
-  deductions: number
-  netPayable: number
-}
-
-const BRANCH_ROWS: BranchRow[] = [
-  {
-    id: "maryland-lagos",
-    branch: "Maryland Lagos",
-    staffCount: 84,
-    grossPay: 7_100_000,
-    deductions: 900_000,
-    netPayable: 6_200_000,
-  },
-  {
-    id: "ibadan-hq",
-    branch: "Ibadan HQ",
-    staffCount: 62,
-    grossPay: 5_300_000,
-    deductions: 500_000,
-    netPayable: 4_800_000,
-  },
-  {
-    id: "abuja-regional",
-    branch: "Abuja Regional",
-    staffCount: 45,
-    grossPay: 4_100_000,
-    deductions: 300_000,
-    netPayable: 3_800_000,
-  },
-  {
-    id: "port-harcourt",
-    branch: "Port Harcourt",
-    staffCount: 38,
-    grossPay: 3_950_000,
-    deductions: 250_000,
-    netPayable: 3_700_000,
-  },
-]
-
-const NAIRA = "₦"
-
-function formatNaira(amount: number): string {
-  return `${NAIRA}${amount.toLocaleString("en-NG")}`
-}
 
 export default function Page() {
+  const router = useRouter()
+  const { pushToast } = useToast()
+
   const [branchFilter, setBranchFilter] = useState("All Branches")
   const [titleFilter, setTitleFilter] = useState("")
+  const [authorizingId, setAuthorizingId] = useState<string | null>(null)
+
+  const { overview, loading: overviewLoading, error, refresh: refreshOverview } =
+    useHrPayrollOverview()
+  // Branch names come from the executive dashboard; the money per branch comes
+  // from each branch's current payroll run.
+  const { dashboard } = useDirectorHrDashboard()
+  const branches = useMemo(
+    () =>
+      dashboard.headcountByBranch
+        .filter((branch) => branch.branchId)
+        .map((branch) => ({ id: branch.branchId, name: branch.branchName || "Unnamed branch" })),
+    [dashboard.headcountByBranch]
+  )
+
+  const { rows, loading, refresh } = useHrPayrollByBranch(branches)
+  const { authorizeRun } = usePayrollMutations()
 
   const filtered = useMemo(() => {
     const q = titleFilter.trim().toLowerCase()
-    return BRANCH_ROWS.filter((row) => {
-      const matchesBranch =
-        branchFilter === "All Branches" || row.branch === branchFilter
-      const matchesTitle = !q || row.branch.toLowerCase().includes(q)
+    return rows.filter((row) => {
+      const matchesBranch = branchFilter === "All Branches" || row.branchName === branchFilter
+      const matchesTitle = !q || row.branchName.toLowerCase().includes(q)
       return matchesBranch && matchesTitle
     })
-  }, [branchFilter, titleFilter])
+  }, [rows, branchFilter, titleFilter])
+
+  const grossTotal = overview?.totalGrossPayroll ?? 0
+  const deductionsTotal = overview
+    ? overview.totalTaxWithheld + overview.totalPensionWithheld + overview.totalLoanRecovered
+    : 0
+  const deductionShare = grossTotal ? Math.round((deductionsTotal / grossTotal) * 1000) / 10 : 0
+  const submittedCount = overview?.statusDistribution?.submitted ?? 0
+
+  const handleAuthorize = async (runId: string, branchName: string) => {
+    setAuthorizingId(runId)
+    try {
+      await authorizeRun(runId)
+      pushToast(`Payroll authorized for ${branchName}`, "success")
+      refresh()
+      refreshOverview()
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : "Unable to authorize this run", "error")
+    } finally {
+      setAuthorizingId(null)
+    }
+  }
+
+  const handleExport = () => {
+    const exported = exportHrRows(
+      "payroll-by-branch",
+      filtered.map((row) => ({
+        Branch: row.branchName,
+        "Staff Count": row.staffCount,
+        "Gross Pay": row.grossPay,
+        Deductions: row.deductions,
+        "Net Payable": row.netPayable,
+        Status: row.status,
+      }))
+    )
+    if (!exported) pushToast("Nothing to export yet", "info")
+  }
 
   const clearFilters = () => {
     setBranchFilter("All Branches")
@@ -105,12 +119,16 @@ export default function Page() {
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
                 <input
                   type="text"
-                  placeholder="Search..."
+                  value={titleFilter}
+                  onChange={(event) => setTitleFilter(event.target.value)}
+                  placeholder="Search branches..."
+                  aria-label="Search branches"
                   className="h-[42px] w-full rounded-[8px] border border-[#E5E7EB] bg-white pl-10 pr-3 text-[13px] sm:w-[240px]"
                 />
               </div>
               <button
                 type="button"
+                onClick={() => router.push("/director-screen/hr/add-employee")}
                 className="flex items-center gap-2 rounded-md bg-[#3B5BDB] px-4 py-2 text-[12px] font-medium text-white shadow hover:bg-blue-700"
               >
                 <UserPlus className="h-4 w-4" />
@@ -118,6 +136,7 @@ export default function Page() {
               </button>
               <button
                 type="button"
+                onClick={handleExport}
                 className="flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[12px] font-medium text-[#4B5563] hover:bg-gray-50"
               >
                 <Download className="h-4 w-4" />
@@ -139,9 +158,9 @@ export default function Page() {
                   className="h-[42px] rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[13px]"
                 >
                   <option value="All Branches">All Branches</option>
-                  {BRANCH_ROWS.map((row) => (
-                    <option key={row.id} value={row.branch}>
-                      {row.branch}
+                  {rows.map((row) => (
+                    <option key={row.branchId} value={row.branchName}>
+                      {row.branchName}
                     </option>
                   ))}
                 </select>
@@ -174,7 +193,8 @@ export default function Page() {
           <div className="mb-6 flex items-center gap-3 rounded bg-amber-50 border-l-4 border-amber-400 px-4 py-3">
             <AlertTriangle className="h-5 w-5 shrink-0 text-amber-500" />
             <span className="text-[13px] font-bold text-[#111827]">
-              Payroll Summary for October 2024
+              Payroll Summary for {overview?.period || (overviewLoading ? "…" : "the current period")}
+              {submittedCount ? ` · ${submittedCount} run${submittedCount === 1 ? "" : "s"} awaiting authorization` : ""}
             </span>
           </div>
 
@@ -186,9 +206,11 @@ export default function Page() {
               <div className="text-[12px] font-semibold text-[#6B7280]">
                 Total Employees
               </div>
-              <div className="mt-2 text-[28px] font-bold text-[#111827]">524</div>
-              <div className="mt-1 text-[12px] text-emerald-600">
-                {"↗"} +12 since last month
+              <div className="mt-2 text-[28px] font-bold text-[#111827]">
+                {overview?.totalStaffCount ?? 0}
+              </div>
+              <div className="mt-1 text-[12px] text-[#6B7280]">
+                Across {overview?.totalBranches ?? 0} branches
               </div>
             </div>
 
@@ -198,10 +220,13 @@ export default function Page() {
                 Total Gross Pay
               </div>
               <div className="mt-2 text-[28px] font-bold text-[#111827]">
-                {formatNaira(42_000_000)}
+                {formatNaira(grossTotal)}
               </div>
               <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-[#EEF1F6]">
-                <div className="h-full w-[82%] rounded-full bg-[#3B5BDB]" />
+                <div
+                  className="h-full rounded-full bg-[#3B5BDB]"
+                  style={{ width: `${Math.min(100 - deductionShare, 100)}%` }}
+                />
               </div>
             </div>
 
@@ -211,9 +236,9 @@ export default function Page() {
                 Total Deductions
               </div>
               <div className="mt-2 text-[28px] font-bold text-rose-600">
-                {formatNaira(3_500_000)}
+                {formatNaira(deductionsTotal)}
               </div>
-              <div className="mt-1 text-[12px] text-[#6B7280]">8.3% of Gross</div>
+              <div className="mt-1 text-[12px] text-[#6B7280]">{deductionShare}% of Gross</div>
             </div>
 
             {/* Net Pay Payable (dark) */}
@@ -222,10 +247,10 @@ export default function Page() {
                 Net Pay Payable
               </div>
               <div className="mt-2 text-[28px] font-bold text-white">
-                {formatNaira(38_500_000)}
+                {formatNaira(overview?.totalNetPayable ?? 0)}
               </div>
               <div className="mt-1 text-[12px] text-white/60">
-                Ready for Disbursement
+                {error ? "Unable to load payroll" : "Ready for Disbursement"}
               </div>
             </div>
           </div>
@@ -238,6 +263,7 @@ export default function Page() {
               </h2>
               <button
                 type="button"
+                onClick={handleExport}
                 className="flex items-center gap-2 text-[13px] font-semibold text-[#111827] hover:text-[#3B5BDB]"
               >
                 <Download className="h-4 w-4" />
@@ -264,49 +290,70 @@ export default function Page() {
                     <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
                       Net Payable
                     </th>
+                    <th className="px-4 py-3 text-right text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
+                      Action
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#EEF1F6]">
-                  {filtered.length === 0 ? (
+                  {filtered.map((row) => (
+                    <tr key={row.branchId}>
+                      <td className="px-4 py-4 text-[13px] font-bold text-[#111827]">
+                        {row.branchName}
+                      </td>
+                      <td className="px-4 py-4 text-[13px] text-[#4B5563]">{row.staffCount}</td>
+                      <td className="px-4 py-4 text-[13px] text-[#4B5563]">
+                        {formatNaira(row.grossPay)}
+                      </td>
+                      <td className="px-4 py-4 text-[13px] text-[#4B5563]">
+                        {formatNaira(row.deductions)}
+                      </td>
+                      <td className="px-4 py-4 text-[13px] font-bold text-[#111827]">
+                        {formatNaira(row.netPayable)}
+                      </td>
+                      <td className="px-4 py-4 text-[13px]">
+                        <div className="flex justify-end">
+                          {row.status === "submitted" ? (
+                            <button
+                              type="button"
+                              onClick={() => handleAuthorize(row.runId, row.branchName)}
+                              disabled={authorizingId === row.runId}
+                              className="rounded-md bg-[#111827] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-black disabled:opacity-50"
+                            >
+                              {authorizingId === row.runId ? "Authorizing…" : "Authorize"}
+                            </button>
+                          ) : (
+                            <span className="text-[11px] font-semibold uppercase text-[#9CA3AF]">
+                              {row.status === "none" ? "No run" : row.status}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+
+                  {!loading && filtered.length === 0 ? (
                     <tr>
-                      <td
-                        colSpan={5}
-                        className="px-4 py-8 text-center text-[13px] text-[#6B7280]"
-                      >
+                      <td colSpan={6} className="px-4 py-8 text-center text-[13px] text-[#6B7280]">
                         No branches match your filters.
                       </td>
                     </tr>
-                  ) : (
-                    filtered.map((row) => (
-                      <tr key={row.id}>
-                        <td className="px-4 py-4 text-[13px] font-bold text-[#111827]">
-                          {row.branch}
-                        </td>
-                        <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                          {row.staffCount}
-                        </td>
-                        <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                          {formatNaira(row.grossPay)}
-                        </td>
-                        <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                          {formatNaira(row.deductions)}
-                        </td>
-                        <td className="px-4 py-4 text-[13px] font-bold text-[#111827]">
-                          {formatNaira(row.netPayable)}
-                        </td>
-                      </tr>
-                    ))
-                  )}
+                  ) : null}
+
+                  {loading ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-8 text-center text-[13px] text-[#6B7280]">
+                        Loading payroll by branch…
+                      </td>
+                    </tr>
+                  ) : null}
                 </tbody>
               </table>
             </div>
 
-            <button
-              type="button"
-              className="w-full rounded-b-xl bg-[#F8FAFC] px-4 py-3 text-center text-[13px] font-semibold text-[#3B5BDB] hover:bg-[#EEF2FF]"
-            >
-              View 12 Other Branches
-            </button>
+            <div className="w-full rounded-b-xl bg-[#F8FAFC] px-4 py-3 text-center text-[13px] font-semibold text-[#6B7280]">
+              Showing {filtered.length} of {rows.length} reporting branches
+            </div>
           </div>
         </div>
       </main>

@@ -1,6 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
+import { useAccountantHrDashboard } from "@/components/hooks/useHrDashboard"
+import { useHrLoans } from "@/components/hooks/useHrLoans"
+import { LOAN_STATUS_LABELS, LOAN_STATUS_STYLES, formatDate, formatNaira, statusLabel, statusStyle } from "@/lib/hr/display"
 import {
   Search,
   Bell,
@@ -8,128 +12,69 @@ import {
   CalendarDays,
   FileText,
   BarChart3,
-  CheckCircle2,
   Banknote,
-  DoorOpen,
-  type LucideIcon,
 } from "lucide-react"
 import BranchAccountantSidebar from "@/components/navigation/BranchAccountantSidebar"
 import { cn } from "@/lib/utils"
 
-type Stat = {
-  label: string
-  value: string
-  note?: string
-  noteEmerald?: boolean
-  icon: LucideIcon
-  iconClass: string
-}
-
-const STATS: Stat[] = [
-  {
-    label: "Total Employees",
-    value: "148",
-    note: "↗ +2.4% vs last month",
-    noteEmerald: true,
-    icon: Building2,
-    iconClass: "text-[#3B5BDB]",
-  },
-  {
-    label: "Payroll (MTD)",
-    value: "₦2.8M",
-    note: "YTD: ₦33.5M",
-    icon: CalendarDays,
-    iconClass: "text-amber-500",
-  },
-  {
-    label: "Active Loans",
-    value: "21",
-    icon: FileText,
-    iconClass: "text-[#6B7280]",
-  },
-  {
-    label: "Loan Balance",
-    value: "₦1,800,000",
-    icon: BarChart3,
-    iconClass: "text-emerald-500",
-  },
-]
-
-type ChartMonth = {
-  month: string
-  greenLabel: string
-  greenHeight: string
-  redLabel: string
-  redHeight: string
-}
-
-const CHART_MONTHS: ChartMonth[] = [
-  { month: "NOV", greenLabel: "₦2.8M", greenHeight: "h-40", redLabel: "₦500K", redHeight: "h-10" },
-  { month: "DEC", greenLabel: "₦2.8M", greenHeight: "h-40", redLabel: "₦500K", redHeight: "h-10" },
-  { month: "JAN", greenLabel: "₦2.8M", greenHeight: "h-40", redLabel: "₦500K", redHeight: "h-10" },
-  { month: "FEB", greenLabel: "₦2.8M", greenHeight: "h-40", redLabel: "₦500K", redHeight: "h-10" },
-  { month: "MAR", greenLabel: "₦2.8M", greenHeight: "h-40", redLabel: "₦500K", redHeight: "h-10" },
-  { month: "APR", greenLabel: "₦2.8M", greenHeight: "h-40", redLabel: "₦500K", redHeight: "h-10" },
-]
-
-type RepaymentStatus = "ON TRACK" | "DUE SOON" | "OVERDUE"
-
-type LoanCategory = {
-  category: string
-  active: number
-  totalPrincipal: string
-  status: RepaymentStatus
-}
-
-const LOAN_CATEGORIES: LoanCategory[] = [
-  { category: "Personal Loans", active: 12, totalPrincipal: "₦8.5M", status: "ON TRACK" },
-  { category: "Salary Advance", active: 8, totalPrincipal: "₦4.2M", status: "ON TRACK" },
-  { category: "Vehicle Finance", active: 3, totalPrincipal: "₦5.0M", status: "DUE SOON" },
-  { category: "Education Aid", active: 1, totalPrincipal: "₦500k", status: "OVERDUE" },
-]
-
-const STATUS_STYLES: Record<RepaymentStatus, string> = {
-  "ON TRACK": "bg-emerald-100 text-emerald-700",
-  "DUE SOON": "bg-amber-100 text-amber-700",
-  OVERDUE: "bg-rose-100 text-rose-700",
-}
-
-type TimelineItem = {
-  title: string
-  time: string
-  description?: string
-  pill?: string
-  icon: LucideIcon
-  iconClass: string
-}
-
-const TIMELINE: TimelineItem[] = [
-  {
-    title: "Payroll Reconciled (Apr 2024)",
-    time: "TODAY • 09:14 AM",
-    description:
-      "Validated disbursement for 148 branch employees. Total sum: ₦42,840,000.",
-    icon: CheckCircle2,
-    iconClass: "bg-emerald-100 text-emerald-600",
-  },
-  {
-    title: "Loan Approved: A. Okoro",
-    time: "YESTERDAY • 04:30 PM",
-    pill: "₦1,200,000 • Personal",
-    icon: Banknote,
-    iconClass: "bg-[#EEF2FF] text-[#3B5BDB]",
-  },
-  {
-    title: "Exit Clearance Processing",
-    time: "18 APR • 11:20 AM",
-    description: "Final settlement calculation initiated for M. Ibrahim.",
-    icon: DoorOpen,
-    iconClass: "bg-amber-100 text-amber-600",
-  },
-]
+/** Bars are drawn relative to the tallest month in the series. */
+const MAX_BAR_PX = 160
 
 export default function Page() {
   const [chartRange, setChartRange] = useState<"6 Months" | "1 Year">("6 Months")
+  const router = useRouter()
+
+  const { dashboard, loading, error } = useAccountantHrDashboard()
+  // No financial-activity feed exists yet, so the newest loan cases stand in.
+  const { loans: recentLoans } = useHrLoans({ limit: 3 })
+
+  const stats = useMemo(
+    () => [
+      {
+        label: "Total Employees",
+        value: String(dashboard.totalEmployees),
+        icon: Building2,
+        iconClass: "text-[#3B5BDB]",
+      },
+      {
+        label: "Payroll (MTD)",
+        value: formatNaira(dashboard.payrollMtd, { compact: true }),
+        note: formatNaira(dashboard.payrollMtd),
+        icon: CalendarDays,
+        iconClass: "text-amber-500",
+      },
+      {
+        label: "Active Loans",
+        value: String(dashboard.activeLoans),
+        icon: FileText,
+        iconClass: "text-[#6B7280]",
+      },
+      {
+        label: "Loan Balance",
+        value: formatNaira(dashboard.loanBalance),
+        icon: BarChart3,
+        iconClass: "text-emerald-500",
+      },
+    ],
+    [dashboard]
+  )
+
+  const trend = useMemo(() => {
+    const series = chartRange === "6 Months"
+      ? dashboard.workforceCostTrend.slice(-6)
+      : dashboard.workforceCostTrend.slice(-12)
+    const peak = series.reduce((max, entry) => Math.max(max, entry.payroll, entry.deductions), 0)
+    return series.map((entry) => ({
+      ...entry,
+      payrollHeight: peak ? Math.max((entry.payroll / peak) * MAX_BAR_PX, 4) : 4,
+      deductionHeight: peak ? Math.max((entry.deductions / peak) * MAX_BAR_PX, 4) : 4,
+    }))
+  }, [dashboard.workforceCostTrend, chartRange])
+
+  const portfolioTotal = dashboard.loanPortfolioHealth.reduce(
+    (sum, entry) => sum + entry.principal,
+    0
+  )
 
   return (
     <div className="flex min-h-screen flex-col lg:flex-row bg-[#F8FAFC]">
@@ -154,7 +99,7 @@ export default function Page() {
 
         {/* Stat cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          {STATS.map((stat) => {
+          {stats.map((stat) => {
             const Icon = stat.icon
             return (
               <div
@@ -171,16 +116,9 @@ export default function Page() {
                 <div className="mt-2 text-[24px] font-bold text-[#111827]">
                   {stat.value}
                 </div>
-                {stat.note && (
-                  <div
-                    className={cn(
-                      "mt-1 text-[12px]",
-                      stat.noteEmerald ? "text-emerald-600" : "text-[#6B7280]"
-                    )}
-                  >
-                    {stat.note}
-                  </div>
-                )}
+                {stat.note ? (
+                  <div className="mt-1 text-[12px] text-[#6B7280]">{stat.note}</div>
+                ) : null}
               </div>
             )
           })}
@@ -213,29 +151,54 @@ export default function Page() {
 
           {/* Bar chart */}
           <div className="mt-8 flex items-end justify-between gap-4 sm:gap-8 overflow-x-auto">
-            {CHART_MONTHS.map((m, i) => (
-              <div key={`${m.month}-${i}`} className="flex flex-1 flex-col items-center gap-2 min-w-[48px]">
+            {trend.map((entry) => (
+              <div
+                key={entry.month}
+                className="flex flex-1 flex-col items-center gap-2 min-w-[48px]"
+              >
                 <div className="flex items-end gap-2">
-                  {/* Green bar */}
                   <div className="flex flex-col items-center justify-end">
                     <span className="mb-1 text-[10px] font-bold text-emerald-600">
-                      {m.greenLabel}
+                      {formatNaira(entry.payroll, { compact: true })}
                     </span>
-                    <div className={cn("w-6 rounded-t-md bg-emerald-500", m.greenHeight)} />
+                    <div
+                      className="w-6 rounded-t-md bg-emerald-500"
+                      style={{ height: `${entry.payrollHeight}px` }}
+                    />
                   </div>
-                  {/* Red bar */}
                   <div className="flex flex-col items-center justify-end">
                     <span className="mb-1 text-[10px] font-bold text-red-500">
-                      {m.redLabel}
+                      {formatNaira(entry.deductions, { compact: true })}
                     </span>
-                    <div className={cn("w-6 rounded-t-md bg-red-500", m.redHeight)} />
+                    <div
+                      className="w-6 rounded-t-md bg-red-500"
+                      style={{ height: `${entry.deductionHeight}px` }}
+                    />
                   </div>
                 </div>
                 <span className="text-[11px] font-semibold text-[#6B7280]">
-                  {m.month}
+                  {entry.month.toUpperCase()}
                 </span>
               </div>
             ))}
+
+            {!loading && trend.length === 0 ? (
+              <p className="w-full py-10 text-center text-[13px] text-[#9CA3AF]">
+                No payroll history for this branch yet.
+              </p>
+            ) : null}
+          </div>
+
+          <div className="mt-4 flex items-center gap-4 text-[11px] text-[#6B7280]">
+            <span className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-sm bg-emerald-500" />
+              Payroll
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-sm bg-red-500" />
+              Deductions
+            </span>
+            {error ? <span className="text-rose-600">{error}</span> : null}
           </div>
         </div>
 
@@ -260,34 +223,48 @@ export default function Page() {
                       Total Principal
                     </th>
                     <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">
-                      Repayment Status
+                      Share of Book
                     </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#F3F4F6]">
-                  {LOAN_CATEGORIES.map((c) => (
-                    <tr key={c.category}>
-                      <td className="px-4 py-4 text-[13px] font-bold text-[#111827]">
-                        {c.category}
-                      </td>
-                      <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                        {c.active}
-                      </td>
-                      <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                        {c.totalPrincipal}
-                      </td>
-                      <td className="px-4 py-4 text-[13px]">
-                        <span
-                          className={cn(
-                            "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold",
-                            STATUS_STYLES[c.status]
-                          )}
-                        >
-                          {c.status}
-                        </span>
+                  {dashboard.loanPortfolioHealth.map((c) => {
+                    const share = portfolioTotal
+                      ? Math.round((c.principal / portfolioTotal) * 100)
+                      : 0
+                    return (
+                      <tr key={c.category}>
+                        <td className="px-4 py-4 text-[13px] font-bold text-[#111827]">
+                          {c.category}
+                        </td>
+                        <td className="px-4 py-4 text-[13px] text-[#4B5563]">{c.count}</td>
+                        <td className="px-4 py-4 text-[13px] text-[#4B5563]">
+                          {formatNaira(c.principal)}
+                        </td>
+                        <td className="px-4 py-4 text-[13px]">
+                          <div className="flex items-center gap-2">
+                            <div className="h-2 w-20 rounded-full bg-[#F3F4F6]">
+                              <div
+                                className="h-2 rounded-full bg-[#3B5BDB]"
+                                style={{ width: `${share}%` }}
+                              />
+                            </div>
+                            <span className="text-[12px] font-semibold text-[#4B5563]">
+                              {share}%
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+
+                  {!loading && dashboard.loanPortfolioHealth.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-8 text-center text-[13px] text-[#9CA3AF]">
+                        No loans on the book for this branch.
                       </td>
                     </tr>
-                  ))}
+                  ) : null}
                 </tbody>
               </table>
             </div>
@@ -299,44 +276,50 @@ export default function Page() {
               Recent Financial Actions
             </h2>
             <ol className="mt-5 space-y-6">
-              {TIMELINE.map((item, i) => {
-                const Icon = item.icon
-                const isLast = i === TIMELINE.length - 1
+              {recentLoans.map((loan, i) => {
+                const isLast = i === recentLoans.length - 1
                 return (
-                  <li key={item.title} className="relative flex gap-3">
-                    {/* Connector line */}
+                  <li key={loan.id} className="relative flex gap-3">
                     {!isLast && (
                       <span className="absolute left-[15px] top-8 bottom-[-24px] w-px bg-[#F3F4F6]" />
                     )}
-                    <span
-                      className={cn(
-                        "relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-                        item.iconClass
-                      )}
-                    >
-                      <Icon className="h-4 w-4" />
+                    <span className="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EEF2FF] text-[#3B5BDB]">
+                      <Banknote className="h-4 w-4" />
                     </span>
                     <div className="min-w-0 flex-1">
-                      <div className="text-[13px] font-bold text-[#111827]">
-                        {item.title}
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          router.push(`/branchaccount-pastor/hr/loan-detail?loanId=${loan.id}`)
+                        }
+                        className="text-left text-[13px] font-bold text-[#111827] hover:text-[#3B5BDB]"
+                      >
+                        Loan: {loan.employeeName || "Staff member"}
+                      </button>
                       <div className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                        {item.time}
+                        {formatDate(loan.createdAt)}
                       </div>
-                      {item.description && (
+                      {loan.purpose ? (
                         <p className="mt-1.5 text-[12px] leading-relaxed text-[#6B7280]">
-                          {item.description}
+                          {loan.purpose}
                         </p>
-                      )}
-                      {item.pill && (
-                        <span className="mt-2 inline-flex items-center rounded-full bg-[#EEF2FF] px-2.5 py-1 text-[10px] font-bold text-[#3B5BDB]">
-                          {item.pill}
-                        </span>
-                      )}
+                      ) : null}
+                      <span
+                        className={cn(
+                          "mt-2 inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold",
+                          statusStyle(LOAN_STATUS_STYLES, loan.status)
+                        )}
+                      >
+                        {formatNaira(loan.amount)} · {statusLabel(LOAN_STATUS_LABELS, loan.status)}
+                      </span>
                     </div>
                   </li>
                 )
               })}
+
+              {recentLoans.length === 0 ? (
+                <li className="text-[13px] text-[#9CA3AF]">No recent loan activity.</li>
+              ) : null}
             </ol>
           </div>
         </div>

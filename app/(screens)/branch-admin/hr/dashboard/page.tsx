@@ -1,14 +1,20 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import BranchAdminSidebar from "@/components/navigation/BranchAdminSidebar"
+import { useAuth } from "@/components/auth/AuthProvider"
+import { useToast } from "@/components/ui/toast"
+import { useAdminHrDashboard } from "@/components/hooks/useHrDashboard"
+import { useHrAttendance } from "@/components/hooks/useHrAttendance"
+import { ATTENDANCE_STATUS_LABELS, formatTime, initials, statusLabel } from "@/lib/hr/display"
+import { exportHrRows } from "@/lib/hr/export"
 import { cn } from "@/lib/utils"
 import {
   Search,
   Bell,
   Menu,
   Download,
-  Plus,
   Users,
   Calendar,
   Clock,
@@ -19,61 +25,96 @@ import {
   ArrowUpRight,
 } from "lucide-react"
 
-type StatCard = {
-  value: string
-  label: string
-  icon: typeof Users
-  tint: string
-  iconColor: string
+/** Where each pending-action type sends the admin, and what the button says. */
+const PENDING_ACTION_ROUTES: Record<string, { href: string; action: string }> = {
+  leave_review: { href: "/branch-admin/hr/leave", action: "Process" },
+  loan_verification: { href: "/branch-admin/hr/employee-loans", action: "Review" },
+  document_verification: { href: "/branch-admin/hr/employee-directory", action: "Review" },
+  exit_clearance: { href: "/branch-admin/hr/exit-clearance", action: "Process" },
+  training_budget: { href: "/branch-admin/hr/training-management", action: "Review" },
 }
 
-const STAT_CARDS: StatCard[] = [
-  { value: "124", label: "TOTAL EMPLOYEES", icon: Users, tint: "bg-blue-50", iconColor: "text-blue-600" },
-  { value: "8", label: "ON LEAVE TODAY", icon: Calendar, tint: "bg-amber-50", iconColor: "text-amber-600" },
-  { value: "102 / 124", label: "CLOCKED IN TODAY", icon: Clock, tint: "bg-emerald-50", iconColor: "text-emerald-600" },
-  { value: "3", label: "ACTIVE TRAINING EVENTS", icon: GraduationCap, tint: "bg-violet-50", iconColor: "text-violet-600" },
-]
-
-type PendingAction = {
-  name: string
-  title: string
-  sub: string
-  action: string
-  variant: "dark" | "outline"
-}
-
-const PENDING_ACTIONS: PendingAction[] = [
-  { name: "John Doe", title: "Leave Request: John Doe", sub: "Submitted 3 days ago", action: "Process", variant: "dark" },
-  { name: "Sarah Smith", title: "Document Verification: Sarah Smith", sub: "Awaiting HR audit", action: "Review", variant: "dark" },
-  { name: "Michael Chen", title: "New Employee Setup: Michael Chen", sub: "Onboarding scheduled for Monday", action: "Process", variant: "dark" },
-  { name: "Anna Lee", title: "Payroll Discrepancy: Anna Lee", sub: "Mismatch in overtime hours", action: "Investigate", variant: "outline" },
-]
-
-type Activity = {
-  text: string
-  time: string
-  dot: string
-}
-
-const RECENT_ACTIVITY: Activity[] = [
-  { text: "Mary Sue clocked in", time: "08:02 AM Today", dot: "bg-emerald-500" },
-  { text: "New leave request submitted", time: "07:45 AM Today", dot: "bg-blue-500" },
-  { text: "Admin updated records for Dept A", time: "Yesterday, 04:30 PM", dot: "bg-violet-500" },
-  { text: "Training completion: Compliance 101", time: "Yesterday, 02:15 PM", dot: "bg-amber-500" },
-  { text: "Payroll cycle finalized", time: "Yesterday, 11:00 AM", dot: "bg-[#6B7280]" },
-]
-
-function initials(name: string) {
-  return name
-    .split(" ")
-    .map((p) => p[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase()
+const ACTIVITY_DOTS: Record<string, string> = {
+  present: "bg-emerald-500",
+  late: "bg-amber-500",
+  absent: "bg-rose-500",
+  half_day: "bg-blue-500",
+  missing: "bg-[#6B7280]",
 }
 
 export default function Page() {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const router = useRouter()
+  const { user } = useAuth()
+  const { pushToast } = useToast()
+
+  const { dashboard, loading, error, refresh } = useAdminHrDashboard()
+  // The API has no activity feed, so the latest attendance punches stand in as
+  // "what just happened on this branch".
+  const { logs: recentLogs } = useHrAttendance({ limit: 5 })
+
+  const clockInRate = dashboard.clockInRate
+  const firstName = (user?.firstName || user?.name || "Admin").split(" ")[0]
+  const today = useMemo(
+    () =>
+      new Date().toLocaleDateString("en-GB", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      }),
+    []
+  )
+
+  const statCards = useMemo(
+    () => [
+      {
+        value: String(dashboard.totalEmployees),
+        label: "TOTAL EMPLOYEES",
+        icon: Users,
+        tint: "bg-blue-50",
+        iconColor: "text-blue-600",
+      },
+      {
+        value: String(dashboard.onLeaveToday),
+        label: "ON LEAVE TODAY",
+        icon: Calendar,
+        tint: "bg-amber-50",
+        iconColor: "text-amber-600",
+      },
+      {
+        value: `${dashboard.clockedInToday} / ${dashboard.totalEmployees}`,
+        label: "CLOCKED IN TODAY",
+        icon: Clock,
+        tint: "bg-emerald-50",
+        iconColor: "text-emerald-600",
+      },
+      {
+        value: String(dashboard.activeTrainings),
+        label: "ACTIVE TRAINING EVENTS",
+        icon: GraduationCap,
+        tint: "bg-violet-50",
+        iconColor: "text-violet-600",
+      },
+    ],
+    [dashboard]
+  )
+
+  const pendingTotal = dashboard.pendingActions.reduce((sum, item) => sum + item.count, 0)
+
+  const handleExport = () => {
+    const exported = exportHrRows("branch-hr-summary", [
+      {
+        "Total Employees": dashboard.totalEmployees,
+        "On Leave Today": dashboard.onLeaveToday,
+        "Clocked In Today": dashboard.clockedInToday,
+        "Clock-in Rate (%)": dashboard.clockInRate,
+        "Active Trainings": dashboard.activeTrainings,
+        "Pending Actions": pendingTotal,
+      },
+    ])
+    if (!exported) pushToast("Nothing to export yet", "info")
+  }
 
   return (
     <div className="flex flex-col lg:flex-row min-h-screen bg-[#F8FAFC] w-full">
@@ -118,11 +159,14 @@ export default function Page() {
           {/* Header row */}
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h1 className="text-[26px] font-bold text-[#111827]">Good morning, Admin</h1>
-              <p className="text-[14px] text-[#6B7280]">Wednesday, July 22, 2026</p>
+              <h1 className="text-[26px] font-bold text-[#111827]">Welcome back, {firstName}</h1>
+              <p className="text-[14px] text-[#6B7280]">{today}</p>
             </div>
             <div className="flex items-center gap-3">
-              <button className="flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[12px] font-medium text-[#4B5563]">
+              <button
+                onClick={handleExport}
+                className="flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[12px] font-medium text-[#4B5563]"
+              >
                 <Download className="h-4 w-4" />
                 Export Summary
               </button>
@@ -131,7 +175,7 @@ export default function Page() {
 
           {/* Stat cards */}
           <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            {STAT_CARDS.map((card) => {
+            {statCards.map((card) => {
               const Icon = card.icon
               return (
                 <div key={card.label} className="rounded-xl border border-[#EEF1F6] bg-white p-5">
@@ -146,21 +190,32 @@ export default function Page() {
                   </div>
 
                   {card.label === "TOTAL EMPLOYEES" && (
-                    <div className="mt-3 flex items-center gap-1 text-[12px] font-semibold text-emerald-600">
+                    <button
+                      onClick={() => router.push("/branch-admin/hr/employee-directory")}
+                      className="mt-3 flex items-center gap-1 text-[12px] font-semibold text-[#2563EB]"
+                    >
+                      View directory
                       <ArrowUpRight className="h-3.5 w-3.5" />
-                      +2.4%
-                    </div>
+                    </button>
                   )}
 
                   {card.label === "ON LEAVE TODAY" && (
-                    <button className="mt-3 text-[12px] font-semibold text-[#2563EB]">View List</button>
+                    <button
+                      onClick={() => router.push("/branch-admin/hr/leave")}
+                      className="mt-3 text-[12px] font-semibold text-[#2563EB]"
+                    >
+                      View List
+                    </button>
                   )}
 
                   {card.label === "CLOCKED IN TODAY" && (
                     <div className="mt-3">
-                      <div className="mb-1.5 text-[12px] font-semibold text-[#6B7280]">82%</div>
+                      <div className="mb-1.5 text-[12px] font-semibold text-[#6B7280]">{clockInRate}%</div>
                       <div className="h-2 rounded-full bg-[#EEF1F6]">
-                        <div className="h-2 rounded-full bg-emerald-500" style={{ width: "82%" }} />
+                        <div
+                          className="h-2 rounded-full bg-emerald-500"
+                          style={{ width: `${Math.min(Math.max(clockInRate, 0), 100)}%` }}
+                        />
                       </div>
                     </div>
                   )}
@@ -175,37 +230,66 @@ export default function Page() {
             <div className="lg:col-span-2 overflow-hidden rounded-xl border border-[#EEF1F6] bg-white">
               <div className="flex items-center justify-between p-5">
                 <h2 className="text-[16px] font-bold text-[#111827]">Pending Actions</h2>
-                <span className="rounded-full bg-rose-100 px-2.5 py-1 text-[10px] font-bold text-rose-700">
-                  4 Urgent
-                </span>
+                {pendingTotal > 0 ? (
+                  <span className="rounded-full bg-rose-100 px-2.5 py-1 text-[10px] font-bold text-rose-700">
+                    {pendingTotal} Outstanding
+                  </span>
+                ) : null}
               </div>
 
               <div className="divide-y divide-[#EEF1F6] border-t border-[#EEF1F6]">
-                {PENDING_ACTIONS.map((item) => (
-                  <div key={item.title} className="flex items-center gap-4 px-5 py-4">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#EEF2FF] text-[13px] font-bold text-[#2563EB]">
-                      {initials(item.name)}
+                {dashboard.pendingActions.map((item) => {
+                  const route = PENDING_ACTION_ROUTES[item.type]
+                  return (
+                    <div key={item.type} className="flex items-center gap-4 px-5 py-4">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#EEF2FF] text-[13px] font-bold text-[#2563EB]">
+                        {item.count}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[14px] font-bold text-[#111827]">{item.label}</div>
+                        <div className="truncate text-[13px] text-[#6B7280]">
+                          {item.count} awaiting your attention
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => route && router.push(route.href)}
+                        disabled={!route}
+                        className="shrink-0 rounded-md bg-[#111827] px-4 py-2 text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {route?.action ?? "Open"}
+                      </button>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-[14px] font-bold text-[#111827]">{item.title}</div>
-                      <div className="truncate text-[13px] text-[#6B7280]">{item.sub}</div>
-                    </div>
+                  )
+                })}
+
+                {!loading && !error && dashboard.pendingActions.length === 0 ? (
+                  <div className="px-5 py-10 text-center text-[13px] text-[#9CA3AF]">
+                    Nothing is waiting on you right now.
+                  </div>
+                ) : null}
+
+                {loading ? (
+                  <div className="px-5 py-10 text-center text-[13px] text-[#6B7280]">Loading…</div>
+                ) : null}
+
+                {error ? (
+                  <div className="px-5 py-10 text-center text-[13px] text-rose-600">
+                    {error}
                     <button
-                      className={cn(
-                        "shrink-0 rounded-md px-4 py-2 text-[12px]",
-                        item.variant === "dark"
-                          ? "bg-[#111827] font-semibold text-white"
-                          : "border border-[#E5E7EB] bg-white font-medium text-[#4B5563]"
-                      )}
+                      onClick={refresh}
+                      className="ml-2 rounded-md border border-rose-200 px-2 py-1 text-[12px] font-medium"
                     >
-                      {item.action}
+                      Try again
                     </button>
                   </div>
-                ))}
+                ) : null}
               </div>
 
-              <button className="w-full bg-[#F8FAFC] py-3 text-center text-[13px] font-semibold text-[#2563EB]">
-                View All Task Queue (12)
+              <button
+                onClick={() => router.push("/branch-admin/hr/leave")}
+                className="w-full bg-[#F8FAFC] py-3 text-center text-[13px] font-semibold text-[#2563EB]"
+              >
+                View All Task Queue ({pendingTotal})
               </button>
             </div>
 
@@ -215,7 +299,10 @@ export default function Page() {
               <div className="rounded-xl border border-[#EEF1F6] bg-white p-5">
                 <h2 className="text-[16px] font-bold text-[#111827]">Quick Actions</h2>
                 <div className="mt-4 space-y-3">
-                  <button className="flex w-full items-center justify-between rounded-md bg-[#111827] px-4 py-3 text-[13px] font-semibold text-white">
+                  <button
+                    onClick={() => router.push("/branch-admin/hr/attendance")}
+                    className="flex w-full items-center justify-between rounded-md bg-[#111827] px-4 py-3 text-[13px] font-semibold text-white"
+                  >
                     <span className="flex items-center gap-2.5">
                       <Clock className="h-4 w-4" />
                       Clock In/Out
@@ -223,7 +310,10 @@ export default function Page() {
                     <ArrowRight className="h-4 w-4" />
                   </button>
 
-                  <button className="flex w-full items-center justify-between rounded-md border border-[#E5E7EB] bg-white px-4 py-3 text-[13px] font-medium text-[#4B5563]">
+                  <button
+                    onClick={() => router.push("/branch-admin/hr/employee-directory")}
+                    className="flex w-full items-center justify-between rounded-md border border-[#E5E7EB] bg-white px-4 py-3 text-[13px] font-medium text-[#4B5563]"
+                  >
                     <span className="flex items-center gap-2.5">
                       <UserPlus className="h-4 w-4 text-[#6B7280]" />
                       Add Employee
@@ -231,7 +321,10 @@ export default function Page() {
                     <ChevronRight className="h-4 w-4 text-[#9CA3AF]" />
                   </button>
 
-                  <button className="flex w-full items-center justify-between rounded-md border border-[#E5E7EB] bg-white px-4 py-3 text-[13px] font-medium text-[#4B5563]">
+                  <button
+                    onClick={() => router.push("/branch-admin/hr/training-management")}
+                    className="flex w-full items-center justify-between rounded-md border border-[#E5E7EB] bg-white px-4 py-3 text-[13px] font-medium text-[#4B5563]"
+                  >
                     <span className="flex items-center gap-2.5">
                       <GraduationCap className="h-4 w-4 text-[#6B7280]" />
                       Create Training
@@ -245,18 +338,36 @@ export default function Page() {
               <div className="rounded-xl border border-[#EEF1F6] bg-white p-5">
                 <h2 className="text-[16px] font-bold text-[#111827]">Recent Activity</h2>
                 <div className="mt-4 space-y-4">
-                  {RECENT_ACTIVITY.map((activity, idx) => (
-                    <div key={idx} className="flex gap-3">
+                  {recentLogs.map((log, idx) => (
+                    <div key={log.id} className="flex gap-3">
                       <div className="flex flex-col items-center">
-                        <span className={cn("mt-1 h-2.5 w-2.5 shrink-0 rounded-full", activity.dot)} />
-                        {idx < RECENT_ACTIVITY.length - 1 && <span className="mt-1 w-px flex-1 bg-[#EEF1F6]" />}
+                        <span
+                          className={cn(
+                            "mt-1 h-2.5 w-2.5 shrink-0 rounded-full",
+                            ACTIVITY_DOTS[log.status] ?? "bg-[#6B7280]"
+                          )}
+                        />
+                        {idx < recentLogs.length - 1 && (
+                          <span className="mt-1 w-px flex-1 bg-[#EEF1F6]" />
+                        )}
                       </div>
                       <div className="pb-1">
-                        <div className="text-[13px] font-semibold text-[#111827]">{activity.text}</div>
-                        <div className="text-[12px] text-[#9CA3AF]">{activity.time}</div>
+                        <div className="text-[13px] font-semibold text-[#111827]">
+                          {log.employeeName || initials(log.employeeName) || "Staff"}{" "}
+                          <span className="font-normal text-[#6B7280]">
+                            marked {statusLabel(ATTENDANCE_STATUS_LABELS, log.status).toLowerCase()}
+                          </span>
+                        </div>
+                        <div className="text-[12px] text-[#9CA3AF]">
+                          {log.clockIn ? formatTime(log.clockIn) : "No clock-in"}
+                        </div>
                       </div>
                     </div>
                   ))}
+
+                  {recentLogs.length === 0 ? (
+                    <p className="text-[13px] text-[#9CA3AF]">No attendance recorded yet today.</p>
+                  ) : null}
                 </div>
               </div>
             </div>

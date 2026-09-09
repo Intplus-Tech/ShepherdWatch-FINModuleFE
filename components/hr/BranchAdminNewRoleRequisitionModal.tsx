@@ -1,8 +1,11 @@
 "use client"
 
 import { useState } from "react"
-import { X } from "lucide-react"
+import { Loader2, X } from "lucide-react"
 import { ModalShell } from "@/components/ui/modal-shell"
+import { useJobRequisitionMutations } from "@/components/hooks/useHrJobRequisitions"
+import { useHrScope } from "@/lib/hr/useHrScope"
+import { useToast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils"
 
 const labelCls = "text-[11px] font-bold uppercase tracking-wider text-[#6B7280]"
@@ -11,7 +14,6 @@ const inputCls =
 const fieldCls = `${inputCls} h-[42px]`
 
 const DEPARTMENTS = [
-  "Select Department",
   "Youth Ministry",
   "Operations & Finance",
   "Facility Management",
@@ -20,20 +22,97 @@ const DEPARTMENTS = [
   "Administration",
 ]
 
-const PRIORITY_LEVELS = ["Normal", "Urgent", "Critical"] as const
-type Priority = (typeof PRIORITY_LEVELS)[number]
+/** Radio labels map onto the API's priority enum. */
+const PRIORITY_LEVELS = [
+  { value: "medium", label: "Normal" },
+  { value: "high", label: "Urgent" },
+  { value: "critical", label: "Critical" },
+]
 
+/**
+ * Files a job requisition for director review. Used by both the branch admin
+ * and the branch pastor — the endpoint and the required fields are the same.
+ */
 export default function BranchAdminNewRoleRequisitionModal({
   open,
   onClose,
+  onCreated,
 }: {
   open: boolean
   onClose: () => void
+  onCreated?: () => void
 }) {
-  const [priority, setPriority] = useState<Priority>("Normal")
+  const scope = useHrScope()
+  const { pushToast } = useToast()
+  const { createRequisition } = useJobRequisitionMutations()
+
+  const [roleTitle, setRoleTitle] = useState("")
+  const [department, setDepartment] = useState("")
+  const [salary, setSalary] = useState("")
+  const [priority, setPriority] = useState("medium")
+  const [expectedStartDate, setExpectedStartDate] = useState("")
+  const [justification, setJustification] = useState("")
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const reset = () => {
+    setRoleTitle("")
+    setDepartment("")
+    setSalary("")
+    setPriority("medium")
+    setExpectedStartDate("")
+    setJustification("")
+    setError(null)
+  }
+
+  const handleClose = () => {
+    if (saving) return
+    reset()
+    onClose()
+  }
+
+  const handleSubmit = async () => {
+    setError(null)
+
+    const branchId = scope.branchId || scope.ownBranchId
+    if (!branchId) {
+      setError("No branch is attached to your account, so this cannot be filed.")
+      return
+    }
+    if (!roleTitle.trim()) return setError("Give the role a title.")
+    if (!department.trim()) return setError("Choose the department.")
+    if (!expectedStartDate) return setError("Set the expected start date.")
+    if (!justification.trim()) return setError("Explain why this role is needed.")
+
+    const salaryValue = Number(salary)
+    if (!Number.isFinite(salaryValue) || salaryValue <= 0) {
+      return setError("Enter the suggested monthly salary.")
+    }
+
+    setSaving(true)
+    try {
+      await createRequisition({
+        roleTitle: roleTitle.trim(),
+        department: department.trim(),
+        branchId,
+        salarySuggested: salaryValue,
+        priority,
+        expectedStartDate,
+        justification: justification.trim(),
+      })
+      pushToast("Requisition submitted for director review", "success")
+      reset()
+      onCreated?.()
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to submit this requisition.")
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
-    <ModalShell open={open} onClose={onClose} className="max-w-xl">
+    <ModalShell open={open} onClose={handleClose} className="max-w-xl">
       {/* Header */}
       <div className="flex items-start justify-between gap-4 border-b border-[#EEF1F6] px-6 py-5">
         <div>
@@ -44,7 +123,7 @@ export default function BranchAdminNewRoleRequisitionModal({
         </div>
         <button
           type="button"
-          onClick={onClose}
+          onClick={handleClose}
           aria-label="Close"
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[#9CA3AF] hover:bg-gray-100 hover:text-[#111827]"
         >
@@ -56,9 +135,14 @@ export default function BranchAdminNewRoleRequisitionModal({
       <div className="flex max-h-[68vh] flex-col gap-5 overflow-y-auto px-6 py-5">
         {/* Role title */}
         <div>
-          <label className={labelCls}>Role Title</label>
+          <label className={labelCls} htmlFor="requisition-role">
+            Role Title
+          </label>
           <input
+            id="requisition-role"
             type="text"
+            value={roleTitle}
+            onChange={(event) => setRoleTitle(event.target.value)}
             placeholder="e.g. Associate Pastor for Community Outreach"
             className={fieldCls}
           />
@@ -67,8 +151,16 @@ export default function BranchAdminNewRoleRequisitionModal({
         {/* Department + Salary */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <label className={labelCls}>Department</label>
-            <select className={fieldCls} defaultValue="Select Department">
+            <label className={labelCls} htmlFor="requisition-department">
+              Department
+            </label>
+            <select
+              id="requisition-department"
+              className={fieldCls}
+              value={department}
+              onChange={(event) => setDepartment(event.target.value)}
+            >
+              <option value="">Select Department</option>
               {DEPARTMENTS.map((d) => (
                 <option key={d} value={d}>
                   {d}
@@ -77,69 +169,100 @@ export default function BranchAdminNewRoleRequisitionModal({
             </select>
           </div>
           <div>
-            <label className={labelCls}>Salary Suggested</label>
-            <input type="text" defaultValue="₦500,000" className={fieldCls} />
+            <label className={labelCls} htmlFor="requisition-salary">
+              Salary Suggested
+            </label>
+            <input
+              id="requisition-salary"
+              type="text"
+              inputMode="decimal"
+              value={salary}
+              onChange={(event) => setSalary(event.target.value.replace(/[^\d.]/g, ""))}
+              placeholder="500000"
+              className={fieldCls}
+            />
           </div>
         </div>
 
         {/* Priority + Expected start */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <label className={labelCls}>Priority Level</label>
+            <span className={labelCls}>Priority Level</span>
             <div className="mt-2 flex flex-col gap-2">
-              {PRIORITY_LEVELS.map((p) => (
-                <label key={p} className="flex items-center gap-2 text-[13px]">
+              {PRIORITY_LEVELS.map((option) => (
+                <label key={option.value} className="flex items-center gap-2 text-[13px]">
                   <input
                     type="radio"
                     name="priority-level"
-                    value={p}
-                    checked={priority === p}
-                    onChange={() => setPriority(p)}
+                    value={option.value}
+                    checked={priority === option.value}
+                    onChange={() => setPriority(option.value)}
                     className="h-4 w-4 accent-[#2563EB]"
                   />
                   <span
                     className={cn(
                       "font-medium",
-                      p === "Critical" ? "text-rose-600" : "text-[#111827]"
+                      option.value === "critical" ? "text-rose-600" : "text-[#111827]"
                     )}
                   >
-                    {p}
+                    {option.label}
                   </span>
                 </label>
               ))}
             </div>
           </div>
           <div>
-            <label className={labelCls}>Expected Start Date</label>
-            <input type="date" className={fieldCls} />
+            <label className={labelCls} htmlFor="requisition-start">
+              Expected Start Date
+            </label>
+            <input
+              id="requisition-start"
+              type="date"
+              value={expectedStartDate}
+              onChange={(event) => setExpectedStartDate(event.target.value)}
+              className={fieldCls}
+            />
           </div>
         </div>
 
         {/* Justification */}
         <div>
-          <label className={labelCls}>Justification / Reason for Hire</label>
+          <label className={labelCls} htmlFor="requisition-justification">
+            Justification / Reason for Hire
+          </label>
           <textarea
+            id="requisition-justification"
             rows={4}
+            value={justification}
+            onChange={(event) => setJustification(event.target.value)}
             placeholder="Briefly describe the necessity for this role and its impact on the branch mission..."
             className={inputCls + " py-2.5"}
           />
         </div>
+
+        {error ? (
+          <p className="rounded-md bg-rose-50 px-3 py-2 text-[12px] text-rose-600">{error}</p>
+        ) : null}
       </div>
 
       {/* Footer */}
       <div className="flex items-center justify-end gap-3 border-t border-[#EEF1F6] px-6 py-4">
         <button
           type="button"
-          onClick={onClose}
-          className="inline-flex items-center justify-center rounded-md border border-[#E5E7EB] bg-white px-4 py-2.5 text-[13px] font-semibold text-[#4B5563] hover:bg-[#F8FAFC]"
+          onClick={handleClose}
+          disabled={saving}
+          className="inline-flex items-center justify-center rounded-md border border-[#E5E7EB] bg-white px-4 py-2.5 text-[13px] font-semibold text-[#4B5563] hover:bg-[#F8FAFC] disabled:opacity-60"
         >
           Cancel
         </button>
         <button
           type="button"
-          className="inline-flex items-center justify-center rounded-md bg-[#111827] px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-black"
+          onClick={handleSubmit}
+          disabled={saving}
+          className="inline-flex items-center justify-center gap-2 rounded-md bg-[#111827] px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-black disabled:opacity-60"
         >
-          Submit to Director
+          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+          {saving ? "Submitting…" : "Submit to Director"}
         </button>
       </div>
     </ModalShell>

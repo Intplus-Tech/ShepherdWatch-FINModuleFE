@@ -1,6 +1,19 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { HrTableStateRow } from "@/components/hr/HrTableState"
+import { useToast } from "@/components/ui/toast"
+import {
+  useHrExitClearances,
+  useHrExitClearanceMetrics,
+  useExitClearanceMutations,
+} from "@/components/hooks/useHrExitClearances"
+import {
+  CLEARANCE_STATUS_LABELS,
+  formatDate,
+  formatNaira,
+  statusLabel,
+} from "@/lib/hr/display"
 import {
   Search,
   UserPlus,
@@ -14,83 +27,30 @@ import {
 import SidebarNav from "@/components/navigation/SidebarNav"
 import { cn } from "@/lib/utils"
 
-type ClearanceStatus = "Stuck" | "Pending"
-
-type Clearance = {
-  id: string
-  name: string
-  branch: string
-  date: string
-  step: string
-  status: ClearanceStatus
-}
-
-const CLEARANCES: Clearance[] = [
-  {
-    id: "sarah-musa",
-    name: "Sarah Musa",
-    branch: "Ibadan HQ",
-    date: "31 Oct, 2023",
-    step: "Finance Step",
-    status: "Stuck",
-  },
-  {
-    id: "john-obi",
-    name: "John Obi",
-    branch: "Lagos Central",
-    date: "28 Oct, 2023",
-    step: "Asset Step",
-    status: "Stuck",
-  },
-  {
-    id: "maryam-bello",
-    name: "Maryam Bello",
-    branch: "Abuja North",
-    date: "30 Oct, 2023",
-    step: "Finance Step",
-    status: "Pending",
-  },
-]
-
-const BRANCH_OPTIONS = [
-  "Ibadan HQ",
-  "Lagos Central",
-  "Abuja North",
-] as const
-
 const STATUS_OPTIONS = [
-  "Pending Director",
-  "Stuck",
-  "Pending",
-] as const
-
-const CHECKLIST: {
-  label: string
-  status: string
-  variant: "complete" | "stuck" | "locked"
-}[] = [
-  { label: "IT Step", status: "Complete", variant: "complete" },
-  { label: "Admin Step", status: "Complete", variant: "complete" },
-  { label: "Finance Step", status: "Stuck", variant: "stuck" },
-  { label: "HR Final Step", status: "LOCKED", variant: "locked" },
+  { value: "pending_pastor", label: "Pending Pastor" },
+  { value: "pending_finance", label: "Pending Finance" },
+  { value: "pending_admin", label: "Pending Admin" },
+  { value: "completed", label: "Completed" },
+  { value: "", label: "All Statuses" },
 ]
 
-function StatusText({ status }: { status: ClearanceStatus }) {
-  const isStuck = status === "Stuck"
+function StatusText({ status }: { status: string }) {
+  const isBlocked = status === "pending_finance" || status === "cancelled"
   return (
     <span
       className={cn(
         "inline-flex items-center gap-1.5 text-[13px] font-semibold",
-        isStuck ? "text-rose-600" : "text-amber-600"
+        isBlocked ? "text-rose-600" : status === "completed" ? "text-emerald-600" : "text-amber-600"
       )}
     >
       <span
         className={cn(
           "h-1.5 w-1.5 rounded-full",
-          isStuck ? "bg-rose-500" : "bg-amber-500"
+          isBlocked ? "bg-rose-500" : status === "completed" ? "bg-emerald-500" : "bg-amber-500"
         )}
       />
-      {status}
+      {statusLabel(CLEARANCE_STATUS_LABELS, status)}
     </span>
   )
 }
@@ -137,25 +97,107 @@ function ChecklistRow({
 }
 
 export default function Page() {
-  const [branch, setBranch] = useState<string>("Ibadan HQ")
-  const [status, setStatus] = useState<string>("Pending Director")
-  const [selectedId, setSelectedId] = useState<string>("sarah-musa")
+  const [branch, setBranch] = useState<string>("")
+  const [status, setStatus] = useState<string>("pending_pastor")
+  const [selectedId, setSelectedId] = useState<string>("")
+  const [adjusting, setAdjusting] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
 
-  const filtered = useMemo(() => {
-    return CLEARANCES.filter((c) => {
-      const matchesBranch = c.branch === branch
-      const matchesStatus =
-        status === "Pending Director" || c.status === status
-      return matchesBranch && matchesStatus
-    })
-  }, [branch, status])
+  const { pushToast } = useToast()
+  const { clearances, loading, error, refresh } = useHrExitClearances({
+    status,
+    branchId: branch || undefined,
+    limit: 50,
+  })
+  const { metrics } = useHrExitClearanceMetrics()
+  const { directorAdjustment } = useExitClearanceMutations()
 
-  const selected =
-    CLEARANCES.find((c) => c.id === selectedId) ?? CLEARANCES[0]
+  const filtered = clearances
+
+  const selected = useMemo(
+    () => filtered.find((c) => c.id === selectedId) ?? filtered[0] ?? null,
+    [filtered, selectedId]
+  )
+
+  useEffect(() => {
+    if (!selectedId && filtered.length) setSelectedId(filtered[0].id)
+  }, [filtered, selectedId])
+
+  const branchOptions = useMemo(() => {
+    const seen = new Map<string, string>()
+    for (const row of clearances) {
+      if (row.branchId && !seen.has(row.branchId)) seen.set(row.branchId, row.branchName)
+    }
+    return Array.from(seen.entries())
+  }, [clearances])
+
+  // The settlement finance proposed; the director can wave the loan recovery.
+  const finance = selected?.financeSignOff
+  const loanBalance = finance?.outstandingLoanBalance ?? 0
+  const netFinalPay = finance?.netFinalPay ?? 0
+  const payBeforeDeduction = netFinalPay + (finance?.loanDeductionApproved ? loanBalance : 0)
+
+  const checklist = useMemo(() => {
+    if (!selected) return []
+    return [
+      {
+        label: "Admin Step",
+        status: selected.adminSignOff.isCompleted ? "Complete" : "Pending",
+        variant: (selected.adminSignOff.isCompleted ? "complete" : "stuck") as
+          | "complete"
+          | "stuck"
+          | "locked",
+      },
+      {
+        label: "Finance Step",
+        status: selected.financeSignOff.isCompleted ? "Complete" : "Pending",
+        variant: (selected.financeSignOff.isCompleted ? "complete" : "stuck") as
+          | "complete"
+          | "stuck"
+          | "locked",
+      },
+      {
+        label: "Pastor Final Step",
+        status: selected.pastorRelease.isCompleted
+          ? "Complete"
+          : selected.status === "pending_pastor"
+            ? "Pending"
+            : "LOCKED",
+        variant: (selected.pastorRelease.isCompleted
+          ? "complete"
+          : selected.status === "pending_pastor"
+            ? "stuck"
+            : "locked") as "complete" | "stuck" | "locked",
+      },
+    ]
+  }, [selected])
+
+  const handleAdjustment = async () => {
+    setFormError(null)
+    if (!selected) {
+      setFormError("Select a clearance to adjust.")
+      return
+    }
+
+    setAdjusting(true)
+    try {
+      await directorAdjustment(selected.id, {
+        loanDeductionApproved: true,
+        netFinalPay,
+        note: "Severance adjustment approved at director review.",
+      })
+      pushToast("Severance adjustment approved", "success")
+      refresh()
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Unable to approve the adjustment.")
+    } finally {
+      setAdjusting(false)
+    }
+  }
 
   const clearFilters = () => {
-    setBranch("Ibadan HQ")
-    setStatus("Pending Director")
+    setBranch("")
+    setStatus("pending_pastor")
   }
 
   return (
@@ -217,9 +259,10 @@ export default function Page() {
                     onChange={(e) => setBranch(e.target.value)}
                     className="h-[42px] rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[13px]"
                   >
-                    {BRANCH_OPTIONS.map((b) => (
-                      <option key={b} value={b}>
-                        {b}
+                    <option value="">All Branches</option>
+                    {branchOptions.map(([id, name]) => (
+                      <option key={id} value={id}>
+                        {name || "Unnamed branch"}
                       </option>
                     ))}
                   </select>
@@ -234,9 +277,9 @@ export default function Page() {
                     onChange={(e) => setStatus(e.target.value)}
                     className="h-[42px] rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[13px]"
                   >
-                    {STATUS_OPTIONS.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
+                    {STATUS_OPTIONS.map((option) => (
+                      <option key={option.value || "all"} value={option.value}>
+                        {option.label}
                       </option>
                     ))}
                   </select>
@@ -289,48 +332,40 @@ export default function Page() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#EEF1F6]">
-                      {filtered.length === 0 ? (
-                        <tr>
-                          <td
-                            colSpan={5}
-                            className="px-4 py-8 text-center text-[13px] text-[#6B7280]"
-                          >
-                            No clearances match your filters.
+                      {filtered.map((c) => (
+                        <tr
+                          key={c.id}
+                          onClick={() => setSelectedId(c.id)}
+                          className={cn(
+                            "cursor-pointer transition-colors",
+                            c.id === selected?.id ? "bg-[#EEF2FF]" : "hover:bg-[#F8FAFC]"
+                          )}
+                        >
+                          <td className="px-4 py-4 text-[13px] font-semibold text-[#111827]">
+                            {c.employeeName || "Unnamed staff"}
+                          </td>
+                          <td className="px-4 py-4 text-[13px] text-[#4B5563]">
+                            {c.branchName || "—"}
+                          </td>
+                          <td className="px-4 py-4 text-[13px] text-[#4B5563]">
+                            {formatDate(c.lastWorkingDate)}
+                          </td>
+                          <td className="px-4 py-4 text-[13px] text-[#4B5563]">
+                            {statusLabel(CLEARANCE_STATUS_LABELS, c.status)}
+                          </td>
+                          <td className="px-4 py-4 text-[13px]">
+                            <StatusText status={c.status} />
                           </td>
                         </tr>
-                      ) : (
-                        filtered.map((c) => {
-                          const isSelected = c.id === selectedId
-                          return (
-                            <tr
-                              key={c.id}
-                              onClick={() => setSelectedId(c.id)}
-                              className={cn(
-                                "cursor-pointer transition-colors",
-                                isSelected
-                                  ? "bg-[#EEF2FF]"
-                                  : "hover:bg-[#F8FAFC]"
-                              )}
-                            >
-                              <td className="px-4 py-4 text-[13px] font-semibold text-[#111827]">
-                                {c.name}
-                              </td>
-                              <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                                {c.branch}
-                              </td>
-                              <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                                {c.date}
-                              </td>
-                              <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                                {c.step}
-                              </td>
-                              <td className="px-4 py-4 text-[13px]">
-                                <StatusText status={c.status} />
-                              </td>
-                            </tr>
-                          )
-                        })
-                      )}
+                      ))}
+                      <HrTableStateRow
+                        colSpan={5}
+                        loading={loading}
+                        error={error}
+                        isEmpty={filtered.length === 0}
+                        emptyMessage="No clearances match your filters."
+                        onRetry={refresh}
+                      />
                     </tbody>
                   </table>
                 </div>
@@ -346,12 +381,13 @@ export default function Page() {
                       Detailed View
                     </h2>
                     <p className="text-[13px] text-[#6B7280] mt-1">
-                      Selected: {selected.name}
+                      Selected: {selected?.employeeName || "none"}
                     </p>
                   </div>
                   <button
                     type="button"
                     aria-label="Close detailed view"
+                    onClick={() => setSelectedId("")}
                     className="flex h-8 w-8 items-center justify-center rounded-md text-[#6B7280] hover:bg-gray-100"
                   >
                     <X className="h-4 w-4" />
@@ -368,7 +404,11 @@ export default function Page() {
                           Reason for Delay
                         </div>
                         <div className="mt-1 text-[14px] font-bold text-[#111827]">
-                          Outstanding Loan Detected
+                          {loanBalance > 0
+                            ? "Outstanding Loan Detected"
+                            : selected?.status === "pending_finance"
+                              ? "Awaiting Finance Settlement"
+                              : "No Outstanding Liabilities"}
                         </div>
                       </div>
                     </div>
@@ -380,7 +420,7 @@ export default function Page() {
                       Loan Balance
                     </span>
                     <span className="text-[14px] font-bold text-rose-600">
-                      ₦45,000
+                      {formatNaira(loanBalance)}
                     </span>
                   </div>
 
@@ -398,7 +438,7 @@ export default function Page() {
                         Final Pay (Before)
                       </span>
                       <span className="text-[13px] font-semibold text-[#111827]">
-                        ₦550,000
+                        {formatNaira(payBeforeDeduction)}
                       </span>
                     </div>
                     <div className="mt-3 flex items-center justify-between">
@@ -406,7 +446,7 @@ export default function Page() {
                         Loan Deduction
                       </span>
                       <span className="text-[13px] font-semibold text-rose-600">
-                        -₦45,000
+                        -{formatNaira(finance?.loanDeductionApproved ? loanBalance : 0)}
                       </span>
                     </div>
                     <div className="my-3 border-t border-[#E5E7EB]" />
@@ -415,7 +455,7 @@ export default function Page() {
                         Net Final Pay
                       </span>
                       <span className="text-[15px] font-bold text-emerald-600">
-                        ₦505,000
+                        {formatNaira(netFinalPay)}
                       </span>
                     </div>
                   </div>
@@ -426,7 +466,7 @@ export default function Page() {
                       Progress Checklist
                     </div>
                     <div className="mt-2 divide-y divide-[#EEF1F6]">
-                      {CHECKLIST.map((item) => (
+                      {checklist.map((item) => (
                         <ChecklistRow
                           key={item.label}
                           label={item.label}
@@ -438,12 +478,30 @@ export default function Page() {
                   </div>
 
                   {/* Footer button */}
+                  {formError ? (
+                    <p className="mt-4 rounded-md bg-rose-50 px-3 py-2 text-[12px] text-rose-600">
+                      {formError}
+                    </p>
+                  ) : null}
+
                   <button
                     type="button"
-                    className="mt-5 w-full rounded-md bg-[#111827] px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-black"
+                    onClick={handleAdjustment}
+                    disabled={adjusting || !selected || !finance?.isCompleted}
+                    title={
+                      finance?.isCompleted
+                        ? undefined
+                        : "Finance has to settle the account before it can be adjusted."
+                    }
+                    className="mt-5 w-full rounded-md bg-[#111827] px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    APPROVE ADJUSTMENT & MOVE FORWARD
+                    {adjusting ? "APPROVING…" : "APPROVE ADJUSTMENT & MOVE FORWARD"}
                   </button>
+
+                  <p className="mt-3 text-center text-[11px] text-[#9CA3AF]">
+                    {metrics.inProgressCount} clearance
+                    {metrics.inProgressCount === 1 ? "" : "s"} in progress across branches
+                  </p>
                 </div>
               </div>
             </div>

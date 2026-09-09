@@ -1,4 +1,6 @@
+import { API_V1 } from "@/lib/api"
 import { NextRequest, NextResponse } from "next/server"
+import { corsOptions, proxyRequest } from "@/lib/proxy"
 import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config"
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors"
 import { isCsrfValid } from "@/lib/csrf"
@@ -137,6 +139,18 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ trans
       req
     )
   }
+}
+
+/** One transaction. */
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ transactionId: string }> }
+) {
+  const { transactionId } = await params
+  return proxyRequest(req, {
+    path: `${API_V1}/transactions/${transactionId}`,
+    method: "GET",
+  })
 }
 
 export async function OPTIONS(req: NextRequest) {

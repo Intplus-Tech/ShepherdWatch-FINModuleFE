@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import {
   Search,
   Bell,
@@ -13,36 +13,17 @@ import {
 } from "lucide-react"
 import BranchLeadPastorSidebar from "@/components/navigation/BranchLeadPastorSidebar"
 import BranchLeadRegisterStaffModal from "@/components/hr/BranchLeadRegisterStaffModal"
+import { useHrTrainings, useHrTrainingMetrics } from "@/components/hooks/useHrTrainings"
+import {
+  TRAINING_RECORD_LABELS,
+  formatDate,
+  formatTime,
+  initials,
+  statusLabel,
+} from "@/lib/hr/display"
+import type { HrTraining } from "@/lib/hr/types"
 import BranchLeadTrainingCalendarModal from "@/components/hr/BranchLeadTrainingCalendarModal"
 import { cn } from "@/lib/utils"
-
-type TrainingStatus = "Certified" | "Pending"
-
-type RegistryRow = {
-  name: string
-  title: string
-  status: TrainingStatus
-  date: string
-}
-
-type UpcomingSession = {
-  date: string
-  time: string
-  title: string
-  variant: "dark" | "outline"
-}
-
-const REGISTRY: RegistryRow[] = [
-  { name: "Sarah Jenkins", title: "Child Safety Protocol", status: "Certified", date: "Oct 12, 2023" },
-  { name: "Marcus Chen", title: "Financial Ethics", status: "Certified", date: "Nov 04, 2023" },
-  { name: "Elizabeth Thorne", title: "Pastoral Care Fundamentals", status: "Pending", date: "Dec 20, 2023" },
-  { name: "David Miller", title: "Crisis Management", status: "Certified", date: "Sep 28, 2023" },
-]
-
-const UPCOMING: UpcomingSession[] = [
-  { date: "NOV 15, 2023", time: "09:00 AM", title: "Stewardship Leadership", variant: "dark" },
-  { date: "NOV 18, 2023", time: "02:30 PM", title: "Cybersecurity & PII", variant: "outline" },
-]
 
 const cardCls =
   "rounded-[14px] border border-[#EEF1F6] bg-white p-5 shadow-[0px_4px_10px_rgba(0,0,0,0.02)]"
@@ -50,27 +31,17 @@ const cardCls =
 const labelCls =
   "text-[11px] font-bold uppercase tracking-wider text-[#6B7280]"
 
-function initials(name: string) {
-  return name
-    .split(" ")
-    .map((part) => part[0])
-    .filter(Boolean)
-    .slice(0, 2)
-    .join("")
-    .toUpperCase()
-}
 
-function StatusBadge({ status }: { status: TrainingStatus }) {
+function StatusBadge({ status }: { status: string }) {
+  const done = status === "certified" || status === "attended"
   return (
     <span
       className={cn(
         "rounded-full px-2.5 py-1 text-[10px] font-bold",
-        status === "Certified"
-          ? "bg-emerald-100 text-emerald-700"
-          : "bg-amber-100 text-amber-700"
+        done ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
       )}
     >
-      {status}
+      {statusLabel(TRAINING_RECORD_LABELS, status)}
     </span>
   )
 }
@@ -79,6 +50,45 @@ export default function Page() {
   const [search, setSearch] = useState("")
   const [registerOpen, setRegisterOpen] = useState(false)
   const [calendarOpen, setCalendarOpen] = useState(false)
+  const [registerTarget, setRegisterTarget] = useState<HrTraining | null>(null)
+  // Read the clock once on mount so the memo below stays pure.
+  const [now] = useState(() => Date.now())
+
+  const { trainings, loading, error, refresh } = useHrTrainings({ limit: 50 })
+  const { metrics } = useHrTrainingMetrics()
+
+  // The registry is per participant, so events are flattened onto their roster.
+  const registry = useMemo(() => {
+    const rows = trainings.flatMap((training) =>
+      training.participants.map((participant) => ({
+        id: participant.recordId || `${training.id}-${participant.employeeId}`,
+        name: participant.employeeName || "Unnamed staff",
+        title: training.title,
+        status: participant.status,
+        date: training.startDate,
+      }))
+    )
+    const term = search.trim().toLowerCase()
+    if (!term) return rows
+    return rows.filter((row) => `${row.name} ${row.title}`.toLowerCase().includes(term))
+  }, [trainings, search])
+
+  const upcoming = useMemo(
+    () =>
+      trainings
+        .filter((training) => {
+          const start = new Date(training.startDate).getTime()
+          return Number.isFinite(start) && start >= now
+        })
+        .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
+        .slice(0, 3),
+    [trainings, now]
+  )
+
+  const openRegister = (training: HrTraining) => {
+    setRegisterTarget(training)
+    setRegisterOpen(true)
+  }
 
   return (
     <div className="flex min-h-screen bg-[#F2F4F7] font-sans text-[#111827]">
@@ -110,9 +120,11 @@ export default function Page() {
               <div className="flex items-start justify-between">
                 <div>
                   <p className={labelCls}>Total Sessions</p>
-                  <p className="mt-2 text-[28px] font-bold text-[#111827]">24</p>
+                  <p className="mt-2 text-[28px] font-bold text-[#111827]">
+                    {metrics.totalEvents}
+                  </p>
                   <p className="mt-1 text-[12px] font-semibold text-emerald-600">
-                    ↗ +12% vs last month
+                    {metrics.completionRate}% completion rate
                   </p>
                 </div>
                 <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#EEF2FF] text-[#3B5BDB]">
@@ -125,9 +137,11 @@ export default function Page() {
               <div className="flex items-start justify-between">
                 <div>
                   <p className={labelCls}>Staff Enrolled</p>
-                  <p className="mt-2 text-[28px] font-bold text-[#111827]">142</p>
+                  <p className="mt-2 text-[28px] font-bold text-[#111827]">
+                    {metrics.totalEnrolled}
+                  </p>
                   <p className="mt-1 text-[12px] font-semibold text-[#6B7280]">
-                    94% active participation
+                    {metrics.certifiedStaff} certified so far
                   </p>
                 </div>
                 <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#ECFDF5] text-emerald-600">
@@ -182,8 +196,8 @@ export default function Page() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#F3F4F6]">
-                    {REGISTRY.map((row) => (
-                      <tr key={row.name}>
+                    {registry.map((row) => (
+                      <tr key={row.id}>
                         <td className="px-4 py-3 text-[13px]">
                           <div className="flex items-center gap-3">
                             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EEF2FF] text-[11px] font-bold text-[#3B5BDB]">
@@ -196,9 +210,22 @@ export default function Page() {
                         <td className="px-4 py-3 text-[13px]">
                           <StatusBadge status={row.status} />
                         </td>
-                        <td className="px-4 py-3 text-[13px] text-[#6B7280]">{row.date}</td>
+                        <td className="px-4 py-3 text-[13px] text-[#6B7280]">
+                          {formatDate(row.date)}
+                        </td>
                       </tr>
                     ))}
+
+                    {!loading && registry.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={4}
+                          className="px-4 py-8 text-center text-[13px] text-[#9CA3AF]"
+                        >
+                          {error || "No staff have been enrolled in training yet."}
+                        </td>
+                      </tr>
+                    ) : null}
                   </tbody>
                 </table>
               </div>
@@ -212,23 +239,23 @@ export default function Page() {
               </div>
 
               <div className="mt-5 flex flex-col gap-4">
-                {UPCOMING.map((session) => (
+                {upcoming.map((session, index) => (
                   <div
-                    key={session.title}
+                    key={session.id}
                     className="rounded-[12px] border border-[#F3F4F6] bg-[#FAFBFF] p-4"
                   >
                     <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                      <span>{session.date}</span>
+                      <span>{formatDate(session.startDate)}</span>
                       <span className="h-1 w-1 rounded-full bg-[#D1D5DB]" />
-                      <span>{session.time}</span>
+                      <span>{formatTime(session.startTime)}</span>
                     </div>
                     <p className="mt-2 text-[15px] font-bold text-[#111827]">{session.title}</p>
                     <button
                       type="button"
-                      onClick={() => setRegisterOpen(true)}
+                      onClick={() => openRegister(session)}
                       className={cn(
                         "mt-3 w-full rounded-md px-4 py-2 text-[12px] font-semibold",
-                        session.variant === "dark"
+                        index === 0
                           ? "bg-[#111827] text-white"
                           : "border border-[#E5E7EB] bg-white text-[#4B5563]"
                       )}
@@ -237,6 +264,10 @@ export default function Page() {
                     </button>
                   </div>
                 ))}
+
+                {!loading && upcoming.length === 0 ? (
+                  <p className="text-[13px] text-[#9CA3AF]">No sessions scheduled yet.</p>
+                ) : null}
               </div>
 
               <button
@@ -254,11 +285,17 @@ export default function Page() {
 
       <BranchLeadRegisterStaffModal
         open={registerOpen}
-        onClose={() => setRegisterOpen(false)}
+        onClose={() => {
+          setRegisterOpen(false)
+          setRegisterTarget(null)
+        }}
+        training={registerTarget}
+        onRegistered={refresh}
       />
       <BranchLeadTrainingCalendarModal
         open={calendarOpen}
         onClose={() => setCalendarOpen(false)}
+        trainings={trainings}
       />
     </div>
   )

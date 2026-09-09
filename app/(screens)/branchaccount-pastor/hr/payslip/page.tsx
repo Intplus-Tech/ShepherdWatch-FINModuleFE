@@ -1,6 +1,11 @@
 "use client"
 
-import { useRouter } from "next/navigation"
+import { Suspense, useMemo } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { useHrPayrollRun, useHrPayslip } from "@/components/hooks/useHrPayroll"
+import { useToast } from "@/components/ui/toast"
+import { initials } from "@/lib/hr/display"
+import { exportHrRows } from "@/lib/hr/export"
 import { Search, Bell, ArrowLeft, Download, Calculator } from "lucide-react"
 import BranchAccountantSidebar from "@/components/navigation/BranchAccountantSidebar"
 
@@ -9,22 +14,13 @@ type LineItem = {
   amount: number
 }
 
-const EARNINGS: LineItem[] = [
-  { description: "Basic Salary", amount: 1_200_000 },
-  { description: "Housing Allowance", amount: 150_000 },
-  { description: "Transport Allowance", amount: 50_000 },
-  { description: "Utility Allowance", amount: 50_000 },
-]
-
-const DEDUCTIONS: LineItem[] = [
-  { description: "PAYE Tax", amount: 180_000 },
-  { description: "Pension Contribution", amount: 40_000 },
-  { description: "Active Loan Repayment", amount: 20_000 },
-]
-
-const GROSS_EARNINGS = 1_450_000
-const TOTAL_DEDUCTIONS = 240_000
-const NET_PAY = 1_210_000
+/** Payslip keys come back camelCased; this is what a reader expects to see. */
+function labelFor(key: string): string {
+  return key
+    .replace(/([A-Z])/g, " $1")
+    .replace(/^./, (char) => char.toUpperCase())
+    .trim()
+}
 
 function formatNaira(amount: number): string {
   return `₦${amount.toLocaleString("en-NG", {
@@ -41,6 +37,54 @@ function formatAmount(amount: number): string {
 }
 
 export default function Page() {
+  return (
+    <Suspense fallback={null}>
+      <PayslipScreen />
+    </Suspense>
+  )
+}
+
+function PayslipScreen() {
+  const searchParams = useSearchParams()
+  const employeeId = searchParams.get("employeeId") ?? ""
+  const { pushToast } = useToast()
+
+  // A payslip belongs to a payroll run, so the branch's current run supplies
+  // the run id the employee's slip is read from.
+  const { run } = useHrPayrollRun()
+  const { payslip, loading, error } = useHrPayslip(run?.id ?? "", employeeId)
+
+  const earnings = useMemo<LineItem[]>(
+    () =>
+      Object.entries(payslip?.earnings ?? {})
+        .filter(([key]) => key !== "grossPay")
+        .map(([key, amount]) => ({ description: labelFor(key), amount })),
+    [payslip]
+  )
+
+  const deductions = useMemo<LineItem[]>(
+    () =>
+      Object.entries(payslip?.deductions ?? {})
+        .filter(([key]) => key !== "totalDeductions")
+        .map(([key, amount]) => ({ description: labelFor(key), amount })),
+    [payslip]
+  )
+
+  const grossEarnings =
+    payslip?.earnings?.grossPay ?? earnings.reduce((sum, item) => sum + item.amount, 0)
+  const totalDeductions =
+    payslip?.deductions?.totalDeductions ?? deductions.reduce((sum, item) => sum + item.amount, 0)
+  const netPay = payslip?.netPay ?? grossEarnings - totalDeductions
+
+  const handleDownload = () => {
+    const exported = exportHrRows("payslip", [
+      ...earnings.map((item) => ({ Section: "Earnings", Item: item.description, Amount: item.amount })),
+      ...deductions.map((item) => ({ Section: "Deductions", Item: item.description, Amount: item.amount })),
+      { Section: "Summary", Item: "Net Pay", Amount: netPay },
+    ])
+    if (!exported) pushToast("Nothing to download yet", "info")
+  }
+
   const router = useRouter()
 
   return (
@@ -81,7 +125,9 @@ export default function Page() {
           </button>
           <button
             type="button"
-            className="flex items-center gap-2 rounded-md bg-[#111827] px-4 py-2 text-[12px] font-semibold text-white hover:bg-black"
+            onClick={handleDownload}
+            disabled={!payslip}
+            className="flex items-center gap-2 rounded-md bg-[#111827] px-4 py-2 text-[12px] font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Download className="h-4 w-4" />
             Download Payslip
@@ -92,15 +138,29 @@ export default function Page() {
         <div className="mb-5 rounded-xl border border-[#EEF1F6] bg-white p-5">
           <div className="flex items-center gap-4">
             <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#E8EDFF] text-[16px] font-bold text-[#3B5BDB]">
-              AM
+              {initials(payslip?.employee.name ?? "")}
             </div>
             <div className="flex flex-col gap-1">
-              <span className="text-[20px] font-bold text-[#111827]">Ariel Mwangi</span>
+              <span className="text-[20px] font-bold text-[#111827]">
+                {payslip?.employee.name || (loading ? "Loading…" : "Payslip")}
+              </span>
               <div className="flex items-center gap-2">
-                <span className="text-[13px] text-[#6B7280]">Lead Pastor</span>
-                <span className="inline-flex items-center rounded-full bg-[#EEF2FF] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#3B5BDB]">
-                  SW-L001
+                <span className="text-[13px] text-[#6B7280]">
+                  {payslip?.employee.jobTitle ||
+                    payslip?.employee.department ||
+                    error ||
+                    (employeeId ? "" : "Open a staff member from the directory")}
                 </span>
+                {payslip?.employee.employeeCode ? (
+                  <span className="inline-flex items-center rounded-full bg-[#EEF2FF] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#3B5BDB]">
+                    {payslip.employee.employeeCode}
+                  </span>
+                ) : null}
+                {payslip?.period ? (
+                  <span className="inline-flex items-center rounded-full bg-[#F3F4F6] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#4B5563]">
+                    {payslip.period}
+                  </span>
+                ) : null}
               </div>
             </div>
           </div>
@@ -123,7 +183,7 @@ export default function Page() {
                   Gross Earnings
                 </span>
                 <span className="mt-1 text-[18px] font-bold text-[#111827]">
-                  {formatNaira(GROSS_EARNINGS)}
+                  {formatNaira(grossEarnings)}
                 </span>
               </div>
 
@@ -138,7 +198,7 @@ export default function Page() {
                   Total Deductions
                 </span>
                 <span className="mt-1 text-[18px] font-bold text-rose-600">
-                  {formatNaira(TOTAL_DEDUCTIONS)}
+                  {formatNaira(totalDeductions)}
                 </span>
               </div>
 
@@ -153,7 +213,7 @@ export default function Page() {
                   Net Pay (Take Home)
                 </span>
                 <span className="mt-1 text-[18px] font-bold text-white">
-                  {formatNaira(NET_PAY)}
+                  {formatNaira(netPay)}
                 </span>
               </div>
             </div>
@@ -183,7 +243,7 @@ export default function Page() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#F3F4F6]">
-                  {EARNINGS.map((item) => (
+                  {earnings.map((item) => (
                     <tr key={item.description}>
                       <td className="px-4 py-4 text-[13px] text-[#4B5563]">{item.description}</td>
                       <td className="px-4 py-4 text-right text-[13px] font-semibold text-[#111827]">
@@ -196,7 +256,7 @@ export default function Page() {
                       Total Earnings
                     </td>
                     <td className="px-4 py-4 text-right text-[13px] font-bold text-[#111827]">
-                      {formatAmount(GROSS_EARNINGS)}
+                      {formatAmount(grossEarnings)}
                     </td>
                   </tr>
                 </tbody>
@@ -225,7 +285,7 @@ export default function Page() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#F3F4F6]">
-                  {DEDUCTIONS.map((item) => (
+                  {deductions.map((item) => (
                     <tr key={item.description}>
                       <td className="px-4 py-4 text-[13px] text-[#4B5563]">{item.description}</td>
                       <td className="px-4 py-4 text-right text-[13px] font-semibold text-[#111827]">
@@ -238,7 +298,7 @@ export default function Page() {
                       Total Deductions
                     </td>
                     <td className="px-4 py-4 text-right text-[13px] font-bold text-rose-600">
-                      {formatAmount(TOTAL_DEDUCTIONS)}
+                      {formatAmount(totalDeductions)}
                     </td>
                   </tr>
                 </tbody>

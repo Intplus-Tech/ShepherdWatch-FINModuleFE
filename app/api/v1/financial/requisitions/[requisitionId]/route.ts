@@ -1,4 +1,6 @@
+import { API_V1 } from "@/lib/api"
 import { NextRequest, NextResponse } from "next/server"
+import { corsOptions, proxyRequest } from "@/lib/proxy"
 import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config"
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors"
 import { isCsrfValid } from "@/lib/csrf"
@@ -143,6 +145,18 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ requ
       req
     )
   }
+}
+
+/** One requisition with its approval trail. */
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ requisitionId: string }> }
+) {
+  const { requisitionId } = await params
+  return proxyRequest(req, {
+    path: `${API_V1}/requisitions/${requisitionId}`,
+    method: "GET",
+  })
 }
 
 export async function OPTIONS(req: NextRequest) {

@@ -7,7 +7,7 @@ import { getBackendApiUrl } from "@/lib/env"
 
 function buildBackendUrl(): string {
   const baseUrl = getBackendApiUrl();
-  return `${baseUrl}/financial/bank-statement/parse-email`
+  return `${baseUrl}/transactions/parse-email`
 }
 
 export async function POST(req: NextRequest) {

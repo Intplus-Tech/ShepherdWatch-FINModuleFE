@@ -1,6 +1,17 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import { useDirectorHrDashboard } from "@/components/hooks/useHrDashboard"
+import { useHrAttendanceMetrics } from "@/components/hooks/useHrAttendance"
+import { useHrEmployees } from "@/components/hooks/useHrEmployees"
+import {
+  EMPLOYMENT_STATUS_LABELS,
+  EMPLOYMENT_STATUS_STYLES,
+  formatDate,
+  formatNaira,
+  statusLabel,
+  statusStyle,
+} from "@/lib/hr/display"
 import SidebarNav from "@/components/navigation/SidebarNav"
 import {
   Search,
@@ -23,87 +34,12 @@ type StatCard = {
   iconTone: "blue" | "grey"
 }
 
-type BranchHeadcount = {
-  name: string
-  count: number
+/** Branch bars are tinted by the health flag the API returns. */
+const HEALTH_BAR: Record<string, string> = {
+  GOOD: "bg-[#3B5BDB]",
+  WARNING: "bg-[#F59E0B]",
+  CRITICAL: "bg-[#EF4444]",
 }
-
-type ActivityAction = "NEW HIRE" | "RESIGNATION" | "CONTRACT END"
-
-type Activity = {
-  name: string
-  action: ActivityAction
-  branch: string
-  date: string
-}
-
-const STAT_CARDS: StatCard[] = [
-  {
-    label: "Total Headcount",
-    value: "524",
-    note: "+2% vs last mo",
-    tone: "blue",
-    icon: Users,
-    iconTone: "blue",
-  },
-  {
-    label: "New Hires (MDT)",
-    value: "12",
-    note: "Month-to-Date",
-    tone: "grey",
-    icon: UserCheck,
-    iconTone: "blue",
-  },
-  {
-    label: "Exits (MDT)",
-    value: "4",
-    note: "Alert: High in West",
-    tone: "red",
-    icon: UserMinus,
-    iconTone: "grey",
-  },
-  {
-    label: "Turnover Rate",
-    value: "6.2%",
-    note: "Sustainable",
-    tone: "grey",
-    icon: TrendingDown,
-    iconTone: "grey",
-  },
-  {
-    label: "Total Payroll Cost",
-    value: "₦38.5M",
-    note: "Real-time Est.",
-    tone: "grey",
-    icon: Wallet,
-    iconTone: "blue",
-  },
-  {
-    label: "Attendance Rate",
-    value: "94%",
-    note: "",
-    tone: "grey",
-    icon: CalendarCheck,
-    iconTone: "blue",
-  },
-]
-
-const BRANCH_HEADCOUNT: BranchHeadcount[] = [
-  { name: "Lagos Main", count: 214 },
-  { name: "HQ", count: 142 },
-  { name: "Port Harcourt", count: 98 },
-  { name: "Kano Branch", count: 45 },
-  { name: "Enugu Branch", count: 25 },
-]
-
-const RECENT_ACTIVITY: Activity[] = [
-  { name: "Chiamaka Okafor", action: "NEW HIRE", branch: "Lagos Main", date: "Oct 24, 2023" },
-  { name: "Babajide Sanwo", action: "NEW HIRE", branch: "Abuja HQ", date: "Oct 22, 2023" },
-  { name: "Ibrahim Yusuf", action: "RESIGNATION", branch: "Kano South", date: "Oct 21, 2023" },
-  { name: "Emeka Daniel", action: "NEW HIRE", branch: "Port Harcourt", date: "Oct 20, 2023" },
-  { name: "Sarah Philips", action: "NEW HIRE", branch: "Lagos Main", date: "Oct 19, 2023" },
-  { name: "Victor Onyekachi", action: "CONTRACT END", branch: "Enugu East", date: "Oct 18, 2023" },
-]
 
 const NOTE_TONE: Record<StatCard["tone"], string> = {
   blue: "text-[#3B5BDB]",
@@ -116,30 +52,82 @@ const ICON_TONE: Record<StatCard["iconTone"], string> = {
   grey: "bg-[#F3F4F6] text-[#6B7280]",
 }
 
-const ACTION_BADGE: Record<ActivityAction, string> = {
-  "NEW HIRE": "bg-blue-100 text-blue-700",
-  RESIGNATION: "bg-rose-100 text-rose-700",
-  "CONTRACT END": "bg-rose-100 text-rose-700",
-}
-
 export default function Page() {
   const [search, setSearch] = useState("")
 
-  const maxCount = useMemo(
-    () => Math.max(...BRANCH_HEADCOUNT.map((b) => b.count)),
-    []
+  const { dashboard, loading, error } = useDirectorHrDashboard()
+  // Attendance health is its own resource; with no branchId it covers everyone.
+  const { metrics: attendance } = useHrAttendanceMetrics()
+  // There is no HR activity feed, so the newest staff records stand in for one.
+  const { employees: recentStaff, loading: staffLoading } = useHrEmployees({ limit: 6 })
+
+  const statCards = useMemo<StatCard[]>(
+    () => [
+      {
+        label: "Total Headcount",
+        value: String(dashboard.totalHeadcount),
+        note: `Across ${dashboard.totalBranches} branches`,
+        tone: "blue",
+        icon: Users,
+        iconTone: "blue",
+      },
+      {
+        label: "Branches Reporting",
+        value: String(dashboard.totalBranches),
+        note: "Consolidated view",
+        tone: "grey",
+        icon: UserCheck,
+        iconTone: "blue",
+      },
+      {
+        label: "Active Staff Loans",
+        value: String(dashboard.totalActiveLoans),
+        note: "Running welfare book",
+        tone: "grey",
+        icon: UserMinus,
+        iconTone: "grey",
+      },
+      {
+        label: "Turnover Rate",
+        value: `${dashboard.turnoverRate}%`,
+        note: dashboard.turnoverRate > 10 ? "Above target" : "Within target",
+        tone: dashboard.turnoverRate > 10 ? "red" : "grey",
+        icon: TrendingDown,
+        iconTone: "grey",
+      },
+      {
+        label: "Total Payroll Cost",
+        value: formatNaira(dashboard.totalPayrollCost, { compact: true }),
+        note: formatNaira(dashboard.totalPayrollCost),
+        tone: "grey",
+        icon: Wallet,
+        iconTone: "blue",
+      },
+      {
+        label: "Attendance Rate",
+        value: `${attendance.attendanceRate}%`,
+        note: `${attendance.clockedInToday} clocked in today`,
+        tone: "grey",
+        icon: CalendarCheck,
+        iconTone: "blue",
+      },
+    ],
+    [dashboard, attendance]
   )
 
-  const filteredActivity = useMemo(() => {
+  const maxCount = useMemo(
+    () =>
+      dashboard.headcountByBranch.reduce((max, branch) => Math.max(max, branch.count), 0) || 1,
+    [dashboard.headcountByBranch]
+  )
+
+  const filteredStaff = useMemo(() => {
     const term = search.trim().toLowerCase()
-    if (!term) return RECENT_ACTIVITY
-    return RECENT_ACTIVITY.filter(
-      (row) =>
-        row.name.toLowerCase().includes(term) ||
-        row.branch.toLowerCase().includes(term) ||
-        row.action.toLowerCase().includes(term)
+    if (!term) return recentStaff
+    return recentStaff.filter((row) =>
+      `${row.name} ${row.branchName} ${row.jobTitle}`.toLowerCase().includes(term)
     )
-  }, [search])
+  }, [recentStaff, search])
 
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
@@ -183,7 +171,7 @@ export default function Page() {
 
           {/* Stat Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
-            {STAT_CARDS.map((card) => {
+            {statCards.map((card) => {
               const Icon = card.icon
               return (
                 <div
@@ -219,35 +207,45 @@ export default function Page() {
             <div className="rounded-xl border border-[#EEF1F6] bg-white p-6">
               <h2 className="text-[16px] font-bold text-[#111827]">Headcount by Branch</h2>
               <div className="mt-5 flex flex-col gap-4">
-                {BRANCH_HEADCOUNT.map((branch) => {
+                {dashboard.headcountByBranch.map((branch) => {
                   const pct = Math.round((branch.count / maxCount) * 100)
-                  const isSmall = branch.count < 50
                   return (
-                    <div key={branch.name} className="flex flex-col gap-1.5">
+                    <div key={branch.branchId || branch.branchName} className="flex flex-col gap-1.5">
                       <div className="flex items-center justify-between">
                         <span className="text-[13px] font-medium text-[#111827]">
-                          {branch.name}
+                          {branch.branchName || "Unnamed branch"}
+                          {branch.state ? (
+                            <span className="ml-1.5 text-[11px] text-[#9CA3AF]">{branch.state}</span>
+                          ) : null}
                         </span>
-                        <span className="text-[13px] font-bold text-[#111827]">
-                          {branch.count}
-                        </span>
+                        <span className="text-[13px] font-bold text-[#111827]">{branch.count}</span>
                       </div>
                       <div className="h-2 w-full overflow-hidden rounded-full bg-[#EEF1F6]">
                         <div
-                          className={`h-full rounded-full ${isSmall ? "bg-[#93A5F0]" : "bg-[#3B5BDB]"}`}
+                          className={`h-full rounded-full ${HEALTH_BAR[branch.attendanceHealth] ?? "bg-[#93A5F0]"}`}
                           style={{ width: `${pct}%` }}
                         />
                       </div>
                     </div>
                   )
                 })}
+
+                {loading ? (
+                  <p className="text-[13px] text-[#6B7280]">Loading branch headcount…</p>
+                ) : null}
+
+                {error ? <p className="text-[13px] text-rose-600">{error}</p> : null}
+
+                {!loading && !error && dashboard.headcountByBranch.length === 0 ? (
+                  <p className="text-[13px] text-[#9CA3AF]">No branch headcount reported yet.</p>
+                ) : null}
               </div>
             </div>
 
             {/* Recent HR Activity */}
             <div className="rounded-xl border border-[#EEF1F6] bg-white">
               <div className="p-6 pb-4">
-                <h2 className="text-[16px] font-bold text-[#111827]">Recent HR Activity</h2>
+                <h2 className="text-[16px] font-bold text-[#111827]">Recent Staff Records</h2>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
@@ -257,44 +255,48 @@ export default function Page() {
                         Employee Name
                       </th>
                       <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                        Action
+                        Status
                       </th>
                       <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
                         Branch
                       </th>
                       <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                        Effective Date
+                        Hire Date
                       </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#EEF1F6]">
-                    {filteredActivity.length === 0 ? (
-                      <tr>
-                        <td
-                          colSpan={4}
-                          className="px-4 py-6 text-center text-[13px] text-[#9CA3AF]"
-                        >
-                          No matching activity.
+                    {filteredStaff.map((row) => (
+                      <tr key={row.id}>
+                        <td className="px-4 py-3 text-[13px] font-medium text-[#111827]">
+                          {row.name || "Unnamed staff"}
+                        </td>
+                        <td className="px-4 py-3 text-[13px]">
+                          <span
+                            className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${statusStyle(
+                              EMPLOYMENT_STATUS_STYLES,
+                              row.employmentStatus
+                            )}`}
+                          >
+                            {statusLabel(EMPLOYMENT_STATUS_LABELS, row.employmentStatus).toUpperCase()}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-[13px] text-[#6B7280]">
+                          {row.branchName || "—"}
+                        </td>
+                        <td className="px-4 py-3 text-[13px] text-[#6B7280]">
+                          {formatDate(row.hireDate)}
                         </td>
                       </tr>
-                    ) : (
-                      filteredActivity.map((row) => (
-                        <tr key={row.name}>
-                          <td className="px-4 py-3 text-[13px] font-medium text-[#111827]">
-                            {row.name}
-                          </td>
-                          <td className="px-4 py-3 text-[13px]">
-                            <span
-                              className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${ACTION_BADGE[row.action]}`}
-                            >
-                              {row.action}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-[13px] text-[#6B7280]">{row.branch}</td>
-                          <td className="px-4 py-3 text-[13px] text-[#6B7280]">{row.date}</td>
-                        </tr>
-                      ))
-                    )}
+                    ))}
+
+                    {!staffLoading && filteredStaff.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="px-4 py-6 text-center text-[13px] text-[#9CA3AF]">
+                          No matching staff records.
+                        </td>
+                      </tr>
+                    ) : null}
                   </tbody>
                 </table>
               </div>

@@ -1,6 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { API_V1 } from "@/lib/api"
+import { useEmployeeMutations } from "@/components/hooks/useHrEmployees"
+import { useUsers } from "@/components/hooks/useUsers"
+import { useToast } from "@/components/ui/toast"
 import { useRouter } from "next/navigation"
 import {
   ArrowLeft,
@@ -93,8 +97,89 @@ export default function Page() {
   const activeIndex = STEPS.findIndex((s) => s.id === activeStep)
   const isLastStep = activeIndex === STEPS.length - 1
 
+  const { pushToast } = useToast()
+  const { createEmployee } = useEmployeeMutations()
+  const [saving, setSaving] = useState(false)
+  const [branches, setBranches] = useState<{ id: string; name: string }[]>([])
+
+  // Branch has to be sent as an id, so the picker is loaded rather than typed.
+  useEffect(() => {
+    let active = true
+    fetch(`${API_V1}/branches?page=1&limit=100`, { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((payload) => {
+        if (!active || !payload) return
+        const rows = Array.isArray(payload?.data) ? payload.data : []
+        setBranches(
+          rows
+            .map((row: Record<string, unknown>) => ({
+              id: String(row._id ?? row.id ?? ""),
+              name: String(row.name ?? row.branchName ?? "Unnamed branch"),
+            }))
+            .filter((row: { id: string }) => row.id)
+        )
+      })
+      .catch(() => undefined)
+    return () => {
+      active = false
+    }
+  }, [])
+
+  // An employee profile hangs off a user account, so the form links one when
+  // the email matches an invited user.
+  const { data: usersResponse } = useUsers({ limit: 100 })
+  const matchedUserId = useMemo(() => {
+    const email = form.personalEmail.trim().toLowerCase()
+    if (!email) return ""
+    const raw = usersResponse as { data?: unknown } | undefined
+    const rows = Array.isArray(raw?.data) ? raw?.data : []
+    const hit = rows.find(
+      (entry) => String((entry as Record<string, unknown>).email ?? "").toLowerCase() === email
+    ) as Record<string, unknown> | undefined
+    return hit ? String(hit._id ?? hit.id ?? "") : ""
+  }, [form.personalEmail, usersResponse])
+
+  const submit = async () => {
+    if (!form.jobTitle.trim()) {
+      pushToast("Job title is required.", "error")
+      setActiveStep("employment")
+      return
+    }
+    if (!form.branch) {
+      pushToast("Choose the branch this employee belongs to.", "error")
+      setActiveStep("employment")
+      return
+    }
+
+    setSaving(true)
+    try {
+      await createEmployee({
+        userId: matchedUserId || undefined,
+        branchId: form.branch,
+        jobTitle: form.jobTitle.trim(),
+        department: form.department.trim() || undefined,
+        salary: form.basicSalary ? Number(String(form.basicSalary).replace(/[^\d.]/g, "")) : undefined,
+        phone: form.phoneNumber.trim() || undefined,
+        address: [form.homeAddress, form.city, form.state].filter(Boolean).join(", ") || undefined,
+        gender: form.gender ? form.gender.toLowerCase() : undefined,
+        maritalStatus: form.maritalStatus ? form.maritalStatus.toLowerCase() : undefined,
+        hireDate: form.startDate || undefined,
+      })
+      pushToast("Employee profile created", "success")
+      router.push("/director-screen/hr/employee-directory")
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : "Unable to create the employee", "error")
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const goNext = () => {
-    if (!isLastStep) setActiveStep(STEPS[activeIndex + 1].id)
+    if (isLastStep) {
+      void submit()
+      return
+    }
+    setActiveStep(STEPS[activeIndex + 1].id)
   }
   const goBack = () => {
     if (activeIndex > 0) setActiveStep(STEPS[activeIndex - 1].id)
@@ -312,10 +397,11 @@ export default function Page() {
                         className={FIELD_CLASS}
                       >
                         <option value="">Select…</option>
-                        <option value="Maryland LAG">Maryland LAG</option>
-                        <option value="Ikeja">Ikeja</option>
-                        <option value="Lekki">Lekki</option>
-                        <option value="Abuja">Abuja</option>
+                        {branches.map((branch) => (
+                          <option key={branch.id} value={branch.id}>
+                            {branch.name}
+                          </option>
+                        ))}
                       </select>
                     </div>
                     <div>
@@ -417,9 +503,10 @@ export default function Page() {
                 <button
                   type="button"
                   onClick={goNext}
-                  className="inline-flex items-center gap-1.5 bg-[#111827] text-white rounded-md px-5 py-2.5 text-[13px] font-semibold hover:bg-[#1f2937]"
+                  disabled={saving}
+                  className="inline-flex items-center gap-1.5 bg-[#111827] text-white rounded-md px-5 py-2.5 text-[13px] font-semibold hover:bg-[#1f2937] disabled:opacity-60"
                 >
-                  Save &amp; Continue
+                  {saving ? "Saving…" : isLastStep ? "Save Employee" : "Save & Continue"}
                   <ArrowRight className="h-3.5 w-3.5" />
                 </button>
               </div>

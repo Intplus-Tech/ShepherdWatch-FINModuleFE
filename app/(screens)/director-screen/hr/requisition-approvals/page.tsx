@@ -1,7 +1,19 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import SidebarNav from "@/components/navigation/SidebarNav"
+import ReviewRequisitionModal from "@/components/hr/ReviewRequisitionModal"
+import { HrPaginationBar, HrTableStateRow } from "@/components/hr/HrTableState"
+import { useToast } from "@/components/ui/toast"
+import {
+  useHrJobRequisitions,
+  useHrJobRequisitionMetrics,
+  useJobRequisitionMutations,
+} from "@/components/hooks/useHrJobRequisitions"
+import { formatNaira } from "@/lib/hr/display"
+import { exportHrRows } from "@/lib/hr/export"
+import type { HrJobRequisition } from "@/lib/hr/types"
 import {
   Search,
   UserPlus,
@@ -9,61 +21,98 @@ import {
   ChevronDown,
   Filter,
   Eye,
-  ChevronLeft,
-  ChevronRight,
 } from "lucide-react"
 
-type Requisition = {
-  id: string
-  branch: string
-  role: string
-  salary: string
-}
-
-const INITIAL_REQUISITIONS: Requisition[] = [
-  { id: "req-1", branch: "Ikeja Branch", role: "Pastor", salary: "₦850,000.00" },
-  { id: "req-2", branch: "Agodi Branch", role: "Admin Officer", salary: "₦620,000.00" },
-  {
-    id: "req-3",
-    branch: "Port Harcourt Branch",
-    role: "Security Officer",
-    salary: "₦450,000.00",
-  },
-]
+const PAGE_SIZE = 20
 
 export default function Page() {
+  const router = useRouter()
+  const { pushToast } = useToast()
+
   const [search, setSearch] = useState("")
-  const [branchFilter, setBranchFilter] = useState("All Branches")
+  const [branchFilter, setBranchFilter] = useState("")
   const [titleFilter, setTitleFilter] = useState("")
-  const [requisitions, setRequisitions] = useState<Requisition[]>(INITIAL_REQUISITIONS)
+  const [page, setPage] = useState(1)
+  const [reviewing, setReviewing] = useState<HrJobRequisition | null>(null)
+  const [decidingId, setDecidingId] = useState<string | null>(null)
 
-  const branchOptions = useMemo(
-    () => Array.from(new Set(INITIAL_REQUISITIONS.map((r) => r.branch))),
-    []
-  )
+  // The director works the pending queue; branch is a server-side filter.
+  const { requisitions, pagination, loading, error, refresh } = useHrJobRequisitions({
+    page,
+    limit: PAGE_SIZE,
+    status: "pending_review",
+    branchId: branchFilter || undefined,
+  })
+  const { metrics } = useHrJobRequisitionMetrics()
+  const { reviewRequisition } = useJobRequisitionMutations()
 
+  const branchOptions = useMemo(() => {
+    const seen = new Map<string, string>()
+    for (const row of requisitions) {
+      if (row.branchId && !seen.has(row.branchId)) seen.set(row.branchId, row.branchName)
+    }
+    return Array.from(seen.entries())
+  }, [requisitions])
+
+  // Role title and free-text search narrow the page that came back.
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase()
     const title = titleFilter.trim().toLowerCase()
     return requisitions.filter((row) => {
-      const matchesBranch = branchFilter === "All Branches" || row.branch === branchFilter
-      const matchesTitle = !title || row.role.toLowerCase().includes(title)
+      const matchesTitle = !title || row.roleTitle.toLowerCase().includes(title)
       const matchesSearch =
         !term ||
-        row.branch.toLowerCase().includes(term) ||
-        row.role.toLowerCase().includes(term) ||
-        row.salary.toLowerCase().includes(term)
-      return matchesBranch && matchesTitle && matchesSearch
+        `${row.branchName} ${row.roleTitle} ${row.department} ${row.requisitionNumber}`
+          .toLowerCase()
+          .includes(term)
+      return matchesTitle && matchesSearch
     })
-  }, [requisitions, branchFilter, titleFilter, search])
+  }, [requisitions, titleFilter, search])
 
   const clearFilters = () => {
-    setBranchFilter("All Branches")
+    setBranchFilter("")
     setTitleFilter("")
+    setPage(1)
   }
 
-  const resolveRequisition = (id: string) =>
-    setRequisitions((prev) => prev.filter((row) => row.id !== id))
+  /** Quick approve/reject from the row; the modal is for the full case. */
+  const decide = async (row: HrJobRequisition, action: "approved" | "rejected") => {
+    setDecidingId(row.id)
+    try {
+      await reviewRequisition(
+        row.id,
+        action,
+        action === "approved"
+          ? "Approved at director review."
+          : "Rejected at director review."
+      )
+      pushToast(
+        action === "approved" ? "Requisition approved" : "Requisition rejected",
+        "success"
+      )
+      refresh()
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : "Unable to record that decision", "error")
+    } finally {
+      setDecidingId(null)
+    }
+  }
+
+  const handleExport = () => {
+    const exported = exportHrRows(
+      "job-requisitions",
+      filtered.map((row) => ({
+        Reference: row.requisitionNumber,
+        Branch: row.branchName,
+        Role: row.roleTitle,
+        Department: row.department,
+        "Suggested Salary": row.salarySuggested,
+        Priority: row.priority,
+        Status: row.status,
+      }))
+    )
+    if (!exported) pushToast("Nothing to export on this page", "info")
+  }
 
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
@@ -94,11 +143,17 @@ export default function Page() {
                   className="h-[42px] w-full rounded-[8px] border border-[#E5E7EB] bg-white pl-10 pr-3.5 text-[13px] text-[#111827] outline-none focus:border-[#3B5BDB] sm:w-[260px]"
                 />
               </div>
-              <button className="flex items-center gap-2 rounded-md bg-[#3B5BDB] px-4 py-2 text-[12px] font-medium text-white hover:bg-blue-700">
+              <button
+                onClick={() => router.push("/director-screen/invite-users")}
+                className="flex items-center gap-2 rounded-md bg-[#3B5BDB] px-4 py-2 text-[12px] font-medium text-white hover:bg-blue-700"
+              >
                 <UserPlus className="h-4 w-4" />
                 Add Employee
               </button>
-              <button className="flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[12px] font-medium text-[#4B5563] hover:bg-gray-50">
+              <button
+                onClick={handleExport}
+                className="flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[12px] font-medium text-[#4B5563] hover:bg-gray-50"
+              >
                 <Download className="h-4 w-4" />
                 Export
               </button>
@@ -116,9 +171,10 @@ export default function Page() {
                   className="h-[42px] w-full appearance-none rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 pr-9 text-[13px] text-[#111827] outline-none focus:border-[#3B5BDB] md:w-[220px]"
                 >
                   <option value="All Branches">All Branches</option>
-                  {branchOptions.map((branch) => (
-                    <option key={branch} value={branch}>
-                      {branch}
+                  <option value="">All Branches</option>
+                  {branchOptions.map(([id, name]) => (
+                    <option key={id} value={id}>
+                      {name || "Unnamed branch"}
                     </option>
                   ))}
                 </select>
@@ -147,13 +203,26 @@ export default function Page() {
           {/* Pending Requisitions Section */}
           <div className="rounded-xl border border-[#EEF1F6] bg-white">
             <div className="flex flex-col gap-3 border-b border-[#EEF1F6] p-5 sm:flex-row sm:items-center sm:justify-between">
-              <h2 className="text-[16px] font-bold text-[#111827]">Pending Requisitions</h2>
+              <h2 className="text-[16px] font-bold text-[#111827]">
+                Pending Requisitions
+                {metrics.pendingReviewCount ? (
+                  <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-700">
+                    {metrics.pendingReviewCount}
+                  </span>
+                ) : null}
+              </h2>
               <div className="flex items-center gap-3">
-                <button className="flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[12px] font-medium text-[#4B5563] hover:bg-gray-50">
+                <button
+                  onClick={clearFilters}
+                  className="flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[12px] font-medium text-[#4B5563] hover:bg-gray-50"
+                >
                   <Filter className="h-4 w-4" />
-                  Filter
+                  Clear Filters
                 </button>
-                <button className="flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[12px] font-medium text-[#4B5563] hover:bg-gray-50">
+                <button
+                  onClick={handleExport}
+                  className="flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[12px] font-medium text-[#4B5563] hover:bg-gray-50"
+                >
                   <Download className="h-4 w-4" />
                   Export
                 </button>
@@ -179,80 +248,74 @@ export default function Page() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#EEF1F6]">
-                  {filtered.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan={4}
-                        className="px-4 py-6 text-center text-[13px] text-[#9CA3AF]"
-                      >
-                        No pending requisitions match your filters.
+                  {filtered.map((row) => (
+                    <tr key={row.id}>
+                      <td className="px-4 py-3 text-[13px] font-medium text-[#111827]">
+                        {row.branchName || "—"}
+                      </td>
+                      <td className="px-4 py-3 text-[13px] text-[#6B7280]">
+                        {row.roleTitle || "—"}
+                        {row.department ? (
+                          <div className="text-[11px] text-[#9CA3AF]">{row.department}</div>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-3 text-[13px] font-medium text-[#111827]">
+                        {formatNaira(row.salarySuggested)}
+                      </td>
+                      <td className="px-4 py-3 text-[13px]">
+                        <div className="flex items-center gap-2">
+                          <button
+                            aria-label="View requisition"
+                            onClick={() => setReviewing(row)}
+                            className="flex h-8 w-8 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[#6B7280] hover:bg-gray-50"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => decide(row, "approved")}
+                            disabled={decidingId === row.id}
+                            className="rounded-md bg-[#3B5BDB] px-4 py-2 text-[12px] font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            onClick={() => decide(row, "rejected")}
+                            disabled={decidingId === row.id}
+                            className="rounded-md border border-rose-200 bg-white px-4 py-2 text-[12px] font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                          >
+                            Reject
+                          </button>
+                        </div>
                       </td>
                     </tr>
-                  ) : (
-                    filtered.map((row) => (
-                      <tr key={row.id}>
-                        <td className="px-4 py-3 text-[13px] font-medium text-[#111827]">
-                          {row.branch}
-                        </td>
-                        <td className="px-4 py-3 text-[13px] text-[#6B7280]">{row.role}</td>
-                        <td className="px-4 py-3 text-[13px] font-medium text-[#111827]">
-                          {row.salary}
-                        </td>
-                        <td className="px-4 py-3 text-[13px]">
-                          <div className="flex items-center gap-2">
-                            <button
-                              aria-label="View requisition"
-                              className="flex h-8 w-8 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[#6B7280] hover:bg-gray-50"
-                            >
-                              <Eye className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={() => resolveRequisition(row.id)}
-                              className="rounded-md bg-[#3B5BDB] px-4 py-2 text-[12px] font-medium text-white hover:bg-blue-700"
-                            >
-                              Approve
-                            </button>
-                            <button
-                              onClick={() => resolveRequisition(row.id)}
-                              className="rounded-md border border-rose-200 bg-white px-4 py-2 text-[12px] font-medium text-rose-600 hover:bg-rose-50"
-                            >
-                              Reject
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
+                  ))}
+                  <HrTableStateRow
+                    colSpan={4}
+                    loading={loading}
+                    error={error}
+                    isEmpty={filtered.length === 0}
+                    emptyMessage="No pending requisitions match your filters."
+                    onRetry={refresh}
+                  />
                 </tbody>
               </table>
             </div>
 
-            {/* Footer */}
-            <div className="flex flex-col gap-3 border-t border-[#EEF1F6] p-5 sm:flex-row sm:items-center sm:justify-between">
-              <span className="text-[13px] font-medium text-[#6B7280]">
-                Showing {filtered.length} of 14 pending requests
-              </span>
-              <div className="flex items-center gap-2">
-                <button className="flex h-9 w-9 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[#6B7280] hover:bg-gray-50">
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
-                <button className="flex h-9 w-9 items-center justify-center rounded-md bg-[#3B5BDB] text-[12px] font-bold text-white">
-                  1
-                </button>
-                <button className="flex h-9 w-9 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[12px] font-bold text-[#4B5563] hover:bg-gray-50">
-                  2
-                </button>
-                <button className="flex h-9 w-9 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[12px] font-bold text-[#4B5563] hover:bg-gray-50">
-                  3
-                </button>
-                <button className="flex h-9 w-9 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[#6B7280] hover:bg-gray-50">
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
+            <HrPaginationBar
+              pagination={pagination}
+              onPageChange={setPage}
+              noun="pending requests"
+              className="p-5"
+            />
           </div>
         </div>
       </main>
+
+      <ReviewRequisitionModal
+        requisition={reviewing}
+        onClose={() => setReviewing(null)}
+        onReviewed={refresh}
+      />
     </div>
   )
 }
