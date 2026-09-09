@@ -7,10 +7,12 @@ export type TransactionItem = {
   date?: string
   amount: number
   flowType?: string
+  transactionType?: string
   status?: string
   description?: string
   coaName?: string
   category?: string
+  bankAccountId?: string
 }
 
 function formatDateOnly(value?: string) {
@@ -96,26 +98,52 @@ export function useTransactions(options: UseTransactionsOptions = {}) {
 
         const paginationMeta = data?.pagination || data?.data?.pagination || null;
 
-        const mapped = rawItems.map((item: any, index: number) => ({
-          id: String(item?.id ?? item?.transactionId ?? `tx-${index}`),
-          date:
-            item?.date ??
-            item?.transactionDate ??
-            item?.postingDate ??
-            item?.createdAt ??
-            "",
-          amount: Number(item?.amount ?? item?.value ?? 0),
-          flowType: item?.flowType ?? item?.type ?? item?.direction,
-          status: item?.status ?? item?.verificationStatus ?? "UNVERIFIED",
-          description:
-            item?.sourceBankReference ??
-            item?.narration ??
-            item?.description ??
-            item?.remarks ??
-            "",
-          coaName: item?.coaName ?? item?.coa?.name ?? item?.coa?.accountName,
-          category: item?.category ?? item?.tag ?? item?.budgetCategory,
-        }))
+        const mapped = rawItems.map((item: any, index: number) => {
+          const rawType = String(
+            item?.transactionType ??
+            item?.flowType ??
+            item?.type ??
+            item?.direction ??
+            ""
+          ).toLowerCase();
+          const isCredit =
+            ["credit", "income", "inflow"].includes(rawType) ||
+            (!rawType && Number(item?.amount) > 0 && !item?.transactionType);
+          const isDebit =
+            ["debit", "expense", "outflow"].includes(rawType) ||
+            Number(item?.amount) < 0;
+          const resolvedType = isCredit ? "credit" : isDebit ? "debit" : rawType;
+          const resolvedFlow = isCredit
+            ? "INFLOW"
+            : isDebit
+              ? "OUTFLOW"
+              : item?.flowType
+                ? String(item.flowType).toUpperCase()
+                : undefined;
+
+          return {
+            id: String(item?.id ?? item?._id ?? item?.transactionId ?? `tx-${index}`),
+            date:
+              item?.date ??
+              item?.transactionDate ??
+              item?.postingDate ??
+              item?.createdAt ??
+              "",
+            amount: Math.abs(Number(item?.amount ?? item?.value ?? 0)),
+            transactionType: resolvedType,
+            flowType: resolvedFlow,
+            status: item?.status ?? item?.verificationStatus ?? "UNVERIFIED",
+            description:
+              item?.sourceBankReference ??
+              item?.narration ??
+              item?.description ??
+              item?.remarks ??
+              "",
+            coaName: item?.coaName ?? item?.coa?.name ?? item?.coa?.accountName,
+            category: item?.category ?? item?.tag ?? item?.budgetCategory ?? item?.meta?.category,
+            bankAccountId: String(item?.bankAccountId ?? item?.bankAccount?._id ?? item?.bankAccount?.id ?? ""),
+          };
+        })
 
         if (isMounted) {
           setTransactions(mapped)

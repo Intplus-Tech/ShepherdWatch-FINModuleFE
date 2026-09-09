@@ -19,6 +19,18 @@ interface RequisitionDetailsModalProps {
   onClose: () => void
   onAuthorize?: () => void
   isAuthorizing?: boolean
+  requisition?: {
+    id?: string
+    reference?: string
+    amount?: number | string
+    justification?: string
+    description?: string
+    coaName?: string
+    category?: string
+    requestedBy?: string
+    status?: string
+    branchName?: string
+  } | null
 }
 
 export function RequisitionDetailsModal({
@@ -26,8 +38,24 @@ export function RequisitionDetailsModal({
   onClose,
   onAuthorize,
   isAuthorizing = false,
+  requisition,
 }: RequisitionDetailsModalProps) {
   if (!isOpen) return null
+
+  const reference = requisition?.reference
+    ? `#REQ-${requisition.reference}`
+    : requisition?.id
+      ? `#REQ-${requisition.id.slice(-4).toUpperCase()}`
+      : "Requisition Approval: #REQ-2301"
+
+  const title = requisition?.description || requisition?.justification?.split(" - ")[0] || "Audio System Upgrade - Victoria Island Branch"
+  const amountFormatted = typeof requisition?.amount === "number"
+    ? `₦${requisition.amount.toLocaleString()}`
+    : requisition?.amount || "₦150,000"
+
+  const budgetCategory = requisition?.coaName || requisition?.category || "Equipment & Maintenance"
+  const justificationText = requisition?.justification || "Current system failed during Sunday service. Immediate replacement required for upcoming mid-week service to ensure sound quality."
+  const statusBadge = requisition?.status ? String(requisition.status).replace(/_/g, " ").toUpperCase() : "OVER-BUDGET"
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#111827]/40 backdrop-blur-sm p-4 sm:p-6 lg:p-8">
@@ -45,15 +73,15 @@ export function RequisitionDetailsModal({
         <div className="px-[56px] pt-[50px] pb-[32px] shrink-0">
           <div className="flex items-center gap-4 mb-2">
             <h1 className="text-[26px] text-[#111827] tracking-tight" style={{ fontFamily: '"Inter", sans-serif', fontWeight: 900 }}>
-              Requisition Approval: #REQ-2301
+              {reference.startsWith("#REQ") ? `Requisition Approval: ${reference}` : reference}
             </h1>
             <span className="inline-flex items-center rounded-full bg-rose-50 px-2.5 py-0.5 text-[10px] font-extrabold text-rose-500 uppercase tracking-widest">
-              OVER-BUDGET
+              {statusBadge}
             </span>
           </div>
           <div className="flex items-center justify-between">
             <p className="text-[15px] font-medium text-[#6B7280]">
-              Audio System Upgrade - Victoria Island Branch
+              {title}
             </p>
             <button className="flex items-center gap-2 rounded-[8px] border border-[#E5E7EB] bg-white px-4 py-2 text-[13px] font-bold text-[#111827] shadow-sm hover:bg-[#F9FAFB] transition-colors">
               <History className="h-4 w-4" />
@@ -78,7 +106,7 @@ export function RequisitionDetailsModal({
                   TOTAL REQUESTED AMOUNT
                 </div>
                 <div className="text-[28px] text-[#111827] leading-none" style={{ fontFamily: '"Inter", sans-serif', fontWeight: 900 }}>
-                  ₦150,000
+                  {amountFormatted}
                 </div>
               </div>
 
@@ -88,7 +116,7 @@ export function RequisitionDetailsModal({
               <div className="flex items-center gap-2 mb-5">
                 <Triangle className="h-3.5 w-3.5 text-[#4B5563] fill-current" />
                 <span className="text-[14px] font-bold text-[#111827]">
-                  Equipment & Maintenance
+                  {budgetCategory}
                 </span>
               </div>
 
@@ -102,7 +130,7 @@ export function RequisitionDetailsModal({
                   <AlignLeft className="h-4 w-4 text-[#2563EB]" strokeWidth={2.5} />
                 </div>
                 <p className="text-[13px] font-medium text-[#4B5563] leading-relaxed italic">
-                  "Current system failed during Sunday service. Immediate replacement required for upcoming mid-week service to ensure sound quality."
+                  "{justificationText}"
                 </p>
               </div>
             </div>

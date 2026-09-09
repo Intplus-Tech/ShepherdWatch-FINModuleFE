@@ -1,7 +1,8 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
+import { API_V1 } from "@/lib/api"
 import BranchAdminSidebar from "@/components/navigation/BranchAdminSidebar"
 import BranchAdminAddEmployeeModal from "@/components/hr/BranchAdminAddEmployeeModal"
 import { cn } from "@/lib/utils"
@@ -73,8 +74,6 @@ const STATUS_STYLES: Record<Status, string> = {
   Exited: "bg-slate-100 text-slate-600",
 }
 
-const JOB_TITLES = Array.from(new Set(EMPLOYEES.map((e) => e.title)))
-
 function initials(name: string) {
   return name
     .replace(/^Dr\.\s*/i, "")
@@ -91,11 +90,54 @@ export default function Page() {
   const [query, setQuery] = useState("")
   const [status, setStatus] = useState<"All" | Status>("All")
   const [jobTitle, setJobTitle] = useState<"All Roles" | string>("All Roles")
+  const [employees, setEmployees] = useState<Employee[]>(EMPLOYEES)
+  const [loading, setLoading] = useState(false)
   const router = useRouter()
+
+  useEffect(() => {
+    let mounted = true
+    async function loadEmployees() {
+      setLoading(true)
+      try {
+        const res = await fetch(`${API_V1}/hr/employees`, { credentials: "include" })
+        if (res.ok) {
+          const json = await res.json()
+          const list = Array.isArray(json?.data) ? json.data : json?.data?.data
+          if (mounted && Array.isArray(list) && list.length > 0) {
+            const mapped: Employee[] = list.map((emp: any) => ({
+              name: emp.userId?.fullName || emp.name || "Employee",
+              empId: emp.employeeId || emp._id,
+              title: emp.jobTitle || emp.title || "Staff",
+              email: emp.userId?.email || emp.email || "",
+              status:
+                emp.employmentStatus === "active"
+                  ? "Active"
+                  : emp.employmentStatus === "on_leave"
+                  ? "On Leave"
+                  : "Exited",
+            }))
+            setEmployees(mapped)
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load employees:", err)
+      } finally {
+        if (mounted) setLoading(false)
+      }
+    }
+    loadEmployees()
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  const jobTitles = useMemo(() => {
+    return Array.from(new Set(employees.map((e) => e.title)))
+  }, [employees])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return EMPLOYEES.filter((e) => {
+    return employees.filter((e) => {
       const matchesQuery =
         !q ||
         e.name.toLowerCase().includes(q) ||
@@ -105,7 +147,7 @@ export default function Page() {
       const matchesTitle = jobTitle === "All Roles" || e.title === jobTitle
       return matchesQuery && matchesStatus && matchesTitle
     })
-  }, [query, status, jobTitle])
+  }, [employees, query, status, jobTitle])
 
   return (
     <div className="flex flex-col lg:flex-row min-h-screen bg-[#F8FAFC] w-full">
@@ -200,7 +242,7 @@ export default function Page() {
                 className="h-[42px] rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[13px] outline-none focus:border-[#2563EB]"
               >
                 <option value="All Roles">Job Title: All Roles</option>
-                {JOB_TITLES.map((t) => (
+                {jobTitles.map((t) => (
                   <option key={t} value={t}>
                     {t}
                   </option>

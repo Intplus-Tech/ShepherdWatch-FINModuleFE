@@ -52,12 +52,18 @@ export async function POST(
       )
     }
 
+    const body = await req.json().catch(() => null)
     const backendResponse = await fetch(buildBackendVerifyUrl(transactionId), {
-      method: "POST",
+      method: "PATCH",
       headers: {
         Authorization: `Bearer ${backendToken}`,
+        "Content-Type": "application/json",
         Accept: "application/json",
       },
+      body: JSON.stringify({
+        status: "verified",
+        ...(body ?? {}),
+      }),
       cache: "no-store",
     })
 

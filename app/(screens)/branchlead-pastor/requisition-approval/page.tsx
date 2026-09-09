@@ -20,15 +20,20 @@ import { useRequisitionBudgetContext } from "@/components/hooks/useRequisitionBu
 
 export default function Page() {
   const { user } = useAuth()
+  const branchId = user?.branchId ?? user?.tenantId ?? user?.tenant?.id ?? ""
   const { requisitions } = useRequisitionInbox({
-    branchId: user?.tenantId ?? user?.tenant?.id ?? "",
+    branchId,
   })
   const [overrideReason, setOverrideReason] = useState("")
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
 
-  const selectedRequisition = useMemo(() => requisitions[0], [requisitions])
+  const selectedRequisition = useMemo(
+    () => (selectedId ? requisitions.find((r) => r.id === selectedId) : null) || requisitions[0],
+    [requisitions, selectedId]
+  )
   const {
     data: budgetContext,
     loading: budgetContextLoading,
@@ -191,6 +196,19 @@ export default function Page() {
  <h2 className="text-[14px] font-semibold text-[#111827]">
  Requisition Approval: {selectedRequisition?.reference ? `#${selectedRequisition.reference}` : selectedRequisition?.id ? `#${selectedRequisition.id.slice(0, 8).toUpperCase()}` : "N/A"}
  </h2>
+ {requisitions.length > 1 && (
+   <select
+     value={selectedRequisition?.id ?? ""}
+     onChange={(e) => setSelectedId(e.target.value)}
+     className="text-[10px] rounded border border-[#E5E7EB] bg-[#F9FAFB] px-2 py-0.5 text-[#374151]"
+   >
+     {requisitions.map((r) => (
+       <option key={r.id} value={r.id}>
+         {r.reference ? `#${r.reference}` : r.id.slice(0, 8)} — {formatCurrency(r.amount)}
+       </option>
+     ))}
+   </select>
+ )}
  <span className={`rounded-full px-2 py-0.5 text-[8px] ${budgetContext?.isOverBudget ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-600"}`}>
  {budgetContext?.isOverBudget ? "OVER-BUDGET" : "WITHIN BUDGET"}
  </span>

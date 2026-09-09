@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { API_V1 } from "@/lib/api"
 import BranchAdminSidebar from "@/components/navigation/BranchAdminSidebar"
 import { cn } from "@/lib/utils"
 import {
@@ -74,6 +75,78 @@ function initials(name: string) {
 
 export default function Page() {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [dashboardData, setDashboardData] = useState<any>(null)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    let mounted = true
+    async function loadDashboard() {
+      setLoading(true)
+      try {
+        const res = await fetch(`${API_V1}/hr/dashboard/admin`, {
+          credentials: "include",
+        })
+        if (res.ok) {
+          const json = await res.json()
+          if (mounted && json?.data) {
+            setDashboardData(json.data)
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load HR dashboard data:", err)
+      } finally {
+        if (mounted) setLoading(false)
+      }
+    }
+    loadDashboard()
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  const statCards = useMemo<StatCard[]>(() => {
+    const kpis = dashboardData?.kpis
+    return [
+      {
+        value: kpis?.totalEmployees != null ? String(kpis.totalEmployees) : "124",
+        label: "TOTAL EMPLOYEES",
+        icon: Users,
+        tint: "bg-blue-50",
+        iconColor: "text-blue-600",
+      },
+      {
+        value: kpis?.onLeaveToday != null ? String(kpis.onLeaveToday) : "8",
+        label: "ON LEAVE TODAY",
+        icon: Calendar,
+        tint: "bg-amber-50",
+        iconColor: "text-amber-600",
+      },
+      {
+        value:
+          kpis?.clockedInToday != null && kpis?.totalEmployees != null
+            ? `${kpis.clockedInToday} / ${kpis.totalEmployees}`
+            : "102 / 124",
+        label: "CLOCKED IN TODAY",
+        icon: Clock,
+        tint: "bg-emerald-50",
+        iconColor: "text-emerald-600",
+      },
+      {
+        value: kpis?.activeTrainings != null ? String(kpis.activeTrainings) : "3",
+        label: "ACTIVE TRAINING EVENTS",
+        icon: GraduationCap,
+        tint: "bg-violet-50",
+        iconColor: "text-violet-600",
+      },
+    ]
+  }, [dashboardData])
+
+  const clockInPercent = useMemo(() => {
+    if (dashboardData?.kpis?.clockInRate != null) {
+      return `${dashboardData.kpis.clockInRate}%`
+    }
+    return "82%"
+  }, [dashboardData])
 
   return (
     <div className="flex flex-col lg:flex-row min-h-screen bg-[#F8FAFC] w-full">
@@ -131,7 +204,7 @@ export default function Page() {
 
           {/* Stat cards */}
           <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            {STAT_CARDS.map((card) => {
+            {statCards.map((card) => {
               const Icon = card.icon
               return (
                 <div key={card.label} className="rounded-xl border border-[#EEF1F6] bg-white p-5">
@@ -158,9 +231,9 @@ export default function Page() {
 
                   {card.label === "CLOCKED IN TODAY" && (
                     <div className="mt-3">
-                      <div className="mb-1.5 text-[12px] font-semibold text-[#6B7280]">82%</div>
+                      <div className="mb-1.5 text-[12px] font-semibold text-[#6B7280]">{clockInPercent}</div>
                       <div className="h-2 rounded-full bg-[#EEF1F6]">
-                        <div className="h-2 rounded-full bg-emerald-500" style={{ width: "82%" }} />
+                        <div className="h-2 rounded-full bg-emerald-500" style={{ width: clockInPercent }} />
                       </div>
                     </div>
                   )}

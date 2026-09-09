@@ -5,12 +5,14 @@ import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Database, Downloa
 import FinanceControllerShell from "@/components/finance-controller/FinanceControllerShell"
 import {
   GLOBAL_TRANSACTIONS,
+  GlobalTransaction,
   TOTAL_CREDITS_YTD,
   TOTAL_DEBITS_YTD,
   TOTAL_GLOBAL_RECORDS,
   TRANSACTION_BRANCHES,
   TRANSACTION_CATEGORIES,
 } from "@/components/finance-controller/finance-data"
+import { useTransactions } from "@/components/hooks/useTransactions"
 import { downloadCsv, sectionsToCsv } from "@/lib/export-csv"
 import { formatNumber } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -19,15 +21,65 @@ const MONTHS = ["Oct 2024", "Sep 2024", "Aug 2024", "Jul 2024"]
 const PAGE_SIZE = 5
 
 export default function Page() {
+  const { transactions } = useTransactions()
   const [search, setSearch] = useState("")
   const [branch, setBranch] = useState("All Branches")
   const [category, setCategory] = useState("All Categories")
   const [month, setMonth] = useState(MONTHS[0])
   const [page, setPage] = useState(1)
 
+  const allTransactions: GlobalTransaction[] = useMemo(() => {
+    if (transactions.length > 0) {
+      return transactions.map((tx) => {
+        const isCredit =
+          tx.transactionType === "credit" ||
+          tx.flowType === "credit" ||
+          tx.flowType === "inflow"
+        return {
+          id: tx.id,
+          date: tx.date
+            ? new Date(tx.date).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })
+            : "",
+          txnId: `TXN-${tx.id.slice(-6).toUpperCase()}`,
+          branch: "Main Branch",
+          description: tx.description || "Financial Transaction",
+          category: tx.category || tx.coaName || "General",
+          debit: !isCredit ? tx.amount : 0,
+          credit: isCredit ? tx.amount : 0,
+        }
+      })
+    }
+    return GLOBAL_TRANSACTIONS
+  }, [transactions])
+
+  const totalDebits = useMemo(() => {
+    if (transactions.length > 0) {
+      return allTransactions.reduce((acc, t) => acc + (t.debit || 0), 0)
+    }
+    return TOTAL_DEBITS_YTD
+  }, [allTransactions, transactions])
+
+  const totalCredits = useMemo(() => {
+    if (transactions.length > 0) {
+      return allTransactions.reduce((acc, t) => acc + (t.credit || 0), 0)
+    }
+    return TOTAL_CREDITS_YTD
+  }, [allTransactions, transactions])
+
+  const totalRecords = useMemo(() => {
+    if (transactions.length > 0) {
+      return allTransactions.length
+    }
+    return TOTAL_GLOBAL_RECORDS
+  }, [allTransactions, transactions])
+
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase()
-    return GLOBAL_TRANSACTIONS.filter((row) => {
+    return allTransactions.filter((row) => {
       if (branch !== "All Branches" && row.branch !== branch) return false
       if (category !== "All Categories" && row.category !== category) return false
       if (!term) return true
@@ -37,7 +89,7 @@ export default function Page() {
         row.branch.toLowerCase().includes(term)
       )
     })
-  }, [branch, category, search])
+  }, [allTransactions, branch, category, search])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const currentPage = Math.min(page, totalPages)
@@ -82,7 +134,7 @@ export default function Page() {
               </h1>
               <span className="mt-4 inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-[12px] font-semibold text-[#4B5563] shadow-sm">
                 <Database className="h-3.5 w-3.5 text-[#3B5BDB]" />
-                {formatNumber(TOTAL_GLOBAL_RECORDS, { maximumFractionDigits: 0 })} Total Records
+                {formatNumber(totalRecords, { maximumFractionDigits: 0 })} Total Records
               </span>
             </div>
 
@@ -93,7 +145,7 @@ export default function Page() {
                 </div>
                 <div className="mt-2 text-[22px] font-extrabold leading-none text-rose-600">
                   <span className="mr-1 text-[14px] font-bold text-[#9CA3AF]">₦</span>
-                  {formatNumber(TOTAL_DEBITS_YTD, { maximumFractionDigits: 0 })}
+                  {formatNumber(totalDebits, { maximumFractionDigits: 0 })}
                 </div>
               </div>
               <div className="rounded-[12px] bg-white p-5 shadow-sm">
@@ -102,7 +154,7 @@ export default function Page() {
                 </div>
                 <div className="mt-2 text-[22px] font-extrabold leading-none text-emerald-600">
                   <span className="mr-1 text-[14px] font-bold text-[#9CA3AF]">₦</span>
-                  {formatNumber(TOTAL_CREDITS_YTD, { maximumFractionDigits: 0 })}
+                  {formatNumber(totalCredits, { maximumFractionDigits: 0 })}
                 </div>
               </div>
             </div>

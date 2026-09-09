@@ -4,6 +4,7 @@ import { useMemo, useState } from "react"
 import { ArrowDownLeft, ArrowUpRight, Download, Search, Wallet } from "lucide-react"
 import FinanceControllerShell from "@/components/finance-controller/FinanceControllerShell"
 import { MY_TRANSACTIONS, type MyTransaction } from "@/components/finance-controller/finance-data"
+import { useTransactions } from "@/components/hooks/useTransactions"
 import { downloadCsv, sectionsToCsv } from "@/lib/export-csv"
 import { formatCurrency } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -18,12 +19,48 @@ const STATUS_STYLES: Record<MyTransaction["status"], string> = {
 }
 
 export default function Page() {
+  const { transactions } = useTransactions()
   const [tab, setTab] = useState<Tab>("All")
   const [search, setSearch] = useState("")
 
+  const allTransactions: MyTransaction[] = useMemo(() => {
+    if (transactions.length > 0) {
+      return transactions.map((tx) => {
+        const isCredit =
+          tx.transactionType === "credit" ||
+          tx.flowType === "credit" ||
+          tx.flowType === "inflow"
+        const statusMap: MyTransaction["status"] =
+          tx.status === "verified" || tx.status === "approved"
+            ? "Posted"
+            : tx.status === "pending" || tx.status === "unverified"
+            ? "Pending"
+            : "Draft"
+        return {
+          id: tx.id,
+          date: tx.date
+            ? new Date(tx.date).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })
+            : "",
+          txnId: `TXN-${tx.id.slice(-6).toUpperCase()}`,
+          description: tx.description || "Financial Transaction",
+          account: "Main Bank Account",
+          category: tx.category || tx.coaName || "General",
+          amount: tx.amount || 0,
+          direction: isCredit ? "credit" : "debit",
+          status: statusMap,
+        }
+      })
+    }
+    return MY_TRANSACTIONS
+  }, [transactions])
+
   const rows = useMemo(() => {
     const term = search.trim().toLowerCase()
-    return MY_TRANSACTIONS.filter((row) => {
+    return allTransactions.filter((row) => {
       if (tab === "Credit" && row.direction !== "credit") return false
       if (tab === "Debit" && row.direction !== "debit") return false
       if (!term) return true
@@ -33,16 +70,14 @@ export default function Page() {
         row.category.toLowerCase().includes(term)
       )
     })
-  }, [search, tab])
+  }, [allTransactions, search, tab])
 
-  const credits = MY_TRANSACTIONS.filter((row) => row.direction === "credit").reduce(
-    (sum, row) => sum + row.amount,
-    0
-  )
-  const debits = MY_TRANSACTIONS.filter((row) => row.direction === "debit").reduce(
-    (sum, row) => sum + row.amount,
-    0
-  )
+  const credits = allTransactions
+    .filter((row) => row.direction === "credit")
+    .reduce((sum, row) => sum + row.amount, 0)
+  const debits = allTransactions
+    .filter((row) => row.direction === "debit")
+    .reduce((sum, row) => sum + row.amount, 0)
 
   const handleExport = () => {
     const csv = sectionsToCsv([
@@ -66,7 +101,7 @@ export default function Page() {
   const stats = [
     {
       label: "Entries Recorded",
-      value: String(MY_TRANSACTIONS.length),
+      value: String(allTransactions.length),
       icon: Wallet,
       iconClass: "bg-[#EEF2FF] text-[#3B5BDB]",
       valueClass: "text-[#111827]",

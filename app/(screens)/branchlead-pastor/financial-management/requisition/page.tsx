@@ -1,7 +1,7 @@
 "use client"
 
 import { API_V1 } from "@/lib/api";
-import { useState } from "react"
+import { useMemo, useState } from "react"
 
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
@@ -26,13 +26,19 @@ import Link from "next/link"
 import { useAuth } from "@/components/auth/AuthProvider"
 import { RequisitionDetailsModal } from "@/components/modals/RequisitionDetailsModal"
 import BranchLeadPastorSidebar from "@/components/navigation/BranchLeadPastorSidebar"
+import { useRequisitions } from "@/components/hooks/useRequisitions"
 
 export default function Page() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { user } = useAuth()
   const displayName = user?.name || user?.email || "User"
   const roleLabel = user?.role ? String(user.role).replace(/_/g, " ") : "Lead Pastor"
-  const branchId = user?.tenantId ?? user?.tenant?.id ?? ""
+  const branchId = user?.branchId ?? user?.tenantId ?? user?.tenant?.id ?? ""
+
+  const { requisitions: liveRequisitions, refresh: refreshReqs } = useRequisitions({
+    branchId,
+    limit: 50,
+  })
 
   const [isApproving, setIsApproving] = useState<string | null>(null)
   const [approveError, setApproveError] = useState<string | null>(null)
@@ -181,6 +187,36 @@ export default function Page() {
     background: "conic-gradient(#F97316 0% 78%, #0EA5E9 78% 93%, #22C55E 93% 100%)"
   }
 
+  const selectedRequisition = useMemo(() => {
+    if (!selectedRequisitionId) return null
+    const foundLive = liveRequisitions.find((r) => r.id === selectedRequisitionId)
+    if (foundLive) return foundLive
+    const foundCard = priorityCards.find((c) => c.rawId === selectedRequisitionId)
+    if (foundCard) {
+      return {
+        id: foundCard.rawId,
+        reference: foundCard.id.replace(/^#REQ-/, ""),
+        description: foundCard.description,
+        justification: foundCard.fullDescription,
+        category: foundCard.category,
+        amount: foundCard.amount,
+      }
+    }
+    const foundRow = pendingRows.find((r) => r.rawId === selectedRequisitionId)
+    if (foundRow) {
+      return {
+        id: foundRow.rawId,
+        reference: foundRow.id.replace(/^#REQ-/, ""),
+        description: foundRow.description,
+        category: foundRow.category,
+        amount: foundRow.amount,
+        requestedBy: foundRow.requestedBy,
+        status: foundRow.status,
+      }
+    }
+    return null
+  }, [selectedRequisitionId, liveRequisitions])
+
   return (
     <div className="h-screen w-full bg-[#F9FAFB] font-sans antialiased text-[#111827] flex overflow-hidden">
       <BranchLeadPastorSidebar />
@@ -188,9 +224,11 @@ export default function Page() {
         isOpen={selectedRequisitionId !== null}
         onClose={() => setSelectedRequisitionId(null)}
         isAuthorizing={isApproving !== null}
+        requisition={selectedRequisition}
         onAuthorize={async () => {
           if (!selectedRequisitionId) return
           await handleApprove(selectedRequisitionId)
+          refreshReqs()
           setSelectedRequisitionId(null)
         }}
       />

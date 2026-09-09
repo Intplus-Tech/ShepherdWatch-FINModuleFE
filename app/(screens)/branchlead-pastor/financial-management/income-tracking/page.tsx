@@ -36,14 +36,15 @@ export default function Page() {
   const { user } = useAuth();
   const displayName = user?.name || user?.email || "User";
   const roleLabel = user?.role ? String(user.role).replace(/_/g, " ") : "Lead Pastor";
-  const tenantId = user?.tenantId ?? user?.tenant?.id ?? "";
+  const branchId = user?.branchId ?? user?.tenantId ?? user?.tenant?.id ?? "";
   const [page, setPage] = useState(1);
   const { transactions: allTransactions, pagination, loading, error, refresh } = useTransactions({ page, limit: 20 });
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"all" | "tithes" | "offerings" | "capital" | "forex" | "unverified">("all");
 
   const incomeTransactions = allTransactions.filter(tx =>
-    (tx.flowType ?? "").toUpperCase() === "INFLOW" || Number(tx.amount) > 0
+    (tx.transactionType ?? "").toLowerCase() === "credit" ||
+    (tx.flowType ?? "").toUpperCase() === "INFLOW"
   );
 
   const transactions = incomeTransactions.filter((tx) => {
@@ -80,7 +81,7 @@ export default function Page() {
         onOpenChange={setIsModalOpen}
         onSuccess={refresh}
         flowType="income"
-        tenantId={tenantId}
+        tenantId={branchId}
       />
       <BranchLeadPastorSidebar />
 

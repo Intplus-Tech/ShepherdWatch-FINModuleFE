@@ -1,6 +1,6 @@
 "use client"
 
-import { Fragment, useMemo, useState } from "react"
+import { Fragment, useEffect, useMemo, useState } from "react"
 import {
   ChevronDown,
   Download,
@@ -19,8 +19,10 @@ import InitiateSpecialRequestModal from "@/components/finance-controller/Initiat
 import {
   REQUEST_STATUS_STYLES,
   SPECIAL_REQUESTS,
+  type RequestStatus,
   type SpecialRequest,
 } from "@/components/finance-controller/finance-data"
+import { useRequisitions } from "@/components/hooks/useRequisitions"
 import { downloadCsv, sectionsToCsv } from "@/lib/export-csv"
 import { formatCurrency } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -36,11 +38,53 @@ function matchesStatus(request: SpecialRequest, filter: StatusFilter): boolean {
 }
 
 export default function Page() {
+  const { requisitions } = useRequisitions()
   const [requests, setRequests] = useState<SpecialRequest[]>(SPECIAL_REQUESTS)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("All")
   const [search, setSearch] = useState("")
   const [expandedId, setExpandedId] = useState<string | null>(SPECIAL_REQUESTS[0]?.id ?? null)
   const [modalOpen, setModalOpen] = useState(false)
+
+  useEffect(() => {
+    if (requisitions && requisitions.length > 0) {
+      const mapped: SpecialRequest[] = requisitions.map((req) => {
+        let mappedStatus: RequestStatus = "PENDING (FINANCE DIR.)"
+        const s = req.currentStatus?.toLowerCase()
+        if (s === "approved" || s === "paid") {
+          mappedStatus = "FULLY APPROVED"
+        } else if (s === "declined" || s === "rejected") {
+          mappedStatus = "DECLINED (FINANCE DIR.)"
+        } else if (s === "pending_pastor") {
+          mappedStatus = "PENDING (PASTORATE DIR.)"
+        }
+
+        const dt = req.createdAt ? new Date(req.createdAt) : new Date()
+        return {
+          id: req.id,
+          date: dt.toLocaleDateString("en-GB", {
+            day: "2-digit",
+            month: "short",
+            year: "2-digit",
+          }),
+          requestId: req.reference || `#REQ-${req.id.slice(-4).toUpperCase()}`,
+          type: req.coaName || "Special Ministry Fund",
+          amount: req.amount,
+          status: mappedStatus,
+          submittedBy: req.requestedBy || "Control Desk",
+          submittedAt: dt.toLocaleString("en-GB", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          justification: req.justification || "Requisition request submission.",
+          branch: "Central Finance",
+        }
+      })
+      setRequests(mapped)
+    }
+  }, [requisitions])
 
   const rows = useMemo(() => {
     const term = search.trim().toLowerCase()
