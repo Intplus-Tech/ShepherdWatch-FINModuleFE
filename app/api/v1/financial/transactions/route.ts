@@ -2,9 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config"
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors"
 import { isCsrfValid } from "@/lib/csrf"
-
 import { getBackendApiUrl } from "@/lib/env"
-
 
 function buildBackendTransactionsUrl(): string {
   const baseUrl = getBackendApiUrl();
@@ -44,6 +42,17 @@ export async function POST(req: NextRequest) {
     const backendUrl = buildBackendTransactionsUrl()
     const body = await req.json().catch(() => null)
 
+    if (body && typeof body === "object") {
+      if (!body.transactionType && body.flowType) {
+        const norm = String(body.flowType).trim().toLowerCase()
+        if (["credit", "income", "inflow"].includes(norm)) {
+          body.transactionType = "credit"
+        } else if (["debit", "expense", "outflow"].includes(norm)) {
+          body.transactionType = "debit"
+        }
+      }
+    }
+
     const backendResponse = await fetch(backendUrl, {
       method: "POST",
       headers: {
@@ -63,6 +72,7 @@ export async function POST(req: NextRequest) {
           {
             success: false,
             message: payload?.message ?? "Unable to create transaction",
+            errors: payload?.errors,
           },
           { status: backendResponse.status || 502 }
         ),

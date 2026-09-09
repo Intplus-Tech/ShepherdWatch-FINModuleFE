@@ -8,7 +8,7 @@ import { getBackendApiUrl } from "@/lib/env"
 
 function buildBackendUrl(transactionId: string): string {
   const baseUrl = getBackendApiUrl()
-  return `${baseUrl}/financial/transactions/${transactionId}/categorize-suggestions`
+  return `${baseUrl}/transactions/${transactionId}/categorize-suggestions`
 }
 
 export async function POST(

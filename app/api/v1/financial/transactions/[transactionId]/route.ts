@@ -8,7 +8,7 @@ import { getBackendApiUrl } from "@/lib/env"
 
 function buildBackendUrl(transactionId: string): string {
   const baseUrl = getBackendApiUrl();
-  return `${baseUrl}/financial/transactions/${transactionId}`
+  return `${baseUrl}/transactions/${transactionId}`
 }
 
 export async function DELETE(req: NextRequest, context: { params: Promise<{ transactionId: string }> }) {

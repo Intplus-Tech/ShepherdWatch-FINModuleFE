@@ -28,6 +28,7 @@ type UseTransactionsOptions = {
   limit?: number
   search?: string
   type?: string
+  transactionType?: string
   branchId?: string
 }
 
@@ -62,7 +63,12 @@ export function useTransactions(options: UseTransactionsOptions = {}) {
         if (options.page !== undefined) params.set("page", String(options.page))
         if (options.limit !== undefined) params.set("limit", String(options.limit))
         if (options.search) params.set("search", options.search)
-        if (options.type) params.set("type", options.type)
+        if (options.transactionType) {
+          params.set("transactionType", options.transactionType.toLowerCase())
+        } else if (options.type) {
+          const norm = options.type.toLowerCase()
+          params.set("transactionType", ["credit", "income"].includes(norm) ? "credit" : ["debit", "expense"].includes(norm) ? "debit" : norm)
+        }
         const query = params.toString()
         const url = query
           ? `${API_V1}/financial/transactions?${query}`

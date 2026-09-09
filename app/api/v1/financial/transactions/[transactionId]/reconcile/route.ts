@@ -2,13 +2,11 @@ import { NextRequest, NextResponse } from "next/server"
 import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config"
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors"
 import { isCsrfValid } from "@/lib/csrf"
-
 import { getBackendApiUrl } from "@/lib/env"
-
 
 function buildBackendReconcileUrl(transactionId: string): string {
   const baseUrl = getBackendApiUrl();
-  return `${baseUrl}/financial/transactions/${transactionId}/reconcile`
+  return `${baseUrl}/transactions/${transactionId}/verify`
 }
 
 export async function POST(
@@ -52,12 +50,18 @@ export async function POST(
       )
     }
 
+    const body = await req.json().catch(() => null)
     const backendResponse = await fetch(buildBackendReconcileUrl(transactionId), {
-      method: "POST",
+      method: "PATCH",
       headers: {
         Authorization: `Bearer ${backendToken}`,
+        "Content-Type": "application/json",
         Accept: "application/json",
       },
+      body: JSON.stringify({
+        status: "verified",
+        ...(body ?? {}),
+      }),
       cache: "no-store",
     })
 

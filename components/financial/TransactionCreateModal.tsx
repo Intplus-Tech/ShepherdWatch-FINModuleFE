@@ -278,12 +278,17 @@ export function TransactionCreateModal({
 
     try {
       const payload = {
-        type: flowType,
+        transactionType: flowType === "income" ? "credit" : "debit",
         amount: Number(amount),
+        currency: "NGN",
         description,
-        branchId: tenantId,
-        chartOfAccountId,
-        transactionDate,
+        transactionDate: transactionDate || new Date().toISOString().split("T")[0],
+        branchId: tenantId || undefined,
+        chartOfAccountId: chartOfAccountId || undefined,
+        source: "manual",
+        meta: {
+          category: flowType === "income" ? "Income" : "Expense",
+        },
       }
 
       const res = await fetch(`${API_V1}/financial/transactions`, {

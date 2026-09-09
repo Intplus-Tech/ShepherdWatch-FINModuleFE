@@ -8,7 +8,7 @@ import { getBackendApiUrl } from "@/lib/env"
 
 function buildBackendVerifyUrl(transactionId: string): string {
   const baseUrl = getBackendApiUrl();
-  return `${baseUrl}/financial/transactions/${transactionId}/verify`
+  return `${baseUrl}/transactions/${transactionId}/verify`
 }
 
 export async function POST(

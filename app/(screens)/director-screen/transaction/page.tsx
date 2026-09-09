@@ -1613,13 +1613,18 @@ function RecordExpenseModal({ open, onClose, onSaved }: { open: boolean; onClose
         },
         credentials: "include",
         body: JSON.stringify({
-          flowType: "DEBIT",
+          transactionType: "debit",
           amount: parseAmount(amount),
-          date: date || undefined,
-          transactionType: type,
-          payee: payee || undefined,
-          category,
-          description: notes || payee || undefined,
+          currency: "NGN",
+          transactionDate: date || new Date().toISOString().split("T")[0],
+          description: notes || payee ? `${payee ? payee : ""}${notes ? (payee ? ` - ${notes}` : notes) : ""}` : "Manual Expense",
+          source: "manual",
+          meta: {
+            paymentMethod: type,
+            category,
+            payee: payee || undefined,
+            notes: notes || undefined,
+          },
         }),
       })
       const data = await response.json().catch(() => null)
@@ -1762,12 +1767,17 @@ function RecordIncomeModal({ open, onClose, onSaved }: { open: boolean; onClose:
         },
         credentials: "include",
         body: JSON.stringify({
-          flowType: "CREDIT",
+          transactionType: "credit",
           amount: numericAmount,
           currency,
-          date: date || undefined,
-          category: incomeType,
-          description: notes || incomeType,
+          transactionDate: date || new Date().toISOString().split("T")[0],
+          description: notes ? `${incomeType} - ${notes}` : incomeType,
+          source: "manual",
+          meta: {
+            category: incomeType,
+            incomeType,
+            notes: notes || undefined,
+          },
         }),
       })
       const data = await response.json().catch(() => null)
