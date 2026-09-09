@@ -6,6 +6,12 @@ import { getBackendApiUrl } from "@/lib/env"
 import { executeWithRefreshRetry } from "@/lib/backend-refresh"
 
 
+// `roleId` is the role key itself (e.g. `branch_pastor`) — roles are enum
+// values, not stored records with generated ids. GET reads one role and its
+// permissions; PUT replaces that role's grants.
+//
+// The PATCH handler that used to sit here targeted /roles/:id/status. Roles
+// have no active/inactive state and no such backend route ever existed.
 function buildBackendRoleUrl(roleId: string, search: string): string {
   const baseUrl = getBackendApiUrl();
   const url = new URL(`${baseUrl}/roles/${roleId}`)
@@ -132,77 +138,6 @@ export async function PUT(
     return applyCors(NextResponse.json(payload, { status: 200 }), req)
   } catch (error) {
     console.error("Update role proxy error:", error)
-    return applyCors(
-      NextResponse.json(
-        { success: false, message: "Internal server error" },
-        { status: 500 }
-      ),
-      req
-    )
-  }
-}
-
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ roleId: string }> }
-) {
-  try {
-    if (!isOriginAllowed(req)) {
-      return applyCors(
-        NextResponse.json(
-          { success: false, message: "Invalid request origin" },
-          { status: 403 }
-        ),
-        req
-      )
-    }
-
-    if (!isCsrfValid(req)) {
-      return applyCors(
-        NextResponse.json({ success: false, message: "CSRF token invalid" }, { status: 403 }),
-        req
-      )
-    }
-
-    const baseUrl = getBackendApiUrl();
-
-    const { roleId } = await params
-    const backendUrl = `${baseUrl}/roles/${roleId}/status`
-    const body = await req.json().catch(() => null)
-
-    // Retries once with a refreshed access token when the cookie has expired,
-    // and stages the renewed cookies for `applyCors` to write back.
-    const { res: backendResponse } = await executeWithRefreshRetry(req, (backendToken) =>
-      fetch(backendUrl, {
-        method: "PUT",
-        headers: {
-          Authorization: `Bearer ${backendToken}`,
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify(body ?? {}),
-        cache: "no-store",
-      })
-    )
-
-    const payload = await backendResponse.json().catch(() => null)
-
-    if (!backendResponse.ok) {
-      return applyCors(
-        NextResponse.json(
-          {
-            success: false,
-            message: payload?.message ?? "Unable to update role status",
-          },
-          { status: backendResponse.status || 502 }
-        ),
-        req
-      )
-    }
-
-    return applyCors(NextResponse.json(payload, { status: 200 }), req)
-  } catch (error) {
-    console.error("Update role status proxy error:", error)
     return applyCors(
       NextResponse.json(
         { success: false, message: "Internal server error" },

@@ -87,7 +87,7 @@ export default function MaintenanceManagementPage() {
 
     try {
       const csrfToken = getCsrfToken()
-      const response = await fetch(`${API_V1}/financial/maintenance-tasks/${taskId}`, {
+      const response = await fetch(`${API_V1}/maintenance/${taskId}`, {
         method: "DELETE",
         headers: { "x-csrf-token": csrfToken },
         credentials: "include",

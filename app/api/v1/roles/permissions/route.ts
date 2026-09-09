@@ -5,10 +5,14 @@ import { getBackendApiUrl } from "@/lib/env"
 import { executeWithRefreshRetry } from "@/lib/backend-refresh"
 
 
-// Served by GET /permissions/matrix on the backend; there is no /roles mount.
+// Served by GET /roles, which returns each role with its full permission list
+// (label, description, section and `granted`).
+//
+// Not /permissions/matrix: that route is super_admin-only and returns bare
+// action keys, whereas these screens are used by directors and need the labels.
 function buildBackendPermissionsUrl(search: string): string {
   const baseUrl = getBackendApiUrl();
-  const url = new URL(`${baseUrl}/permissions/matrix`)
+  const url = new URL(`${baseUrl}/roles`)
   if (search) {
     url.search = search
   }

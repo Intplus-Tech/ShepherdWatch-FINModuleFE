@@ -51,7 +51,7 @@ type BudgetRow = {
 
 export function BudgetReviewContent({ rightSidebar, activeRowId }: { rightSidebar?: React.ReactNode, activeRowId?: string }) {
   const router = useRouter()
-  const { entries, loading, error } = useBudgetEntries()
+  const { entries, pendingApproval, loading, error } = useBudgetEntries()
   const [data, setData] = useState<BudgetRow[]>([])
   const [approvingId, setApprovingId] = useState<string | null>(null)
   const [approvedIds, setApprovedIds] = useState<Set<string>>(new Set())
@@ -89,8 +89,13 @@ export function BudgetReviewContent({ rightSidebar, activeRowId }: { rightSideba
   }
 
   const approveAllEntries = async () => {
-    const entryIds = entries.map((entry) => entry.id).filter(Boolean)
-    if (entryIds.length === 0) return
+    // Only submitted budgets are approvable; the backend 400s on anything else,
+    // which would fail the whole batch below.
+    const entryIds = pendingApproval.map((entry) => entry.id).filter(Boolean)
+    if (entryIds.length === 0) {
+      setApproveError("There are no budgets awaiting approval.")
+      return
+    }
     setApprovingAll(true)
     setApproveError(null)
 

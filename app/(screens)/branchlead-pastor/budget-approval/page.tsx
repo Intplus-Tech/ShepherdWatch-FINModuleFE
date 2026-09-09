@@ -25,7 +25,7 @@ import BranchLeadPastorSidebar from "@/components/navigation/BranchLeadPastorSid
 import { getCsrfTokenFromCookie } from "@/lib/csrf"
 
 export default function Page() {
-  const { entries, loading, error } = useBudgetEntries()
+  const { entries, pendingApproval, loading, error } = useBudgetEntries()
   const [approvingAll, setApprovingAll] = useState(false)
   const [approveError, setApproveError] = useState<string | null>(null)
   const [budgetHierarchy, setBudgetHierarchy] = useState<
@@ -125,8 +125,13 @@ export default function Page() {
   const getCsrfToken = getCsrfTokenFromCookie
 
   const approveAllEntries = async () => {
-    const entryIds = entries.map((entry) => entry.id).filter(Boolean)
-    if (entryIds.length === 0) return
+    // Only submitted budgets are approvable; the backend 400s on anything else,
+    // which would fail the whole batch below.
+    const entryIds = pendingApproval.map((entry) => entry.id).filter(Boolean)
+    if (entryIds.length === 0) {
+      setApproveError("There are no budgets awaiting approval.")
+      return
+    }
     setApprovingAll(true)
     setApproveError(null)
 

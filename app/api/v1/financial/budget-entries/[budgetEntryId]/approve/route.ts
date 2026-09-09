@@ -6,13 +6,12 @@ import { getBackendApiUrl } from "@/lib/env"
 import { executeWithRefreshRetry } from "@/lib/backend-refresh"
 
 
+// Budget approval is PATCH /budgets/:id/approve on the backend, open to
+// super_admin, director, regional_pastor and branch_pastor. A branch pastor may
+// only approve budgets belonging to their own branch; the backend enforces that
+// and answers 403 otherwise.
 function buildBackendApproveUrl(budgetEntryId: string): string {
   const baseUrl = getBackendApiUrl();
-  // Budget approval is PATCH /budgets/:id/approve on the backend.
-  // NOTE: that route is gated to super_admin and director
-  // (`authorizeRoles` in budget.routes.ts), so the Lead Pastor screens that
-  // call this will receive a 403 until the backend grants branch_pastor
-  // approval rights or adds a separate lead-pastor approval step.
   return `${baseUrl}/budgets/${budgetEntryId}/approve`
 }
 
@@ -46,6 +45,14 @@ export async function POST(
       )
     }
 
+    // The backend requires an explicit target status so the same route can
+    // reject. Callers that just mean "approve" may omit the body.
+    const requested = await req.json().catch(() => null)
+    const status =
+      typeof requested?.status === "string" && requested.status.trim()
+        ? requested.status
+        : "approved"
+
     // Retries once with a refreshed access token when the cookie has expired,
     // and stages the renewed cookies for `applyCors` to write back.
     const { res: backendResponse } = await executeWithRefreshRetry(req, (backendToken) =>
@@ -54,7 +61,9 @@ export async function POST(
         headers: {
           Authorization: `Bearer ${backendToken}`,
           Accept: "application/json",
+          "Content-Type": "application/json",
         },
+        body: JSON.stringify({ status }),
         cache: "no-store",
       })
     )

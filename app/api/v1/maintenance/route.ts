@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors"
+import { isCsrfValid } from "@/lib/csrf"
 
 import { getBackendApiUrl } from "@/lib/env"
 import { executeWithRefreshRetry } from "@/lib/backend-refresh"
@@ -13,6 +14,13 @@ export async function POST(req: NextRequest) {
           { success: false, message: "Invalid request origin" },
           { status: 403 }
         ),
+        req
+      )
+    }
+
+    if (!isCsrfValid(req)) {
+      return applyCors(
+        NextResponse.json({ success: false, message: "CSRF token invalid" }, { status: 403 }),
         req
       )
     }

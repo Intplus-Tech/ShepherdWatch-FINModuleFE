@@ -6,6 +6,15 @@ export type FlatRolePermission = {
   description: string
   section: string
   roleType?: string
+  /**
+   * Whether the role actually holds this permission.
+   *
+   * `GET /roles` reports every action for every role and distinguishes them
+   * with this flag, so callers must not treat "present in the list" as
+   * "granted". Payload shapes that only ever listed held permissions carry no
+   * flag; those default to `true`.
+   */
+  granted: boolean
 }
 
 export type RoleItem = {
@@ -69,12 +78,16 @@ function buildFlatPermission(
     permission?.permission?.id ??
     `${name}-${roleType ?? "unknown"}`
 
+  const granted =
+    permission?.granted ?? permission?.isGranted ?? permission?.permission?.granted
+
   return {
     id: String(id),
     name: String(name),
     description: String(description),
     section: String(section),
     roleType,
+    granted: granted === undefined ? true : granted === true,
   }
 }
 

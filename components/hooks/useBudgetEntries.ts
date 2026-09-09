@@ -2,9 +2,13 @@ import { API_V1 } from "@/lib/api";
 import { useEffect, useMemo, useState } from "react"
 import { useAuth } from "@/components/auth/AuthProvider"
 
-type BudgetEntry = {
+/** Backend `BudgetStatus`; only `submitted` budgets can be approved or rejected. */
+export const BUDGET_STATUS_SUBMITTED = "submitted"
+
+export type BudgetEntry = {
   id: string
   amount: number
+  status?: string
   period?: string
   periodStart?: string
   periodEnd?: string
@@ -70,6 +74,7 @@ export function useBudgetEntries() {
           periodEnd: item?.periodEnd,
           coaId: item?.coaId ?? item?.coa?.id,
           coaName: item?.coaName ?? item?.coa?.name ?? item?.coa?.accountName,
+          status: typeof item?.status === "string" ? item.status.toLowerCase() : undefined,
           name: item?.name ?? item?.title,
           category: item?.category ?? item?.budgetCategory,
           stream: item?.stream ?? item?.budgetStream,
@@ -97,7 +102,17 @@ export function useBudgetEntries() {
     }
   }, [branchId])
 
-  return { entries, loading, error }
+  /**
+   * The subset an approver can act on. `PATCH /budgets/:id/approve` rejects
+   * anything not in `submitted` status with a 400, so an "approve all" that
+   * walked every row would fail on the first draft or already-approved budget.
+   */
+  const pendingApproval = useMemo(
+    () => entries.filter((entry) => entry.status === BUDGET_STATUS_SUBMITTED),
+    [entries]
+  )
+
+  return { entries, pendingApproval, loading, error }
 }
 
 

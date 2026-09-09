@@ -92,7 +92,7 @@ export default function Page() {
     setDeleteError(null)
 
     try {
-      const response = await fetch(`${API_V1}/financial/maintenance-tasks/${taskId}`, {
+      const response = await fetch(`${API_V1}/maintenance/${taskId}`, {
         method: "DELETE",
         credentials: "include",
       })
