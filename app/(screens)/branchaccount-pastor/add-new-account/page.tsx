@@ -85,7 +85,7 @@ export default function AddNewAccountPage() {
   const [coaError, setCoaError] = useState<string | null>(null)
 
   const tenantId = useMemo(
-    () => user?.tenantId ?? user?.tenant?.id ?? "",
+    () => user?.branchId ?? user?.branch?.id ?? user?.tenantId ?? user?.tenant?.id ?? "",
     [user]
   )
 

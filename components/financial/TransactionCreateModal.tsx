@@ -4,6 +4,7 @@ import { API_V1 } from "@/lib/api";
 import { getCsrfTokenFromCookie } from "@/lib/csrf";
 
 import React, { useState, useEffect } from "react"
+import Link from "next/link"
 import {
   Dialog,
   DialogContent,
@@ -403,7 +404,7 @@ export function TransactionCreateModal({
             />
           </div>
 
-          {bankAccounts.length > 0 && (
+          {bankAccounts.length > 0 ? (
             <div className="space-y-2">
               <label className="text-sm font-semibold text-gray-700">Bank Account</label>
               <select
@@ -420,7 +421,22 @@ export function TransactionCreateModal({
                 ))}
               </select>
             </div>
-          )}
+          ) : !bankAccountsLoading ? (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+              <p className="font-semibold">No active bank account configured for this branch.</p>
+              <p className="mt-1 text-gray-600">
+                Transactions require an active bank account. Please configure one at{" "}
+                <Link
+                  href="/branchaccount-pastor/add-new-account"
+                  className="font-bold underline text-blue-600 hover:text-blue-800"
+                  target="_blank"
+                >
+                  Bank Account Configuration
+                </Link>
+                {" "}first.
+              </p>
+            </div>
+          ) : null}
 
           <div className="space-y-2">
             <label className="text-sm font-semibold text-gray-700">Category (COA)</label>
@@ -495,7 +511,15 @@ export function TransactionCreateModal({
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={loading || coaLoading}>
+            <Button
+              type="submit"
+              disabled={loading || coaLoading || (bankAccounts.length === 0 && !bankAccountsLoading)}
+              title={
+                bankAccounts.length === 0 && !bankAccountsLoading
+                  ? "Please configure a bank account first"
+                  : undefined
+              }
+            >
               {loading ? "Saving..." : "Save Transaction"}
             </Button>
           </DialogFooter>
