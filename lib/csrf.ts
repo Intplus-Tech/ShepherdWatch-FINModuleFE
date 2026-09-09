@@ -1,5 +1,4 @@
 import type { NextRequest, NextResponse } from "next/server";
-import { randomBytes } from "crypto";
 import { CSRF_COOKIE_NAME } from "./auth-config";
 
 const CSRF_HEADER_NAME = "x-csrf-token";
@@ -11,14 +10,22 @@ export const getCsrfTokenFromRequest = (req: NextRequest) => {
   };
 };
 
+/**
+ * Double-submit check: the `csrf_token` cookie must match the `x-csrf-token`
+ * header. `middleware.ts` seeds the cookie on every page response and
+ * `lib/csrf-client.ts` copies it into the header for mutating same-origin
+ * requests, so both halves are present on any request that came from the app.
+ *
+ * This used to return `true` when the cookie AND the header were both absent —
+ * which, since nothing ever issued the cookie, was every single request.
+ */
 export const isCsrfValid = (req: NextRequest) => {
   const { cookie, header } = getCsrfTokenFromRequest(req);
-  if (!cookie && !header) return true; // Safe fallback for unseeded dev environments
   if (!cookie || !header) return false;
   return cookie === header;
 };
 
-export const createCsrfToken = () => randomBytes(32).toString("hex");
+export { createCsrfToken } from "./csrf-token";
 
 export const setCsrfCookie = (res: NextResponse, token: string) => {
   res.cookies.set({

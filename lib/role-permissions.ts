@@ -147,9 +147,11 @@ export function flattenRoles(payload: any): RoleItem[] {
 
   return roles
     .map((role) => ({
-      id: String(role?.id ?? role?.roleId ?? role?.uuid ?? role?.name ?? ""),
-      name: String(role?.name ?? role?.roleName ?? role?.roleType ?? "Role"),
-      roleType: role?.roleType ?? role?.type ?? role?.name,
+      // `role.role` is the permission-matrix shape (`{ role, permissions }`),
+      // which is the only role list the backend actually serves.
+      id: String(role?.id ?? role?.roleId ?? role?.uuid ?? role?.role ?? role?.name ?? ""),
+      name: String(role?.name ?? role?.roleName ?? role?.roleType ?? role?.role ?? "Role"),
+      roleType: role?.roleType ?? role?.type ?? role?.role ?? role?.name,
       description: role?.description ?? role?.details ?? role?.roleDescription,
     }))
     .filter((role) => role.id || role.name)

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors"
-import { BACKEND_TOKEN_COOKIE } from "@/lib/constants"
 import { getBackendApiUrl } from "@/lib/env"
+import { executeWithRefreshRetry } from "@/lib/backend-refresh"
 
 export async function GET(
   req: NextRequest,
@@ -18,27 +18,23 @@ export async function GET(
       )
     }
 
-    const backendToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value
-    if (!backendToken) {
-      return applyCors(
-        NextResponse.json({ success: false, message: "Unauthenticated" }, { status: 401 }),
-        req
-      )
-    }
-
     const { searchParams } = new URL(req.url)
     const baseUrl = getBackendApiUrl();// Explicitly binding params.id safely enforcing standard URL structure limits
     const queryString = searchParams.toString()
     const { id } = await params
     const url = `${baseUrl}/budgets/${id}${queryString ? `?${queryString}` : ""}`
 
-    const backendResponse = await fetch(url, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${backendToken}`,
-        Accept: "application/json",
-      },
-    })
+    // Retries once with a refreshed access token when the cookie has expired,
+    // and stages the renewed cookies for `applyCors` to write back.
+    const { res: backendResponse } = await executeWithRefreshRetry(req, (backendToken) =>
+      fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${backendToken}`,
+          Accept: "application/json",
+        },
+      })
+    )
 
     const responseData = await backendResponse.json().catch(() => null)
 
@@ -80,14 +76,6 @@ export async function PATCH(
       )
     }
 
-    const backendToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value
-    if (!backendToken) {
-      return applyCors(
-        NextResponse.json({ success: false, message: "Unauthenticated" }, { status: 401 }),
-        req
-      )
-    }
-
     const body = await req.json().catch(() => null)
     if (!body || typeof body !== "object") {
       return applyCors(
@@ -99,20 +87,24 @@ export async function PATCH(
     const baseUrl = getBackendApiUrl();const { id } = await params
     const url = `${baseUrl}/budgets/${id}`
 
-    const backendResponse = await fetch(url, {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${backendToken}`,
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        ...(body.title && { title: String(body.title) }),
-        ...(body.totalAmount && { totalAmount: Number(body.totalAmount) }),
-        ...(body.category && { category: String(body.category) }),
-        ...(body.notes && { notes: String(body.notes) }),
-      }),
-    })
+    // Retries once with a refreshed access token when the cookie has expired,
+    // and stages the renewed cookies for `applyCors` to write back.
+    const { res: backendResponse } = await executeWithRefreshRetry(req, (backendToken) =>
+      fetch(url, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${backendToken}`,
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          ...(body.title && { title: String(body.title) }),
+          ...(body.totalAmount && { totalAmount: Number(body.totalAmount) }),
+          ...(body.category && { category: String(body.category) }),
+          ...(body.notes && { notes: String(body.notes) }),
+        }),
+      })
+    )
 
     const responseData = await backendResponse.json().catch(() => null)
 

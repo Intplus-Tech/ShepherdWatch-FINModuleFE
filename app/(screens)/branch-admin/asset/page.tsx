@@ -43,6 +43,7 @@ import { formatCurrency, formatRelative } from "@/lib/format"
 import { ModalShell } from "@/components/ui/modal-shell"
 import AssetDetailModal from "@/components/branch-admin/AssetDetailModal"
 import EditAssetDetailsModal from "@/components/branch-admin/EditAssetDetailsModal"
+import { getCsrfTokenFromCookie } from "@/lib/csrf"
 import {
   TopUpCashModal,
   UpdateStockModal,
@@ -274,13 +275,7 @@ export default function AssetsHubPage() {
     setIsAssetDetailOpen(true)
   }
 
-  const getCsrfToken = () => {
-    if (typeof document === "undefined") return ""
-    const match = document.cookie
-      .split("; ")
-      .find((cookie) => cookie.startsWith("csrf_token="))
-    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
-  }
+  const getCsrfToken = getCsrfTokenFromCookie
 
   const handleCreateAsset = async () => {
     if (!tenantId) {

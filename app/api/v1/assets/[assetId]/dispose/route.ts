@@ -9,7 +9,8 @@ export async function POST(
   const { assetId } = await params;
   return proxyRequest(req, {
     path: `${API_V1}/assets/${assetId}/dispose`,
-    method: "POST",
+    // Backend defines this as PATCH /assets/:id/dispose.
+    method: "PATCH",
   });
 }
 

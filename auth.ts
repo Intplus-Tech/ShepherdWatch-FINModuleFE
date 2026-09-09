@@ -5,8 +5,10 @@ import {
   ACCESS_TOKEN_MAX_AGE_SECONDS,
   BACKEND_REFRESH_TOKEN_COOKIE,
   BACKEND_TOKEN_COOKIE,
+  CSRF_COOKIE_NAME,
   REFRESH_TOKEN_MAX_AGE_SECONDS,
 } from "@/lib/auth-config";
+import { createCsrfToken } from "@/lib/csrf-token";
 import { refreshAccessToken } from "@/lib/backend-refresh";
 import { getBackendLoginUrl } from "@/lib/backend-auth-url";
 import {
@@ -66,6 +68,20 @@ async function syncBackendCookies(accessToken: string, refreshToken?: string) {
         maxAge: REFRESH_TOKEN_MAX_AGE_SECONDS,
       });
     }
+    // Seed the CSRF token here as well as in `middleware.ts`, so it exists from
+    // the login response onwards rather than from the first guarded navigation.
+    // Not httpOnly: `lib/csrf-client.ts` reads it to set the `x-csrf-token`
+    // header on mutating requests.
+    if (!store.get(CSRF_COOKIE_NAME)?.value) {
+      store.set({
+        name: CSRF_COOKIE_NAME,
+        value: createCsrfToken(),
+        httpOnly: false,
+        secure: isProd,
+        sameSite: "lax",
+        path: "/",
+      });
+    }
   } catch {
     // cookies() throws outside a request scope; safe to ignore.
   }
@@ -76,6 +92,7 @@ async function clearBackendCookies() {
     const store = await cookies();
     store.delete(BACKEND_TOKEN_COOKIE);
     store.delete(BACKEND_REFRESH_TOKEN_COOKIE);
+    store.delete(CSRF_COOKIE_NAME);
   } catch {
     // Outside request scope.
   }
@@ -192,6 +209,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
+    // NOTE: route protection lives in `middleware.ts`, not in an `authorized`
+    // callback here. next-auth ignores this callback's boolean result whenever
+    // the middleware supplies its own handler function, so putting the gate
+    // here as well would be dead code that reads as protection.
     async jwt({ token, user, trigger }) {
       // First sign in: copy fields from authorize() into the JWT.
       if (user) {

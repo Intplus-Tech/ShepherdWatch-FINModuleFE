@@ -24,6 +24,7 @@ import {
 } from "lucide-react"
 import { useBudgetEntries } from "@/components/hooks/useBudgetEntries"
 import BranchLeadPastorSidebar from "@/components/navigation/BranchLeadPastorSidebar"
+import { getCsrfTokenFromCookie } from "@/lib/csrf"
 
 type BudgetChild = {
   id: string
@@ -57,13 +58,7 @@ export function BudgetReviewContent({ rightSidebar, activeRowId }: { rightSideba
   const [approveError, setApproveError] = useState<string | null>(null)
   const [approvingAll, setApprovingAll] = useState(false)
 
-  const getCsrfToken = () => {
-    if (typeof document === "undefined") return ""
-    const match = document.cookie
-      .split("; ")
-      .find((cookie) => cookie.startsWith("csrf_token="))
-    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
-  }
+  const getCsrfToken = getCsrfTokenFromCookie
 
   const approveEntry = async (entryId: string) => {
     if (!entryId) return

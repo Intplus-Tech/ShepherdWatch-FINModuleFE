@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
-import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config"
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors"
 
 import { getBackendApiUrl } from "@/lib/env"
+import { executeWithRefreshRetry } from "@/lib/backend-refresh"
 
 
 function buildBackendUrl(deductionId: string): string {
@@ -19,14 +19,6 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ deduc
       )
     }
 
-    const backendToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value
-    if (!backendToken) {
-      return applyCors(
-        NextResponse.json({ success: false, message: "Unauthenticated" }, { status: 401 }),
-        req
-      )
-    }
-
     const deductionId = (await context.params).deductionId
     if (!deductionId) {
       return applyCors(
@@ -37,16 +29,20 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ deduc
 
     const body = await req.json().catch(() => ({}))
 
-    const backendResponse = await fetch(buildBackendUrl(deductionId), {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${backendToken}`,
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-      cache: "no-store",
-    })
+    // Retries once with a refreshed access token when the cookie has expired,
+    // and stages the renewed cookies for `applyCors` to write back.
+    const { res: backendResponse } = await executeWithRefreshRetry(req, (backendToken) =>
+      fetch(buildBackendUrl(deductionId), {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${backendToken}`,
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+        cache: "no-store",
+      })
+    )
 
     const payload = await backendResponse.json().catch(() => null)
     if (!backendResponse.ok) {

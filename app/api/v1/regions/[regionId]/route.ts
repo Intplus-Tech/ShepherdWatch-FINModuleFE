@@ -1,9 +1,9 @@
 import { API_V1 } from "@/lib/api";
 import { NextRequest, NextResponse } from "next/server";
-import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 import { isCsrfValid } from "@/lib/csrf";
 import { getBackendUrl } from "@/lib/backend-auth-url";
+import { executeWithRefreshRetry } from "@/lib/backend-refresh"
 
 function getBackendRegionUrl(regionId: string): string | null {
   return getBackendUrl(`${API_V1}/regions/${encodeURIComponent(regionId)}`);
@@ -51,14 +51,6 @@ export async function GET(req: NextRequest, context: { params: Promise<{ regionI
       );
     }
 
-    const backendToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value;
-    if (!backendToken) {
-      return applyCors(
-        NextResponse.json({ success: false, message: "Unauthenticated" }, { status: 401 }),
-        req
-      );
-    }
-
     const regionId = (await context.params).regionId;
     const backendUrl = getBackendRegionUrl(regionId);
     if (!backendUrl) {
@@ -67,14 +59,18 @@ export async function GET(req: NextRequest, context: { params: Promise<{ regionI
         req
       );
     }
-    const backendResponse = await fetch(backendUrl, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${backendToken}`,
-        Accept: "application/json",
-      },
-      cache: "no-store",
-    });
+    // Retries once with a refreshed access token when the cookie has expired,
+    // and stages the renewed cookies for `applyCors` to write back.
+    const { res: backendResponse } = await executeWithRefreshRetry(req, (backendToken) =>
+      fetch(backendUrl, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${backendToken}`,
+          Accept: "application/json",
+        },
+        cache: "no-store",
+      })
+    )
 
     const payload = await backendResponse.json().catch(() => null);
 
@@ -120,14 +116,6 @@ export async function PUT(req: NextRequest, context: { params: Promise<{ regionI
       );
     }
 
-    const backendToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value;
-    if (!backendToken) {
-      return applyCors(
-        NextResponse.json({ success: false, message: "Unauthenticated" }, { status: 401 }),
-        req
-      );
-    }
-
     const regionId = (await context.params).regionId;
     const backendUrl = getBackendRegionUrl(regionId);
     if (!backendUrl) {
@@ -148,16 +136,20 @@ export async function PUT(req: NextRequest, context: { params: Promise<{ regionI
       );
     }
 
-    const backendResponse = await fetch(backendUrl, {
-      method: "PUT",
-      headers: {
-        Authorization: `Bearer ${backendToken}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify(regionPayload),
-      cache: "no-store",
-    });
+    // Retries once with a refreshed access token when the cookie has expired,
+    // and stages the renewed cookies for `applyCors` to write back.
+    const { res: backendResponse } = await executeWithRefreshRetry(req, (backendToken) =>
+      fetch(backendUrl, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${backendToken}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(regionPayload),
+        cache: "no-store",
+      })
+    )
 
     const payload = await backendResponse.json().catch(() => null);
 
@@ -203,14 +195,6 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ regio
       );
     }
 
-    const backendToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value;
-    if (!backendToken) {
-      return applyCors(
-        NextResponse.json({ success: false, message: "Unauthenticated" }, { status: 401 }),
-        req
-      );
-    }
-
     const regionId = (await context.params).regionId;
     const backendUrl = getBackendRegionStatusUrl(regionId);
     if (!backendUrl) {
@@ -221,16 +205,20 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ regio
     }
     const body = await req.json().catch(() => null);
 
-    const backendResponse = await fetch(backendUrl, {
-      method: "PUT",
-      headers: {
-        Authorization: `Bearer ${backendToken}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify(body ?? {}),
-      cache: "no-store",
-    });
+    // Retries once with a refreshed access token when the cookie has expired,
+    // and stages the renewed cookies for `applyCors` to write back.
+    const { res: backendResponse } = await executeWithRefreshRetry(req, (backendToken) =>
+      fetch(backendUrl, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${backendToken}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(body ?? {}),
+        cache: "no-store",
+      })
+    )
 
     const payload = await backendResponse.json().catch(() => null);
 

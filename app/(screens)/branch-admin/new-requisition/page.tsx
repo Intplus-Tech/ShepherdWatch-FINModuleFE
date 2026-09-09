@@ -26,6 +26,7 @@ import {
 } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
 import FileUploadDropzone from "@/components/ui/FileUploadDropzone"
+import { getCsrfTokenFromCookie } from "@/lib/csrf"
 
 const inter = Inter({ subsets: ["latin"] })
 type BranchIdentity = {
@@ -213,13 +214,7 @@ export default function NewRequisitionPage() {
     }
   }, [coaId])
 
-  const getCsrfToken = () => {
-    if (typeof document === "undefined") return ""
-    const match = document.cookie
-      .split("; ")
-      .find((cookie) => cookie.startsWith("csrf_token="))
-    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
-  }
+  const getCsrfToken = getCsrfTokenFromCookie
 
   const handleSaveDraft = async () => {
     setSubmitError(null)

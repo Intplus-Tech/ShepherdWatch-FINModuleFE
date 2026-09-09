@@ -1,21 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config";
 import { applyCors, getCorsHeaders } from "@/lib/cors";
 import { getBackendUrl } from "@/lib/backend-auth-url";
+import { executeWithRefreshRetry } from "@/lib/backend-refresh";
 
 function getBackendTemplateUrl(id: string): string | null {
   return getBackendUrl(`templates/${id}`);
 }
 
 export async function PATCH(req: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const accessToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value;
-  if (!accessToken) {
-    return applyCors(
-      NextResponse.json({ success: false, message: "Unauthorized. Please log in again." }, { status: 401 }),
-      req
-    );
-  }
-
   const { id } = await context.params;
   const backendUrl = getBackendTemplateUrl(id);
   if (!backendUrl) {
@@ -27,16 +19,20 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
 
   const rawText = await req.text();
 
-  const backendRes = await fetch(backendUrl, {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-      Authorization: `Bearer ${accessToken}`,
-    },
-    body: rawText,
-    cache: "no-store",
-  });
+  // Retries once with a refreshed access token when the cookie has expired,
+  // and stages the renewed cookies for `applyCors` to write back.
+  const { res: backendRes } = await executeWithRefreshRetry(req, (accessToken) =>
+    fetch(backendUrl, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: rawText,
+      cache: "no-store",
+    })
+  )
 
   const responseText = await backendRes.text();
   const contentType = backendRes.headers.get("content-type") ?? "";
@@ -67,14 +63,6 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
 }
 
 export async function DELETE(req: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const accessToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value;
-  if (!accessToken) {
-    return applyCors(
-      NextResponse.json({ success: false, message: "Unauthorized. Please log in again." }, { status: 401 }),
-      req
-    );
-  }
-
   const { id } = await context.params;
   const backendUrl = getBackendTemplateUrl(id);
   if (!backendUrl) {
@@ -84,14 +72,18 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ id: 
     );
   }
 
-  const backendRes = await fetch(backendUrl, {
-    method: "DELETE",
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${accessToken}`,
-    },
-    cache: "no-store",
-  });
+  // Retries once with a refreshed access token when the cookie has expired,
+  // and stages the renewed cookies for `applyCors` to write back.
+  const { res: backendRes } = await executeWithRefreshRetry(req, (accessToken) =>
+    fetch(backendUrl, {
+      method: "DELETE",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      cache: "no-store",
+    })
+  )
 
   const responseText = await backendRes.text();
   const contentType = backendRes.headers.get("content-type") ?? "";

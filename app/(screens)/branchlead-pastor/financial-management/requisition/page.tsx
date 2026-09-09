@@ -27,6 +27,7 @@ import { useAuth } from "@/components/auth/AuthProvider"
 import { RequisitionDetailsModal } from "@/components/modals/RequisitionDetailsModal"
 import BranchLeadPastorSidebar from "@/components/navigation/BranchLeadPastorSidebar"
 import { useRequisitions } from "@/components/hooks/useRequisitions"
+import { getCsrfTokenFromCookie } from "@/lib/csrf"
 
 export default function Page() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -46,13 +47,7 @@ export default function Page() {
 
   const [selectedRequisitionId, setSelectedRequisitionId] = useState<string | null>(null)
 
-  const getCsrfToken = () => {
-    if (typeof document === "undefined") return ""
-    const match = document.cookie
-      .split("; ")
-      .find((cookie) => cookie.startsWith("csrf_token="))
-    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
-  }
+  const getCsrfToken = getCsrfTokenFromCookie
 
   const handleApprove = async (id: string) => {
     if (!id) return

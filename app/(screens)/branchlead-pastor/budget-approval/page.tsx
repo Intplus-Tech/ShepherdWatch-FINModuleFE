@@ -22,6 +22,7 @@ import {
 } from "lucide-react"
 import { useBudgetEntries } from "@/components/hooks/useBudgetEntries"
 import BranchLeadPastorSidebar from "@/components/navigation/BranchLeadPastorSidebar"
+import { getCsrfTokenFromCookie } from "@/lib/csrf"
 
 export default function Page() {
   const { entries, loading, error } = useBudgetEntries()
@@ -121,13 +122,7 @@ export default function Page() {
   const forecastOverrun = Math.max(expendedAmount + committedAmount - totalBudget, 0)
   const forecastLabel = forecastOverrun > 0 ? "Critical" : "Stable"
 
-  const getCsrfToken = () => {
-    if (typeof document === "undefined") return ""
-    const match = document.cookie
-      .split("; ")
-      .find((cookie) => cookie.startsWith("csrf_token="))
-    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
-  }
+  const getCsrfToken = getCsrfTokenFromCookie
 
   const approveAllEntries = async () => {
     const entryIds = entries.map((entry) => entry.id).filter(Boolean)

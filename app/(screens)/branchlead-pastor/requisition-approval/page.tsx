@@ -17,6 +17,7 @@ import {
 import { useAuth } from "@/components/auth/AuthProvider"
 import { useRequisitionInbox } from "@/components/hooks/useRequisitionInbox"
 import { useRequisitionBudgetContext } from "@/components/hooks/useRequisitionBudgetContext"
+import { getCsrfTokenFromCookie } from "@/lib/csrf"
 
 export default function Page() {
   const { user } = useAuth()
@@ -47,13 +48,7 @@ export default function Page() {
       maximumFractionDigits: 2,
     }).format(Number(value ?? 0))
 
-  const getCsrfToken = () => {
-    if (typeof document === "undefined") return ""
-    const match = document.cookie
-      .split("; ")
-      .find((cookie) => cookie.startsWith("csrf_token="))
-    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
-  }
+  const getCsrfToken = getCsrfTokenFromCookie
 
   const handleAuthorizeOverride = async () => {
     setSubmitError(null)

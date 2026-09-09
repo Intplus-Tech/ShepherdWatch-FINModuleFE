@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from "next/server"
-import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config"
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors"
 import { isCsrfValid } from "@/lib/csrf"
 
 import { getBackendApiUrl } from "@/lib/env"
+import { executeWithRefreshRetry } from "@/lib/backend-refresh"
 
 
 function buildBackendUrl(maintenanceTaskId: string): string {
   const baseUrl = getBackendApiUrl();
-  return `${baseUrl}/financial/maintenance-tasks/${maintenanceTaskId}`
+  // Maintenance records live under /maintenance on the backend.
+  // NOTE: the backend currently defines no DELETE for this resource
+  // (only GET, PATCH, POST /:id/complete and POST /:id/verify), so this
+  // handler will 404 until a delete or cancel endpoint is added there.
+  return `${baseUrl}/maintenance/${maintenanceTaskId}`
 }
 
 export async function DELETE(req: NextRequest, context: { params: Promise<{ maintenanceTaskId: string }> }) {
@@ -27,14 +31,6 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ main
       )
     }
 
-    const backendToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value
-    if (!backendToken) {
-      return applyCors(
-        NextResponse.json({ success: false, message: "Unauthenticated" }, { status: 401 }),
-        req
-      )
-    }
-
     const maintenanceTaskId = (await context.params).maintenanceTaskId
     if (!maintenanceTaskId) {
       return applyCors(
@@ -43,14 +39,18 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ main
       )
     }
 
-    const backendResponse = await fetch(buildBackendUrl(maintenanceTaskId), {
-      method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${backendToken}`,
-        Accept: "application/json",
-      },
-      cache: "no-store",
-    })
+    // Retries once with a refreshed access token when the cookie has expired,
+    // and stages the renewed cookies for `applyCors` to write back.
+    const { res: backendResponse } = await executeWithRefreshRetry(req, (backendToken) =>
+      fetch(buildBackendUrl(maintenanceTaskId), {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${backendToken}`,
+          Accept: "application/json",
+        },
+        cache: "no-store",
+      })
+    )
 
     const payload = await backendResponse.json().catch(() => null)
     if (!backendResponse.ok) {

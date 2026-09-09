@@ -30,6 +30,7 @@ import {
 import BranchAdminSidebar from "@/components/navigation/BranchAdminSidebar"
 import { useRequisitions } from "@/components/hooks/useRequisitions"
 import RequisitionDetailModal from "@/components/requisitions/RequisitionDetailModal"
+import { getCsrfTokenFromCookie } from "@/lib/csrf"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -261,13 +262,7 @@ export default function RequisitionsHub() {
     return { total, totalOutstanding, pendingApproval, recentlyPaidAmount }
   }, [requisitions])
 
-  const getCsrfToken = () => {
-    if (typeof document === "undefined") return ""
-    const match = document.cookie
-      .split("; ")
-      .find((cookie) => cookie.startsWith("csrf_token="))
-    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
-  }
+  const getCsrfToken = getCsrfTokenFromCookie
 
   const handleDeleteRequisition = async (reqId: string) => {
     if (!reqId) return

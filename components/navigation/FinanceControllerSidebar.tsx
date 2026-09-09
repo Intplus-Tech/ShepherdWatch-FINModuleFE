@@ -11,6 +11,7 @@ import {
   LayoutGrid,
   LogOut,
   Inbox,
+  X,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/components/auth/AuthProvider"
@@ -26,7 +27,15 @@ const PRIMARY_ITEMS = [
   { label: "Reports", href: "/finance-controller/reports", icon: FileText },
 ]
 
-export default function FinanceControllerSidebar({ activeHref }: { activeHref?: string }) {
+type Props = {
+  activeHref?: string
+  /** When provided, renders a mobile-drawer-style sidebar (slides in on small screens, sticky on lg). */
+  mobileOpen?: boolean
+  onMobileClose?: () => void
+}
+
+export default function FinanceControllerSidebar({ activeHref, mobileOpen, onMobileClose }: Props) {
+  const drawerMode = typeof mobileOpen === "boolean"
   const pathname = usePathname()
   const router = useRouter()
   const { user, logout } = useAuth()
@@ -54,8 +63,28 @@ export default function FinanceControllerSidebar({ activeHref }: { activeHref?: 
       active ? "bg-[#3B5BDB] text-white shadow-sm" : "text-[#6B7280] hover:bg-white hover:text-[#111827]"
     )
 
+  // Without `mobileOpen` this stays the old desktop-only sidebar. With it, the
+  // page can open it as a drawer below lg — the same contract
+  // BranchAccountantSidebar and BranchAdminSidebar already offer.
+  const asideClass = drawerMode
+    ? cn(
+        "fixed lg:sticky top-0 z-50 h-[100dvh] w-[230px] shrink-0 flex flex-col overflow-y-auto border-r border-[#EEF1F6] bg-[#FAFBFF] px-4 py-6 transition-transform duration-300 ease-in-out",
+        mobileOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full lg:translate-x-0"
+      )
+    : "sticky top-0 hidden h-screen w-[230px] shrink-0 flex-col overflow-y-auto border-r border-[#EEF1F6] bg-[#FAFBFF] px-4 py-6 lg:flex"
+
   return (
-    <aside className="sticky top-0 hidden h-screen w-[230px] shrink-0 flex-col overflow-y-auto border-r border-[#EEF1F6] bg-[#FAFBFF] px-4 py-6 lg:flex">
+    <aside className={asideClass}>
+      {drawerMode && (
+        <button
+          type="button"
+          onClick={onMobileClose}
+          aria-label="Close menu"
+          className="lg:hidden absolute top-5 right-5 h-8 w-8 flex items-center justify-center rounded-full bg-gray-50 text-gray-500 hover:text-gray-900 transition-colors z-10"
+        >
+          <X className="h-4.5 w-4.5" />
+        </button>
+      )}
       <div className="flex items-center gap-2 px-2 pb-8">
         <Image src="/images/icon-shepherdwatch.svg" alt="ShepherdWatch" width={22} height={22} />
         <div>

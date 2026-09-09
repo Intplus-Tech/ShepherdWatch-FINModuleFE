@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
-import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config"
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors"
 
 import { getBackendApiUrl } from "@/lib/env"
+import { executeWithRefreshRetry } from "@/lib/backend-refresh"
 
 
 export async function POST(req: NextRequest) {
@@ -13,14 +13,6 @@ export async function POST(req: NextRequest) {
           { success: false, message: "Invalid request origin" },
           { status: 403 }
         ),
-        req
-      )
-    }
-
-    const backendToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value
-    if (!backendToken) {
-      return applyCors(
-        NextResponse.json({ success: false, message: "Unauthenticated" }, { status: 401 }),
         req
       )
     }
@@ -40,14 +32,18 @@ export async function POST(req: NextRequest) {
     const branchId = incomingFormData.get("branchId")
     if (branchId) outFormData.append("branchId", branchId)
 
-    const backendResponse = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${backendToken}`,
-        Accept: "application/json",
-      },
-      body: outFormData, // Fetch will automatically append the correct Content-Type with right boundary
-    })
+    // Retries once with a refreshed access token when the cookie has expired,
+    // and stages the renewed cookies for `applyCors` to write back.
+    const { res: backendResponse } = await executeWithRefreshRetry(req, (backendToken) =>
+      fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${backendToken}`,
+          Accept: "application/json",
+        },
+        body: outFormData, // Fetch will automatically append the correct Content-Type with right boundary
+      })
+    )
 
     const payload = await backendResponse.json().catch(() => null)
 
@@ -89,14 +85,6 @@ export async function GET(req: NextRequest) {
       )
     }
 
-    const backendToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value
-    if (!backendToken) {
-      return applyCors(
-        NextResponse.json({ success: false, message: "Unauthenticated" }, { status: 401 }),
-        req
-      )
-    }
-
     const baseUrl = getBackendApiUrl();const url = new URL(`${baseUrl}/file-uploads`)
 
     const searchParams = req.nextUrl.searchParams
@@ -112,13 +100,17 @@ export async function GET(req: NextRequest) {
     if (mimeType) url.searchParams.set("mimeType", mimeType)
     if (folder) url.searchParams.set("folder", folder)
 
-    const backendResponse = await fetch(url.toString(), {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${backendToken}`,
-        Accept: "application/json",
-      },
-    })
+    // Retries once with a refreshed access token when the cookie has expired,
+    // and stages the renewed cookies for `applyCors` to write back.
+    const { res: backendResponse } = await executeWithRefreshRetry(req, (backendToken) =>
+      fetch(url.toString(), {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${backendToken}`,
+          Accept: "application/json",
+        },
+      })
+    )
 
     const payload = await backendResponse.json().catch(() => null)
 

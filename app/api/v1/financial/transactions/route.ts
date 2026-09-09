@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
-import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config"
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors"
 import { isCsrfValid } from "@/lib/csrf"
 import { getBackendApiUrl } from "@/lib/env"
+import { executeWithRefreshRetry } from "@/lib/backend-refresh"
 
 function buildBackendTransactionsUrl(): string {
   const baseUrl = getBackendApiUrl();
@@ -28,17 +28,6 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const backendToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value
-    if (!backendToken) {
-      return applyCors(
-        NextResponse.json(
-          { success: false, message: "Unauthenticated" },
-          { status: 401 }
-        ),
-        req
-      )
-    }
-
     const backendUrl = buildBackendTransactionsUrl()
     const body = await req.json().catch(() => null)
 
@@ -53,16 +42,20 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const backendResponse = await fetch(backendUrl, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${backendToken}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify(body ?? {}),
-      cache: "no-store",
-    })
+    // Retries once with a refreshed access token when the cookie has expired,
+    // and stages the renewed cookies for `applyCors` to write back.
+    const { res: backendResponse } = await executeWithRefreshRetry(req, (backendToken) =>
+      fetch(backendUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${backendToken}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(body ?? {}),
+        cache: "no-store",
+      })
+    )
 
     const payload = await backendResponse.json().catch(() => null)
 
@@ -105,17 +98,6 @@ export async function GET(req: NextRequest) {
       )
     }
 
-    const backendToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value
-    if (!backendToken) {
-      return applyCors(
-        NextResponse.json(
-          { success: false, message: "Unauthenticated" },
-          { status: 401 }
-        ),
-        req
-      )
-    }
-
     const baseUrl = getBackendApiUrl();
 
     const url = new URL(`${baseUrl}/transactions`)
@@ -123,14 +105,18 @@ export async function GET(req: NextRequest) {
       url.search = req.nextUrl.search
     }
 
-    const backendResponse = await fetch(url.toString(), {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${backendToken}`,
-        Accept: "application/json",
-      },
-      cache: "no-store",
-    })
+    // Retries once with a refreshed access token when the cookie has expired,
+    // and stages the renewed cookies for `applyCors` to write back.
+    const { res: backendResponse } = await executeWithRefreshRetry(req, (backendToken) =>
+      fetch(url.toString(), {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${backendToken}`,
+          Accept: "application/json",
+        },
+        cache: "no-store",
+      })
+    )
 
     const payload = await backendResponse.json().catch(() => null)
 

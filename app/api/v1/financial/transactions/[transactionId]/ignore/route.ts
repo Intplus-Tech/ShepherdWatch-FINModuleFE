@@ -9,7 +9,8 @@ export async function POST(
   const { transactionId } = await params;
   return proxyRequest(req, {
     path: `${API_V1}/transactions/${transactionId}/ignore`,
-    method: "POST",
+    // Backend defines this as PATCH /transactions/:id/ignore.
+    method: "PATCH",
   });
 }
 
