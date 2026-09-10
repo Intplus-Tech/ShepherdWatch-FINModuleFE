@@ -3,9 +3,7 @@
 import { API_V1 } from "@/lib/api";
 
 import React, { useEffect, useMemo, useState } from "react"
-import Image from "next/image"
-import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -16,96 +14,28 @@ import {
   ChevronDown,
   Download,
   FileText,
-  LayoutDashboard,
   Menu,
-  ShieldCheck,
   TrendingDown,
   TrendingUp,
-  Settings,
-  HelpCircle,
-  PiggyBank,
   ArrowUpRight,
   Search,
   PieChart,
   FolderMinus,
   CheckSquare,
-  Building2,
 } from "lucide-react"
 import { useBudgetEntries } from "@/components/hooks/useBudgetEntries"
 import { useAuth } from "@/components/auth/AuthProvider"
 import BranchLeadPastorSidebar from "@/components/navigation/BranchLeadPastorSidebar"
-
-const SidebarContent = ({ pathname, displayName, roleLabel }: { pathname: string; displayName: string; roleLabel: string }) => (
-  <div className="p-6 flex flex-col h-full">
-    <div className="flex items-center gap-3 pb-8">
-      <Image src="/images/icon-shepherdwatch.svg" alt="ShepherdWatch logo" width={28} height={28} className="shrink-0" />
-      <div>
-        <div className="text-[15px] font-bold text-[#111827] leading-none tracking-tight">ShepherdWatch</div>
-        <div className="text-[11px] text-[#9CA3AF] font-bold mt-1 tracking-wide uppercase">Lead Pastor View</div>
-      </div>
-    </div>
-
-    <nav className="space-y-1.5 flex-1">
-      {[
-        { label: "Dashboard", icon: LayoutDashboard, href: "/branchlead-pastor/dashboard" },
-        { label: "Financial Management", icon: BarChart3, href: "/branchlead-pastor/financial-management/income-tracking" },
-        { label: "Assets", icon: Building2, href: "/branchlead-pastor/assets" },
-        { label: "Budget", icon: PiggyBank, href: "/branchlead-pastor/budget" },
-        { label: "Compliance & Remittance", icon: ShieldCheck, href: "/branchlead-pastor/compliance-remittance" },
-      ].map((item) => {
-        const Icon = item.icon
-        const isActive = pathname === item.href
-        return (
-          <Link
-            key={item.label}
-            href={item.href}
-            className={`flex items-center gap-3.5 rounded-[10px] px-3.5 py-3 text-[13px] font-bold cursor-pointer transition-colors ${
-              isActive ? "bg-[#EEF2FF] text-[#3B5BDB]" : "text-[#4B5563] hover:bg-gray-50"
-            }`}
-          >
-            <Icon className={`h-4.5 w-4.5 stroke-[2] ${isActive ? "text-[#3B5BDB]" : "text-[#6B7280]"}`} />
-            {item.label}
-          </Link>
-        )
-      })}
-    </nav>
-
-    <div className="mt-auto">
-      <div className="space-y-1.5 border-t border-[#EEF1F6] pt-6 text-[13px] font-bold text-[#4B5563]">
-        <Link href="/branchlead-pastor/settings" className="flex items-center gap-3.5 rounded-[10px] px-3.5 py-3 cursor-pointer hover:bg-gray-50 transition-colors">
-          <Settings className="h-4.5 w-4.5 stroke-[2] text-[#6B7280]" />
-          Settings
-        </Link>
-        <Link href="/branchlead-pastor/dashboard" className="flex items-center gap-3.5 rounded-[10px] px-3.5 py-3 cursor-pointer hover:bg-gray-50 transition-colors">
-          <HelpCircle className="h-4.5 w-4.5 stroke-[2] text-[#6B7280]" />
-          Help Guide
-        </Link>
-      </div>
-
-      <div className="mt-8 flex items-center gap-3.5 px-3.5 pb-2">
-        <div className="h-10 w-10 rounded-full overflow-hidden bg-gray-200 shrink-0 ring-2 ring-white shadow-sm">
-          <img src="/images/Beared%20Guy02-min%201.jpg" alt="Profile avatar" className="h-full w-full object-cover" />
-        </div>
-        <div>
-          <div className="text-[14px] font-extrabold text-[#111827]">{displayName}</div>
-          <div className="text-[11px] text-[#9CA3AF] font-bold tracking-wide">{roleLabel}</div>
-        </div>
-      </div>
-    </div>
-  </div>
-)
+import { getCsrfTokenFromCookie } from "@/lib/csrf"
 
 export default function Page() {
-  const pathname = usePathname()
   const router = useRouter()
   const { user } = useAuth()
-  const displayName = user?.name || user?.email || "User"
-  const roleLabel = user?.role ? String(user.role).replace(/_/g, " ") : "Lead Pastor"
   const [mobileOpen, setMobileOpen] = useState(false)
   const [approvingAll, setApprovingAll] = useState(false)
   const [approveError, setApproveError] = useState<string | null>(null)
   const [showApproveConfirm, setShowApproveConfirm] = useState(false)
-  const { entries, loading, error } = useBudgetEntries()
+  const { entries, pendingApproval, loading, error } = useBudgetEntries()
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
   const [budgetHierarchy, setBudgetHierarchy] = useState<
@@ -207,17 +137,16 @@ export default function Page() {
   const forecastOverrun = Math.max(expendedAmount + committedAmount - totalBudget, 0)
   const forecastLabel = forecastOverrun > 0 ? "Critical" : "Stable"
 
-  const getCsrfToken = () => {
-    if (typeof document === "undefined") return ""
-    const match = document.cookie
-      .split("; ")
-      .find((cookie) => cookie.startsWith("csrf_token="))
-    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
-  }
+  const getCsrfToken = getCsrfTokenFromCookie
 
   const approveAllEntries = async (): Promise<boolean> => {
-    const entryIds = entries.map((entry) => entry.id).filter(Boolean)
-    if (entryIds.length === 0) return false
+    // Only submitted budgets are approvable; the backend 400s on anything else,
+    // which would fail the whole batch below.
+    const entryIds = pendingApproval.map((entry) => entry.id).filter(Boolean)
+    if (entryIds.length === 0) {
+      setApproveError("There are no budgets awaiting approval.")
+      return false
+    }
     setApprovingAll(true)
     setApproveError(null)
 
@@ -303,7 +232,15 @@ export default function Page() {
   return (
     <div className="flex min-h-screen w-full bg-[#FAFBFF] font-sans" style={{ fontFamily: '"Inter", sans-serif' }}>
 
-      <BranchLeadPastorSidebar />
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 lg:hidden"
+          onClick={() => setMobileOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      <BranchLeadPastorSidebar mobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} />
 
       {/* Main Layout Wrapping Column */}
       <div className="flex-1 flex flex-col min-h-screen overflow-x-hidden bg-[#FAFBFF]">

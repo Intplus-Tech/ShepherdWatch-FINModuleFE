@@ -48,6 +48,7 @@ export default function Page() {
     error: summaryError,
     fetchSummary,
   } = useComplianceSummary()
+  const [selectedBranchId, setSelectedBranchId] = useState<string>("")
   const [updateSuccess, setUpdateSuccess] = useState<string | null>(null)
   const [remitSuccess, setRemitSuccess] = useState<string | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
@@ -58,27 +59,24 @@ export default function Page() {
   const [receiptNumber, setReceiptNumber] = useState("")
 
   const tenantId = useMemo(
-    () => user?.tenantId ?? user?.tenant?.id ?? "",
-    [user]
+    () => selectedBranchId || (user?.tenantId ?? user?.tenant?.id ?? ""),
+    [selectedBranchId, user]
   )
 
   useEffect(() => {
-    if (!tenantId) return
-    fetchDashboard({ branchId: tenantId, fiscalYear: new Date().getFullYear() }).catch(() => undefined)
-  }, [tenantId, fetchDashboard])
+    fetchDashboard({ branchId: selectedBranchId || undefined, fiscalYear: new Date().getFullYear() }).catch(() => undefined)
+  }, [selectedBranchId, fetchDashboard])
 
   useEffect(() => {
-    if (!tenantId) return
     const year = new Date().getFullYear()
     fetchSummary({
-      branchId: tenantId,
+      branchId: selectedBranchId || undefined,
       startDate: `${year}-01-01`,
       endDate: `${year}-12-31`,
     }).catch(() => undefined)
-  }, [tenantId, fetchSummary])
+  }, [selectedBranchId, fetchSummary])
 
   useEffect(() => {
-    if (!tenantId) return
     const remitted =
       remittedFilter === "all"
         ? undefined
@@ -86,10 +84,10 @@ export default function Page() {
     fetchDeductions({
       page: currentPage,
       limit: 20,
-      branchId: tenantId,
+      branchId: selectedBranchId || undefined,
       remitted,
     }).catch(() => undefined)
-  }, [tenantId, remittedFilter, currentPage, fetchDeductions])
+  }, [selectedBranchId, remittedFilter, currentPage, fetchDeductions])
 
 
   const formatCurrency = (amount: number) =>
@@ -260,7 +258,14 @@ export default function Page() {
             <div className="mt-6 rounded-xl border border-[#EEF1F6] bg-white shadow-sm">
               <div className="relative z-30 flex flex-col gap-3 px-6 py-4 md:flex-row md:items-center md:justify-between">
                 <div className="flex items-center gap-2">
-                  <BranchesDropdown label="All Branches" className="text-[11px]" />
+                  <BranchesDropdown
+                    value={selectedBranchId}
+                    onChange={(id) => {
+                      setSelectedBranchId(id)
+                      setCurrentPage(1)
+                    }}
+                    className="text-[11px]"
+                  />
                   <button
                     onClick={() => {
                       setRemittedFilter("compliant")

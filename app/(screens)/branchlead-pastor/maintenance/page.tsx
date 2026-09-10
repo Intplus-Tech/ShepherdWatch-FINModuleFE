@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { Input } from "@/components/ui/input"
 import { useAuth } from "@/components/auth/AuthProvider"
+import { getCsrfTokenFromCookie } from "@/lib/csrf"
 import {
   Bell,
   Search,
@@ -77,13 +78,7 @@ export default function MaintenanceManagementPage() {
     [user]
   )
 
-  const getCsrfToken = () => {
-    if (typeof document === "undefined") return ""
-    const match = document.cookie
-      .split("; ")
-      .find((cookie) => cookie.startsWith("csrf_token="))
-    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
-  }
+  const getCsrfToken = getCsrfTokenFromCookie
 
   const handleDeleteTask = async (taskId: string) => {
     if (!taskId) return
@@ -92,7 +87,7 @@ export default function MaintenanceManagementPage() {
 
     try {
       const csrfToken = getCsrfToken()
-      const response = await fetch(`${API_V1}/financial/maintenance-tasks/${taskId}`, {
+      const response = await fetch(`${API_V1}/maintenance/${taskId}`, {
         method: "DELETE",
         headers: { "x-csrf-token": csrfToken },
         credentials: "include",

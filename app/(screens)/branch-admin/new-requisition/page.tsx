@@ -27,6 +27,7 @@ import {
 import { useAuth } from "@/components/auth/AuthProvider"
 import { useBranchContext } from "@/components/hooks/useBranchContext"
 import FileUploadDropzone from "@/components/ui/FileUploadDropzone"
+import { getCsrfTokenFromCookie } from "@/lib/csrf"
 
 const inter = Inter({ subsets: ["latin"] })
 type BranchIdentity = {
@@ -212,23 +213,13 @@ export default function NewRequisitionPage() {
     }
   }, [coaId])
 
-  const getCsrfToken = () => {
-    if (typeof document === "undefined") return ""
-    const match = document.cookie
-      .split("; ")
-      .find((cookie) => cookie.startsWith("csrf_token="))
-    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
-  }
+  const getCsrfToken = getCsrfTokenFromCookie
 
   const handleSaveDraft = async () => {
     setSubmitError(null)
     setSubmitSuccess(null)
 
     const amountValue = Number(String(amount).replace(/,/g, "").trim())
-    if (!branchId) {
-      setSubmitError("Branch is required to create a requisition.")
-      return
-    }
     if (!branchId) {
       setSubmitError(
         branches.length > 1
@@ -302,7 +293,11 @@ export default function NewRequisitionPage() {
 
     const amountValue = Number(String(amount).replace(/,/g, "").trim())
     if (!branchId) {
-      setSubmitError("Branch is required to create a requisition.")
+      setSubmitError(
+        branches.length > 1
+          ? "Choose the branch this request belongs to."
+          : branchError ?? "No branch is available for your account. Ask an administrator to assign you to one."
+      )
       return
     }
     if (!coaId) {

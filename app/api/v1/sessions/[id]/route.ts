@@ -1,8 +1,8 @@
 import { API_V1 } from "@/lib/api";
 import { NextRequest, NextResponse } from "next/server";
-import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 import { getBackendUrl } from "@/lib/backend-auth-url";
+import { executeWithRefreshRetry } from "@/lib/backend-refresh";
 
 function getBackendSessionUrl(id: string): string | null {
   return getBackendUrl(`${API_V1}/sessions/${encodeURIComponent(id)}`);
@@ -13,14 +13,6 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
     if (!isOriginAllowed(req)) {
       return applyCors(
         NextResponse.json({ success: false, message: "Invalid request origin" }, { status: 403 }),
-        req
-      );
-    }
-
-    const accessToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value;
-    if (!accessToken) {
-      return applyCors(
-        NextResponse.json({ success: false, message: "Unauthorized. Please log in again." }, { status: 401 }),
         req
       );
     }
@@ -41,14 +33,18 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
       );
     }
 
-    const backendRes = await fetch(backendUrl, {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${accessToken}`,
-      },
-      cache: "no-store",
-    });
+    // Retries once with a refreshed access token when the cookie has expired,
+    // and stages the renewed cookies for `applyCors` to write back.
+    const { res: backendRes } = await executeWithRefreshRetry(req, (accessToken) =>
+      fetch(backendUrl, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        cache: "no-store",
+      })
+    )
 
     const responseText = await backendRes.text();
     const contentType = backendRes.headers.get("content-type") ?? "";

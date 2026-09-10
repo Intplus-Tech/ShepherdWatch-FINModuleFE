@@ -70,8 +70,11 @@ export function getAuthEndpoint(path: string): string | null {
   const cleanPath = String(path).replace(/^\/+/, "");
   if (!cleanPath) return null;
 
+  // The backend serves the current user under /auth/me. `backend-auth-me.ts`
+  // still probes /users/profile as a fallback for older deployments, but the
+  // route that actually exists has to be tried first.
   if (cleanPath === "me" || cleanPath === "session") {
-    return getBackendUrl(`${API_V1}/users/profile`);
+    return getBackendUrl(`${API_V1}/auth/me`);
   }
 
   return getBackendUrl(`${API_V1}/auth/${cleanPath}`);

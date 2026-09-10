@@ -34,14 +34,15 @@ export default function Page() {
   const { user } = useAuth();
   const displayName = user?.name || user?.email || "User";
   const roleLabel = user?.role ? String(user.role).replace(/_/g, " ") : "Lead Pastor";
-  const tenantId = user?.tenantId ?? user?.tenant?.id ?? "";
+  const branchId = user?.branchId ?? user?.tenantId ?? user?.tenant?.id ?? "";
   const [page, setPage] = useState(1);
   const { transactions: allTransactions, pagination, loading, error, refresh } = useTransactions({ page, limit: 20 });
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"all" | "operational" | "programs" | "capital" | "unverified">("all");
 
   const expenseTransactions = allTransactions.filter(tx =>
-    (tx.flowType ?? "").toUpperCase() === "OUTFLOW" || Number(tx.amount) < 0
+    (tx.transactionType ?? "").toLowerCase() === "debit" ||
+    (tx.flowType ?? "").toUpperCase() === "OUTFLOW"
   );
 
   const transactions = expenseTransactions.filter((tx) => {
@@ -77,7 +78,7 @@ export default function Page() {
         onOpenChange={setIsModalOpen}
         onSuccess={refresh}
         flowType="expense"
-        tenantId={tenantId}
+        tenantId={branchId}
       />
       <BranchLeadPastorSidebar />
 

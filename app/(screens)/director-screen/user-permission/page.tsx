@@ -78,6 +78,25 @@ const DEFAULT_ROLE_ORDER = [
 const smallText = "text-[10.63px] leading-[14.17px] font-normal"
 const bigText = "text-[12.4px] leading-[17.71px] font-medium"
 
+/**
+ * The permission action keys a role currently holds.
+ *
+ * `GET /api/v1/roles/:role` returns every action with a `granted` flag, so the
+ * editable state is the subset where `granted` is true. Older shapes that sent
+ * a bare list of strings are still accepted.
+ */
+function grantedActions(role: any): string[] {
+  const list = Array.isArray(role?.permissions)
+    ? role.permissions
+    : Array.isArray(role?.permissionList)
+      ? role.permissionList
+      : []
+  return list
+    .filter((perm: any) => (typeof perm === "string" ? true : perm?.granted === true))
+    .map((perm: any) => (typeof perm === "string" ? perm : (perm?.action ?? perm?.id)))
+    .filter(Boolean)
+}
+
 export default function Page() {
   const [searchText, setSearchText] = useState("")
   const [isLoading, setIsLoading] = useState(true)
@@ -96,6 +115,9 @@ export default function Page() {
   const [roleLoading, setRoleLoading] = useState(false)
   const [roleError, setRoleError] = useState<string | null>(null)
   const [isEditingRole, setIsEditingRole] = useState(false)
+  // `permissions` holds the granted permission *action keys* for the selected
+  // role. Roles themselves are enum-backed on the backend, so name, type and
+  // tenant are shown for context but cannot be changed.
   const [roleForm, setRoleForm] = useState({
     roleName: "",
     roleDescription: "",
@@ -189,9 +211,17 @@ export default function Page() {
     [matrixPayload]
   )
 
+  // The backend identifies a permission by its action key (`approve_budgets`)
+  // and carries the label separately, so the toggles below are keyed by action
+  // and only display the name.
   const permissionOptions = useMemo(() => {
-    const names = flattenedPermissions.map((perm) => perm.name).filter(Boolean)
-    return Array.from(new Set(names)).sort((a, b) => a.localeCompare(b))
+    const byAction = new Map<string, string>()
+    for (const perm of flattenedPermissions) {
+      if (perm.id) byAction.set(perm.id, perm.name || perm.id)
+    }
+    return Array.from(byAction, ([action, label]) => ({ action, label })).sort((a, b) =>
+      a.label.localeCompare(b.label)
+    )
   }, [flattenedPermissions])
 
   const rolesList = useMemo(() => flattenRoles(rolesPayload), [rolesPayload])
@@ -234,7 +264,9 @@ export default function Page() {
         }
       }
 
-      if (roleKey) {
+      // The row exists for every permission, but a role only occupies a cell
+      // when it actually holds it — `GET /roles` lists ungranted actions too.
+      if (roleKey && perm.granted) {
         itemMap.get(itemKey)?.roles.add(roleKey)
       }
     })
@@ -534,35 +566,18 @@ export default function Page() {
         "",
       roleType: roleDetail?.roleType ?? roleDetail?.type ?? "",
       tenantId: roleDetail?.tenantId ?? "",
-      permissions: Array.isArray(roleDetail?.permissions)
-        ? roleDetail.permissions
-        : Array.isArray(roleDetail?.permissionList)
-          ? roleDetail.permissionList
-          : [],
+      permissions: grantedActions(roleDetail),
     })
   }, [roleDetail])
 
+  // Only the permission grants are editable, so they are the only thing that
+  // can make the form dirty.
   const isRoleDirty = useMemo(() => {
     if (!roleDetail) return false
-    const currentPermissions = Array.isArray(roleDetail?.permissions)
-      ? roleDetail.permissions
-      : Array.isArray(roleDetail?.permissionList)
-        ? roleDetail.permissionList
-        : []
+    const current = grantedActions(roleDetail)
     return (
-      roleForm.roleName !==
-        (roleDetail?.roleName ??
-          roleDetail?.name ??
-          roleDetail?.roleType ??
-          "") ||
-      roleForm.roleDescription !==
-        (roleDetail?.roleDescription ?? roleDetail?.description ?? "") ||
-      roleForm.roleType !== (roleDetail?.roleType ?? roleDetail?.type ?? "") ||
-      roleForm.tenantId !== (roleDetail?.tenantId ?? "") ||
-      roleForm.permissions.length !== currentPermissions.length ||
-      roleForm.permissions.some(
-        (perm) => !currentPermissions.includes(perm)
-      )
+      roleForm.permissions.length !== current.length ||
+      roleForm.permissions.some((action) => !current.includes(action))
     )
   }, [roleDetail, roleForm])
 
@@ -718,13 +733,25 @@ export default function Page() {
                         setRoleSaving(true)
                         setRoleSaveError(null)
                         const previousRole = roleDetail
+                        // The backend replaces a role's grants wholesale, so
+                        // every known action is sent with an explicit flag —
+                        // anything omitted would be read as revoked.
+                        const knownActions = (
+                          Array.isArray(roleDetail?.permissions) && roleDetail.permissions.length
+                            ? roleDetail.permissions.map(
+                                (perm: any) => perm?.action ?? perm?.id ?? perm
+                              )
+                            : permissionOptions.map((option) => option.action)
+                        ).filter(Boolean)
+
+                        const payloadPermissions = knownActions.map((action: string) => ({
+                          action,
+                          granted: roleForm.permissions.includes(action),
+                        }))
+
                         const optimisticRole = {
                           ...roleDetail,
-                          roleName: roleForm.roleName,
-                          roleDescription: roleForm.roleDescription,
-                          roleType: roleForm.roleType,
-                          tenantId: roleForm.tenantId,
-                          permissions: roleForm.permissions,
+                          permissions: payloadPermissions,
                         }
                         setRoleDetail(optimisticRole)
 
@@ -737,13 +764,7 @@ export default function Page() {
                               headers: {
                                 "Content-Type": "application/json",
                               },
-                              body: JSON.stringify({
-                                roleName: roleForm.roleName,
-                                roleDescription: roleForm.roleDescription,
-                                roleType: roleForm.roleType,
-                                tenantId: roleForm.tenantId || undefined,
-                                permissions: roleForm.permissions,
-                              }),
+                              body: JSON.stringify({ permissions: payloadPermissions }),
                             }
                           )
                           const data = await response.json().catch(() => null)
@@ -853,6 +874,10 @@ export default function Page() {
 
             {isEditingRole ? (
               <div className="mt-4 rounded-[12px] border border-[#EEF1F6] bg-white p-4">
+                <p className="mb-3 text-[11px] text-[#6B7280]">
+                  Roles are defined by the system and cannot be renamed, created or
+                  deleted. Their permissions are editable below.
+                </p>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div className="space-y-1">
                     <div className="text-[10px] font-semibold text-[#9CA3AF]">
@@ -861,12 +886,7 @@ export default function Page() {
                     <Input
                       className="h-9 rounded-md border-[#E5E7EB] bg-white text-[12px] text-[#111827]"
                       value={roleForm.roleName}
-                      onChange={(event) =>
-                        setRoleForm((prev) => ({
-                          ...prev,
-                          roleName: event.target.value,
-                        }))
-                      }
+                      readOnly
                     />
                   </div>
                   <div className="space-y-1">
@@ -876,12 +896,7 @@ export default function Page() {
                     <Input
                       className="h-9 rounded-md border-[#E5E7EB] bg-white text-[12px] text-[#111827]"
                       value={roleForm.roleType}
-                      onChange={(event) =>
-                        setRoleForm((prev) => ({
-                          ...prev,
-                          roleType: event.target.value,
-                        }))
-                      }
+                      readOnly
                     />
                   </div>
                   <div className="space-y-1 md:col-span-2">
@@ -891,12 +906,7 @@ export default function Page() {
                     <Input
                       className="h-9 rounded-md border-[#E5E7EB] bg-white text-[12px] text-[#111827]"
                       value={roleForm.roleDescription}
-                      onChange={(event) =>
-                        setRoleForm((prev) => ({
-                          ...prev,
-                          roleDescription: event.target.value,
-                        }))
-                      }
+                      readOnly
                     />
                   </div>
                   <div className="space-y-1 md:col-span-2">
@@ -906,12 +916,7 @@ export default function Page() {
                     <Input
                       className="h-9 rounded-md border-[#E5E7EB] bg-white text-[12px] text-[#111827]"
                       value={roleForm.tenantId}
-                      onChange={(event) =>
-                        setRoleForm((prev) => ({
-                          ...prev,
-                          tenantId: event.target.value,
-                        }))
-                      }
+                      readOnly
                     />
                   </div>
                 </div>
@@ -921,11 +926,11 @@ export default function Page() {
                     PERMISSIONS
                   </div>
                   <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                    {permissionOptions.map((permission) => {
-                      const isSelected = roleForm.permissions.includes(permission)
+                    {permissionOptions.map(({ action, label }) => {
+                      const isSelected = roleForm.permissions.includes(action)
                       return (
                         <button
-                          key={permission}
+                          key={action}
                           type="button"
                           className={`flex items-center justify-between rounded-md border px-3 py-2 text-left text-[11px] transition ${
                             isSelected
@@ -935,13 +940,13 @@ export default function Page() {
                           onClick={() =>
                             setRoleForm((prev) => {
                               const nextPermissions = isSelected
-                                ? prev.permissions.filter((perm) => perm !== permission)
-                                : [...prev.permissions, permission]
+                                ? prev.permissions.filter((perm) => perm !== action)
+                                : [...prev.permissions, action]
                               return { ...prev, permissions: nextPermissions }
                             })
                           }
                         >
-                          <span>{permission}</span>
+                          <span>{label}</span>
                           <span className="text-[10px]">
                             {isSelected ? "✓" : ""}
                           </span>

@@ -2,9 +2,13 @@ import { API_V1 } from "@/lib/api";
 import { useEffect, useMemo, useState } from "react"
 import { useAuth } from "@/components/auth/AuthProvider"
 
-type BudgetEntry = {
+/** Backend `BudgetStatus`; only `submitted` budgets can be approved or rejected. */
+export const BUDGET_STATUS_SUBMITTED = "submitted"
+
+export type BudgetEntry = {
   id: string
   amount: number
+  status?: string
   period?: string
   periodStart?: string
   periodEnd?: string
@@ -16,44 +20,29 @@ type BudgetEntry = {
   type?: string
 }
 
-function formatDateOnly(date: Date): string {
-  return date.toISOString().slice(0, 10)
-}
-
-function getDefaultPeriod() {
-  const now = new Date()
-  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
-  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0))
-  return { start: formatDateOnly(start), end: formatDateOnly(end) }
-}
-
 export function useBudgetEntries() {
   const { user } = useAuth()
   const [entries, setEntries] = useState<BudgetEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const tenantId = useMemo(
-    () => user?.tenantId ?? user?.tenant?.id ?? "",
-    [user]
-  )
+  const branchId = useMemo(() => user?.branchId ?? user?.branch?.id ?? "", [user])
 
   useEffect(() => {
     let isMounted = true
-    const { start, end } = getDefaultPeriod()
+    const fiscalYear = new Date().getUTCFullYear()
 
     const loadEntries = async () => {
       setLoading(true)
       setError(null)
 
       try {
-        if (!tenantId) {
-          throw new Error("Tenant context is missing.")
-        }
-
-        const url = `${API_V1}/financial/budget-entries?tenantId=${encodeURIComponent(
-          tenantId
-        )}&periodStart=${encodeURIComponent(start)}&periodEnd=${encodeURIComponent(end)}`
+        // The backend list is GET /budgets and accepts branchId, category,
+        // fiscalYear, status, page and limit — nothing else. An org-level user
+        // has no branchId, and omitting it correctly returns every branch.
+        const params = new URLSearchParams({ fiscalYear: String(fiscalYear) })
+        if (branchId) params.set("branchId", branchId)
+        const url = `${API_V1}/financial/budget-entries?${params.toString()}`
 
         const response = await fetch(url, {
           method: "GET",
@@ -78,13 +67,14 @@ export function useBudgetEntries() {
                 : []
 
         const mapped: BudgetEntry[] = rawItems.map((item: any, index: number) => ({
-          id: String(item?.id ?? item?.budgetEntryId ?? `entry-${index}`),
-          amount: Number(item?.amount ?? item?.value ?? 0),
-          period: item?.period ?? item?.month ?? item?.date,
+          id: String(item?.id ?? item?._id ?? item?.budgetEntryId ?? `entry-${index}`),
+          amount: Number(item?.annualAmount ?? item?.amount ?? item?.value ?? 0),
+          period: item?.period ?? item?.fiscalYear ?? item?.month ?? item?.date,
           periodStart: item?.periodStart,
           periodEnd: item?.periodEnd,
           coaId: item?.coaId ?? item?.coa?.id,
           coaName: item?.coaName ?? item?.coa?.name ?? item?.coa?.accountName,
+          status: typeof item?.status === "string" ? item.status.toLowerCase() : undefined,
           name: item?.name ?? item?.title,
           category: item?.category ?? item?.budgetCategory,
           stream: item?.stream ?? item?.budgetStream,
@@ -110,9 +100,19 @@ export function useBudgetEntries() {
     return () => {
       isMounted = false
     }
-  }, [tenantId])
+  }, [branchId])
 
-  return { entries, loading, error }
+  /**
+   * The subset an approver can act on. `PATCH /budgets/:id/approve` rejects
+   * anything not in `submitted` status with a 400, so an "approve all" that
+   * walked every row would fail on the first draft or already-approved budget.
+   */
+  const pendingApproval = useMemo(
+    () => entries.filter((entry) => entry.status === BUDGET_STATUS_SUBMITTED),
+    [entries]
+  )
+
+  return { entries, pendingApproval, loading, error }
 }
 
 

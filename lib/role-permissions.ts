@@ -6,6 +6,15 @@ export type FlatRolePermission = {
   description: string
   section: string
   roleType?: string
+  /**
+   * Whether the role actually holds this permission.
+   *
+   * `GET /roles` reports every action for every role and distinguishes them
+   * with this flag, so callers must not treat "present in the list" as
+   * "granted". Payload shapes that only ever listed held permissions carry no
+   * flag; those default to `true`.
+   */
+  granted: boolean
 }
 
 export type RoleItem = {
@@ -69,12 +78,16 @@ function buildFlatPermission(
     permission?.permission?.id ??
     `${name}-${roleType ?? "unknown"}`
 
+  const granted =
+    permission?.granted ?? permission?.isGranted ?? permission?.permission?.granted
+
   return {
     id: String(id),
     name: String(name),
     description: String(description),
     section: String(section),
     roleType,
+    granted: granted === undefined ? true : granted === true,
   }
 }
 
@@ -147,9 +160,11 @@ export function flattenRoles(payload: any): RoleItem[] {
 
   return roles
     .map((role) => ({
-      id: String(role?.id ?? role?.roleId ?? role?.uuid ?? role?.name ?? ""),
-      name: String(role?.name ?? role?.roleName ?? role?.roleType ?? "Role"),
-      roleType: role?.roleType ?? role?.type ?? role?.name,
+      // `role.role` is the permission-matrix shape (`{ role, permissions }`),
+      // which is the only role list the backend actually serves.
+      id: String(role?.id ?? role?.roleId ?? role?.uuid ?? role?.role ?? role?.name ?? ""),
+      name: String(role?.name ?? role?.roleName ?? role?.roleType ?? role?.role ?? "Role"),
+      roleType: role?.roleType ?? role?.type ?? role?.role ?? role?.name,
       description: role?.description ?? role?.details ?? role?.roleDescription,
     }))
     .filter((role) => role.id || role.name)

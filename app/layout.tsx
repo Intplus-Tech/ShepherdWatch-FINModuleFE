@@ -5,6 +5,7 @@ import { AuthProvider } from "@/components/auth/AuthProvider";
 import { ToastProvider } from "@/components/ui/toast";
 import { ReactQueryProvider } from "@/components/providers/ReactQueryProvider";
 import { SessionProviderWrapper } from "@/components/providers/SessionProviderWrapper";
+import { CsrfProvider } from "@/components/providers/CsrfProvider";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -34,13 +35,15 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${publicSans.className} antialiased`}>
-        <SessionProviderWrapper>
-          <ReactQueryProvider>
-            <AuthProvider>
-              <ToastProvider>{children}</ToastProvider>
-            </AuthProvider>
-          </ReactQueryProvider>
-        </SessionProviderWrapper>
+        <CsrfProvider>
+          <SessionProviderWrapper>
+            <ReactQueryProvider>
+              <AuthProvider>
+                <ToastProvider>{children}</ToastProvider>
+              </AuthProvider>
+            </ReactQueryProvider>
+          </SessionProviderWrapper>
+        </CsrfProvider>
       </body>
     </html>
   );

@@ -4,6 +4,7 @@ import { API_V1 } from "@/lib/api";
 import { getCsrfTokenFromCookie } from "@/lib/csrf";
 
 import React, { useState, useEffect } from "react"
+import Link from "next/link"
 import {
   Dialog,
   DialogContent,
@@ -70,8 +71,11 @@ export function TransactionCreateModal({
   const [amount, setAmount] = useState("")
   const [description, setDescription] = useState("")
   const [chartOfAccountId, setChartOfAccountId] = useState("")
+  const [bankAccounts, setBankAccounts] = useState<Array<{ id: string; label: string }>>([])
+  const [bankAccountId, setBankAccountId] = useState("")
+  const [bankAccountsLoading, setBankAccountsLoading] = useState(false)
   const [transactionDate, setTransactionDate] = useState(() => {
-    return new Date().toISOString().slice(0, 10)
+    return new Date().toLocaleDateString("en-CA")
   })
 
   const [coaOptions, setCoaOptions] = useState<Array<{ id: string; label: string }>>([])
@@ -133,7 +137,42 @@ export function TransactionCreateModal({
       }
     }
 
+    const loadBankAccounts = async () => {
+      setBankAccountsLoading(true)
+      try {
+        const branchParam = tenantId ? `?branchId=${encodeURIComponent(tenantId)}` : ""
+        const res = await fetch(`${API_V1}/financial/bank-accounts${branchParam}`, {
+          credentials: "include",
+        })
+        const payload = await res.json().catch(() => null)
+        if (res.ok && isMounted) {
+          const items = Array.isArray(payload?.data)
+            ? payload.data
+            : Array.isArray(payload?.items)
+              ? payload.items
+              : Array.isArray(payload)
+                ? payload
+                : []
+          const opts = items
+            .map((b: any) => ({
+              id: String(b?.id ?? b?._id ?? ""),
+              label: `${b?.bankName ? `${b.bankName} - ` : ""}${b?.accountName ?? b?.accountNumber ?? "Account"}`.trim(),
+            }))
+            .filter((b: { id: string }) => b.id)
+          setBankAccounts(opts)
+          if (opts.length > 0) {
+            setBankAccountId((prev) => prev || opts[0].id)
+          }
+        }
+      } catch (err) {
+        console.error("Bank accounts load error:", err)
+      } finally {
+        if (isMounted) setBankAccountsLoading(false)
+      }
+    }
+
     loadCoa()
+    loadBankAccounts()
 
     return () => {
       isMounted = false
@@ -278,12 +317,18 @@ export function TransactionCreateModal({
 
     try {
       const payload = {
-        type: flowType,
+        transactionType: flowType === "income" ? "credit" : "debit",
         amount: Number(amount),
+        currency: "NGN",
         description,
-        branchId: tenantId,
-        chartOfAccountId,
-        transactionDate,
+        transactionDate: transactionDate || new Date().toLocaleDateString("en-CA"),
+        branchId: tenantId || undefined,
+        bankAccountId: bankAccountId || undefined,
+        chartOfAccountId: chartOfAccountId || undefined,
+        source: "manual",
+        meta: {
+          category: flowType === "income" ? "Income" : "Expense",
+        },
       }
 
       const res = await fetch(`${API_V1}/financial/transactions`, {
@@ -359,6 +404,40 @@ export function TransactionCreateModal({
             />
           </div>
 
+          {bankAccounts.length > 0 ? (
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-gray-700">Bank Account</label>
+              <select
+                required
+                value={bankAccountId}
+                onChange={(e) => setBankAccountId(e.target.value)}
+                disabled={bankAccountsLoading}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100"
+              >
+                {bankAccounts.map((acc) => (
+                  <option key={acc.id} value={acc.id}>
+                    {acc.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : !bankAccountsLoading ? (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+              <p className="font-semibold">No active bank account configured for this branch.</p>
+              <p className="mt-1 text-gray-600">
+                Transactions require an active bank account. Please configure one at{" "}
+                <Link
+                  href="/branchaccount-pastor/add-new-account"
+                  className="font-bold underline text-blue-600 hover:text-blue-800"
+                  target="_blank"
+                >
+                  Bank Account Configuration
+                </Link>
+                {" "}first.
+              </p>
+            </div>
+          ) : null}
+
           <div className="space-y-2">
             <label className="text-sm font-semibold text-gray-700">Category (COA)</label>
             <select
@@ -432,7 +511,15 @@ export function TransactionCreateModal({
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={loading || coaLoading}>
+            <Button
+              type="submit"
+              disabled={loading || coaLoading || (bankAccounts.length === 0 && !bankAccountsLoading)}
+              title={
+                bankAccounts.length === 0 && !bankAccountsLoading
+                  ? "Please configure a bank account first"
+                  : undefined
+              }
+            >
               {loading ? "Saving..." : "Save Transaction"}
             </Button>
           </DialogFooter>

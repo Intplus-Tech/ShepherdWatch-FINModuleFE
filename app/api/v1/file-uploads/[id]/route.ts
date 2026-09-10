@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
-import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config"
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors"
 
 import { getBackendApiUrl } from "@/lib/env"
+import { executeWithRefreshRetry } from "@/lib/backend-refresh"
 
 
 export async function GET(req: NextRequest, context: { params: Promise<{ id: string }> }) {
@@ -17,25 +17,21 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
       )
     }
 
-    const backendToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value
-    if (!backendToken) {
-      return applyCors(
-        NextResponse.json({ success: false, message: "Unauthenticated" }, { status: 401 }),
-        req
-      )
-    }
-
     const baseUrl = getBackendApiUrl();const url = `${baseUrl}/file-uploads/${encodeURIComponent(
       (await context.params).id
     )}`
 
-    const backendResponse = await fetch(url, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${backendToken}`,
-        Accept: "application/json",
-      },
-    })
+    // Retries once with a refreshed access token when the cookie has expired,
+    // and stages the renewed cookies for `applyCors` to write back.
+    const { res: backendResponse } = await executeWithRefreshRetry(req, (backendToken) =>
+      fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${backendToken}`,
+          Accept: "application/json",
+        },
+      })
+    )
 
     const payload = await backendResponse.json().catch(() => null)
 
@@ -77,14 +73,6 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
       )
     }
 
-    const backendToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value
-    if (!backendToken) {
-      return applyCors(
-        NextResponse.json({ success: false, message: "Unauthenticated" }, { status: 401 }),
-        req
-      )
-    }
-
     const baseUrl = getBackendApiUrl();const url = `${baseUrl}/file-uploads/${encodeURIComponent(
       (await context.params).id
     )}`
@@ -95,14 +83,18 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
     const file = incomingFormData.get("file")
     if (file) outFormData.append("file", file)
 
-    const backendResponse = await fetch(url, {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${backendToken}`,
-        Accept: "application/json",
-      },
-      body: outFormData,
-    })
+    // Retries once with a refreshed access token when the cookie has expired,
+    // and stages the renewed cookies for `applyCors` to write back.
+    const { res: backendResponse } = await executeWithRefreshRetry(req, (backendToken) =>
+      fetch(url, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${backendToken}`,
+          Accept: "application/json",
+        },
+        body: outFormData,
+      })
+    )
 
     const payload = await backendResponse.json().catch(() => null)
 
@@ -144,25 +136,21 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ id: 
       )
     }
 
-    const backendToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value
-    if (!backendToken) {
-      return applyCors(
-        NextResponse.json({ success: false, message: "Unauthenticated" }, { status: 401 }),
-        req
-      )
-    }
-
     const baseUrl = getBackendApiUrl();const url = `${baseUrl}/file-uploads/${encodeURIComponent(
       (await context.params).id
     )}`
 
-    const backendResponse = await fetch(url, {
-      method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${backendToken}`,
-        Accept: "application/json",
-      },
-    })
+    // Retries once with a refreshed access token when the cookie has expired,
+    // and stages the renewed cookies for `applyCors` to write back.
+    const { res: backendResponse } = await executeWithRefreshRetry(req, (backendToken) =>
+      fetch(url, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${backendToken}`,
+          Accept: "application/json",
+        },
+      })
+    )
 
     const payload = await backendResponse.json().catch(() => null)
 

@@ -24,6 +24,7 @@ import {
 } from "lucide-react"
 import { useBudgetEntries } from "@/components/hooks/useBudgetEntries"
 import BranchLeadPastorSidebar from "@/components/navigation/BranchLeadPastorSidebar"
+import { getCsrfTokenFromCookie } from "@/lib/csrf"
 
 type BudgetChild = {
   id: string
@@ -50,20 +51,14 @@ type BudgetRow = {
 
 export function BudgetReviewContent({ rightSidebar, activeRowId }: { rightSidebar?: React.ReactNode, activeRowId?: string }) {
   const router = useRouter()
-  const { entries, loading, error } = useBudgetEntries()
+  const { entries, pendingApproval, loading, error } = useBudgetEntries()
   const [data, setData] = useState<BudgetRow[]>([])
   const [approvingId, setApprovingId] = useState<string | null>(null)
   const [approvedIds, setApprovedIds] = useState<Set<string>>(new Set())
   const [approveError, setApproveError] = useState<string | null>(null)
   const [approvingAll, setApprovingAll] = useState(false)
 
-  const getCsrfToken = () => {
-    if (typeof document === "undefined") return ""
-    const match = document.cookie
-      .split("; ")
-      .find((cookie) => cookie.startsWith("csrf_token="))
-    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
-  }
+  const getCsrfToken = getCsrfTokenFromCookie
 
   const approveEntry = async (entryId: string) => {
     if (!entryId) return
@@ -96,8 +91,13 @@ export function BudgetReviewContent({ rightSidebar, activeRowId }: { rightSideba
   // One call approves the whole batch. Approving entry-by-entry left the list
   // half-approved whenever a single request failed part-way through.
   const approveAllEntries = async () => {
-    const entryIds = entries.map((entry) => entry.id).filter(Boolean)
-    if (entryIds.length === 0) return
+    // Only submitted budgets are approvable; the backend 400s on anything else,
+    // which would fail the whole batch below.
+    const entryIds = pendingApproval.map((entry) => entry.id).filter(Boolean)
+    if (entryIds.length === 0) {
+      setApproveError("There are no budgets awaiting approval.")
+      return
+    }
     setApprovingAll(true)
     setApproveError(null)
 

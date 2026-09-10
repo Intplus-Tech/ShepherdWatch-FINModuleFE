@@ -74,6 +74,31 @@ export async function refreshAccessToken(refreshToken: string): Promise<TokenPai
   };
 }
 
+/**
+ * Tokens refreshed while serving a request, keyed by that request.
+ *
+ * A proxy handler discovers it needs to refresh deep inside its fetch call, but
+ * the refreshed cookies have to be written onto the response it returns much
+ * later — often from one of several branches. Staging them against the request
+ * lets `applyCors`, which every handler already calls on the way out, flush
+ * them, instead of every return site having to remember `applyAuthCookies`.
+ *
+ * A WeakMap keyed by the request object keeps this per-request: entries are
+ * unreachable once the request is, and concurrent requests never see each
+ * other's tokens.
+ */
+const pendingAuthCookies = new WeakMap<NextRequest, TokenPair>();
+
+export function stageAuthCookies(req: NextRequest, tokens: TokenPair | null) {
+  if (tokens) pendingAuthCookies.set(req, tokens);
+}
+
+/** Write any tokens staged for `req` onto `res`. Safe to call more than once. */
+export function flushAuthCookies(res: NextResponse, req: NextRequest) {
+  const tokens = pendingAuthCookies.get(req);
+  if (tokens) applyAuthCookies(res, tokens);
+}
+
 export function applyAuthCookies(response: NextResponse, tokens: TokenPair | null) {
   if (!tokens) return;
 
@@ -129,6 +154,7 @@ export async function executeWithRefreshRetry(
   }
 
   if (!token) {
+    stageAuthCookies(req, refreshedTokens);
     return {
       res: new Response(JSON.stringify({ success: false, message: 'Unauthorized' }), { status: 401 }),
       refreshedTokens,
@@ -137,20 +163,24 @@ export async function executeWithRefreshRetry(
 
   let res = await executeRequest(token);
   if (![401, 403].includes(res.status)) {
+    stageAuthCookies(req, refreshedTokens);
     return { res, refreshedTokens };
   }
 
   if (!refreshToken) {
+    stageAuthCookies(req, refreshedTokens);
     return { res, refreshedTokens };
   }
 
   const retriedTokens = await refreshAccessToken(refreshToken);
   if (!retriedTokens?.accessToken) {
+    stageAuthCookies(req, refreshedTokens);
     return { res, refreshedTokens };
   }
 
   refreshedTokens = retriedTokens;
   res = await executeRequest(retriedTokens.accessToken);
 
+  stageAuthCookies(req, refreshedTokens);
   return { res, refreshedTokens };
 }

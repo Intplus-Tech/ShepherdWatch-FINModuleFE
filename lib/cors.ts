@@ -1,5 +1,6 @@
 import type { NextRequest, NextResponse } from "next/server";
 import { FRONTEND_ORIGIN } from "./auth-config";
+import { flushAuthCookies } from "./backend-refresh";
 
 const allowedOrigins = FRONTEND_ORIGIN.split(",")
   .map((origin) => origin.trim())
@@ -39,7 +40,18 @@ export const getCorsHeaders = (req: NextRequest) => {
   };
 };
 
+/**
+ * Finalise a proxied response: write back any access/refresh cookies that were
+ * renewed while serving this request, then apply CORS headers.
+ *
+ * The cookie flush lives here because every proxy handler already funnels its
+ * responses through `applyCors`. Without it a handler that silently refreshed
+ * mid-request would send the browser a stale access-token cookie and refresh
+ * again on the very next call.
+ */
 export const applyCors = (res: NextResponse, req: NextRequest) => {
+  flushAuthCookies(res, req);
+
   const headers = getCorsHeaders(req);
   if (!headers) return res;
 

@@ -1,5 +1,5 @@
 import { API_V1 } from "@/lib/api";
-import { useState, useCallback } from "react"
+import { useState, useCallback, useRef } from "react"
 import { useAuth } from "@/components/auth/AuthProvider"
 
 export interface IncomeExpenseTrendItem {
@@ -20,6 +20,12 @@ interface UseIncomeExpenseTrendProps {
 }
 
 export function useIncomeExpenseTrend(initialProps?: UseIncomeExpenseTrendProps) {
+  // Callers pass `initialProps` as an inline object literal, so it is a new
+  // reference every render. Read it from a ref instead of depending on it here:
+  // as a `useCallback` dep it changed the callback identity on every render and
+  // re-fired any effect listing the callback, looping requests forever.
+  const initialPropsRef = useRef(initialProps)
+  initialPropsRef.current = initialProps
   const { user } = useAuth()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -30,7 +36,7 @@ export function useIncomeExpenseTrend(initialProps?: UseIncomeExpenseTrendProps)
       setLoading(true)
       setError(null)
       try {
-        const mergedProps = { ...initialProps, ...props }
+        const mergedProps = { ...initialPropsRef.current, ...props }
         const branchId = mergedProps.branchId ?? user?.branchId
         const qs = new URLSearchParams()
         if (branchId) qs.set("branchId", branchId)
@@ -58,7 +64,7 @@ export function useIncomeExpenseTrend(initialProps?: UseIncomeExpenseTrendProps)
         setLoading(false)
       }
     },
-    [initialProps, user?.branchId]
+    [user?.branchId]
   )
 
   return { loading, error, trendData, fetchTrend }

@@ -1,7 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { API_V1 } from "@/lib/api"
 import {
   ArrowRight,
   BarChart3,
@@ -20,50 +21,127 @@ import InitiateSpecialRequestModal from "@/components/finance-controller/Initiat
 import {
   INCOME_EXPENSE_TREND,
   RECENT_ACTIVITY,
+  TrendPoint,
 } from "@/components/finance-controller/finance-data"
 import { formatCurrency } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 const CHART_HEIGHT = 190
 
-const STAT_CARDS = [
-  {
-    label: "Total Income",
-    value: 42_850_000,
-    trend: "+10%",
-    trendText: "vs last month",
-    trendClass: "text-emerald-600",
-    TrendIcon: TrendingUp,
-    icon: Eye,
-    iconClass: "bg-[#EEF2FF] text-[#3B5BDB]",
-  },
-  {
-    label: "Total Expenses",
-    value: 840_250_400,
-    trend: "-5%",
-    trendText: "vs last month",
-    trendClass: "text-rose-600",
-    TrendIcon: TrendingDown,
-    icon: Receipt,
-    iconClass: "bg-rose-100 text-rose-600",
-  },
-  {
-    label: "Net Surplus",
-    value: 8_840_250,
-    trend: "",
-    trendText: "Healthy Margin",
-    trendClass: "text-emerald-600",
-    TrendIcon: TrendingUp,
-    icon: CircleDollarSign,
-    iconClass: "bg-emerald-100 text-emerald-600",
-  },
-] as const
-
 export default function Page() {
   const [requestModalOpen, setRequestModalOpen] = useState(false)
+  const [overview, setOverview] = useState<any>(null)
+  const [trend, setTrend] = useState<TrendPoint[]>(INCOME_EXPENSE_TREND)
+
+  useEffect(() => {
+    let mounted = true
+    async function loadData() {
+      try {
+        const [resOverview, resTrend] = await Promise.all([
+          fetch(`${API_V1}/dashboard/overview`, { credentials: "include" }),
+          fetch(`${API_V1}/dashboard/income-expense-trend`, { credentials: "include" }),
+        ])
+        if (resOverview.ok) {
+          const json = await resOverview.json()
+          if (mounted && json?.data) {
+            setOverview(json.data)
+          }
+        }
+        if (resTrend.ok) {
+          const json = await resTrend.json()
+          const data = Array.isArray(json?.data) ? json.data : null
+          if (mounted && data && data.length > 0) {
+            const monthNames = [
+              "Jan",
+              "Feb",
+              "Mar",
+              "Apr",
+              "May",
+              "Jun",
+              "Jul",
+              "Aug",
+              "Sep",
+              "Oct",
+              "Nov",
+              "Dec",
+            ]
+            const mappedTrend: TrendPoint[] = data.map((d: any) => {
+              let label = d.month || ""
+              if (/^\d{4}-\d{2}$/.test(label)) {
+                const monthIdx = parseInt(label.split("-")[1], 10) - 1
+                label = monthNames[monthIdx] || label
+              }
+              return {
+                month: label,
+                income: Number(d.income) || 0,
+                expenses: Number(d.expenses) || Number(d.expense) || 0,
+              }
+            })
+            setTrend(mappedTrend)
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load finance dashboard data:", err)
+      }
+    }
+    loadData()
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  const statCards = useMemo(
+    () => [
+      {
+        label: "Total Income",
+        value: overview?.totalIncome != null ? Number(overview.totalIncome) : 42_850_000,
+        trend: "+10%",
+        trendText: "vs last month",
+        trendClass: "text-emerald-600",
+        TrendIcon: TrendingUp,
+        icon: Eye,
+        iconClass: "bg-[#EEF2FF] text-[#3B5BDB]",
+      },
+      {
+        label: "Total Expenses",
+        value:
+          overview?.totalExpense != null
+            ? Number(overview.totalExpense)
+            : overview?.totalExpenses != null
+            ? Number(overview.totalExpenses)
+            : 840_250_400,
+        trend: "-5%",
+        trendText: "vs last month",
+        trendClass: "text-rose-600",
+        TrendIcon: TrendingDown,
+        icon: Receipt,
+        iconClass: "bg-rose-100 text-rose-600",
+      },
+      {
+        label: "Net Surplus",
+        value:
+          overview?.netBalance != null
+            ? Number(overview.netBalance)
+            : overview?.netPosition != null
+            ? Number(overview.netPosition)
+            : 8_840_250,
+        trend: "",
+        trendText: "Healthy Margin",
+        trendClass: "text-emerald-600",
+        TrendIcon: TrendingUp,
+        icon: CircleDollarSign,
+        iconClass: "bg-emerald-100 text-emerald-600",
+      },
+    ],
+    [overview]
+  )
+
+  const pendingRequestsCount =
+    overview?.pendingRequisitions != null ? `${overview.pendingRequisitions}` : "3/5"
 
   const maxValue = Math.max(
-    ...INCOME_EXPENSE_TREND.flatMap((point) => [point.income, point.expenses])
+    1,
+    ...trend.flatMap((point) => [point.income, point.expenses])
   )
   const axisTicks = [50, 40, 30, 20, 10, 0]
 
@@ -82,7 +160,7 @@ export default function Page() {
 
         {/* Stat cards */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {STAT_CARDS.map((card) => {
+          {statCards.map((card) => {
             const Icon = card.icon
             const TrendIcon = card.TrendIcon
             return (
@@ -121,7 +199,7 @@ export default function Page() {
                 <FileText className="h-3.5 w-3.5" />
               </span>
             </div>
-            <div className="mt-3 text-[24px] font-extrabold leading-none text-[#111827]">3/5</div>
+            <div className="mt-3 text-[24px] font-extrabold leading-none text-[#111827]">{pendingRequestsCount}</div>
             <Link
               href="/finance-controller/requests"
               className="mt-2.5 inline-block text-[11px] font-semibold text-[#3B5BDB] hover:underline"
@@ -167,7 +245,7 @@ export default function Page() {
                   className="flex min-w-[520px] items-end gap-3 border-b border-l border-[#EEF1F6] pl-2"
                   style={{ height: CHART_HEIGHT }}
                 >
-                  {INCOME_EXPENSE_TREND.map((point) => {
+                  {trend.map((point) => {
                     const incomeH = Math.round((point.income / maxValue) * (CHART_HEIGHT - 20))
                     const expenseH = Math.round((point.expenses / maxValue) * (CHART_HEIGHT - 20))
                     return (
@@ -196,7 +274,7 @@ export default function Page() {
                 </div>
 
                 <div className="mt-2 flex min-w-[520px] gap-3 pl-2">
-                  {INCOME_EXPENSE_TREND.map((point) => (
+                  {trend.map((point) => (
                     <span
                       key={point.month}
                       className="flex-1 text-center text-[10px] font-semibold text-[#9CA3AF]"

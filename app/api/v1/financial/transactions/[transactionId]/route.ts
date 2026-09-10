@@ -1,16 +1,16 @@
-import { API_V1 } from "@/lib/api"
 import { NextRequest, NextResponse } from "next/server"
-import { corsOptions, proxyRequest } from "@/lib/proxy"
-import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config"
+import { proxyRequest } from "@/lib/proxy"
+import { API_V1 } from "@/lib/api"
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors"
 import { isCsrfValid } from "@/lib/csrf"
 
 import { getBackendApiUrl } from "@/lib/env"
+import { executeWithRefreshRetry } from "@/lib/backend-refresh"
 
 
 function buildBackendUrl(transactionId: string): string {
   const baseUrl = getBackendApiUrl();
-  return `${baseUrl}/financial/transactions/${transactionId}`
+  return `${baseUrl}/transactions/${transactionId}`
 }
 
 export async function DELETE(req: NextRequest, context: { params: Promise<{ transactionId: string }> }) {
@@ -29,14 +29,6 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ tran
       )
     }
 
-    const backendToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value
-    if (!backendToken) {
-      return applyCors(
-        NextResponse.json({ success: false, message: "Unauthenticated" }, { status: 401 }),
-        req
-      )
-    }
-
     const transactionId = (await context.params).transactionId
     if (!transactionId) {
       return applyCors(
@@ -45,14 +37,18 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ tran
       )
     }
 
-    const backendResponse = await fetch(buildBackendUrl(transactionId), {
-      method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${backendToken}`,
-        Accept: "application/json",
-      },
-      cache: "no-store",
-    })
+    // Retries once with a refreshed access token when the cookie has expired,
+    // and stages the renewed cookies for `applyCors` to write back.
+    const { res: backendResponse } = await executeWithRefreshRetry(req, (backendToken) =>
+      fetch(buildBackendUrl(transactionId), {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${backendToken}`,
+          Accept: "application/json",
+        },
+        cache: "no-store",
+      })
+    )
 
     const payload = await backendResponse.json().catch(() => null)
     if (!backendResponse.ok) {
@@ -91,14 +87,6 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ trans
       )
     }
 
-    const backendToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value
-    if (!backendToken) {
-      return applyCors(
-        NextResponse.json({ success: false, message: "Unauthenticated" }, { status: 401 }),
-        req
-      )
-    }
-
     const transactionId = (await context.params).transactionId
     if (!transactionId) {
       return applyCors(
@@ -109,16 +97,20 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ trans
 
     const body = await req.json().catch(() => null)
 
-    const backendResponse = await fetch(buildBackendUrl(transactionId), {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${backendToken}`,
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body ?? {}),
-      cache: "no-store",
-    })
+    // Retries once with a refreshed access token when the cookie has expired,
+    // and stages the renewed cookies for `applyCors` to write back.
+    const { res: backendResponse } = await executeWithRefreshRetry(req, (backendToken) =>
+      fetch(buildBackendUrl(transactionId), {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${backendToken}`,
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body ?? {}),
+        cache: "no-store",
+      })
+    )
 
     const payload = await backendResponse.json().catch(() => null)
     if (!backendResponse.ok) {
@@ -141,16 +133,9 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ trans
   }
 }
 
-/** One transaction. */
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ transactionId: string }> }
-) {
-  const { transactionId } = await params
-  return proxyRequest(req, {
-    path: `${API_V1}/transactions/${transactionId}`,
-    method: "GET",
-  })
+export async function GET(req: NextRequest, context: { params: Promise<{ transactionId: string }> }) {
+  const { transactionId } = await context.params;
+  return proxyRequest(req, { path: `${API_V1}/transactions/${transactionId}`, method: "GET" });
 }
 
 export async function OPTIONS(req: NextRequest) {

@@ -1,4 +1,5 @@
 import { Public_Sans } from "next/font/google";
+import ProtectedRoute from "@/components/auth/ProtectedRoute";
 
 const publicSans = Public_Sans({
   subsets: ["latin"],
@@ -11,11 +12,13 @@ export default function BranchLeadPastorLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div
-      className={publicSans.variable}
-      style={{ "--font-sans": "var(--font-public-sans)" } as React.CSSProperties}
-    >
-      {children}
-    </div>
+    <ProtectedRoute workspace="branchlead-pastor">
+      <div
+        className={publicSans.variable}
+        style={{ "--font-sans": "var(--font-public-sans)" } as React.CSSProperties}
+      >
+        {children}
+      </div>
+    </ProtectedRoute>
   );
 }

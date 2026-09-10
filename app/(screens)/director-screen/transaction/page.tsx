@@ -60,6 +60,7 @@ import {
 import { useToast } from "@/components/ui/toast"
 import { useAuth } from "@/components/auth/AuthProvider"
 import { useBranchContext } from "@/components/hooks/useBranchContext"
+import BranchesDropdown from "@/components/navigation/BranchesDropdown"
 
 const navItems = [
   { label: "Dashboard", href: "/director-screen/dashboard", icon: LayoutDashboard },
@@ -190,7 +191,14 @@ function mapTransactionToRow(tx: TransactionItem): DemoRow {
   }
 }
 
-export function BankTransactions() {
+export function BankTransactions({
+  defaultBranchId,
+  hideBranchSelector = false,
+}: {
+  defaultBranchId?: string
+  hideBranchSelector?: boolean
+} = {}) {
+  const [selectedBranchId, setSelectedBranchId] = useState<string>(defaultBranchId ?? "")
   const [tab, setTab] = useState<"ALL" | "CREDIT" | "DEBIT">("ALL")
   const [search, setSearch] = useState("")
   const [accountFilter, setAccountFilter] = useState("All Accounts")
@@ -200,10 +208,36 @@ export function BankTransactions() {
   const PAGE_SIZE = 5
 
   // Live data
-  const { transactions, loading, error, refresh } = useTransactions({ limit: 100 })
+  const { transactions, loading, error, refresh } = useTransactions({
+    branchId: selectedBranchId || undefined,
+    limit: 100,
+  })
   const { pushToast } = useToast()
-  const { summary, refresh: refreshSummary } = useTransactionSummaries()
+  const { summary, refresh: refreshSummary } = useTransactionSummaries({
+    branchId: selectedBranchId || undefined,
+  })
   const { syncFeed, ignoreTransaction } = useTransactionActions()
+  // The transaction summaries carry balances but not how many accounts they
+  // came from, so the account count is read from the bank-balances endpoint.
+  const [accountCount, setAccountCount] = useState(0)
+  useEffect(() => {
+    let active = true
+    const query = selectedBranchId ? `?branchId=${encodeURIComponent(selectedBranchId)}` : ""
+    fetch(`${API_V1}/dashboard/bank-balances${query}`, { credentials: "include" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (!active || !data) return
+        const payload = data?.data ?? data
+        setAccountCount(Number(payload?.accountCount ?? payload?.accounts?.length ?? 0))
+      })
+      .catch(() => {
+        /* the count simply stays at zero when the endpoint is unavailable */
+      })
+    return () => {
+      active = false
+    }
+  }, [selectedBranchId])
+
   const [syncing, setSyncing] = useState(false)
   const [ignoringId, setIgnoringId] = useState<string | null>(null)
 
@@ -415,6 +449,9 @@ export function BankTransactions() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3 mt-2 md:mt-0">
+          {!hideBranchSelector && (
+            <BranchesDropdown value={selectedBranchId} onChange={(id) => setSelectedBranchId(id)} />
+          )}
           <button
             onClick={handleSync}
             disabled={syncing}
@@ -478,7 +515,7 @@ export function BankTransactions() {
         <div className="rounded-xl border border-[#EEF1F6] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
           <p className="text-[11px] font-bold text-[#6B7280] tracking-wider mb-2">ACCOUNTS</p>
           <div className="flex items-end justify-between mt-1">
-            <h3 className="text-[22px] sm:text-[26px] leading-tight font-bold text-[#111827]">3</h3>
+            <h3 className="text-[22px] sm:text-[26px] leading-tight font-bold text-[#111827]">{accountCount}</h3>
             <div className="flex flex-col items-center gap-1">
               <button
                 onClick={() => setAccountsOpen(true)}

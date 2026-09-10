@@ -1,7 +1,8 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { CalendarDays, ChevronDown, Church, Download, Globe, Printer, TrendingUp } from "lucide-react"
+import { API_V1 } from "@/lib/api"
 import FinanceControllerShell from "@/components/finance-controller/FinanceControllerShell"
 import { CONSOLIDATED_REPORT } from "@/components/finance-controller/finance-data"
 import { ATTENDANCE_REGIONS } from "@/components/attendance/attendance-data"
@@ -18,14 +19,70 @@ export default function Page() {
   const [period, setPeriod] = useState<Period>("Monthly")
   const [month, setMonth] = useState(MONTHS[0])
   const [region, setRegion] = useState("All Regions")
+  const [bvaData, setBvaData] = useState<any>(null)
+
+  useEffect(() => {
+    let mounted = true
+    async function loadReport() {
+      try {
+        const year = new Date().getFullYear()
+        const res = await fetch(
+          `${API_V1}/financial/reports/bva?periodStart=${year}-01-01&periodEnd=${year}-12-31`,
+          { credentials: "include" }
+        )
+        if (res.ok) {
+          const json = await res.json()
+          if (mounted && json?.data) {
+            setBvaData(json.data)
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load BVA report:", err)
+      }
+    }
+    loadReport()
+    return () => {
+      mounted = false
+    }
+  }, [month, period, region])
+
+  const reportIncome = useMemo(() => {
+    const cats = bvaData?.categories
+    if (Array.isArray(cats) && cats.length > 0) {
+      const revs = cats.filter(
+        (c: any) => c.accountType === "revenue" || c.accountType === "income"
+      )
+      if (revs.length > 0) {
+        return revs.map((c: any) => ({
+          label: c.name || c.code || "Income",
+          amount: Number(c.actual) || 0,
+        }))
+      }
+    }
+    return CONSOLIDATED_REPORT.income
+  }, [bvaData])
+
+  const reportExpenses = useMemo(() => {
+    const cats = bvaData?.categories
+    if (Array.isArray(cats) && cats.length > 0) {
+      const exps = cats.filter((c: any) => c.accountType === "expense")
+      if (exps.length > 0) {
+        return exps.map((c: any) => ({
+          label: c.name || c.code || "Expense",
+          amount: Number(c.actual) || 0,
+        }))
+      }
+    }
+    return CONSOLIDATED_REPORT.expenses
+  }, [bvaData])
 
   const totalIncome = useMemo(
-    () => CONSOLIDATED_REPORT.income.reduce((sum, row) => sum + row.amount, 0),
-    []
+    () => reportIncome.reduce((sum: number, row: any) => sum + row.amount, 0),
+    [reportIncome]
   )
   const totalExpenses = useMemo(
-    () => CONSOLIDATED_REPORT.expenses.reduce((sum, row) => sum + row.amount, 0),
-    []
+    () => reportExpenses.reduce((sum: number, row: any) => sum + row.amount, 0),
+    [reportExpenses]
   )
   const netSurplus = totalIncome - totalExpenses
 
@@ -34,13 +91,13 @@ export default function Page() {
       {
         title: `Consolidated Financial Statement — ${month} (${region}, ${period})`,
         rows: [
-          ...CONSOLIDATED_REPORT.income.map((row) => ({
+          ...reportIncome.map((row: any) => ({
             Section: "Income",
             Line: row.label,
             Amount: row.amount,
           })),
           { Section: "Income", Line: "Total Income", Amount: totalIncome },
-          ...CONSOLIDATED_REPORT.expenses.map((row) => ({
+          ...reportExpenses.map((row: any) => ({
             Section: "Expenses",
             Line: row.label,
             Amount: row.amount,
@@ -170,7 +227,7 @@ export default function Page() {
               Income Summary
             </h3>
             <dl className="mt-4 flex flex-col">
-              {CONSOLIDATED_REPORT.income.map((row) => (
+              {reportIncome.map((row: any) => (
                 <div
                   key={row.label}
                   className="flex items-center justify-between border-b border-[#F3F4F6] py-3"
@@ -197,7 +254,7 @@ export default function Page() {
               Expense Summary
             </h3>
             <dl className="mt-4 flex flex-col">
-              {CONSOLIDATED_REPORT.expenses.map((row) => (
+              {reportExpenses.map((row: any) => (
                 <div
                   key={row.label}
                   className="flex items-center justify-between border-b border-[#F3F4F6] py-3"

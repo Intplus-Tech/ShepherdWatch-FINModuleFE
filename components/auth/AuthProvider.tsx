@@ -2,7 +2,7 @@
 
 import { API_V1 } from "@/lib/api";
 import React, { createContext, useCallback, useContext, useMemo } from "react";
-import { signIn, signOut, useSession } from "next-auth/react";
+import { getSession, signIn, signOut, useSession } from "next-auth/react";
 import type { Session } from "next-auth";
 
 export type AuthUser = {
@@ -110,6 +110,30 @@ function sessionToAuthUser(session: Session | null | undefined): AuthUser | null
   };
 }
 
+/**
+ * Read the current session, tolerating next-auth's `update()` contract.
+ *
+ * `useSession().update()` is not a reliable source of the signed-in user:
+ * it bails out with `undefined` while the provider is still loading its first
+ * session (`if (loading) return` in next-auth's SessionProvider), and it
+ * resolves to `null` whenever the `/api/auth/session` fetch fails. Because
+ * `SessionProviderWrapper` mounts without a server-rendered `session` prop,
+ * that loading window is open on every cold page load — long enough for a fast
+ * login submit to land inside it.
+ *
+ * Trusting the bail-out value made `login()` return `null`, which the caller
+ * read as a user with no role and redirected to `/no-access` even though the
+ * account had a perfectly valid one. `getSession()` always performs the fetch,
+ * so fall back to it whenever `update()` declines to answer.
+ */
+async function resolveAuthUser(
+  update: () => Promise<Session | null | undefined>
+): Promise<AuthUser | null> {
+  const fromUpdate = sessionToAuthUser(await update());
+  if (fromUpdate?.role) return fromUpdate;
+  return sessionToAuthUser(await getSession());
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { data: session, status, update } = useSession();
 
@@ -149,8 +173,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Force the client session to refresh so callers see the freshly authorized user.
-      const refreshed = await update();
-      return sessionToAuthUser(refreshed);
+      return resolveAuthUser(update);
     },
     [update]
   );
@@ -162,8 +185,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const refreshUser = useCallback(async () => {
-    const refreshed = await update();
-    if (!sessionToAuthUser(refreshed)) {
+    if (!(await resolveAuthUser(update))) {
       throw new Error("Unable to refresh user context");
     }
   }, [update]);

@@ -22,9 +22,10 @@ import {
 } from "lucide-react"
 import { useBudgetEntries } from "@/components/hooks/useBudgetEntries"
 import BranchLeadPastorSidebar from "@/components/navigation/BranchLeadPastorSidebar"
+import { getCsrfTokenFromCookie } from "@/lib/csrf"
 
 export default function Page() {
-  const { entries, loading, error } = useBudgetEntries()
+  const { entries, pendingApproval, loading, error } = useBudgetEntries()
   const [approvingAll, setApprovingAll] = useState(false)
   const [approveError, setApproveError] = useState<string | null>(null)
   const [budgetHierarchy, setBudgetHierarchy] = useState<
@@ -121,17 +122,16 @@ export default function Page() {
   const forecastOverrun = Math.max(expendedAmount + committedAmount - totalBudget, 0)
   const forecastLabel = forecastOverrun > 0 ? "Critical" : "Stable"
 
-  const getCsrfToken = () => {
-    if (typeof document === "undefined") return ""
-    const match = document.cookie
-      .split("; ")
-      .find((cookie) => cookie.startsWith("csrf_token="))
-    return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
-  }
+  const getCsrfToken = getCsrfTokenFromCookie
 
   const approveAllEntries = async () => {
-    const entryIds = entries.map((entry) => entry.id).filter(Boolean)
-    if (entryIds.length === 0) return
+    // Only submitted budgets are approvable; the backend 400s on anything else,
+    // which would fail the whole batch below.
+    const entryIds = pendingApproval.map((entry) => entry.id).filter(Boolean)
+    if (entryIds.length === 0) {
+      setApproveError("There are no budgets awaiting approval.")
+      return
+    }
     setApprovingAll(true)
     setApproveError(null)
 

@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config";
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 import { isCsrfValid } from "@/lib/csrf";
 
 import { getBackendApiUrl } from "@/lib/env"
+import { executeWithRefreshRetry } from "@/lib/backend-refresh"
 function getBackendTenantUrl(id: string): string {
   const baseUrl = getBackendApiUrl();
   if (!baseUrl) {
@@ -73,25 +73,21 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
       );
     }
 
-    const backendToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value;
-    if (!backendToken) {
-      return applyCors(
-        NextResponse.json({ success: false, message: "Unauthenticated" }, { status: 401 }),
-        req
-      );
-    }
-
     const branchId = (await context.params).id;
     const backendUrl = getBackendTenantUrl(branchId);
 
-    const backendResponse = await fetch(backendUrl, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${backendToken}`,
-        Accept: "application/json",
-      },
-      cache: "no-store",
-    });
+    // Retries once with a refreshed access token when the cookie has expired,
+    // and stages the renewed cookies for `applyCors` to write back.
+    const { res: backendResponse } = await executeWithRefreshRetry(req, (backendToken) =>
+      fetch(backendUrl, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${backendToken}`,
+          Accept: "application/json",
+        },
+        cache: "no-store",
+      })
+    )
 
     const bodyText = await backendResponse.text();
     let payload;
@@ -143,14 +139,6 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
       );
     }
 
-    const backendToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value;
-    if (!backendToken) {
-      return applyCors(
-        NextResponse.json({ success: false, message: "Unauthenticated" }, { status: 401 }),
-        req
-      );
-    }
-
     const branchId = (await context.params).id;
     const backendUrl = getBackendTenantUrl(branchId);
     
@@ -170,16 +158,20 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
       );
     }
 
-    const backendResponse = await fetch(backendUrl, {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${backendToken}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify(payloadToSend),
-      cache: "no-store",
-    });
+    // Retries once with a refreshed access token when the cookie has expired,
+    // and stages the renewed cookies for `applyCors` to write back.
+    const { res: backendResponse } = await executeWithRefreshRetry(req, (backendToken) =>
+      fetch(backendUrl, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${backendToken}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(payloadToSend),
+        cache: "no-store",
+      })
+    )
 
     const bodyText = await backendResponse.text();
     let payload;

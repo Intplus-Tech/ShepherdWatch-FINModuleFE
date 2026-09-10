@@ -13,7 +13,7 @@ export default function BranchAccountPastorLayout({
   children: React.ReactNode;
 }) {
   return (
-    <ProtectedRoute requiredRoles={["accountant", "branch_accountant"]}>
+    <ProtectedRoute workspace="branchaccount-pastor">
       <ModalProvider>
         <div
           className={publicSans.variable}

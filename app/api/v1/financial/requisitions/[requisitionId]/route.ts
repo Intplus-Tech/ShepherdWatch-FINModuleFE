@@ -1,11 +1,11 @@
-import { API_V1 } from "@/lib/api"
 import { NextRequest, NextResponse } from "next/server"
-import { corsOptions, proxyRequest } from "@/lib/proxy"
-import { BACKEND_TOKEN_COOKIE } from "@/lib/auth-config"
+import { proxyRequest } from "@/lib/proxy"
+import { API_V1 } from "@/lib/api"
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors"
 import { isCsrfValid } from "@/lib/csrf"
 
 import { getBackendApiUrl } from "@/lib/env"
+import { executeWithRefreshRetry } from "@/lib/backend-refresh"
 
 
 function buildBackendUrl(requisitionId: string): string {
@@ -29,14 +29,6 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ requi
       )
     }
 
-    const backendToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value
-    if (!backendToken) {
-      return applyCors(
-        NextResponse.json({ success: false, message: "Unauthenticated" }, { status: 401 }),
-        req
-      )
-    }
-
     const requisitionId = (await context.params).requisitionId
     if (!requisitionId) {
       return applyCors(
@@ -53,16 +45,20 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ requi
       )
     }
 
-    const backendResponse = await fetch(buildBackendUrl(requisitionId), {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${backendToken}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify(body),
-      cache: "no-store",
-    })
+    // Retries once with a refreshed access token when the cookie has expired,
+    // and stages the renewed cookies for `applyCors` to write back.
+    const { res: backendResponse } = await executeWithRefreshRetry(req, (backendToken) =>
+      fetch(buildBackendUrl(requisitionId), {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${backendToken}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(body),
+        cache: "no-store",
+      })
+    )
 
     const payload = await backendResponse.json().catch(() => null)
     if (!backendResponse.ok) {
@@ -101,14 +97,6 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ requ
       )
     }
 
-    const backendToken = req.cookies.get(BACKEND_TOKEN_COOKIE)?.value
-    if (!backendToken) {
-      return applyCors(
-        NextResponse.json({ success: false, message: "Unauthenticated" }, { status: 401 }),
-        req
-      )
-    }
-
     const requisitionId = (await context.params).requisitionId
     if (!requisitionId) {
       return applyCors(
@@ -117,14 +105,18 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ requ
       )
     }
 
-    const backendResponse = await fetch(buildBackendUrl(requisitionId), {
-      method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${backendToken}`,
-        Accept: "application/json",
-      },
-      cache: "no-store",
-    })
+    // Retries once with a refreshed access token when the cookie has expired,
+    // and stages the renewed cookies for `applyCors` to write back.
+    const { res: backendResponse } = await executeWithRefreshRetry(req, (backendToken) =>
+      fetch(buildBackendUrl(requisitionId), {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${backendToken}`,
+          Accept: "application/json",
+        },
+        cache: "no-store",
+      })
+    )
 
     const payload = await backendResponse.json().catch(() => null)
     if (!backendResponse.ok) {
@@ -147,16 +139,9 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ requ
   }
 }
 
-/** One requisition with its approval trail. */
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ requisitionId: string }> }
-) {
-  const { requisitionId } = await params
-  return proxyRequest(req, {
-    path: `${API_V1}/requisitions/${requisitionId}`,
-    method: "GET",
-  })
+export async function GET(req: NextRequest, context: { params: Promise<{ requisitionId: string }> }) {
+  const { requisitionId } = await context.params;
+  return proxyRequest(req, { path: `${API_V1}/requisitions/${requisitionId}`, method: "GET" });
 }
 
 export async function OPTIONS(req: NextRequest) {
