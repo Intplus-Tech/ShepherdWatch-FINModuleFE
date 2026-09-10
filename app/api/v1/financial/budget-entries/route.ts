@@ -94,8 +94,23 @@ export async function GET(req: NextRequest) {
     const baseUrl = getBackendApiUrl();
 
     const url = new URL(`${baseUrl}/budgets`)
-    if (req.nextUrl.search) {
-      url.search = req.nextUrl.search
+
+    // The screens filter by tenant and period; the budgets endpoint takes a
+    // branch and a fiscal year, so the query is translated rather than passed
+    // through verbatim (an unknown parameter fails validation).
+    const incoming = req.nextUrl.searchParams
+    const branchId = incoming.get("branchId") ?? incoming.get("tenantId")
+    if (branchId) url.searchParams.set("branchId", branchId)
+
+    const periodStart = incoming.get("periodStart") ?? incoming.get("fiscalYear")
+    if (periodStart) {
+      const year = periodStart.slice(0, 4)
+      if (/^\d{4}$/.test(year)) url.searchParams.set("fiscalYear", year)
+    }
+
+    for (const key of ["page", "limit", "status", "category", "search"]) {
+      const value = incoming.get(key)
+      if (value) url.searchParams.set(key, value)
     }
 
     // Retries once with a refreshed access token when the cookie has expired,

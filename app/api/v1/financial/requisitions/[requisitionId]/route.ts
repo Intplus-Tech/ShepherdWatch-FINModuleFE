@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
+import { proxyRequest } from "@/lib/proxy"
+import { API_V1 } from "@/lib/api"
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors"
 import { isCsrfValid } from "@/lib/csrf"
 
@@ -135,6 +137,11 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ requ
       req
     )
   }
+}
+
+export async function GET(req: NextRequest, context: { params: Promise<{ requisitionId: string }> }) {
+  const { requisitionId } = await context.params;
+  return proxyRequest(req, { path: `${API_V1}/requisitions/${requisitionId}`, method: "GET" });
 }
 
 export async function OPTIONS(req: NextRequest) {

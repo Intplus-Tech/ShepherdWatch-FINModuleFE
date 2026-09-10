@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { proxyRequest } from "@/lib/proxy"
+import { API_V1 } from "@/lib/api"
 import { applyCors, getCorsHeaders } from "@/lib/cors";
 import { getBackendUrl } from "@/lib/backend-auth-url";
 import { executeWithRefreshRetry } from "@/lib/backend-refresh";
@@ -111,6 +113,11 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ id: 
     }),
     req
   );
+}
+
+export async function GET(req: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const { id } = await context.params;
+  return proxyRequest(req, { path: `${API_V1}/templates/${id}`, method: "GET" });
 }
 
 export async function OPTIONS(req: NextRequest) {

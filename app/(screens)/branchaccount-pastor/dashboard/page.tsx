@@ -19,6 +19,7 @@ import { useAuth } from "@/components/auth/AuthProvider"
 import { useTransactions } from "@/components/hooks/useTransactions"
 import { useRequisitionInbox } from "@/components/hooks/useRequisitionInbox"
 import { useBankBalances } from "@/components/hooks/useBankBalances"
+import { useBranchContext } from "@/components/hooks/useBranchContext"
 import { useDashboardOverview } from "@/components/hooks/useDashboardOverview"
 import { useRecentDashboardTransactions } from "@/components/hooks/useRecentDashboardTransactions"
 import { formatCurrency, formatDate } from "@/lib/format"
@@ -34,7 +35,7 @@ function getCsrfToken() {
 
 export default function Page() {
   const { user } = useAuth()
-  const branchId = user?.tenantId ?? user?.tenant?.id ?? ""
+  const { branchId, loading: branchLoading } = useBranchContext()
 
   const { transactions: unverifiedTransactions } = useTransactions({ status: "UNVERIFIED" })
   const {
@@ -52,11 +53,14 @@ export default function Page() {
   const [paymentError, setPaymentError] = useState<string | null>(null)
   const [paymentSuccess, setPaymentSuccess] = useState<string | null>(null)
 
+  // Load once the branch has been resolved. Bailing out on an empty branchId
+  // is what left every card on this dashboard reading zero: the backend scopes
+  // by the caller's token anyway, so an unscoped call is still the right call.
   useEffect(() => {
-    if (!branchId) return
+    if (branchLoading) return
     fetchBankBalances({ branchId }).catch(() => undefined)
     fetchOverview({ branchId }).catch(() => undefined)
-  }, [branchId, fetchBankBalances, fetchOverview])
+  }, [branchId, branchLoading, fetchBankBalances, fetchOverview])
 
   const pendingTotal = useMemo(
     () => requisitions.reduce((sum, item) => sum + Number(item.amount || 0), 0),

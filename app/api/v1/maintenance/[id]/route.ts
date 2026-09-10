@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
+import { proxyRequest } from "@/lib/proxy"
+import { API_V1 } from "@/lib/api"
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors"
 import { isCsrfValid } from "@/lib/csrf"
 
@@ -184,6 +186,11 @@ export async function DELETE(
       req
     )
   }
+}
+
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  return proxyRequest(req, { path: `${API_V1}/maintenance/${id}`, method: "GET" });
 }
 
 export async function OPTIONS(req: NextRequest) {

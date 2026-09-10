@@ -3,6 +3,7 @@
 import { API_V1 } from "@/lib/api";
 import { getCsrfTokenFromCookie } from "@/lib/csrf";
 import { bankAccountSchema } from "@/lib/validation/bankAccount";
+import { useBranchContext } from "@/components/hooks/useBranchContext";
 
 import React, { useEffect, useMemo, useState } from "react"
 import { X, Mail, ChevronDown } from "lucide-react"
@@ -64,7 +65,7 @@ export default function AddNewAccountPage() {
   const [bankName, setBankName] = useState("")
   const [accountName, setAccountName] = useState("")
   const [accountNumber, setAccountNumber] = useState("")
-  const [currency, setCurrency] = useState<"NGN" | "USD" | "GBP" | "EUR" | "CAD">("NGN")
+  const [currency, setCurrency] = useState<"NGN" | "USD" | "GBP" | "EUR">("NGN")
   const [isDomiciliary, setIsDomiciliary] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [submitMessage, setSubmitMessage] = useState<string | null>(null)
@@ -84,10 +85,14 @@ export default function AddNewAccountPage() {
   const [coaLoading, setCoaLoading] = useState(true)
   const [coaError, setCoaError] = useState<string | null>(null)
 
-  const tenantId = useMemo(
-    () => user?.branchId ?? user?.branch?.id ?? user?.tenantId ?? user?.tenant?.id ?? "",
-    [user]
-  )
+  const {
+    branchId: tenantId,
+    branches,
+    needsSelection,
+    loading: branchLoading,
+    error: branchError,
+    selectBranch,
+  } = useBranchContext()
 
   const getCsrfToken = getCsrfTokenFromCookie
 
@@ -154,17 +159,16 @@ export default function AddNewAccountPage() {
       }
     }
 
-    if (tenantId) {
-      loadCoaOptions()
+    if (branchLoading) {
+      setCoaLoading(true)
     } else {
-      setCoaLoading(false)
-      setCoaError("Tenant context is missing.")
+      loadCoaOptions()
     }
 
     return () => {
       isMounted = false
     }
-  }, [tenantId])
+  }, [tenantId, branchLoading])
 
   useEffect(() => {
     const latestId = String(bankAccounts[0]?._id ?? bankAccounts[0]?.id ?? "").trim()
@@ -354,7 +358,11 @@ export default function AddNewAccountPage() {
     setSubmitError(null)
 
     if (!tenantId) {
-      setSubmitError("Branch context is required.")
+      setSubmitError(
+        branches.length > 1
+          ? "Choose the branch this account belongs to."
+          : branchError ?? "No branch is available for your account. Ask an administrator to assign you to one."
+      )
       return
     }
 
@@ -499,6 +507,30 @@ export default function AddNewAccountPage() {
                     </div>
                   </div>
 
+                  {(needsSelection || branches.length > 1) && (
+                    <div>
+                      <label htmlFor="branch-select" className="mb-1.5 block text-[12px] font-semibold text-[#374151]">
+                        Branch
+                      </label>
+                      <div className="relative">
+                        <select
+                          id="branch-select"
+                          value={tenantId}
+                          onChange={(event) => selectBranch(event.target.value)}
+                          className="h-[30.7px] w-full appearance-none rounded-[3.23px] border-[0.81px] border-gray-200 bg-white pl-3 pr-10 text-[13px] font-medium text-gray-900 focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]/20 transition-all"
+                        >
+                          <option value="">Select a branch…</option>
+                          {branches.map((branch) => (
+                            <option key={branch.id} value={branch.id}>
+                              {branch.name}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                      </div>
+                    </div>
+                  )}
+
                   <div>
                     <label className="mb-1.5 block text-[12px] font-semibold text-[#374151]">Account Number</label>
                     <input 
@@ -516,14 +548,13 @@ export default function AddNewAccountPage() {
                       <div className="relative">
                         <select
                           value={currency}
-                          onChange={(event) => setCurrency(event.target.value as "NGN" | "USD" | "GBP" | "EUR" | "CAD")}
+                          onChange={(event) => setCurrency(event.target.value as "NGN" | "USD" | "GBP" | "EUR")}
                           className="h-[30.7px] w-full appearance-none rounded-[3.23px] border-[0.81px] border-gray-200 bg-white pl-3 pr-10 text-[13px] font-medium text-gray-900 focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]/20 transition-all"
                         >
                           <option value="NGN">NGN</option>
                           <option value="USD">USD</option>
                           <option value="GBP">GBP</option>
                           <option value="EUR">EUR</option>
-                          <option value="CAD">CAD</option>
                         </select>
                         <ChevronDown className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 pointer-events-none" />
                       </div>

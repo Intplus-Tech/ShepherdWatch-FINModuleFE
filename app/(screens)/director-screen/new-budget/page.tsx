@@ -139,7 +139,7 @@ function PageInner() {
       setCoaLoading(true)
       setCoaError(null)
       try {
-        const response = await fetch(`${API_V1}/financial/coa?page=1&limit=200`, {
+        const response = await fetch(`${API_V1}/financial/coa?page=1&limit=100`, {
           method: "GET",
           credentials: "include",
         })

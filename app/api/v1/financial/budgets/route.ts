@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
+import { proxyRequest } from "@/lib/proxy"
+import { API_V1 } from "@/lib/api"
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors"
 import { isCsrfValid } from "@/lib/csrf"
 
@@ -115,6 +117,10 @@ export async function POST(req: NextRequest) {
       req
     )
   }
+}
+
+export async function GET(req: NextRequest) {
+  return proxyRequest(req, { path: `${API_V1}/budgets`, method: "GET" });
 }
 
 export async function OPTIONS(req: NextRequest) {

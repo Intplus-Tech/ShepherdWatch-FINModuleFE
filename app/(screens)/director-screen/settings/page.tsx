@@ -930,7 +930,10 @@ export default function Page() {
       params.set("endDate", isoEnd)
     }
     try {
-      const res = await fetch(`${API_V1}/logs/app?${params.toString()}`)
+      // `level=error` reads the dedicated error feed, which carries stack
+      // traces the general application log omits.
+      const endpoint = appLogFilters.level === "error" ? "errors" : "app"
+      const res = await fetch(`${API_V1}/logs/${endpoint}?${params.toString()}`)
       const data = await res.json().catch(() => null)
       if (!res.ok) {
         throw new Error(data?.message || "Unable to load application logs")

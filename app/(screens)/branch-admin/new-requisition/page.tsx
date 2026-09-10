@@ -25,6 +25,7 @@ import {
   LogOut,
 } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
+import { useBranchContext } from "@/components/hooks/useBranchContext"
 import FileUploadDropzone from "@/components/ui/FileUploadDropzone"
 import { getCsrfTokenFromCookie } from "@/lib/csrf"
 
@@ -87,32 +88,15 @@ export default function NewRequisitionPage() {
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  const tenantId = useMemo(
-    () => user?.tenantId ?? user?.tenant?.id ?? "",
-    [user]
-  )
-  const branchId = useMemo(
-    () => {
-      const identity = user as unknown as BranchIdentity | undefined
-      const rawBranchId = identity?.branchId
-      if (rawBranchId && typeof rawBranchId === "object") {
-        return String(
-          rawBranchId._id ??
-            rawBranchId.id ??
-            identity?.tenantId ??
-            identity?.tenant?.id ??
-            ""
-        )
-      }
-      return String(
-        rawBranchId ??
-          identity?.tenantId ??
-          identity?.tenant?.id ??
-          ""
-      )
-    },
-    [user]
-  )
+  const {
+    branchId,
+    branches,
+    needsSelection,
+    loading: branchLoading,
+    error: branchError,
+    selectBranch,
+  } = useBranchContext()
+  const tenantId = branchId
 
   useEffect(() => {
     let isMounted = true
@@ -121,11 +105,36 @@ export default function NewRequisitionPage() {
       setCoaLoading(true)
       setCoaError(null)
 
+      const read = (payload: unknown) => {
+        const source = payload as Record<string, unknown> | null
+        const data = source?.data as unknown
+        const rows = Array.isArray(data)
+          ? data
+          : Array.isArray((data as Record<string, unknown>)?.content)
+            ? ((data as Record<string, unknown>).content as unknown[])
+            : Array.isArray(source?.items)
+              ? (source.items as unknown[])
+              : Array.isArray(payload)
+                ? (payload as unknown[])
+                : []
+        return rows
+          .map((entry) => {
+            const item = entry as CoaTreeNode & { code?: string }
+            const code = String(item?.code ?? "")
+            const name = String(item?.name ?? item?.accountName ?? item?.coaName ?? "Budget Category")
+            return {
+              id: String(item?.id ?? item?._id ?? ""),
+              label: code ? `${code} — ${name}` : name,
+            }
+          })
+          .filter((option) => option.id)
+      }
+
       try {
-        const url = tenantId
-          ? `${API_V1}/financial/coa/tree?branchId=${encodeURIComponent(tenantId)}`
-          : `${API_V1}/financial/coa/tree`
-        const response = await fetch(url, {
+        const params = new URLSearchParams({ page: "1", limit: "100", accountType: "expense" })
+        if (tenantId) params.set("branchId", tenantId)
+
+        const response = await fetch(`${API_V1}/financial/coa?${params.toString()}`, {
           method: "GET",
           credentials: "include",
         })
@@ -134,44 +143,34 @@ export default function NewRequisitionPage() {
           throw new Error(payload?.message ?? "Unable to fetch budget categories.")
         }
 
-        const rawTree = Array.isArray(payload?.data)
-          ? payload.data
-          : Array.isArray(payload?.items)
-            ? payload.items
-            : Array.isArray(payload)
-              ? payload
-              : []
+        let mapped = read(payload)
 
-        const rawItems = flattenCoaTree(rawTree as CoaTreeNode[]).filter(
-          (item) => String(item.accountType ?? "").toLowerCase() === "expense"
-        )
-
-        const mapped = rawItems.map((item: CoaTreeNode) => ({
-          id: String(item?.id ?? item?._id ?? ""),
-          label:
-            String(item?.name ?? item?.accountName ?? item?.coaName ?? "Budget Category"),
-        }))
-
-        if (isMounted) {
-          setCoaOptions(mapped.filter((option) => option.id))
+        // A branch with no chart of its own still needs the org-wide heads.
+        if (mapped.length === 0 && tenantId) {
+          const fallback = await fetch(
+            `${API_V1}/financial/coa?page=1&limit=100&accountType=expense`,
+            { method: "GET", credentials: "include" }
+          )
+          const fallbackPayload = await fallback.json().catch(() => null)
+          if (fallback.ok) mapped = read(fallbackPayload)
         }
+
+        if (isMounted) setCoaOptions(mapped)
       } catch (err) {
         if (isMounted) {
           setCoaError(err instanceof Error ? err.message : "Unable to fetch budget categories.")
         }
       } finally {
-        if (isMounted) {
-          setCoaLoading(false)
-        }
+        if (isMounted) setCoaLoading(false)
       }
     }
 
-    loadCoaOptions()
+    if (!branchLoading) loadCoaOptions()
 
     return () => {
       isMounted = false
     }
-  }, [tenantId])
+  }, [tenantId, branchLoading])
 
   useEffect(() => {
     if (!coaId) {
@@ -222,7 +221,11 @@ export default function NewRequisitionPage() {
 
     const amountValue = Number(String(amount).replace(/,/g, "").trim())
     if (!branchId) {
-      setSubmitError("Branch is required to create a requisition.")
+      setSubmitError(
+        branches.length > 1
+          ? "Choose the branch this request belongs to."
+          : branchError ?? "No branch is available for your account. Ask an administrator to assign you to one."
+      )
       return
     }
     if (!coaId) {
@@ -290,7 +293,11 @@ export default function NewRequisitionPage() {
 
     const amountValue = Number(String(amount).replace(/,/g, "").trim())
     if (!branchId) {
-      setSubmitError("Branch is required to create a requisition.")
+      setSubmitError(
+        branches.length > 1
+          ? "Choose the branch this request belongs to."
+          : branchError ?? "No branch is available for your account. Ask an administrator to assign you to one."
+      )
       return
     }
     if (!coaId) {
@@ -549,6 +556,30 @@ export default function NewRequisitionPage() {
                         className="h-[46px] w-full rounded-[8px] border border-[#E5E7EB] bg-white px-4 text-[14px] font-[500] text-[#111827] placeholder:text-[#9CA3AF] focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20 outline-none transition-all shadow-sm"
                       />
                     </div>
+
+                    {(needsSelection || branches.length > 1) && (
+                      <div className="flex flex-col gap-2">
+                        <label htmlFor="requisition-branch" className="text-[13px] font-[700] text-[#4B5563]">
+                          Branch <span className="text-red-500">*</span>
+                        </label>
+                        <div className="relative">
+                          <select
+                            id="requisition-branch"
+                            value={branchId}
+                            onChange={(event) => selectBranch(event.target.value)}
+                            className="h-[46px] w-full rounded-[8px] border border-[#E5E7EB] bg-white px-4 pr-10 text-[14px] font-[500] text-[#111827] focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20 outline-none transition-all shadow-sm appearance-none cursor-pointer"
+                          >
+                            <option value="">Select a branch…</option>
+                            {branches.map((branch) => (
+                              <option key={branch.id} value={branch.id}>
+                                {branch.name}
+                              </option>
+                            ))}
+                          </select>
+                          <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6B7280] pointer-events-none" />
+                        </div>
+                      </div>
+                    )}
 
                     {/* Category and Amount Row */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5 md:gap-6">

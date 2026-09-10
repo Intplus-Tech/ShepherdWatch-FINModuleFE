@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { proxyRequest } from "@/lib/proxy"
+import { API_V1 } from "@/lib/api"
 import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 
 import { getBackendApiUrl } from "@/lib/env"
@@ -167,6 +169,11 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
       req
     );
   }
+}
+
+export async function DELETE(req: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const { id } = await context.params;
+  return proxyRequest(req, { path: `${API_V1}/asset-classes/${encodeURIComponent(id)}`, method: "DELETE" });
 }
 
 export async function OPTIONS(req: NextRequest) {

@@ -19,6 +19,9 @@ import {
   UsersRound,
   Banknote,
   DoorOpen,
+  CalendarDays,
+  ClipboardList,
+  GraduationCap,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/components/auth/AuthProvider"
@@ -31,6 +34,9 @@ const HR_ITEMS = [
   { label: "Attendance", href: "/branchaccount-pastor/hr/attendance", icon: Clock },
   { label: "Employee Directory", href: "/branchaccount-pastor/hr/employee-directory", icon: UsersRound },
   { label: "Employee Loans", href: "/branchaccount-pastor/hr/employee-loans", icon: Banknote },
+  { label: "Leave", href: "/branchaccount-pastor/hr/leave", icon: CalendarDays },
+  { label: "Job Requisition", href: "/branchaccount-pastor/hr/job-requisition", icon: ClipboardList },
+  { label: "Training Management", href: "/branchaccount-pastor/hr/training-management", icon: GraduationCap },
   { label: "Exit Clearance Oversight", href: "/branchaccount-pastor/hr/exit-clearance", icon: DoorOpen },
 ]
 

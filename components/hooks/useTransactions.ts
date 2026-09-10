@@ -22,6 +22,34 @@ function formatDateOnly(value?: string) {
   return parsed.toISOString()
 }
 
+/**
+ * The list endpoint accepts a lowercase enum — pending | verified | flagged |
+ * cancelled — and answers 400 "Validation failed" for anything else, including
+ * the uppercase names the screens have always used. Map them here so no caller
+ * has to know, and drop values the API has no equivalent for.
+ */
+function normalizeStatus(status?: string): string {
+  const value = (status ?? "").trim().toLowerCase()
+  if (!value) return ""
+  if (value === "unverified" || value === "uncategorized") return "pending"
+  if (value === "cleared" || value === "reconciled") return "verified"
+  return ["pending", "verified", "flagged", "cancelled"].includes(value) ? value : ""
+}
+
+/** Same story for `type`: the API takes income | expense, nothing else. */
+function normalizeType(type?: string): string {
+  const value = (type ?? "").trim().toLowerCase()
+  if (value === "credit" || value === "inflow" || value === "income") return "income"
+  if (value === "debit" || value === "outflow" || value === "expense") return "expense"
+  return ""
+}
+
+/** The backend rejects a page size above 100. */
+function clampLimit(limit: number): number {
+  if (!Number.isFinite(limit) || limit < 1) return 20
+  return Math.min(Math.trunc(limit), 100)
+}
+
 type UseTransactionsOptions = {
   status?: string
   startDate?: string
@@ -59,12 +87,15 @@ export function useTransactions(options: UseTransactionsOptions = {}) {
       try {
         const params = new URLSearchParams()
         if (branchId) params.set("branchId", branchId)
-        if (options.status) params.set("status", options.status)
+        const status = normalizeStatus(options.status)
+        if (status) params.set("status", status)
         if (options.startDate) params.set("startDate", options.startDate)
         if (options.endDate) params.set("endDate", options.endDate)
         if (options.page !== undefined) params.set("page", String(options.page))
-        if (options.limit !== undefined) params.set("limit", String(options.limit))
+        if (options.limit !== undefined) params.set("limit", String(clampLimit(options.limit)))
         if (options.search) params.set("search", options.search)
+        const type = normalizeType(options.type)
+        if (type) params.set("type", type)
         if (options.transactionType) {
           params.set("transactionType", options.transactionType.toLowerCase())
         } else if (options.type) {

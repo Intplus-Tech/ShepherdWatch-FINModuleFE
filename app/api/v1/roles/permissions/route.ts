@@ -1,79 +1,68 @@
+import { API_V1 } from "@/lib/api"
 import { NextRequest, NextResponse } from "next/server"
-import { applyCors, getCorsHeaders, isOriginAllowed } from "@/lib/cors"
+import { applyCors, isOriginAllowed } from "@/lib/cors"
+import { corsOptions } from "@/lib/proxy"
+import { executeWithRefreshRetry, applyAuthCookies } from "@/lib/backend-refresh"
+import { getBackendUrl } from "@/lib/backend-auth-url"
+import { readMatrix, toPermissionCatalogue } from "@/lib/roles-adapter"
 
-import { getBackendApiUrl } from "@/lib/env"
-import { executeWithRefreshRetry } from "@/lib/backend-refresh"
-
-
-// Served by GET /roles, which returns each role with its full permission list
-// (label, description, section and `granted`).
-//
-// Not /permissions/matrix: that route is super_admin-only and returns bare
-// action keys, whereas these screens are used by directors and need the labels.
-function buildBackendPermissionsUrl(search: string): string {
-  const baseUrl = getBackendApiUrl();
-  const url = new URL(`${baseUrl}/roles`)
-  if (search) {
-    url.search = search
-  }
-  return url.toString()
-}
-
+/**
+ * The catalogue of assignable permissions. There is no dedicated endpoint for
+ * it, so the distinct categories and actions are derived from the permission
+ * matrix itself.
+ */
 export async function GET(req: NextRequest) {
-  try {
-    if (!isOriginAllowed(req)) {
-      return applyCors(
-        NextResponse.json(
-          { success: false, message: "Invalid request origin" },
-          { status: 403 }
-        ),
-        req
-      )
-    }
+  if (!isOriginAllowed(req)) {
+    return applyCors(
+      NextResponse.json({ success: false, message: "Invalid request origin" }, { status: 403 }),
+      req
+    )
+  }
 
-    const backendUrl = buildBackendPermissionsUrl(req.nextUrl.search)
-    // Retries once with a refreshed access token when the cookie has expired,
-    // and stages the renewed cookies for `applyCors` to write back.
-    const { res: backendResponse } = await executeWithRefreshRetry(req, (backendToken) =>
+  const backendUrl = getBackendUrl(`${API_V1}/permissions/matrix`)
+  if (!backendUrl) {
+    return applyCors(
+      NextResponse.json({ success: false, message: "Backend URL not configured" }, { status: 500 }),
+      req
+    )
+  }
+
+  try {
+    const { res, refreshedTokens } = await executeWithRefreshRetry(req, (token) =>
       fetch(backendUrl, {
         method: "GET",
-        headers: {
-          Authorization: `Bearer ${backendToken}`,
-          Accept: "application/json",
-        },
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
         cache: "no-store",
       })
     )
 
-    const payload = await backendResponse.json().catch(() => null)
-
-    if (!backendResponse.ok) {
-      return applyCors(
-        NextResponse.json(
-          {
-            success: false,
-            message: payload?.message ?? "Unable to fetch permissions",
-          },
-          { status: backendResponse.status || 502 }
-        ),
-        req
-      )
+    const payload = await res.json().catch(() => null)
+    if (!res.ok) {
+      const response = applyCors(NextResponse.json(payload ?? { success: false }, { status: res.status }), req)
+      applyAuthCookies(response, refreshedTokens)
+      return response
     }
 
-    return applyCors(NextResponse.json(payload, { status: 200 }), req)
+    const catalogue = toPermissionCatalogue(readMatrix(payload))
+    const response = applyCors(
+      NextResponse.json({
+        success: true,
+        message: "Permissions fetched successfully.",
+        data: catalogue,
+      }),
+      req
+    )
+    applyAuthCookies(response, refreshedTokens)
+    return response
   } catch (error) {
-    console.error("Permissions proxy error:", error)
+    console.error("Permissions catalogue error:", error)
     return applyCors(
-      NextResponse.json(
-        { success: false, message: "Internal server error" },
-        { status: 500 }
-      ),
+      NextResponse.json({ success: false, message: "Internal server error" }, { status: 500 }),
       req
     )
   }
 }
 
 export async function OPTIONS(req: NextRequest) {
-  const headers = getCorsHeaders(req)
-  return new NextResponse(null, { status: 204, headers: headers ?? undefined })
+  return corsOptions(req)
 }

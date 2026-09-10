@@ -88,6 +88,8 @@ export function BudgetReviewContent({ rightSidebar, activeRowId }: { rightSideba
     }
   }
 
+  // One call approves the whole batch. Approving entry-by-entry left the list
+  // half-approved whenever a single request failed part-way through.
   const approveAllEntries = async () => {
     // Only submitted budgets are approvable; the backend 400s on anything else,
     // which would fail the whole batch below.
@@ -100,28 +102,28 @@ export function BudgetReviewContent({ rightSidebar, activeRowId }: { rightSideba
     setApproveError(null)
 
     try {
-      const csrfToken = getCsrfToken()
-      await Promise.all(
-        entryIds.map(async (entryId) => {
-          const response = await fetch(`${API_V1}/financial/budget-entries/${entryId}/approve`, {
-            method: "POST",
-            headers: { "x-csrf-token": csrfToken },
-            credentials: "include",
-          })
-          const payload = await response.json().catch(() => null)
-          if (!response.ok) {
-            throw new Error(payload?.message ?? "Unable to approve budget entry.")
-          }
-          setApprovedIds((prev) => new Set(prev).add(entryId))
-        })
-      )
+      const response = await fetch(`${API_V1}/budgets/bulk-approve`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": getCsrfToken(),
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          items: entryIds.map((id) => ({ id, status: "approved" })),
+        }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(payload?.message ?? "Unable to approve the budget entries.")
+      }
+      setApprovedIds(new Set(entryIds))
     } catch (err) {
-      setApproveError(err instanceof Error ? err.message : "Unable to approve budget entry.")
+      setApproveError(err instanceof Error ? err.message : "Unable to approve the budget entries.")
     } finally {
       setApprovingAll(false)
     }
   }
-
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat("en-NG", {
       style: "currency",
