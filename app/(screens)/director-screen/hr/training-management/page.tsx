@@ -4,6 +4,7 @@ import { useMemo, useState } from "react"
 import { Banknote, Loader2, MapPin, Monitor, Plus, Wallet } from "lucide-react"
 import SidebarNav from "@/components/navigation/SidebarNav"
 import CreateTrainingEventModal from "@/components/hr/CreateTrainingEventModal"
+import TrainingAllocationModal from "@/components/hr/TrainingAllocationModal"
 import { HrPanelState, hrErrorMessage } from "@/components/hr/HrDataState"
 import { HrPagination } from "@/components/hr/HrPagination"
 import {
@@ -19,6 +20,7 @@ const PAGE_SIZE = 10
 
 export default function Page() {
   const [modalOpen, setModalOpen] = useState(false)
+  const [allocationOpen, setAllocationOpen] = useState(false)
   const [page, setPage] = useState(1)
   const [actionError, setActionError] = useState<string | null>(null)
   const [approvingId, setApprovingId] = useState<string | null>(null)
@@ -218,13 +220,22 @@ export default function Page() {
                 <h3 className="text-[18px] font-bold text-[#111827]">Budget Overview</h3>
                 <div className="mt-4 flex items-center justify-between">
                   <span className="text-[13px] text-[#6B7280]">Annual Allocation</span>
-                  <span className="text-[15px] font-bold text-[#111827]">
-                    {budget.isLoading
-                      ? "—"
-                      : formatCurrency(budget.data?.annualAllocation ?? 0, {
-                          maximumFractionDigits: 0,
-                        })}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[15px] font-bold text-[#111827]">
+                      {budget.isLoading
+                        ? "—"
+                        : formatCurrency(budget.data?.annualAllocation ?? 0, {
+                            maximumFractionDigits: 0,
+                          })}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setAllocationOpen(true)}
+                      className="text-[12px] font-semibold text-[#3B5BDB] hover:underline"
+                    >
+                      Edit
+                    </button>
+                  </div>
                 </div>
                 <div className="mt-2 h-2 rounded-full bg-[#EEF1F6]">
                   <div
@@ -294,6 +305,10 @@ export default function Page() {
       </main>
 
       <CreateTrainingEventModal open={modalOpen} onClose={() => setModalOpen(false)} />
+      <TrainingAllocationModal
+        open={allocationOpen}
+        onClose={() => setAllocationOpen(false)}
+      />
     </div>
   )
 }

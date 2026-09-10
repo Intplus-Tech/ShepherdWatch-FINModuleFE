@@ -71,6 +71,8 @@ export const hrKeys = {
   payslip: (runId: string, employeeId: string) =>
     [...hrKeys.payroll(), "payslip", runId, employeeId] as const,
 
+  config: () => [...hrKeys.all, "config"] as const,
+
   documents: () => [...hrKeys.all, "documents"] as const,
   documentsByEmployee: (employeeId: string) =>
     [...hrKeys.documents(), "employee", employeeId] as const,

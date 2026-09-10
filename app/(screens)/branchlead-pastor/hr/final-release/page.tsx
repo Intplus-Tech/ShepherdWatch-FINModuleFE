@@ -72,7 +72,7 @@ function Page() {
     steps.some((s) => s.step === "admin" && s.status === "completed") &&
     steps.some((s) => s.step === "finance" && s.status === "completed")
 
-  const alreadyReleased = Boolean(clearance?.pastoralRelease?.confirmedAt)
+  const alreadyReleased = Boolean(clearance?.pastorRelease?.confirmedAt)
   const settlement = clearance?.financeSettlement
 
   async function handleConfirm() {
@@ -297,7 +297,7 @@ function Page() {
                   <p className="mt-2 text-[13px] text-[#6B7280]">
                     {alreadyReleased
                       ? `${name}'s tenure was formally concluded on ${formatDate(
-                          clearance.pastoralRelease?.confirmedAt,
+                          clearance.pastorRelease?.confirmedAt,
                           "medium",
                         )}.`
                       : prerequisitesMet

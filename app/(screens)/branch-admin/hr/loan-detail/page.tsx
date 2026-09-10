@@ -12,6 +12,8 @@ import {
   useWithdrawLoan,
 } from "@/components/hooks/hr/useHrLoans"
 import {
+  LOAN_INSTALLMENT_STATUS_BADGES,
+  LOAN_INSTALLMENT_STATUS_LABELS,
   LOAN_STATUS_BADGES,
   LOAN_STATUS_LABELS,
   badgeFor,
@@ -21,58 +23,9 @@ import {
   loanBalance,
   lookup,
 } from "@/lib/hr/normalize"
-import type { EmployeeLoan } from "@/lib/hr/types"
 import { formatCurrency, formatDate } from "@/lib/format"
 import { withSuspense } from "@/lib/withSuspense"
 import { cn } from "@/lib/utils"
-
-type ScheduleRow = {
-  key: string
-  date: string
-  installment: string
-  amount: number
-  paid: boolean
-}
-
-/**
- * Build the installment table.
- *
- * The backend records repayments that actually happened; it stores no forward
- * schedule. So paid rows come from `repayments[]` and the remaining rows are
- * projected from `tenureMonths` and `firstDeductionDate` — labelled Upcoming so
- * they aren't mistaken for posted transactions.
- */
-function buildSchedule(loan: EmployeeLoan): ScheduleRow[] {
-  const total = loan.tenureMonths ?? 0
-  const repayments = [...(loan.repayments ?? [])].sort(
-    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
-  )
-
-  const rows: ScheduleRow[] = repayments.map((repayment, index) => ({
-    key: `paid-${index}-${repayment.date}`,
-    date: formatDate(repayment.date, "medium"),
-    installment: `#${String(index + 1).padStart(2, "0")} of ${total || repayments.length}`,
-    amount: repayment.amount,
-    paid: true,
-  }))
-
-  const start = loan.firstDeductionDate ? new Date(loan.firstDeductionDate) : null
-  if (start && total > repayments.length) {
-    for (let i = repayments.length; i < total; i += 1) {
-      const due = new Date(start)
-      due.setMonth(due.getMonth() + i)
-      rows.push({
-        key: `upcoming-${i}`,
-        date: formatDate(due.toISOString(), "medium"),
-        installment: `#${String(i + 1).padStart(2, "0")} of ${total}`,
-        amount: loan.monthlyDeduction,
-        paid: false,
-      })
-    }
-  }
-
-  return rows
-}
 
 function StatCard({
   label,
@@ -117,7 +70,13 @@ function Page() {
     enabled: Boolean(employee?._id),
   })
 
-  const schedule = useMemo(() => (loan ? buildSchedule(loan) : []), [loan])
+  /**
+   * The instalment plan is generated and stored by the backend when the loan is
+   * activated, so this reads the real schedule — including what has been paid
+   * against each row — rather than projecting one from tenure.
+   */
+  const schedule = useMemo(() => loan?.schedule ?? [], [loan])
+  const summary = loan?.scheduleSummary
 
   const pastLoans = useMemo(
     () =>
@@ -357,7 +316,7 @@ function Page() {
                     <table className="w-full text-left">
                       <thead className="bg-[#EEF2FF]">
                         <tr>
-                          {["Date", "Installment", "Amount", "Status"].map((h) => (
+                          {["Due Date", "Installment", "Amount", "Paid", "Status"].map((h) => (
                             <th
                               key={h}
                               className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]"
@@ -369,33 +328,36 @@ function Page() {
                       </thead>
                       <tbody className="divide-y divide-[#F3F4F6]">
                         <HrTableState
-                          colSpan={4}
+                          colSpan={5}
                           isLoading={false}
                           error={null}
                           isEmpty={schedule.length === 0}
-                          emptyTitle="No repayments yet"
-                          emptyDescription="Record a payment or wait for the next payroll deduction."
+                          emptyTitle="No repayment schedule"
+                          emptyDescription="The plan is generated once the loan is approved and disbursed."
                         />
 
                         {schedule.map((row) => (
-                          <tr key={row.key} className="hover:bg-[#F9FAFB]">
-                            <td className="px-4 py-5 text-[13px] text-[#111827]">{row.date}</td>
+                          <tr key={row.installment} className="hover:bg-[#F9FAFB]">
+                            <td className="px-4 py-5 text-[13px] text-[#111827]">
+                              {formatDate(row.dueDate, "medium")}
+                            </td>
                             <td className="px-4 py-5 text-[13px] text-[#4B5563]">
-                              {row.installment}
+                              #{String(row.installment).padStart(2, "0")} of {schedule.length}
                             </td>
                             <td className="px-4 py-5 text-[13px] font-semibold text-[#111827]">
                               {formatCurrency(row.amount, { maximumFractionDigits: 0 })}
+                            </td>
+                            <td className="px-4 py-5 text-[13px] text-[#4B5563]">
+                              {formatCurrency(row.paidAmount, { maximumFractionDigits: 0 })}
                             </td>
                             <td className="px-4 py-5 text-[13px]">
                               <span
                                 className={cn(
                                   "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider",
-                                  row.paid
-                                    ? "bg-emerald-100 text-emerald-700"
-                                    : "bg-amber-100 text-amber-700",
+                                  badgeFor(LOAN_INSTALLMENT_STATUS_BADGES, row.status),
                                 )}
                               >
-                                {row.paid ? "Paid" : "Upcoming"}
+                                {lookup(LOAN_INSTALLMENT_STATUS_LABELS, row.status)}
                               </span>
                             </td>
                           </tr>
@@ -404,11 +366,31 @@ function Page() {
                     </table>
                   </div>
 
-                  <div className="border-t border-[#F3F4F6] px-5 py-3 text-[12px] text-[#9CA3AF]">
-                    Paid rows are posted repayments. Upcoming rows are projected from the
-                    {" "}
-                    {loan.tenureMonths}-month tenure and first deduction date.
-                  </div>
+                  {summary && (
+                    <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-[#F3F4F6] px-5 py-3 text-[12px] text-[#6B7280]">
+                      <span>
+                        <span className="font-semibold text-[#111827]">
+                          {summary.paidInstallments}
+                        </span>{" "}
+                        of {summary.totalInstallments} paid
+                      </span>
+                      {summary.overdueInstallments > 0 && (
+                        <span className="font-semibold text-rose-600">
+                          {summary.overdueInstallments} overdue
+                        </span>
+                      )}
+                      {summary.nextDueDate && (
+                        <span>
+                          Next due {formatDate(summary.nextDueDate, "medium")} &middot;{" "}
+                          <span className="font-semibold text-[#111827]">
+                            {formatCurrency(summary.nextDueAmount, {
+                              maximumFractionDigits: 0,
+                            })}
+                          </span>
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* RIGHT: On-going + Past loans */}

@@ -1,5 +1,6 @@
 import type {
   AttendanceStatus,
+  LoanInstallmentStatus,
   BranchRef,
   ClearanceStatus,
   ClearanceStep,
@@ -120,6 +121,13 @@ export const LOAN_STATUS_LABELS: Record<LoanStatus, string> = {
   completed: "Completed",
 }
 
+export const LOAN_INSTALLMENT_STATUS_LABELS: Record<LoanInstallmentStatus, string> = {
+  pending: "Upcoming",
+  partial: "Part Paid",
+  paid: "Paid",
+  overdue: "Overdue",
+}
+
 export const ATTENDANCE_STATUS_LABELS: Record<AttendanceStatus, string> = {
   present: "Present",
   late: "Late",
@@ -208,6 +216,13 @@ export const LOAN_STATUS_BADGES: Record<LoanStatus, string> = {
   declined: "bg-red-50 text-red-700",
   active: "bg-violet-50 text-violet-700",
   completed: "bg-[#F3F4F6] text-[#4B5563]",
+}
+
+export const LOAN_INSTALLMENT_STATUS_BADGES: Record<LoanInstallmentStatus, string> = {
+  pending: "bg-amber-100 text-amber-700",
+  partial: "bg-blue-50 text-blue-700",
+  paid: "bg-emerald-100 text-emerald-700",
+  overdue: "bg-rose-100 text-rose-700",
 }
 
 export const ATTENDANCE_STATUS_BADGES: Record<AttendanceStatus, string> = {

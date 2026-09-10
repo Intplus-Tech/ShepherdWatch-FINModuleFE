@@ -1,4 +1,5 @@
 export * from "./useHrAttendance"
+export * from "./useHrConfig"
 export * from "./useHrDashboard"
 export * from "./useHrDocuments"
 export * from "./useHrEmployees"

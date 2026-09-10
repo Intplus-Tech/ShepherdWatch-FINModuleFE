@@ -2,7 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 
 import { fieldOf, hrGet, hrGetList, hrPost, type QueryParams } from "@/lib/hr/client"
 import { hrKeys } from "@/lib/hr/keys"
-import type { EmployeeLoan, LoanStatus } from "@/lib/hr/types"
+import type { EmployeeLoan, EmployeeLoanDetail, LoanStatus } from "@/lib/hr/types"
 
 export type LoanListParams = {
   page?: number
@@ -25,10 +25,11 @@ export function useLoans(options: LoanListParams = {}) {
   })
 }
 
+/** The detail endpoint returns the stored instalment schedule and its summary. */
 export function useLoan(id: string | null | undefined) {
   return useQuery({
     queryKey: hrKeys.loan(id ?? ""),
-    queryFn: () => hrGet<EmployeeLoan>(`/loans/${id}`),
+    queryFn: () => hrGet<EmployeeLoanDetail>(`/loans/${id}`),
     enabled: Boolean(id),
   })
 }
