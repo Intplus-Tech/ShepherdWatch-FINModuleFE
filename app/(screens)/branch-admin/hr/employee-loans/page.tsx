@@ -5,67 +5,59 @@ import { useRouter } from "next/navigation"
 import { Menu, Search, Bell, Eye } from "lucide-react"
 import BranchAdminSidebar from "@/components/navigation/BranchAdminSidebar"
 import BranchAdminNewLoanModal from "@/components/hr/BranchAdminNewLoanModal"
-import { HrPaginationBar, HrTableStateRow } from "@/components/hr/HrTableState"
-import { useHrLoans } from "@/components/hooks/useHrLoans"
+import { HrTableState } from "@/components/hr/HrDataState"
+import { HrPagination } from "@/components/hr/HrPagination"
+import { useLoans } from "@/components/hooks/hr/useHrLoans"
 import {
+  LOAN_STATUS_BADGES,
   LOAN_STATUS_LABELS,
-  LOAN_STATUS_STYLES,
-  formatNaira,
+  badgeFor,
+  deref,
+  employeeName,
   initials,
-  statusLabel,
-  statusStyle,
-} from "@/lib/hr/display"
+  loanBalance,
+  lookup,
+} from "@/lib/hr/normalize"
+import { LOAN_STATUSES, type LoanStatus } from "@/lib/hr/types"
+import { formatCurrency } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
-const STATUS_OPTIONS = [
-  { value: "", label: "All Status" },
-  { value: "pending_accountant", label: "Pending Accountant" },
-  { value: "pending_pastor", label: "Pending Pastor" },
-  { value: "pending_director", label: "Pending Director" },
-  { value: "approved", label: "Approved" },
-  { value: "active", label: "Active" },
-  { value: "completed", label: "Completed" },
-  { value: "rejected", label: "Rejected" },
-  { value: "withdrawn", label: "Withdrawn" },
-]
-
-const PAGE_SIZE = 20
-
-function StatusBadge({ status }: { status: string }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider",
-        statusStyle(LOAN_STATUS_STYLES, status)
-      )}
-    >
-      {statusLabel(LOAN_STATUS_LABELS, status)}
-    </span>
-  )
-}
+const PAGE_SIZE = 10
 
 export default function Page() {
   const router = useRouter()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [nameFilter, setNameFilter] = useState("")
-  const [statusFilter, setStatusFilter] = useState("")
+  const [statusFilter, setStatusFilter] = useState<"all" | LoanStatus>("all")
   const [modalOpen, setModalOpen] = useState(false)
   const [page, setPage] = useState(1)
 
-  const { loans, pagination, loading, error, refresh } = useHrLoans({
-    page,
-    limit: PAGE_SIZE,
-    status: statusFilter,
-  })
+  const loans = useLoans({ page, limit: PAGE_SIZE, status: statusFilter })
 
-  // The loans endpoint has no name search, so the box narrows the loaded page.
+  const rows = useMemo(
+    () =>
+      (loans.data?.items ?? []).map((loan) => {
+        const employee = deref(loan.employeeId)
+        return {
+          id: loan._id,
+          name: employeeName(loan.employeeId),
+          employeeCode: employee?.employeeId ?? "—",
+          jobTitle: employee?.jobTitle ?? "—",
+          totalAmount: loan.amount,
+          monthly: loan.monthlyDeduction,
+          balance: loanBalance(loan),
+          status: loan.status,
+        }
+      }),
+    [loans.data],
+  )
+
+  /** The loans list endpoint has no free-text search, so the name filter is local. */
   const filtered = useMemo(() => {
     const query = nameFilter.trim().toLowerCase()
-    if (!query) return loans
-    return loans.filter((row) =>
-      `${row.employeeName} ${row.employeeCode} ${row.jobTitle}`.toLowerCase().includes(query)
-    )
-  }, [loans, nameFilter])
+    if (!query) return rows
+    return rows.filter((row) => row.name.toLowerCase().includes(query))
+  }, [rows, nameFilter])
 
   return (
     <div className="flex flex-col lg:flex-row min-h-screen bg-[#F8FAFC] w-full">
@@ -134,14 +126,15 @@ export default function Page() {
                 <select
                   value={statusFilter}
                   onChange={(e) => {
-                    setStatusFilter(e.target.value)
+                    setStatusFilter(e.target.value as "all" | LoanStatus)
                     setPage(1)
                   }}
                   className="h-[42px] rounded-md border border-[#E5E7EB] bg-white px-3 text-[13px] text-[#4B5563] outline-none focus-visible:border-[#2563EB]"
                 >
-                  {STATUS_OPTIONS.map((option) => (
-                    <option key={option.value || "all"} value={option.value}>
-                      {option.label}
+                  <option value="all">All Status</option>
+                  {LOAN_STATUSES.map((option) => (
+                    <option key={option} value={option}>
+                      {LOAN_STATUS_LABELS[option]}
                     </option>
                   ))}
                 </select>
@@ -163,103 +156,106 @@ export default function Page() {
               <table className="w-full text-left">
                 <thead className="bg-[#EEF2FF]">
                   <tr>
-                    <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">
-                      Employee Name
-                    </th>
-                    <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">
-                      Job Title
-                    </th>
-                    <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">
-                      Total Amount (₦)
-                    </th>
-                    <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">
-                      Monthly (₦)
-                    </th>
-                    <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">
-                      Balance (₦)
-                    </th>
-                    <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">
-                      Status
-                    </th>
+                    {[
+                      "Employee Name",
+                      "Job Title",
+                      "Total Amount (₦)",
+                      "Monthly (₦)",
+                      "Balance (₦)",
+                      "Status",
+                    ].map((h) => (
+                      <th
+                        key={h}
+                        className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]"
+                      >
+                        {h}
+                      </th>
+                    ))}
                     <th className="px-4 py-3 text-right text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">
                       Actions
                     </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#F3F4F6]">
-                  {filtered.map((row) => (
-                    <tr key={row.id} className="transition-colors hover:bg-[#F9FAFB]">
-                      <td className="px-4 py-5 text-[13px]">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#EEF2FF] text-[11px] font-bold text-[#2563EB]">
-                            {initials(row.employeeName)}
-                          </div>
-                          <div>
-                            <div className="font-bold text-[#111827]">
-                              {row.employeeName || "Unnamed staff"}
-                            </div>
-                            <div className="text-[12px] text-[#6B7280]">
-                              {row.employeeCode || "—"}
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-5 text-[13px] text-[#4B5563]">
-                        {row.jobTitle || row.department || "—"}
-                      </td>
-                      <td className="px-4 py-5 text-[13px] text-[#111827]">
-                        {formatNaira(row.amount)}
-                      </td>
-                      <td className="px-4 py-5 text-[13px] text-[#4B5563]">
-                        {formatNaira(row.monthlyDeduction)}
-                      </td>
-                      <td className="px-4 py-5 text-[13px] font-bold text-[#111827]">
-                        {formatNaira(row.remainingBalance)}
-                      </td>
-                      <td className="px-4 py-5 text-[13px]">
-                        <StatusBadge status={row.status} />
-                      </td>
-                      <td className="px-4 py-5 text-[13px]">
-                        <div className="flex justify-end">
-                          <button
-                            type="button"
-                            aria-label={`View loan for ${row.employeeName}`}
-                            onClick={() =>
-                              router.push(`/branch-admin/hr/loan-detail?loanId=${row.id}`)
-                            }
-                            className="flex h-8 w-8 items-center justify-center rounded-md text-[#6B7280] hover:bg-gray-100 hover:text-[#111827]"
-                          >
-                            <Eye className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                  <HrTableStateRow
+                  <HrTableState
                     colSpan={7}
-                    loading={loading}
-                    error={error}
+                    isLoading={loans.isLoading}
+                    error={loans.error}
                     isEmpty={filtered.length === 0}
-                    emptyMessage="No loans match your filters."
-                    onRetry={refresh}
+                    emptyTitle="No loans yet"
+                    emptyDescription="Loan applications appear here once staff apply."
+                    onRetry={() => loans.refetch()}
                   />
+
+                  {!loans.isLoading &&
+                    !loans.error &&
+                    filtered.map((row) => (
+                      <tr key={row.id} className="transition-colors hover:bg-[#F9FAFB]">
+                        <td className="px-4 py-5 text-[13px]">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#EEF2FF] text-[11px] font-bold text-[#2563EB]">
+                              {initials(row.name)}
+                            </div>
+                            <div>
+                              <div className="font-bold text-[#111827]">{row.name}</div>
+                              <div className="text-[12px] text-[#6B7280]">
+                                {row.employeeCode}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-5 text-[13px] text-[#4B5563]">{row.jobTitle}</td>
+                        <td className="px-4 py-5 text-[13px] text-[#111827]">
+                          {formatCurrency(row.totalAmount, { maximumFractionDigits: 0 })}
+                        </td>
+                        <td className="px-4 py-5 text-[13px] text-[#4B5563]">
+                          {formatCurrency(row.monthly, { maximumFractionDigits: 0 })}
+                        </td>
+                        <td className="px-4 py-5 text-[13px] font-bold text-[#111827]">
+                          {formatCurrency(row.balance, { maximumFractionDigits: 0 })}
+                        </td>
+                        <td className="px-4 py-5 text-[13px]">
+                          <span
+                            className={cn(
+                              "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider",
+                              badgeFor(LOAN_STATUS_BADGES, row.status),
+                            )}
+                          >
+                            {lookup(LOAN_STATUS_LABELS, row.status)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-5 text-[13px]">
+                          <div className="flex justify-end">
+                            <button
+                              type="button"
+                              aria-label={`View loan for ${row.name}`}
+                              onClick={() =>
+                                router.push(`/branch-admin/hr/loan-detail?id=${row.id}`)
+                              }
+                              className="flex h-8 w-8 items-center justify-center rounded-md text-[#6B7280] hover:bg-gray-100 hover:text-[#111827]"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
                 </tbody>
               </table>
             </div>
 
-            <HrPaginationBar pagination={pagination} onPageChange={setPage} noun="loans" />
+            <HrPagination
+              pagination={loans.data?.pagination}
+              page={page}
+              onPageChange={setPage}
+              itemCount={rows.length}
+              noun="loans"
+            />
           </div>
         </main>
       </div>
 
-      <BranchAdminNewLoanModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        onCreated={() => {
-          setPage(1)
-          refresh()
-        }}
-      />
+      <BranchAdminNewLoanModal open={modalOpen} onClose={() => setModalOpen(false)} />
     </div>
   )
 }

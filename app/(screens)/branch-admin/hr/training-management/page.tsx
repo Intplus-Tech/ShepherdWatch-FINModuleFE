@@ -15,87 +15,41 @@ import {
 } from "lucide-react"
 import BranchAdminSidebar from "@/components/navigation/BranchAdminSidebar"
 import BranchAdminCreateTrainingModal from "@/components/hr/BranchAdminCreateTrainingModal"
-import { useToast } from "@/components/ui/toast"
-import { useHrTrainings, useHrTrainingMetrics } from "@/components/hooks/useHrTrainings"
-import { TRAINING_RECORD_LABELS, formatDate, formatTime, statusLabel } from "@/lib/hr/display"
-import type { HrTraining } from "@/lib/hr/types"
 import BranchAdminRegisterStaffModal from "@/components/hr/BranchAdminRegisterStaffModal"
 import BranchAdminTrainingCalendarModal from "@/components/hr/BranchAdminTrainingCalendarModal"
+import { HrPanelState, HrStatValue, HrTableState } from "@/components/hr/HrDataState"
+import { useTrainingEvents, useTrainingMetrics } from "@/components/hooks/hr/useHrTraining"
+import { branchName } from "@/lib/hr/normalize"
+import { formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 const cardCls = "rounded-xl border border-[#EEF1F6] bg-white p-5"
 const statLabelCls = "text-[11px] font-bold uppercase tracking-wider text-[#6B7280]"
 
-function initials(name: string) {
-  return name
-    .split(" ")
-    .map((part) => part[0])
-    .filter(Boolean)
-    .slice(0, 2)
-    .join("")
-    .toUpperCase()
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const done = status === "certified" || status === "attended"
-  return (
-    <span
-      className={cn(
-        "rounded-full px-2.5 py-1 text-[10px] font-bold",
-        done ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
-      )}
-    >
-      {statusLabel(TRAINING_RECORD_LABELS, status)}
-    </span>
-  )
-}
-
 export default function Page() {
   const router = useRouter()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
-  const [registerOpen, setRegisterOpen] = useState(false)
+  const [registerFor, setRegisterFor] = useState<string | null>(null)
   const [calendarOpen, setCalendarOpen] = useState(false)
-  const [registerTarget, setRegisterTarget] = useState<HrTraining | null>(null)
 
-  useToast()
-  const { trainings, loading, error, refresh } = useHrTrainings({ limit: 50 })
-  const { metrics } = useHrTrainingMetrics()
+  const metrics = useTrainingMetrics()
+  const events = useTrainingEvents({ limit: 20 })
 
-  // The registry is per participant, so the events are flattened onto their roster.
-  const registry = useMemo(
-    () =>
-      trainings.flatMap((training) =>
-        training.participants.map((participant) => ({
-          id: participant.recordId || `${training.id}-${participant.employeeId}`,
-          name: participant.employeeName || "Unnamed staff",
-          title: training.title,
-          status: participant.status,
-          date: training.startDate,
-        }))
-      ),
-    [trainings]
-  )
+  /**
+   * The registry lists scheduled events. There is no cross-event participant
+   * endpoint — enrolments live under `GET /trainings/:id`, which the oversight
+   * screen opens per event.
+   */
+  const rows = useMemo(() => events.data?.items ?? [], [events.data])
 
-  // Read the clock once on mount so the memo stays pure across re-renders.
+  // Captured once per mount so the render stays pure and stable.
   const [now] = useState(() => Date.now())
 
-  const upcoming = useMemo(() => {
-    return trainings
-      .filter((training) => {
-        const start = new Date(training.startDate).getTime()
-        return Number.isFinite(start) && start >= now
-      })
-      .sort(
-        (a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
-      )
-      .slice(0, 3)
-  }, [trainings, now])
-
-  const openRegister = (training: HrTraining) => {
-    setRegisterTarget(training)
-    setRegisterOpen(true)
-  }
+  const upcoming = useMemo(
+    () => rows.filter((event) => new Date(event.startDate).getTime() >= now).slice(0, 2),
+    [rows, now],
+  )
 
   return (
     <div className="flex flex-col lg:flex-row min-h-screen bg-[#F8FAFC] w-full">
@@ -144,10 +98,11 @@ export default function Page() {
                 <div>
                   <p className={statLabelCls}>Total Sessions</p>
                   <p className="mt-2 text-[28px] font-bold text-[#111827]">
-                    {metrics.totalEvents}
-                  </p>
-                  <p className="mt-1 text-[12px] font-semibold text-emerald-600">
-                    {metrics.completionRate}% completion rate
+                    <HrStatValue
+                      isLoading={metrics.isLoading}
+                      error={metrics.error}
+                      value={metrics.data?.totalSessions ?? 0}
+                    />
                   </p>
                 </div>
                 <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#EEF2FF] text-[#2563EB]">
@@ -161,10 +116,11 @@ export default function Page() {
                 <div>
                   <p className={statLabelCls}>Staff Enrolled</p>
                   <p className="mt-2 text-[28px] font-bold text-[#111827]">
-                    {metrics.totalEnrolled}
-                  </p>
-                  <p className="mt-1 text-[12px] font-semibold text-[#6B7280]">
-                    {metrics.certifiedStaff} certified so far
+                    <HrStatValue
+                      isLoading={metrics.isLoading}
+                      error={metrics.error}
+                      value={metrics.data?.staffEnrolled ?? 0}
+                    />
                   </p>
                 </div>
                 <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
@@ -178,11 +134,11 @@ export default function Page() {
                 <div>
                   <p className={statLabelCls}>Pending Completions</p>
                   <p className="mt-2 text-[28px] font-bold text-[#111827]">
-                    {Math.max(metrics.totalEnrolled - metrics.certifiedStaff, 0)}
-                  </p>
-                  <p className="mt-1 text-[12px] font-semibold text-rose-600">
-                    {metrics.pendingBudgetsCount} budget
-                    {metrics.pendingBudgetsCount === 1 ? "" : "s"} awaiting approval
+                    <HrStatValue
+                      isLoading={metrics.isLoading}
+                      error={metrics.error}
+                      value={metrics.data?.pendingCompletions ?? 0}
+                    />
                   </p>
                 </div>
                 <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-rose-50 text-rose-600">
@@ -211,7 +167,7 @@ export default function Page() {
                 <table className="w-full text-left">
                   <thead className="bg-[#EEF2FF]">
                     <tr>
-                      {["Staff Member", "Training Title", "Status", "Date"].map((h) => (
+                      {["Training Title", "Trainer", "Scope", "Dates"].map((h) => (
                         <th
                           key={h}
                           className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]"
@@ -222,40 +178,45 @@ export default function Page() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#F3F4F6]">
-                    {registry.map((row) => (
-                      <tr
-                        key={row.id}
-                        onClick={() => router.push("/branch-admin/hr/training-oversight")}
-                        className="cursor-pointer hover:bg-[#FAFBFF]"
-                      >
-                        <td className="px-4 py-3 text-[13px]">
-                          <div className="flex items-center gap-3">
-                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EEF2FF] text-[11px] font-bold text-[#2563EB]">
-                              {initials(row.name)}
-                            </span>
-                            <span className="font-semibold text-[#111827]">{row.name}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-[13px] text-[#6B7280]">{row.title}</td>
-                        <td className="px-4 py-3 text-[13px]">
-                          <StatusBadge status={row.status} />
-                        </td>
-                        <td className="px-4 py-3 text-[13px] text-[#6B7280]">
-                          {formatDate(row.date)}
-                        </td>
-                      </tr>
-                    ))}
+                    <HrTableState
+                      colSpan={4}
+                      isLoading={events.isLoading}
+                      error={events.error}
+                      isEmpty={rows.length === 0}
+                      emptyTitle="No training scheduled"
+                      emptyDescription="Create a training event to start enrolling staff."
+                      onRetry={() => events.refetch()}
+                    />
 
-                    {!loading && registry.length === 0 ? (
-                      <tr>
-                        <td
-                          colSpan={4}
-                          className="px-4 py-8 text-center text-[13px] text-[#9CA3AF]"
+                    {!events.isLoading &&
+                      !events.error &&
+                      rows.map((event) => (
+                        <tr
+                          key={event._id}
+                          onClick={() =>
+                            router.push(`/branch-admin/hr/training-oversight?id=${event._id}`)
+                          }
+                          className="cursor-pointer hover:bg-[#FAFBFF]"
                         >
-                          {error || "No staff have been enrolled in training yet."}
-                        </td>
-                      </tr>
-                    ) : null}
+                          <td className="px-4 py-3 text-[13px]">
+                            <div className="flex flex-col">
+                              <span className="font-semibold text-[#111827]">{event.title}</span>
+                              <span className="text-[12px] text-[#9CA3AF]">
+                                {event.venueOrLink}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-[13px] text-[#6B7280]">
+                            {event.trainerName}
+                          </td>
+                          <td className="px-4 py-3 text-[13px] text-[#6B7280]">
+                            {event.isGlobal ? "All branches" : branchName(event.branchId)}
+                          </td>
+                          <td className="px-4 py-3 text-[13px] text-[#6B7280]">
+                            {formatDate(event.startDate, "medium")}
+                          </td>
+                        </tr>
+                      ))}
                   </tbody>
                 </table>
               </div>
@@ -268,37 +229,45 @@ export default function Page() {
                 <h2 className="text-[16px] font-bold text-[#111827]">Upcoming Sessions</h2>
               </div>
 
-              <div className="mt-5 flex flex-col gap-4">
-                {upcoming.map((session, index) => (
-                  <div
-                    key={session.id}
-                    className="rounded-[12px] border border-[#F3F4F6] bg-[#FAFBFF] p-4"
-                  >
-                    <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
-                      <span>{formatDate(session.startDate)}</span>
-                      <span className="h-1 w-1 rounded-full bg-[#D1D5DB]" />
-                      <span>{formatTime(session.startTime)}</span>
-                    </div>
-                    <p className="mt-2 text-[15px] font-bold text-[#111827]">{session.title}</p>
-                    <button
-                      type="button"
-                      onClick={() => openRegister(session)}
-                      className={cn(
-                        "mt-3 w-full rounded-md px-4 py-2 text-[12px] font-semibold",
-                        index === 0
-                          ? "bg-[#111827] text-white"
-                          : "border border-[#E5E7EB] bg-white text-[#4B5563]"
-                      )}
+              {events.isLoading || events.error || upcoming.length === 0 ? (
+                <HrPanelState
+                  isLoading={events.isLoading}
+                  error={events.error}
+                  isEmpty={upcoming.length === 0}
+                  emptyTitle="Nothing upcoming"
+                  emptyDescription="Future sessions will show here."
+                  onRetry={() => events.refetch()}
+                  className="mt-5 border-0 p-4"
+                />
+              ) : (
+                <div className="mt-5 flex flex-col gap-4">
+                  {upcoming.map((session, index) => (
+                    <div
+                      key={session._id}
+                      className="rounded-[12px] border border-[#F3F4F6] bg-[#FAFBFF] p-4"
                     >
-                      REGISTER STAFF
-                    </button>
-                  </div>
-                ))}
-
-                {!loading && upcoming.length === 0 ? (
-                  <p className="text-[13px] text-[#9CA3AF]">No sessions scheduled yet.</p>
-                ) : null}
-              </div>
+                      <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
+                        <span>{formatDate(session.startDate, "medium")}</span>
+                        <span className="h-1 w-1 rounded-full bg-[#D1D5DB]" />
+                        <span>{session.startTime}</span>
+                      </div>
+                      <p className="mt-2 text-[15px] font-bold text-[#111827]">{session.title}</p>
+                      <button
+                        type="button"
+                        onClick={() => setRegisterFor(session._id)}
+                        className={cn(
+                          "mt-3 w-full rounded-md px-4 py-2 text-[12px] font-semibold",
+                          index === 0
+                            ? "bg-[#111827] text-white"
+                            : "border border-[#E5E7EB] bg-white text-[#4B5563]",
+                        )}
+                      >
+                        REGISTER STAFF
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               <button
                 type="button"
@@ -313,24 +282,15 @@ export default function Page() {
         </main>
       </div>
 
-      <BranchAdminCreateTrainingModal
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-        onCreated={refresh}
-      />
+      <BranchAdminCreateTrainingModal open={createOpen} onClose={() => setCreateOpen(false)} />
       <BranchAdminRegisterStaffModal
-        open={registerOpen}
-        onClose={() => {
-          setRegisterOpen(false)
-          setRegisterTarget(null)
-        }}
-        training={registerTarget}
-        onRegistered={refresh}
+        open={registerFor !== null}
+        trainingEventId={registerFor}
+        onClose={() => setRegisterFor(null)}
       />
       <BranchAdminTrainingCalendarModal
         open={calendarOpen}
         onClose={() => setCalendarOpen(false)}
-        trainings={trainings}
       />
     </div>
   )

@@ -1,188 +1,181 @@
 "use client"
 
-import { useState } from "react"
-import { X, CalendarDays, AlertTriangle, CheckCircle2, Loader2 } from "lucide-react"
+import { AlertTriangle, X } from "lucide-react"
 import { ModalShell } from "@/components/ui/modal-shell"
-import { SectionLabel, StatusBadge, btnDark, btnOutline } from "./shared"
-import { useLeaveMutations } from "@/components/hooks/useHrLeaves"
-import { useToast } from "@/components/ui/toast"
-import { LEAVE_STATUS_LABELS, formatDate, statusLabel } from "@/lib/hr/display"
-import type { HrLeave } from "@/lib/hr/types"
+import { CardHeading, Field, StatusBadge, btnOutline } from "./shared"
+import { HrPanelState } from "@/components/hr/HrDataState"
+import {
+  LEAVE_STATUS_LABELS,
+  deref,
+  employeeName,
+  lookup,
+  userName,
+} from "@/lib/hr/normalize"
+import type { LeaveRequest } from "@/lib/hr/types"
+import { formatDate } from "@/lib/format"
 
+/**
+ * Read-only view of one leave request.
+ *
+ * Approve/decline live on the pastor's queue (`BranchLeadLeaveApprovalModal`);
+ * this is the record as filed, opened from the employee profile.
+ */
 export default function LeaveDetailModal({
-  open,
+  request,
   onClose,
-  leave,
-  onDecided,
 }: {
-  open: boolean
+  request: LeaveRequest | null
   onClose: () => void
-  leave: HrLeave | null
-  onDecided?: () => void
 }) {
-  const { approveLeave, rejectLeave } = useLeaveMutations()
-  const { pushToast } = useToast()
-  const [comment, setComment] = useState("")
-  const [busy, setBusy] = useState<"approve" | "decline" | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  const pending = String(leave?.status ?? "").startsWith("pending")
-
-  const handleClose = () => {
-    if (busy) return
-    setComment("")
-    setError(null)
-    onClose()
-  }
-
-  const decide = async (action: "approve" | "decline") => {
-    if (!leave) return
-    if (action === "decline" && !comment.trim()) {
-      setError("Give a reason for declining.")
-      return
-    }
-
-    setBusy(action)
-    setError(null)
-    try {
-      if (action === "approve") {
-        await approveLeave(leave.id, comment.trim() || undefined)
-        pushToast("Leave approved", "success")
-      } else {
-        await rejectLeave(leave.id, comment.trim())
-        pushToast("Leave declined", "success")
-      }
-      setComment("")
-      onDecided?.()
-      onClose()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to record that decision.")
-    } finally {
-      setBusy(null)
-    }
-  }
+  const leaveType = deref(request?.leaveTypeId)
+  const supervisorAction = request?.supervisorAction
+  const hrAction = request?.hrAction
 
   return (
-    <ModalShell open={open} onClose={handleClose} className="max-w-2xl">
-      {/* Header */}
+    <ModalShell open={request !== null} onClose={onClose} className="max-w-lg">
       <div className="flex items-start justify-between gap-4 border-b border-[#EEF1F6] px-6 py-5">
-        <div className="flex items-center gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#EEF2FF] text-[#3B5BDB]">
-            <CalendarDays className="h-5 w-5" />
-          </span>
-          <div>
-            <h2 className="text-[16px] font-bold text-[#111827]">
-              {leave?.leaveTypeName || "Leave Request"}
-            </h2>
-            <p className="mt-0.5 text-[13px] text-[#6B7280]">
-              {leave?.employeeName || "Staff member"}
+        <div>
+          <h2 className="text-[16px] font-bold text-[#111827]">Leave Request</h2>
+          {request && (
+            <p className="mt-1 text-[13px] text-[#6B7280]">
+              {employeeName(request.employeeId)}
             </p>
-          </div>
+          )}
         </div>
         <button
           aria-label="Close"
-          onClick={handleClose}
+          onClick={onClose}
           className="rounded-md p-1 text-[#9CA3AF] hover:bg-[#F1F5F9] hover:text-[#4B5563]"
         >
           <X className="h-5 w-5" />
         </button>
       </div>
 
-      <div className="max-h-[68vh] overflow-y-auto px-6 py-5">
-        <div className="flex items-center gap-2">
-          <StatusBadge status={statusLabel(LEAVE_STATUS_LABELS, leave?.status ?? "")} />
-          {leave?.conflictCount ? (
-            <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-amber-600">
-              <AlertTriangle className="h-3.5 w-3.5" />
-              {leave.conflictCount} overlapping request{leave.conflictCount === 1 ? "" : "s"}
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-emerald-600">
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              No overlaps
-            </span>
-          )}
-        </div>
+      <div className="flex max-h-[70vh] flex-col gap-5 overflow-y-auto px-6 py-5">
+        {!request ? (
+          <HrPanelState
+            isLoading={false}
+            error={null}
+            isEmpty
+            emptyTitle="No request selected"
+            className="border-0 p-4"
+          />
+        ) : (
+          <>
+            <div className="flex items-center justify-between">
+              <CardHeading>{leaveType?.name ?? "Leave"}</CardHeading>
+              <StatusBadge
+                status={lookup(LEAVE_STATUS_LABELS, request.status).toUpperCase()}
+              />
+            </div>
 
-        <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div>
-            <SectionLabel>From</SectionLabel>
-            <p className="mt-1 text-[13px] font-semibold text-[#111827]">
-              {formatDate(leave?.startDate ?? "")}
-            </p>
-          </div>
-          <div>
-            <SectionLabel>To</SectionLabel>
-            <p className="mt-1 text-[13px] font-semibold text-[#111827]">
-              {formatDate(leave?.endDate ?? "")}
-            </p>
-          </div>
-          <div>
-            <SectionLabel>Duration</SectionLabel>
-            <p className="mt-1 text-[13px] font-semibold text-[#111827]">
-              {leave?.totalDays ?? 0} day{leave?.totalDays === 1 ? "" : "s"}
-            </p>
-          </div>
-        </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Start Date" value={formatDate(request.startDate, "medium")} />
+              <Field label="End Date" value={formatDate(request.endDate, "medium")} />
+              <Field
+                label="Duration"
+                value={`${request.totalDays} ${request.totalDays === 1 ? "day" : "days"}`}
+              />
+              <Field label="Filed" value={formatDate(request.createdAt, "medium")} />
+            </div>
 
-        <div className="mt-5">
-          <SectionLabel>Reason</SectionLabel>
-          <blockquote className="mt-2 border-l-4 border-[#3B5BDB] bg-[#F8FAFC] p-3 text-[13px] italic text-[#4B5563]">
-            {leave?.reason || "No reason was recorded."}
-          </blockquote>
-        </div>
+            {(request.conflictCount ?? 0) > 0 && (
+              <div className="flex items-start gap-2.5 rounded-lg bg-amber-50 p-3">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                <p className="text-[12px] text-[#4B5563]">
+                  <span className="font-semibold text-amber-700">
+                    {request.conflictCount} overlapping request
+                    {request.conflictCount === 1 ? "" : "s"}
+                  </span>{" "}
+                  in the same period.
+                </p>
+              </div>
+            )}
 
-        {leave?.handoverNote ? (
-          <div className="mt-4">
-            <SectionLabel>Handover</SectionLabel>
-            <p className="mt-1 text-[13px] text-[#4B5563]">{leave.handoverNote}</p>
-          </div>
-        ) : null}
+            {request.reason && (
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+                  Reason
+                </div>
+                <p className="mt-1 text-[13px] leading-relaxed text-[#4B5563]">
+                  {request.reason}
+                </p>
+              </div>
+            )}
 
-        {pending ? (
-          <div className="mt-5">
-            <label
-              className="text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]"
-              htmlFor="leave-detail-comment"
-            >
-              Decision Note
-            </label>
-            <textarea
-              id="leave-detail-comment"
-              rows={3}
-              value={comment}
-              onChange={(event) => setComment(event.target.value)}
-              placeholder="Optional when approving, required when declining."
-              className="mt-1.5 w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-[13px] outline-none focus:border-[#3B5BDB]"
-            />
-          </div>
-        ) : null}
+            {request.handoverNote && (
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+                  Handover Note
+                </div>
+                <p className="mt-1 text-[13px] leading-relaxed text-[#4B5563]">
+                  {request.handoverNote}
+                </p>
+              </div>
+            )}
 
-        {error ? <p className="mt-3 text-[12px] text-rose-600">{error}</p> : null}
+            {request.appliedOnBehalfBy && (
+              <p className="text-[12px] text-[#9CA3AF]">
+                Filed on behalf by {userName(request.appliedOnBehalfBy)}
+              </p>
+            )}
+
+            {(supervisorAction?.action || hrAction?.action) && (
+              <div className="rounded-[10px] border border-[#EEF1F6] bg-[#F9FAFB] p-3">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+                  Decisions
+                </div>
+                {supervisorAction?.action && (
+                  <p className="mt-2 text-[12px] text-[#4B5563]">
+                    <span className="font-semibold text-[#111827]">Supervisor:</span>{" "}
+                    {supervisorAction.action}
+                    {supervisorAction.comment ? ` — ${supervisorAction.comment}` : ""}
+                    {supervisorAction.timestamp
+                      ? ` (${formatDate(supervisorAction.timestamp, "medium")})`
+                      : ""}
+                  </p>
+                )}
+                {hrAction?.action && (
+                  <p className="mt-1 text-[12px] text-[#4B5563]">
+                    <span className="font-semibold text-[#111827]">HR:</span> {hrAction.action}
+                    {hrAction.comment ? ` — ${hrAction.comment}` : ""}
+                    {hrAction.timestamp
+                      ? ` (${formatDate(hrAction.timestamp, "medium")})`
+                      : ""}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {(request.attachments?.length ?? 0) > 0 && (
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+                  Attachments
+                </div>
+                <ul className="mt-2 space-y-1.5">
+                  {request.attachments?.map((file) => (
+                    <li key={file.url}>
+                      <a
+                        href={file.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[13px] font-semibold text-[#3B5BDB] hover:underline"
+                      >
+                        {file.name}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       <div className="flex items-center justify-end gap-3 border-t border-[#EEF1F6] px-6 py-4">
-        {pending ? (
-          <>
-            <button
-              type="button"
-              onClick={() => decide("decline")}
-              disabled={Boolean(busy)}
-              className="inline-flex items-center gap-2 rounded-md border border-rose-200 bg-white px-4 py-2 text-[12px] font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-60"
-            >
-              {busy === "decline" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-              Decline
-            </button>
-            <button className={btnDark} onClick={() => decide("approve")} disabled={Boolean(busy)}>
-              {busy === "approve" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-              Approve Leave
-            </button>
-          </>
-        ) : (
-          <button className={btnOutline} onClick={handleClose}>
-            Close
-          </button>
-        )}
+        <button className={btnOutline} onClick={onClose}>
+          Close
+        </button>
       </div>
     </ModalShell>
   )

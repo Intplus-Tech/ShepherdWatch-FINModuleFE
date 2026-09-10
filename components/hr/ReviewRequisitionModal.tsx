@@ -1,221 +1,184 @@
 "use client"
 
-import { useState } from "react"
-import { Briefcase, Loader2, X } from "lucide-react"
+import { useEffect, useState } from "react"
+import { Loader2, X } from "lucide-react"
 import { ModalShell } from "@/components/ui/modal-shell"
-import { useJobRequisitionMutations } from "@/components/hooks/useHrJobRequisitions"
-import { useToast } from "@/components/ui/toast"
+import { hrErrorMessage } from "@/components/hr/HrDataState"
+import { useReviewJobRequisition } from "@/components/hooks/hr/useHrJobRequisitions"
 import {
-  PRIORITY_LABELS,
-  PRIORITY_STYLES,
-  REQUISITION_STATUS_LABELS,
-  REQUISITION_STATUS_STYLES,
-  formatDate,
-  formatNaira,
-  statusLabel,
-  statusStyle,
-} from "@/lib/hr/display"
-import { cn } from "@/lib/utils"
-import type { HrJobRequisition } from "@/lib/hr/types"
+  JOB_REQUISITION_PRIORITY_LABELS,
+  branchName,
+  lookup,
+  userName,
+} from "@/lib/hr/normalize"
+import type { JobRequisition } from "@/lib/hr/types"
+import { formatCurrency, formatDate } from "@/lib/format"
 
 /**
- * Director review of a job requisition. The API requires a comment on both
- * outcomes, so approving without one is blocked here rather than at the server.
+ * The director's decision on a hiring requisition.
+ *
+ * `reviewComment` is required by the backend for both approve and reject, so
+ * the dialog blocks submission until one is written.
  */
 export default function ReviewRequisitionModal({
   requisition,
+  intent,
   onClose,
-  onReviewed,
-  readOnly = false,
 }: {
-  requisition: HrJobRequisition | null
+  requisition: JobRequisition | null
+  intent: "approved" | "rejected"
   onClose: () => void
-  onReviewed?: () => void
-  readOnly?: boolean
 }) {
-  const { reviewRequisition } = useJobRequisitionMutations()
-  const { pushToast } = useToast()
+  const review = useReviewJobRequisition()
   const [comment, setComment] = useState("")
-  const [saving, setSaving] = useState<"approved" | "rejected" | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [formError, setFormError] = useState<string | null>(null)
 
-  const handleClose = () => {
-    if (saving) return
+  useEffect(() => {
     setComment("")
-    setError(null)
-    onClose()
-  }
+    setFormError(null)
+    review.reset()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requisition?._id, intent])
 
-  const decide = async (action: "approved" | "rejected") => {
+  async function handleSubmit() {
     if (!requisition) return
-    if (!comment.trim()) {
-      setError("Add a review comment — the approval record needs one.")
+    setFormError(null)
+
+    if (comment.trim().length < 2) {
+      setFormError("A review comment is required.")
       return
     }
 
-    setSaving(action)
-    setError(null)
     try {
-      await reviewRequisition(requisition.id, action, comment.trim())
-      pushToast(
-        action === "approved" ? "Requisition approved" : "Requisition rejected",
-        "success"
-      )
-      setComment("")
-      onReviewed?.()
+      await review.mutateAsync({
+        id: requisition._id,
+        action: intent,
+        reviewComment: comment.trim(),
+      })
       onClose()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to record that decision.")
-    } finally {
-      setSaving(null)
+    } catch (error) {
+      setFormError(hrErrorMessage(error))
     }
   }
 
-  const decided = requisition ? requisition.status !== "pending_review" : false
+  const rejecting = intent === "rejected"
+  const error = formError ?? (review.error ? hrErrorMessage(review.error) : null)
 
   return (
-    <ModalShell open={Boolean(requisition)} onClose={handleClose} className="max-w-xl">
+    <ModalShell open={requisition !== null} onClose={onClose} className="max-w-lg">
       <div className="flex items-start justify-between gap-4 border-b border-[#EEF1F6] px-6 py-5">
-        <div className="flex items-center gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#EEF2FF] text-[#3B5BDB]">
-            <Briefcase className="h-5 w-5" />
-          </span>
-          <div>
-            <h2 className="text-[18px] font-bold text-[#111827]">
-              {requisition?.roleTitle || "Job Requisition"}
-            </h2>
-            <p className="mt-0.5 text-[13px] text-[#6B7280]">
-              {requisition?.requisitionNumber || "—"} ·{" "}
-              {requisition?.branchName || "Unassigned branch"}
-            </p>
-          </div>
+        <div>
+          <h2 className="text-[18px] font-bold text-[#111827]">
+            {rejecting ? "Reject Requisition" : "Approve Requisition"}
+          </h2>
+          <p className="mt-1 text-[13px] text-[#6B7280]">
+            {rejecting
+              ? "Record why this role is not being approved."
+              : "Confirm this hire and its salary commitment."}
+          </p>
         </div>
         <button
           type="button"
-          onClick={handleClose}
+          onClick={onClose}
           aria-label="Close"
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[#9CA3AF] hover:bg-gray-100 hover:text-[#111827]"
         >
-          <X className="h-4.5 w-4.5" />
+          <X className="h-[18px] w-[18px]" />
         </button>
       </div>
 
-      <div className="max-h-[68vh] overflow-y-auto px-6 py-5">
-        <div className="flex flex-wrap items-center gap-2">
-          <span
-            className={cn(
-              "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider",
-              statusStyle(REQUISITION_STATUS_STYLES, requisition?.status ?? "")
+      <div className="flex flex-col gap-5 px-6 py-5">
+        {requisition && (
+          <div className="rounded-[10px] border border-[#EEF1F6] p-4">
+            <div className="flex items-center justify-between text-[13px]">
+              <span className="text-[#6B7280]">Role</span>
+              <span className="font-semibold text-[#111827]">{requisition.roleTitle}</span>
+            </div>
+            <div className="mt-2 flex items-center justify-between text-[13px]">
+              <span className="text-[#6B7280]">Reference</span>
+              <span className="font-semibold text-[#111827]">#{requisition.refNumber}</span>
+            </div>
+            <div className="mt-2 flex items-center justify-between text-[13px]">
+              <span className="text-[#6B7280]">Branch / Department</span>
+              <span className="font-semibold text-[#111827]">
+                {branchName(requisition.branchId)} · {requisition.department}
+              </span>
+            </div>
+            <div className="mt-2 flex items-center justify-between text-[13px]">
+              <span className="text-[#6B7280]">Suggested salary</span>
+              <span className="font-semibold text-[#111827]">
+                {formatCurrency(requisition.salarySuggested, { maximumFractionDigits: 0 })}
+              </span>
+            </div>
+            <div className="mt-2 flex items-center justify-between text-[13px]">
+              <span className="text-[#6B7280]">Priority</span>
+              <span className="font-semibold text-[#111827]">
+                {lookup(JOB_REQUISITION_PRIORITY_LABELS, requisition.priority)}
+              </span>
+            </div>
+            <div className="mt-2 flex items-center justify-between text-[13px]">
+              <span className="text-[#6B7280]">Expected start</span>
+              <span className="font-semibold text-[#111827]">
+                {formatDate(requisition.expectedStartDate, "medium")}
+              </span>
+            </div>
+            {requisition.submittedBy && (
+              <div className="mt-2 flex items-center justify-between text-[13px]">
+                <span className="text-[#6B7280]">Raised by</span>
+                <span className="font-semibold text-[#111827]">
+                  {userName(requisition.submittedBy)}
+                </span>
+              </div>
             )}
-          >
-            {statusLabel(REQUISITION_STATUS_LABELS, requisition?.status ?? "")}
-          </span>
-          <span
-            className={cn(
-              "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider",
-              statusStyle(PRIORITY_STYLES, requisition?.priority ?? "")
-            )}
-          >
-            {statusLabel(PRIORITY_LABELS, requisition?.priority ?? "")} priority
-          </span>
+            <p className="mt-3 border-t border-[#F3F4F6] pt-3 text-[12px] leading-relaxed text-[#4B5563]">
+              {requisition.justification}
+            </p>
+          </div>
+        )}
+
+        <div>
+          <label className="text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
+            Review Comment (required)
+          </label>
+          <textarea
+            rows={3}
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            disabled={review.isPending}
+            placeholder={
+              rejecting
+                ? "Explain the decision for the branch's record…"
+                : "Note any conditions on this approval…"
+            }
+            className="mt-1.5 w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2.5 text-[13px] outline-none focus:border-[#2563EB]"
+          />
         </div>
 
-        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div className="rounded-lg border border-[#EEF1F6] p-4">
-            <div className="text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-              Department
-            </div>
-            <div className="mt-2 text-[14px] font-semibold text-[#111827]">
-              {requisition?.department || "—"}
-            </div>
-          </div>
-          <div className="rounded-lg border border-[#EEF1F6] p-4">
-            <div className="text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-              Suggested Salary
-            </div>
-            <div className="mt-2 text-[14px] font-semibold text-[#111827]">
-              {formatNaira(requisition?.salarySuggested ?? 0)}
-            </div>
-          </div>
-          <div className="rounded-lg border border-[#EEF1F6] p-4">
-            <div className="text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-              Expected Start
-            </div>
-            <div className="mt-2 text-[14px] font-semibold text-[#111827]">
-              {formatDate(requisition?.expectedStartDate ?? "")}
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-5 text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-          Justification
-        </div>
-        <blockquote className="mt-3 border-l-4 border-[#3B5BDB] bg-[#F8FAFC] p-3 text-[13px] italic text-[#4B5563]">
-          {requisition?.justification || "No justification was recorded."}
-        </blockquote>
-
-        {requisition?.reviewComment ? (
-          <div className="mt-4 rounded-lg bg-[#F8FAFC] p-3">
-            <div className="text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-              Review Comment
-            </div>
-            <p className="mt-1 text-[13px] text-[#4B5563]">{requisition.reviewComment}</p>
-          </div>
-        ) : null}
-
-        {!readOnly && !decided ? (
-          <>
-            <label
-              className="mt-5 block text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF]"
-              htmlFor="requisition-review-comment"
-            >
-              Review Comment *
-            </label>
-            <textarea
-              id="requisition-review-comment"
-              rows={3}
-              value={comment}
-              onChange={(event) => setComment(event.target.value)}
-              placeholder="e.g. Approved. Position budgeted under the 2026 personnel plan."
-              className="mt-1.5 w-full rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 py-2.5 text-[13px] text-[#111827] outline-none focus:border-[#2563EB]"
-            />
-          </>
-        ) : null}
-
-        {error ? <p className="mt-2 text-[12px] text-rose-600">{error}</p> : null}
+        {error && <p className="text-[12px] font-medium text-red-600">{error}</p>}
       </div>
 
       <div className="flex items-center justify-end gap-3 border-t border-[#EEF1F6] px-6 py-4">
-        {readOnly || decided ? (
-          <button
-            type="button"
-            onClick={handleClose}
-            className="rounded-md bg-[#111827] px-4 py-2 text-[12px] font-semibold text-white hover:bg-black"
-          >
-            Close
-          </button>
-        ) : (
-          <>
-            <button
-              type="button"
-              onClick={() => decide("rejected")}
-              disabled={Boolean(saving)}
-              className="inline-flex items-center gap-2 rounded-md border border-rose-200 bg-white px-4 py-2 text-[12px] font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-60"
-            >
-              {saving === "rejected" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-              Reject
-            </button>
-            <button
-              type="button"
-              onClick={() => decide("approved")}
-              disabled={Boolean(saving)}
-              className="inline-flex items-center gap-2 rounded-md bg-[#3B5BDB] px-4 py-2 text-[12px] font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
-            >
-              {saving === "approved" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-              Approve
-            </button>
-          </>
-        )}
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={review.isPending}
+          className="rounded-md border border-[#E5E7EB] bg-white px-4 py-2.5 text-[12px] font-semibold text-[#4B5563] hover:bg-[#F8FAFC] disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={review.isPending}
+          className={
+            rejecting
+              ? "inline-flex items-center gap-2 rounded-md bg-rose-600 px-4 py-2.5 text-[12px] font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
+              : "inline-flex items-center gap-2 rounded-md bg-[#111827] px-4 py-2.5 text-[12px] font-semibold text-white hover:bg-black disabled:opacity-60"
+          }
+        >
+          {review.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          {rejecting ? "Reject" : "Approve"}
+        </button>
       </div>
     </ModalShell>
   )

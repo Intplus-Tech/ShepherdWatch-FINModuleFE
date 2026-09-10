@@ -1,97 +1,74 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Menu, Search, Bell, Plus, SlidersHorizontal } from "lucide-react"
+import { Menu, Search, Bell, Plus } from "lucide-react"
 import BranchAdminSidebar from "@/components/navigation/BranchAdminSidebar"
 import BranchAdminNewRoleRequisitionModal from "@/components/hr/BranchAdminNewRoleRequisitionModal"
-import ReviewRequisitionModal from "@/components/hr/ReviewRequisitionModal"
-import { HrTableStateRow } from "@/components/hr/HrTableState"
-import { useHrJobRequisitions } from "@/components/hooks/useHrJobRequisitions"
+import { HrStatValue, HrTableState } from "@/components/hr/HrDataState"
+import { HrPagination } from "@/components/hr/HrPagination"
 import {
-  PRIORITY_LABELS,
-  PRIORITY_STYLES,
-  REQUISITION_STATUS_LABELS,
-  REQUISITION_STATUS_STYLES,
-  formatDate,
-  statusLabel,
-  statusStyle,
-} from "@/lib/hr/display"
-import type { HrJobRequisition } from "@/lib/hr/types"
+  useJobRequisitionMetrics,
+  useJobRequisitions,
+} from "@/components/hooks/hr/useHrJobRequisitions"
+import {
+  JOB_REQUISITION_PRIORITY_BADGES,
+  JOB_REQUISITION_PRIORITY_LABELS,
+  JOB_REQUISITION_STATUS_LABELS,
+  badgeFor,
+  lookup,
+} from "@/lib/hr/normalize"
+import {
+  JOB_REQUISITION_PRIORITIES,
+  type JobRequisitionPriority,
+  type JobRequisitionStatus,
+} from "@/lib/hr/types"
+import { formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
-const PRIORITIES = [
-  { value: "", label: "All Priorities" },
-  { value: "critical", label: "Critical" },
-  { value: "high", label: "High" },
-  { value: "medium", label: "Medium" },
-  { value: "low", label: "Low" },
-]
-
-function UrgencyPill({ urgency }: { urgency: string }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold",
-        statusStyle(PRIORITY_STYLES, urgency)
-      )}
-    >
-      {statusLabel(PRIORITY_LABELS, urgency)}
-    </span>
-  )
-}
+const PAGE_SIZE = 10
 
 type Tab = "awaiting" | "past"
+
+/** Awaiting is the single open status; past covers every settled one. */
+const PAST_STATUSES: JobRequisitionStatus[] = ["approved", "rejected", "cancelled"]
 
 export default function Page() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
   const [tab, setTab] = useState<Tab>("awaiting")
   const [role, setRole] = useState("All Roles")
-  const [priority, setPriority] = useState("")
-  const [viewing, setViewing] = useState<HrJobRequisition | null>(null)
+  const [priority, setPriority] = useState<"all" | JobRequisitionPriority>("all")
+  const [page, setPage] = useState(1)
 
-  // Awaiting = still with the director; past = everything already decided.
-  const {
-    requisitions: awaiting,
-    loading: awaitingLoading,
-    error: awaitingError,
-    refresh: refreshAwaiting,
-  } = useHrJobRequisitions({ status: "pending_review", priority, limit: 50 })
+  const metrics = useJobRequisitionMetrics()
 
-  const {
-    requisitions: history,
-    loading: historyLoading,
-    error: historyError,
-    refresh: refreshHistory,
-  } = useHrJobRequisitions({ priority, limit: 50 })
+  const requisitions = useJobRequisitions({
+    page,
+    limit: PAGE_SIZE,
+    priority,
+    // The list endpoint takes one status, so the "past" tab is filtered locally.
+    status: tab === "awaiting" ? "awaiting_director" : "all",
+  })
 
-  const roleOptions = useMemo(
-    () =>
-      Array.from(
-        new Set([...awaiting, ...history].map((row) => row.roleTitle).filter(Boolean))
-      ).sort(),
-    [awaiting, history]
+  const items = useMemo(() => {
+    const all = requisitions.data?.items ?? []
+    const byTab = tab === "past" ? all.filter((r) => PAST_STATUSES.includes(r.status)) : all
+    return role === "All Roles" ? byTab : byTab.filter((r) => r.roleTitle === role)
+  }, [requisitions.data, tab, role])
+
+  /** Role options come from the loaded page — there is no roles endpoint. */
+  const roles = useMemo(
+    () => [
+      "All Roles",
+      ...Array.from(new Set((requisitions.data?.items ?? []).map((r) => r.roleTitle))),
+    ],
+    [requisitions.data],
   )
-
-  const awaitingRows = useMemo(
-    () => (role === "All Roles" ? awaiting : awaiting.filter((r) => r.roleTitle === role)),
-    [awaiting, role]
-  )
-
-  // "Past" is the decided set — the list endpoint has no "not pending" filter.
-  const pastRows = useMemo(() => {
-    const decided = history.filter((r) => r.status !== "pending_review")
-    return role === "All Roles" ? decided : decided.filter((r) => r.roleTitle === role)
-  }, [history, role])
 
   const resetFilters = () => {
     setRole("All Roles")
-    setPriority("")
-  }
-
-  const refreshAll = () => {
-    refreshAwaiting()
-    refreshHistory()
+    setPriority("all")
+    setPage(1)
   }
 
   return (
@@ -148,14 +125,26 @@ export default function Page() {
               <p className="text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
                 Active Requests
               </p>
-              <p className="mt-2 text-[32px] font-bold text-[#111827]">12</p>
+              <p className="mt-2 text-[32px] font-bold text-[#111827]">
+                <HrStatValue
+                  isLoading={metrics.isLoading}
+                  error={metrics.error}
+                  value={metrics.data?.activeRequests ?? 0}
+                />
+              </p>
               <p className="mt-1 text-[13px] text-[#6B7280]">Currently awaiting approval</p>
             </div>
             <div className="rounded-xl border border-[#EEF1F6] bg-white p-5">
               <p className="text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
                 Approved This Month
               </p>
-              <p className="mt-2 text-[32px] font-bold text-[#111827]">08</p>
+              <p className="mt-2 text-[32px] font-bold text-[#111827]">
+                <HrStatValue
+                  isLoading={metrics.isLoading}
+                  error={metrics.error}
+                  value={metrics.data?.approvedThisMonth ?? 0}
+                />
+              </p>
             </div>
           </div>
 
@@ -174,20 +163,14 @@ export default function Page() {
           {/* Filters card */}
           <div className="mt-5 rounded-xl border border-[#EEF1F6] bg-white p-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
-              <div className="flex items-center gap-2 text-[#4B5563] lg:pb-2.5">
-                <SlidersHorizontal className="h-4 w-4" />
-                <span className="text-[13px] font-semibold">Filters</span>
-              </div>
-
               <div className="flex flex-col gap-1.5">
-                <label className="text-[11px] font-bold uppercase text-[#6B7280]">Role</label>
+                <label className="text-[12px] font-semibold text-[#6B7280]">Role</label>
                 <select
                   value={role}
                   onChange={(e) => setRole(e.target.value)}
                   className="h-[42px] rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[13px]"
                 >
-                  <option value="All Roles">All Roles</option>
-                  {roleOptions.map((r) => (
+                  {roles.map((r) => (
                     <option key={r} value={r}>
                       {r}
                     </option>
@@ -196,15 +179,19 @@ export default function Page() {
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-[11px] font-bold uppercase text-[#6B7280]">Priority</label>
+                <label className="text-[12px] font-semibold text-[#6B7280]">Priority</label>
                 <select
                   value={priority}
-                  onChange={(e) => setPriority(e.target.value)}
+                  onChange={(e) => {
+                    setPriority(e.target.value as "all" | JobRequisitionPriority)
+                    setPage(1)
+                  }}
                   className="h-[42px] rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[13px]"
                 >
-                  {PRIORITIES.map((option) => (
-                    <option key={option.value || "all"} value={option.value}>
-                      {option.label}
+                  <option value="all">All Priorities</option>
+                  {JOB_REQUISITION_PRIORITIES.map((p) => (
+                    <option key={p} value={p}>
+                      {JOB_REQUISITION_PRIORITY_LABELS[p]}
                     </option>
                   ))}
                 </select>
@@ -212,45 +199,43 @@ export default function Page() {
 
               <button
                 type="button"
-                className="h-[42px] rounded-md bg-[#2563EB] px-4 py-2 text-[12px] font-semibold text-white hover:bg-[#1D4ED8]"
-              >
-                Search
-              </button>
-
-              <button
-                type="button"
                 onClick={resetFilters}
-                className="text-[13px] font-semibold text-[#2563EB] hover:underline lg:pb-2.5"
+                className="h-[42px] rounded-[8px] border border-[#E5E7EB] bg-white px-4 text-[13px] font-semibold text-[#4B5563] hover:bg-[#F8FAFC]"
               >
-                Reset All
+                Reset Filters
               </button>
             </div>
           </div>
 
-          {/* Tabs + table card */}
-          <div className="mt-6 overflow-hidden rounded-xl border border-[#EEF1F6] bg-white">
-            {/* Tabs */}
+          {/* Tabs + table */}
+          <div className="mt-5 overflow-hidden rounded-xl border border-[#EEF1F6] bg-white">
             <div className="flex items-center gap-6 border-b border-[#EEF1F6] px-5">
               <button
                 type="button"
-                onClick={() => setTab("awaiting")}
+                onClick={() => {
+                  setTab("awaiting")
+                  setPage(1)
+                }}
                 className={cn(
                   "-mb-px border-b-2 py-4 text-[13px]",
                   tab === "awaiting"
                     ? "border-[#2563EB] text-[#111827] font-bold"
-                    : "border-transparent text-[#6B7280]"
+                    : "border-transparent text-[#6B7280]",
                 )}
               >
                 Awaiting Approval
               </button>
               <button
                 type="button"
-                onClick={() => setTab("past")}
+                onClick={() => {
+                  setTab("past")
+                  setPage(1)
+                }}
                 className={cn(
                   "-mb-px border-b-2 py-4 text-[13px]",
                   tab === "past"
                     ? "border-[#2563EB] text-[#111827] font-bold"
-                    : "border-transparent text-[#6B7280]"
+                    : "border-transparent text-[#6B7280]",
                 )}
               >
                 Past Requests
@@ -258,151 +243,103 @@ export default function Page() {
             </div>
 
             <div className="overflow-x-auto">
-              {tab === "awaiting" ? (
-                <table className="w-full text-left">
-                  <thead>
-                    <tr>
-                      {[
-                        "Role Title",
-                        "Department",
-                        "Date Requested",
-                        "Urgency",
-                        "Clearance Status",
-                      ].map((h) => (
-                        <th
-                          key={h}
-                          className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]"
-                        >
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#F3F4F6]">
-                    {awaitingRows.map((row) => (
-                      <tr
-                        key={row.id}
-                        onClick={() => setViewing(row)}
-                        className="cursor-pointer hover:bg-[#F9FAFB]"
+              <table className="w-full text-left">
+                <thead>
+                  <tr>
+                    {[
+                      "Role Title",
+                      "Department",
+                      "Date Requested",
+                      "Urgency",
+                      tab === "awaiting" ? "Clearance Status" : "Status",
+                    ].map((h) => (
+                      <th
+                        key={h}
+                        className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]"
                       >
-                        <td className="px-4 py-4 text-[13px]">
-                          <div className="flex flex-col">
-                            <span className="font-bold text-[#111827]">{row.roleTitle}</span>
-                            <span className="text-[12px] text-[#6B7280]">
-                              {row.requisitionNumber || "—"}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                          {row.department || "—"}
-                        </td>
-                        <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                          {formatDate(row.createdAt)}
-                        </td>
-                        <td className="px-4 py-4 text-[13px]">
-                          <UrgencyPill urgency={row.priority} />
-                        </td>
-                        <td className="px-4 py-4 text-[13px]">
-                          <span className="inline-flex items-center gap-2 text-[#6B7280]">
-                            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                            Awaiting Director Sign-off
-                          </span>
-                        </td>
-                      </tr>
+                        {h}
+                      </th>
                     ))}
-                    <HrTableStateRow
-                      colSpan={5}
-                      loading={awaitingLoading}
-                      error={awaitingError}
-                      isEmpty={awaitingRows.length === 0}
-                      emptyMessage="No requisitions match your filters."
-                      onRetry={refreshAwaiting}
-                    />
-                  </tbody>
-                </table>
-              ) : (
-                <table className="w-full text-left">
-                  <thead>
-                    <tr>
-                      {[
-                        "Role Title",
-                        "Department",
-                        "Date Requested",
-                        "Urgency",
-                        "Status",
-                      ].map((h) => (
-                        <th
-                          key={h}
-                          className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]"
-                        >
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#F3F4F6]">
-                    {pastRows.map((row) => (
-                      <tr
-                        key={row.id}
-                        onClick={() => setViewing(row)}
-                        className="cursor-pointer hover:bg-[#F9FAFB]"
-                      >
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#F3F4F6]">
+                  <HrTableState
+                    colSpan={5}
+                    isLoading={requisitions.isLoading}
+                    error={requisitions.error}
+                    isEmpty={items.length === 0}
+                    emptyTitle={
+                      tab === "awaiting" ? "Nothing awaiting approval" : "No past requests"
+                    }
+                    emptyDescription="Raise a requisition to start the hiring approval flow."
+                    onRetry={() => requisitions.refetch()}
+                  />
+
+                  {!requisitions.isLoading &&
+                    !requisitions.error &&
+                    items.map((row) => (
+                      <tr key={row._id}>
                         <td className="px-4 py-4 text-[13px]">
                           <div className="flex flex-col">
                             <span className="font-bold text-[#111827]">{row.roleTitle}</span>
                             <span className="text-[12px] text-[#6B7280]">
-                              {row.requisitionNumber || "—"}
+                              Ref: #{row.refNumber}
                             </span>
                           </div>
                         </td>
                         <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                          {row.department || "—"}
+                          {row.department}
                         </td>
                         <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                          {formatDate(row.createdAt)}
-                        </td>
-                        <td className="px-4 py-4 text-[13px]">
-                          <UrgencyPill urgency={row.priority} />
+                          {formatDate(row.createdAt, "medium")}
                         </td>
                         <td className="px-4 py-4 text-[13px]">
                           <span
                             className={cn(
                               "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold",
-                              statusStyle(REQUISITION_STATUS_STYLES, row.status)
+                              badgeFor(JOB_REQUISITION_PRIORITY_BADGES, row.priority),
                             )}
                           >
-                            {statusLabel(REQUISITION_STATUS_LABELS, row.status)}
+                            {lookup(JOB_REQUISITION_PRIORITY_LABELS, row.priority)}
                           </span>
+                        </td>
+                        <td className="px-4 py-4 text-[13px]">
+                          {row.status === "awaiting_director" ? (
+                            <span className="inline-flex items-center gap-2 text-[#6B7280]">
+                              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                              Awaiting Director Sign-off
+                            </span>
+                          ) : (
+                            <span
+                              className={cn(
+                                "font-semibold",
+                                row.status === "approved"
+                                  ? "text-emerald-600"
+                                  : "text-rose-600",
+                              )}
+                            >
+                              {lookup(JOB_REQUISITION_STATUS_LABELS, row.status)}
+                            </span>
+                          )}
                         </td>
                       </tr>
                     ))}
-                    <HrTableStateRow
-                      colSpan={5}
-                      loading={historyLoading}
-                      error={historyError}
-                      isEmpty={pastRows.length === 0}
-                      emptyMessage="No requisitions match your filters."
-                      onRetry={refreshHistory}
-                    />
-                  </tbody>
-                </table>
-              )}
+                </tbody>
+              </table>
             </div>
+
+            <HrPagination
+              pagination={requisitions.data?.pagination}
+              page={page}
+              onPageChange={setPage}
+              itemCount={requisitions.data?.items.length ?? 0}
+              noun="requisitions"
+            />
           </div>
         </main>
       </div>
 
-      <BranchAdminNewRoleRequisitionModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        onCreated={refreshAll}
-      />
-
-      <ReviewRequisitionModal
-        requisition={viewing}
-        onClose={() => setViewing(null)}
-        readOnly
-      />
+      <BranchAdminNewRoleRequisitionModal open={modalOpen} onClose={() => setModalOpen(false)} />
     </div>
   )
 }

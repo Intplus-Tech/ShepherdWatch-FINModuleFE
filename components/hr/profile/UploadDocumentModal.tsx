@@ -1,103 +1,87 @@
 "use client"
 
-import { useRef, useState } from "react"
-import { X, UploadCloud, FileText, Loader2 } from "lucide-react"
+import { useEffect, useState } from "react"
+import { Loader2, UploadCloud, X } from "lucide-react"
 import { ModalShell } from "@/components/ui/modal-shell"
-import { SectionLabel, btnOutline, btnDark } from "./shared"
-import { useDocumentMutations } from "@/components/hooks/useHrDocuments"
-import { useFileUpload } from "@/components/hooks/useFileUpload"
-import { useToast } from "@/components/ui/toast"
+import { SectionLabel, btnDark, btnOutline } from "./shared"
+import { HrFileDrop, type UploadedFile } from "@/components/hr/HrFileDrop"
+import { hrErrorMessage } from "@/components/hr/HrDataState"
+import { useUploadEmployeeDocument } from "@/components/hooks/hr/useHrDocuments"
+import { titleCase } from "@/lib/hr/normalize"
+import { EMPLOYEE_DOCUMENT_TYPES, type EmployeeDocumentType } from "@/lib/hr/types"
 
-const labelCls =
-  "text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]"
+const labelCls = "text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]"
 const inputCls =
-  "mt-1 w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-[13px] text-[#111827] outline-none focus:border-[#3B5BDB]"
+  "mt-1.5 h-[42px] w-full rounded-md border border-[#E5E7EB] bg-white px-3 text-[13px] text-[#111827] outline-none focus:border-[#3B5BDB]"
 
-const DOCUMENT_TYPES = [
-  { value: "contract", label: "Employment Contract" },
-  { value: "id_proof", label: "Identification / KYC" },
-  { value: "academic_credential", label: "Academic Credential" },
-  { value: "certification", label: "Professional Certification" },
-  { value: "medical_clearance", label: "Medical Clearance" },
-  { value: "background_check", label: "Background Check" },
-  { value: "other", label: "Other" },
-]
-
-/**
- * Two steps behind one button: the file goes to the upload service, then the
- * returned URL is filed against the employee as a personnel document.
- */
 export default function UploadDocumentModal({
   open,
   onClose,
   employeeId,
-  onUploaded,
 }: {
   open: boolean
   onClose: () => void
-  employeeId: string
-  onUploaded?: () => void
+  employeeId: string | null
 }) {
-  const { uploadDocument } = useDocumentMutations()
-  const { uploadFile } = useFileUpload()
-  const { pushToast } = useToast()
-  const fileInput = useRef<HTMLInputElement | null>(null)
+  const upload = useUploadEmployeeDocument()
 
-  const [file, setFile] = useState<File | null>(null)
+  const [files, setFiles] = useState<UploadedFile[]>([])
+  const [documentType, setDocumentType] = useState<EmployeeDocumentType>("contract")
   const [title, setTitle] = useState("")
-  const [documentType, setDocumentType] = useState("contract")
   const [effectiveDate, setEffectiveDate] = useState("")
   const [expiryDate, setExpiryDate] = useState("")
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [formError, setFormError] = useState<string | null>(null)
 
-  const reset = () => {
-    setFile(null)
-    setTitle("")
+  useEffect(() => {
+    if (!open) return
+    setFiles([])
     setDocumentType("contract")
+    setTitle("")
     setEffectiveDate("")
     setExpiryDate("")
-    setError(null)
-  }
+    setFormError(null)
+    upload.reset()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
-  const handleClose = () => {
-    if (saving) return
-    reset()
-    onClose()
-  }
+  async function handleUpload() {
+    setFormError(null)
 
-  const handleSubmit = async () => {
-    setError(null)
-    if (!employeeId) return setError("No employee is selected.")
-    if (!file) return setError("Choose a file to upload.")
-    if (!title.trim()) return setError("Give the document a title.")
+    const file = files[0]
+    if (!employeeId) {
+      setFormError("No employee selected.")
+      return
+    }
+    if (!file) {
+      setFormError("Attach a file first.")
+      return
+    }
+    if (title.trim().length < 2) {
+      setFormError("Give the document a title.")
+      return
+    }
 
-    setSaving(true)
     try {
-      const uploaded = await uploadFile(file, "hr-documents")
-      await uploadDocument({
+      await upload.mutateAsync({
         employeeId,
         documentType,
         title: title.trim(),
-        fileUrl: uploaded.url,
-        fileSize: uploaded.size,
-        mimeType: uploaded.mimeType,
-        effectiveDate: effectiveDate || undefined,
-        expiryDate: expiryDate || undefined,
+        fileUrl: file.url,
+        fileSize: file.size,
+        mimeType: file.mimeType,
+        effectiveDate: effectiveDate ? new Date(effectiveDate).toISOString() : undefined,
+        expiryDate: expiryDate ? new Date(expiryDate).toISOString() : undefined,
       })
-      pushToast("Document uploaded", "success")
-      reset()
-      onUploaded?.()
       onClose()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to upload this document.")
-    } finally {
-      setSaving(false)
+    } catch (error) {
+      setFormError(hrErrorMessage(error))
     }
   }
 
+  const error = formError ?? (upload.error ? hrErrorMessage(upload.error) : null)
+
   return (
-    <ModalShell open={open} onClose={handleClose} className="max-w-lg">
+    <ModalShell open={open} onClose={onClose} className="max-w-lg">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-[#EEF1F6] px-6 py-5">
         <div className="flex items-center gap-2.5">
@@ -108,123 +92,87 @@ export default function UploadDocumentModal({
         </div>
         <button
           aria-label="Close"
-          onClick={handleClose}
+          onClick={onClose}
           className="rounded-md p-1 text-[#9CA3AF] hover:bg-[#F1F5F9] hover:text-[#4B5563]"
         >
           <X className="h-5 w-5" />
         </button>
       </div>
 
-      <div className="flex max-h-[68vh] flex-col gap-4 overflow-y-auto px-6 py-5">
-        <div>
-          <SectionLabel>Document File</SectionLabel>
-          <button
-            type="button"
-            onClick={() => fileInput.current?.click()}
-            className="mt-2 flex w-full flex-col items-center rounded-xl border-2 border-dashed border-[#D1D5DB] bg-[#F9FAFB] px-6 py-8 text-center hover:border-[#3B5BDB]"
-          >
-            {file ? (
-              <>
-                <FileText className="h-8 w-8 text-[#3B5BDB]" />
-                <span className="mt-2 text-[13px] font-semibold text-[#111827]">{file.name}</span>
-                <span className="text-[12px] text-[#6B7280]">
-                  {(file.size / (1024 * 1024)).toFixed(2)} MB — click to replace
-                </span>
-              </>
-            ) : (
-              <>
-                <UploadCloud className="h-8 w-8 text-[#9CA3AF]" />
-                <span className="mt-2 text-[13px] font-semibold text-[#111827]">
-                  Choose a file
-                </span>
-                <span className="text-[12px] text-[#6B7280]">PDF, PNG or JPG</span>
-              </>
-            )}
-          </button>
-          <input
-            ref={fileInput}
-            type="file"
-            accept=".pdf,.png,.jpg,.jpeg"
-            className="hidden"
-            aria-label="Document file"
-            onChange={(event) => {
-              const picked = event.target.files?.[0] ?? null
-              setFile(picked)
-              if (picked && !title) setTitle(picked.name.replace(/\.[^.]+$/, ""))
-            }}
-          />
-        </div>
+      {/* Body */}
+      <div className="flex max-h-[70vh] flex-col gap-5 overflow-y-auto px-6 py-5">
+        <HrFileDrop
+          files={files}
+          onChange={(next) => setFiles(next.slice(-1))}
+          folder="hr/documents"
+          hint="PDF, JPG or PNG · Up to 5MB"
+          disabled={upload.isPending}
+        />
 
+        {/* Details */}
         <div>
-          <label className={labelCls} htmlFor="document-title">
-            Document Title
-          </label>
-          <input
-            id="document-title"
-            className={inputCls}
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-            placeholder="e.g. Employment Contract 2026"
-          />
-        </div>
-
-        <div>
-          <label className={labelCls} htmlFor="document-type">
-            Document Type
-          </label>
-          <select
-            id="document-type"
-            className={inputCls}
-            value={documentType}
-            onChange={(event) => setDocumentType(event.target.value)}
-          >
-            {DOCUMENT_TYPES.map((type) => (
-              <option key={type.value} value={type.value}>
-                {type.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div>
-            <label className={labelCls} htmlFor="document-effective">
-              Effective Date
-            </label>
-            <input
-              id="document-effective"
-              type="date"
-              className={inputCls}
-              value={effectiveDate}
-              onChange={(event) => setEffectiveDate(event.target.value)}
-            />
-          </div>
-          <div>
-            <label className={labelCls} htmlFor="document-expiry">
-              Expiry Date
-            </label>
-            <input
-              id="document-expiry"
-              type="date"
-              className={inputCls}
-              value={expiryDate}
-              onChange={(event) => setExpiryDate(event.target.value)}
-            />
+          <SectionLabel>Document Details</SectionLabel>
+          <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <label className={labelCls}>Document Type</label>
+              <select
+                className={inputCls}
+                value={documentType}
+                onChange={(e) => setDocumentType(e.target.value as EmployeeDocumentType)}
+                disabled={upload.isPending}
+              >
+                {EMPLOYEE_DOCUMENT_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {titleCase(type)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>Document Title</label>
+              <input
+                className={inputCls}
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="e.g. Contract_Amendment_2024"
+                disabled={upload.isPending}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Effective Date</label>
+              <input
+                type="date"
+                className={inputCls}
+                value={effectiveDate}
+                onChange={(e) => setEffectiveDate(e.target.value)}
+                disabled={upload.isPending}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Expiry Date (Optional)</label>
+              <input
+                type="date"
+                className={inputCls}
+                value={expiryDate}
+                min={effectiveDate || undefined}
+                onChange={(e) => setExpiryDate(e.target.value)}
+                disabled={upload.isPending}
+              />
+            </div>
           </div>
         </div>
 
-        {error ? (
-          <p className="rounded-md bg-rose-50 px-3 py-2 text-[12px] text-rose-600">{error}</p>
-        ) : null}
+        {error && <p className="text-[12px] font-medium text-red-600">{error}</p>}
       </div>
 
+      {/* Footer */}
       <div className="flex items-center justify-end gap-3 border-t border-[#EEF1F6] px-6 py-4">
-        <button className={btnOutline} onClick={handleClose} disabled={saving}>
+        <button className={btnOutline} onClick={onClose} disabled={upload.isPending}>
           Cancel
         </button>
-        <button className={btnDark} onClick={handleSubmit} disabled={saving}>
-          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-          {saving ? "Uploading…" : "Upload Document"}
+        <button className={btnDark} onClick={handleUpload} disabled={upload.isPending}>
+          {upload.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          Upload Document
         </button>
       </div>
     </ModalShell>

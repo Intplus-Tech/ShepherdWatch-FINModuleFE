@@ -1,189 +1,244 @@
 "use client"
 
-import { useState } from "react"
-import { GraduationCap, Loader2, X } from "lucide-react"
+import { useEffect, useState } from "react"
+import { Loader2, X } from "lucide-react"
 import { ModalShell } from "@/components/ui/modal-shell"
-import { useTrainingMutations } from "@/components/hooks/useHrTrainings"
-import { useHrScope } from "@/lib/hr/useHrScope"
-import { useToast } from "@/components/ui/toast"
-import { cn } from "@/lib/utils"
+import { EmployeeMultiPicker } from "@/components/hr/EmployeePicker"
+import { HrFileDrop, type UploadedFile } from "@/components/hr/HrFileDrop"
+import { hrErrorMessage } from "@/components/hr/HrDataState"
+import { useBranchId } from "@/components/hooks/hr/useBranchId"
+import {
+  useCreateTrainingEvent,
+  useEnrollParticipants,
+} from "@/components/hooks/hr/useHrTraining"
+import type { EmployeeProfile, TrainingLocationType } from "@/lib/hr/types"
 
-const labelCls = "text-[11px] font-bold uppercase tracking-wider text-[#6B7280]"
+const labelCls = "text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]"
 const inputCls =
-  "mt-1.5 w-full rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 py-2.5 text-[13px] text-[#111827] outline-none focus:border-[#2563EB]"
+  "mt-1.5 w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2.5 text-[13px] text-[#111827] outline-none focus:border-[#2563EB]"
 
-const LOCATION_TYPES = [
-  { value: "in_person", label: "In Person" },
-  { value: "online", label: "Online" },
+const LOCATION_TYPES: { value: TrainingLocationType; label: string }[] = [
+  { value: "virtual", label: "Virtual" },
+  { value: "physical", label: "Physical" },
   { value: "hybrid", label: "Hybrid" },
 ]
 
-/**
- * Creates a training event. Used by every role that can schedule one — the
- * endpoint and required fields are identical; only who can approve the budget
- * differs, and that happens on the list screen.
- */
+function Radio({
+  checked,
+  onChange,
+  label,
+  disabled,
+}: {
+  checked: boolean
+  onChange: () => void
+  label: string
+  disabled?: boolean
+}) {
+  return (
+    <label className="flex cursor-pointer items-center gap-2 text-[13px] text-[#111827]">
+      <input
+        type="radio"
+        checked={checked}
+        onChange={onChange}
+        disabled={disabled}
+        className="h-4 w-4 accent-[#2563EB]"
+      />
+      {label}
+    </label>
+  )
+}
+
 export default function CreateTrainingEventModal({
   open,
   onClose,
-  onCreated,
 }: {
   open: boolean
   onClose: () => void
-  onCreated?: () => void
 }) {
-  const scope = useHrScope()
-  const { pushToast } = useToast()
-  const { createTraining } = useTrainingMutations()
+  const branchId = useBranchId()
+  const createEvent = useCreateTrainingEvent()
+  const enroll = useEnrollParticipants()
 
+  const [scope, setScope] = useState<"branch" | "global">("branch")
   const [title, setTitle] = useState("")
-  const [isGlobal, setIsGlobal] = useState(false)
-  const [locationType, setLocationType] = useState("in_person")
+  const [locationType, setLocationType] = useState<TrainingLocationType>("virtual")
+  const [isPaid, setIsPaid] = useState(false)
+  const [amount, setAmount] = useState("")
+  const [budgetRequested, setBudgetRequested] = useState("")
   const [venueOrLink, setVenueOrLink] = useState("")
+  const [trainerName, setTrainerName] = useState("")
+  const [trainerType, setTrainerType] = useState<"internal" | "external">("internal")
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
-  const [startTime, setStartTime] = useState("09:00")
-  const [endTime, setEndTime] = useState("16:00")
-  const [trainerName, setTrainerName] = useState("")
-  const [trainerType, setTrainerType] = useState("internal")
-  const [maxCapacity, setMaxCapacity] = useState("")
-  const [budgetRequested, setBudgetRequested] = useState("")
-  const [budgetJustification, setBudgetJustification] = useState("")
+  const [startTime, setStartTime] = useState("")
+  const [endTime, setEndTime] = useState("")
   const [description, setDescription] = useState("")
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [certification, setCertification] = useState(true)
+  const [flyer, setFlyer] = useState<UploadedFile[]>([])
+  const [participants, setParticipants] = useState<EmployeeProfile[]>([])
+  const [formError, setFormError] = useState<string | null>(null)
 
-  const reset = () => {
+  useEffect(() => {
+    if (!open) return
+    setScope("branch")
     setTitle("")
-    setIsGlobal(false)
-    setLocationType("in_person")
+    setLocationType("virtual")
+    setIsPaid(false)
+    setAmount("")
+    setBudgetRequested("")
     setVenueOrLink("")
-    setStartDate("")
-    setEndDate("")
-    setStartTime("09:00")
-    setEndTime("16:00")
     setTrainerName("")
     setTrainerType("internal")
-    setMaxCapacity("")
-    setBudgetRequested("")
-    setBudgetJustification("")
+    setStartDate("")
+    setEndDate("")
+    setStartTime("")
+    setEndTime("")
     setDescription("")
-    setError(null)
-  }
+    setCertification(true)
+    setFlyer([])
+    setParticipants([])
+    setFormError(null)
+    createEvent.reset()
+    enroll.reset()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
-  const handleClose = () => {
-    if (saving) return
-    reset()
-    onClose()
-  }
+  const pending = createEvent.isPending || enroll.isPending
 
-  const handleSubmit = async () => {
-    setError(null)
+  async function handleCreate() {
+    setFormError(null)
 
-    if (!title.trim()) return setError("Give the training a name.")
-    if (!venueOrLink.trim()) return setError("Add the venue or the meeting link.")
-    if (!startDate || !endDate) return setError("Set the start and end dates.")
-    if (!trainerName.trim()) return setError("Name the trainer.")
+    if (title.trim().length < 3) {
+      setFormError("Enter a training title of at least three characters.")
+      return
+    }
+    if (venueOrLink.trim().length < 2) {
+      setFormError(
+        locationType === "virtual" ? "Enter the meeting link." : "Enter the venue.",
+      )
+      return
+    }
+    if (trainerName.trim().length < 2) {
+      setFormError("Enter the trainer's name.")
+      return
+    }
+    if (!startDate || !endDate) {
+      setFormError("Set both a start and end date.")
+      return
+    }
+    if (new Date(endDate) < new Date(startDate)) {
+      setFormError("The end date can't be before the start date.")
+      return
+    }
+    if (!startTime || !endTime) {
+      setFormError("Set the start and end times.")
+      return
+    }
+    if (scope === "branch" && !branchId) {
+      setFormError("Your account has no branch assigned, so this can't be saved.")
+      return
+    }
 
-    const branchId = scope.branchId || scope.ownBranchId
-
-    setSaving(true)
     try {
-      await createTraining({
+      const created = await createEvent.mutateAsync({
         title: title.trim(),
-        branchId: isGlobal ? undefined : branchId || undefined,
-        isGlobal,
+        branchId: scope === "branch" ? branchId : undefined,
+        isGlobal: scope === "global",
         locationType,
         venueOrLink: venueOrLink.trim(),
-        startDate,
-        endDate,
+        startDate: new Date(startDate).toISOString(),
+        endDate: new Date(endDate).toISOString(),
         startTime,
         endTime,
         trainerName: trainerName.trim(),
         trainerType,
-        maxCapacity: maxCapacity ? Number(maxCapacity) : undefined,
-        budgetRequested: budgetRequested ? Number(budgetRequested) : undefined,
-        budgetJustification: budgetJustification.trim() || undefined,
+        isPaid,
+        amount: isPaid ? Number(amount.replace(/[^0-9.]/g, "")) || 0 : 0,
+        budgetRequested: isPaid
+          ? Number(budgetRequested.replace(/[^0-9.]/g, "")) || 0
+          : undefined,
+        flyerUrl: flyer[0]?.url,
+        certificationIncluded: certification,
         description: description.trim() || undefined,
       })
-      pushToast("Training event created", "success")
-      reset()
-      onCreated?.()
+
+      // Enrolment is a second call against the newly created event.
+      const eventId = (created as { _id?: string } | null)?._id
+      if (eventId && participants.length > 0) {
+        await enroll.mutateAsync({
+          id: eventId,
+          employeeIds: participants.map((p) => p._id),
+        })
+      }
+
       onClose()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to create this training event.")
-    } finally {
-      setSaving(false)
+    } catch (error) {
+      setFormError(hrErrorMessage(error))
     }
   }
 
+  const error =
+    formError ??
+    (createEvent.error || enroll.error
+      ? hrErrorMessage(createEvent.error ?? enroll.error)
+      : null)
+
   return (
-    <ModalShell open={open} onClose={handleClose} className="max-w-2xl">
+    <ModalShell open={open} onClose={onClose} className="max-w-2xl">
       {/* Header */}
       <div className="flex items-start justify-between gap-4 border-b border-[#EEF1F6] px-6 py-5">
-        <div className="flex items-center gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#EEF2FF] text-[#3B5BDB]">
-            <GraduationCap className="h-5 w-5" />
-          </span>
-          <div>
-            <h2 className="text-[18px] font-bold text-[#111827]">Create Training Event</h2>
-            <p className="mt-0.5 text-[13px] text-[#6B7280]">
-              Schedule a session and request its budget.
-            </p>
-          </div>
-        </div>
+        <h2 className="text-[20px] font-bold text-[#111827]">Create New Training Event</h2>
         <button
           type="button"
-          onClick={handleClose}
+          onClick={onClose}
           aria-label="Close"
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[#9CA3AF] hover:bg-gray-100 hover:text-[#111827]"
         >
-          <X className="h-4.5 w-4.5" />
+          <X className="h-[18px] w-[18px]" />
         </button>
       </div>
 
       {/* Body */}
-      <div className="max-h-[68vh] overflow-y-auto px-6 py-5">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="sm:col-span-2">
-            <label className={labelCls} htmlFor="training-title">
-              Name of Training
-            </label>
-            <input
-              id="training-title"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              className={inputCls}
-              placeholder="e.g. Advanced Sound Engineering Workshop"
+      <div className="flex max-h-[68vh] flex-col gap-5 overflow-y-auto px-6 py-5">
+        {/* Scope */}
+        <div>
+          <label className={labelCls}>Training For</label>
+          <div className="mt-2 flex items-center gap-6">
+            <Radio
+              checked={scope === "branch"}
+              onChange={() => setScope("branch")}
+              label="This Branch"
+              disabled={pending}
+            />
+            <Radio
+              checked={scope === "global"}
+              onChange={() => setScope("global")}
+              label="All Branches"
+              disabled={pending}
             />
           </div>
+        </div>
 
-          <div>
-            <label className={labelCls} htmlFor="training-scope">
-              Scope
-            </label>
-            <select
-              id="training-scope"
-              className={inputCls}
-              value={isGlobal ? "global" : "branch"}
-              onChange={(event) => setIsGlobal(event.target.value === "global")}
-            >
-              <option value="branch">
-                {scope.branchName ? `${scope.branchName} only` : "This branch only"}
-              </option>
-              <option value="global">All branches</option>
-            </select>
-          </div>
+        {/* Title */}
+        <div>
+          <label className={labelCls}>Training Title</label>
+          <input
+            className={inputCls}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="e.g. Governance & Financial Oversight"
+            disabled={pending}
+          />
+        </div>
 
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <label className={labelCls} htmlFor="training-location-type">
-              Location Type
-            </label>
+            <label className={labelCls}>Event Type</label>
             <select
-              id="training-location-type"
               className={inputCls}
               value={locationType}
-              onChange={(event) => setLocationType(event.target.value)}
+              onChange={(e) => setLocationType(e.target.value as TrainingLocationType)}
+              disabled={pending}
             >
               {LOCATION_TYPES.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -192,176 +247,207 @@ export default function CreateTrainingEventModal({
               ))}
             </select>
           </div>
+          <div>
+            <label className={labelCls}>Payment</label>
+            <div className="mt-2 flex items-center gap-6">
+              <Radio
+                checked={!isPaid}
+                onChange={() => setIsPaid(false)}
+                label="Free"
+                disabled={pending}
+              />
+              <Radio
+                checked={isPaid}
+                onChange={() => setIsPaid(true)}
+                label="Paid"
+                disabled={pending}
+              />
+            </div>
+          </div>
+        </div>
 
-          <div className="sm:col-span-2">
-            <label className={labelCls} htmlFor="training-venue">
-              Location / Link
-            </label>
-            <input
-              id="training-venue"
-              value={venueOrLink}
-              onChange={(event) => setVenueOrLink(event.target.value)}
-              className={inputCls}
-              placeholder="Venue or Meeting Link"
-            />
+        {isPaid && (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <label className={labelCls}>Amount (per participant)</label>
+              <input
+                className={inputCls}
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                inputMode="decimal"
+                placeholder="₦ 0.00"
+                disabled={pending}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Budget Requested</label>
+              <input
+                className={inputCls}
+                value={budgetRequested}
+                onChange={(e) => setBudgetRequested(e.target.value)}
+                inputMode="decimal"
+                placeholder="₦ 0.00"
+                disabled={pending}
+              />
+            </div>
           </div>
+        )}
 
-          <div>
-            <label className={labelCls} htmlFor="training-start-date">
-              Start Date
-            </label>
-            <input
-              id="training-start-date"
-              type="date"
-              value={startDate}
-              onChange={(event) => setStartDate(event.target.value)}
-              className={inputCls}
-            />
-          </div>
-          <div>
-            <label className={labelCls} htmlFor="training-end-date">
-              End Date
-            </label>
-            <input
-              id="training-end-date"
-              type="date"
-              value={endDate}
-              onChange={(event) => setEndDate(event.target.value)}
-              className={inputCls}
-            />
-          </div>
+        {/* Participants */}
+        <div>
+          <label className={labelCls}>Enrol Staff (optional)</label>
+          <EmployeeMultiPicker
+            value={participants}
+            onChange={setParticipants}
+            disabled={pending}
+          />
+        </div>
 
+        {/* Trainer + venue */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <label className={labelCls} htmlFor="training-start-time">
-              Start Time
-            </label>
+            <label className={labelCls}>Trainer Name</label>
             <input
-              id="training-start-time"
-              type="time"
-              value={startTime}
-              onChange={(event) => setStartTime(event.target.value)}
               className={inputCls}
-            />
-          </div>
-          <div>
-            <label className={labelCls} htmlFor="training-end-time">
-              End Time
-            </label>
-            <input
-              id="training-end-time"
-              type="time"
-              value={endTime}
-              onChange={(event) => setEndTime(event.target.value)}
-              className={inputCls}
-            />
-          </div>
-
-          <div>
-            <label className={labelCls} htmlFor="training-trainer">
-              Trainer Name
-            </label>
-            <input
-              id="training-trainer"
               value={trainerName}
-              onChange={(event) => setTrainerName(event.target.value)}
-              className={inputCls}
-              placeholder="e.g. Pastor David Osei"
+              onChange={(e) => setTrainerName(e.target.value)}
+              placeholder="e.g. Pastor Caleb Obi"
+              disabled={pending}
             />
           </div>
           <div>
-            <label className={labelCls} htmlFor="training-trainer-type">
-              Trainer Type
-            </label>
+            <label className={labelCls}>Trainer Type</label>
             <select
-              id="training-trainer-type"
               className={inputCls}
               value={trainerType}
-              onChange={(event) => setTrainerType(event.target.value)}
+              onChange={(e) => setTrainerType(e.target.value as "internal" | "external")}
+              disabled={pending}
             >
               <option value="internal">Internal</option>
               <option value="external">External</option>
             </select>
           </div>
+        </div>
 
+        <div>
+          <label className={labelCls}>
+            {locationType === "virtual" ? "Meeting Link" : "Venue"}
+          </label>
+          <input
+            className={inputCls}
+            value={venueOrLink}
+            onChange={(e) => setVenueOrLink(e.target.value)}
+            placeholder={
+              locationType === "virtual" ? "https://…" : "e.g. Main Auditorium, Maryland"
+            }
+            disabled={pending}
+          />
+        </div>
+
+        {/* Upload E-Flyer */}
+        <div>
+          <label className={labelCls}>Upload E-Flyer</label>
+          <HrFileDrop
+            files={flyer}
+            onChange={(files) => setFlyer(files.slice(-1))}
+            folder="hr/trainings"
+            branchId={branchId || undefined}
+            hint="JPG, PNG or PDF (max. 5MB)"
+            disabled={pending}
+          />
+        </div>
+
+        {/* Dates / Times */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <label className={labelCls} htmlFor="training-capacity">
-              Max Capacity
-            </label>
+            <label className={labelCls}>Start Date</label>
             <input
-              id="training-capacity"
-              value={maxCapacity}
-              onChange={(event) => setMaxCapacity(event.target.value.replace(/[^\d]/g, ""))}
-              inputMode="numeric"
+              type="date"
               className={inputCls}
-              placeholder="50"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              disabled={pending}
             />
           </div>
           <div>
-            <label className={labelCls} htmlFor="training-budget">
-              Total Budget Requested
-            </label>
+            <label className={labelCls}>End Date</label>
             <input
-              id="training-budget"
-              value={budgetRequested}
-              onChange={(event) => setBudgetRequested(event.target.value.replace(/[^\d.]/g, ""))}
-              inputMode="decimal"
+              type="date"
               className={inputCls}
-              placeholder="250000"
+              value={endDate}
+              min={startDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              disabled={pending}
             />
           </div>
-
-          <div className="sm:col-span-2">
-            <label className={labelCls} htmlFor="training-justification">
-              Budget Justification
-            </label>
-            <textarea
-              id="training-justification"
-              rows={3}
-              value={budgetJustification}
-              onChange={(event) => setBudgetJustification(event.target.value)}
-              className={cn(inputCls, "resize-none")}
-              placeholder="What the budget covers and why it is needed."
+          <div>
+            <label className={labelCls}>Start Time</label>
+            <input
+              type="time"
+              className={inputCls}
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+              disabled={pending}
             />
           </div>
-
-          <div className="sm:col-span-2">
-            <label className={labelCls} htmlFor="training-description">
-              Description
-            </label>
-            <textarea
-              id="training-description"
-              rows={3}
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              className={cn(inputCls, "resize-none")}
-              placeholder="What participants will cover."
+          <div>
+            <label className={labelCls}>End Time</label>
+            <input
+              type="time"
+              className={inputCls}
+              value={endTime}
+              onChange={(e) => setEndTime(e.target.value)}
+              disabled={pending}
             />
           </div>
         </div>
 
-        {error ? (
-          <p className="mt-4 rounded-md bg-rose-50 px-3 py-2 text-[12px] text-rose-600">{error}</p>
-        ) : null}
+        {/* Description */}
+        <div>
+          <label className={labelCls}>Description</label>
+          <textarea
+            rows={3}
+            className={inputCls}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Briefly describe the purpose of this training session..."
+            disabled={pending}
+          />
+        </div>
+
+        {/* Certification Included */}
+        <label className="flex cursor-pointer items-center gap-2 text-[13px] font-medium text-[#111827]">
+          <input
+            type="checkbox"
+            checked={certification}
+            onChange={(e) => setCertification(e.target.checked)}
+            disabled={pending}
+            className="h-4 w-4 rounded border-[#D1D5DB] accent-[#2563EB]"
+          />
+          Certification Included?
+        </label>
+
+        {error && <p className="text-[12px] font-medium text-red-600">{error}</p>}
       </div>
 
       {/* Footer */}
       <div className="flex items-center justify-end gap-3 border-t border-[#EEF1F6] px-6 py-4">
         <button
           type="button"
-          onClick={handleClose}
-          disabled={saving}
-          className="rounded-md border border-[#E5E7EB] bg-white px-4 py-2.5 text-[12px] font-semibold text-[#4B5563] hover:bg-[#F8FAFC] disabled:opacity-60"
+          onClick={onClose}
+          disabled={pending}
+          className="inline-flex items-center justify-center rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[12px] font-medium text-[#4B5563] hover:bg-[#F8FAFC] disabled:opacity-50"
         >
           Cancel
         </button>
         <button
           type="button"
-          onClick={handleSubmit}
-          disabled={saving}
-          className="inline-flex items-center gap-2 rounded-md bg-[#111827] px-4 py-2.5 text-[12px] font-semibold text-white hover:bg-black disabled:opacity-60"
+          onClick={handleCreate}
+          disabled={pending}
+          className="inline-flex items-center justify-center gap-2 rounded-md bg-[#2563EB] px-4 py-2 text-[12px] font-semibold text-white hover:bg-[#1D4FD7] disabled:opacity-60"
         >
-          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-          {saving ? "Creating…" : "Create Training Event"}
+          {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          Create Training
         </button>
       </div>
     </ModalShell>

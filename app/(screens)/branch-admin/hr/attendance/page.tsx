@@ -4,49 +4,45 @@ import { useMemo, useState } from "react"
 import { Menu, Search, Bell, Plus } from "lucide-react"
 import BranchAdminSidebar from "@/components/navigation/BranchAdminSidebar"
 import BranchAdminAttendanceModal from "@/components/hr/BranchAdminAttendanceModal"
-import { HrPaginationBar, HrTableStateRow } from "@/components/hr/HrTableState"
-import { useHrAttendance, useHrAttendanceMetrics } from "@/components/hooks/useHrAttendance"
-import { useDebouncedValue } from "@/components/hooks/useDebouncedValue"
+import { HrTableState } from "@/components/hr/HrDataState"
+import { HrPagination } from "@/components/hr/HrPagination"
+import { useAttendanceLogs } from "@/components/hooks/hr/useHrAttendance"
 import {
   ATTENDANCE_STATUS_LABELS,
-  formatDate,
-  formatDuration,
-  formatTime,
+  clockTime,
+  deref,
+  duration,
+  employeeName,
   initials,
-  statusLabel,
-} from "@/lib/hr/display"
+  lookup,
+} from "@/lib/hr/normalize"
+import { ATTENDANCE_STATUSES, type AttendanceStatus } from "@/lib/hr/types"
+import { formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
-const STATUS_STYLES: Record<string, { pill: string; dot: string }> = {
+const PAGE_SIZE = 10
+
+const ALL_DEPARTMENTS = "All Departments"
+
+const STATUS_STYLES: Record<AttendanceStatus, { pill: string; dot: string }> = {
   present: { pill: "bg-emerald-100 text-emerald-700", dot: "bg-emerald-500" },
   late: { pill: "bg-amber-100 text-amber-700", dot: "bg-amber-500" },
   absent: { pill: "bg-rose-100 text-rose-700", dot: "bg-rose-500" },
   half_day: { pill: "bg-blue-100 text-blue-700", dot: "bg-blue-500" },
-  missing: { pill: "bg-slate-100 text-slate-600", dot: "bg-slate-400" },
+  missing: { pill: "bg-gray-100 text-gray-700", dot: "bg-gray-400" },
 }
 
-const STATUS_FILTERS = [
-  { value: "", label: "All Statuses" },
-  { value: "present", label: "Present" },
-  { value: "late", label: "Late" },
-  { value: "absent", label: "Absent" },
-  { value: "half_day", label: "Half Day" },
-  { value: "missing", label: "Missing" },
-]
-
-const PAGE_SIZE = 20
-
-function StatusPill({ status }: { status: string }) {
-  const tone = STATUS_STYLES[status] ?? STATUS_STYLES.missing
+function StatusPill({ status }: { status: AttendanceStatus }) {
+  const style = STATUS_STYLES[status] ?? STATUS_STYLES.missing
   return (
     <span
       className={cn(
         "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold",
-        tone.pill
+        style.pill,
       )}
     >
-      <span className={cn("h-1.5 w-1.5 rounded-full", tone.dot)} />
-      {statusLabel(ATTENDANCE_STATUS_LABELS, status)}
+      <span className={cn("h-1.5 w-1.5 rounded-full", style.dot)} />
+      {lookup(ATTENDANCE_STATUS_LABELS, status)}
     </span>
   )
 }
@@ -54,40 +50,66 @@ function StatusPill({ status }: { status: string }) {
 export default function Page() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
-  const [status, setStatus] = useState("")
+  const [department, setDepartment] = useState(ALL_DEPARTMENTS)
+  const [status, setStatus] = useState<"all" | AttendanceStatus>("all")
   const [date, setDate] = useState("")
   const [query, setQuery] = useState("")
   const [page, setPage] = useState(1)
 
-  const { logs, pagination, loading, error, refresh } = useHrAttendance({
+  const logs = useAttendanceLogs({
     page,
     limit: PAGE_SIZE,
     status,
-    date,
+    date: date || undefined,
   })
-  const { metrics, refresh: refreshMetrics } = useHrAttendanceMetrics({ date })
 
-  // The list endpoint filters by status and date; the name box narrows the
-  // page that came back, since it has no search parameter.
-  const search = useDebouncedValue(query, 250)
-  const rows = useMemo(() => {
-    const term = search.trim().toLowerCase()
-    if (!term) return logs
-    return logs.filter((row) =>
-      `${row.employeeName} ${row.department} ${row.employeeCode}`.toLowerCase().includes(term)
-    )
-  }, [logs, search])
+  const rows = useMemo(
+    () =>
+      (logs.data?.items ?? []).map((log) => {
+        const employee = deref(log.employeeId)
+        return {
+          id: log._id,
+          name: employeeName(log.employeeId),
+          department: employee?.department ?? "—",
+          date: formatDate(log.date, "medium"),
+          clockIn: clockTime(log.clockIn),
+          clockInLate: log.status === "late",
+          clockOut: clockTime(log.clockOut),
+          totalHours: duration(log.durationMinutes),
+          status: log.status,
+        }
+      }),
+    [logs.data],
+  )
+
+  /**
+   * Department and name filtering happen on the loaded page: the attendance
+   * list endpoint takes branch, employee, status and date, but has no
+   * department or free-text search parameter.
+   */
+  const departments = useMemo(
+    () => [
+      ALL_DEPARTMENTS,
+      ...Array.from(new Set(rows.map((row) => row.department).filter((d) => d !== "—"))),
+    ],
+    [rows],
+  )
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return rows.filter((row) => {
+      if (department !== ALL_DEPARTMENTS && row.department !== department) return false
+      if (q && !row.name.toLowerCase().includes(q)) return false
+      return true
+    })
+  }, [rows, department, query])
 
   const resetFilters = () => {
-    setStatus("")
+    setDepartment(ALL_DEPARTMENTS)
+    setStatus("all")
     setDate("")
     setQuery("")
     setPage(1)
-  }
-
-  const handleRecorded = () => {
-    refresh()
-    refreshMetrics()
   }
 
   return (
@@ -156,61 +178,46 @@ export default function Page() {
             </button>
           </div>
 
-          {/* Live attendance KPIs */}
-          <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-5">
-            {[
-              { label: "Total Staff", value: String(metrics.totalEmployees) },
-              { label: "Clocked In", value: String(metrics.clockedInToday) },
-              { label: "Late", value: String(metrics.lateToday) },
-              { label: "Absent", value: String(metrics.absentToday) },
-              {
-                label: "Attendance Rate",
-                value: `${metrics.attendanceRate}%`,
-                hint: metrics.avgClockInTime ? `Avg in ${metrics.avgClockInTime}` : "",
-              },
-            ].map((kpi) => (
-              <div key={kpi.label} className="rounded-xl border border-[#EEF1F6] bg-white p-4">
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                  {kpi.label}
-                </div>
-                <div className="mt-1.5 text-[20px] font-bold text-[#111827]">{kpi.value}</div>
-                {kpi.hint ? (
-                  <div className="text-[11px] text-[#9CA3AF]">{kpi.hint}</div>
-                ) : null}
-              </div>
-            ))}
-          </div>
-
           {/* Filters card */}
           <div className="mt-6 rounded-xl border border-[#EEF1F6] bg-white p-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
               <div className="flex flex-col gap-1.5">
-                <label className="text-[12px] font-semibold text-[#6B7280]" htmlFor="attendance-status">
-                  Status
-                </label>
+                <label className="text-[12px] font-semibold text-[#6B7280]">Department</label>
                 <select
-                  id="attendance-status"
-                  value={status}
-                  onChange={(e) => {
-                    setStatus(e.target.value)
-                    setPage(1)
-                  }}
+                  value={department}
+                  onChange={(e) => setDepartment(e.target.value)}
                   className="h-[42px] rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[13px]"
                 >
-                  {STATUS_FILTERS.map((option) => (
-                    <option key={option.value || "all"} value={option.value}>
-                      {option.label}
+                  {departments.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
                     </option>
                   ))}
                 </select>
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-[12px] font-semibold text-[#6B7280]" htmlFor="attendance-date">
-                  Date
-                </label>
+                <label className="text-[12px] font-semibold text-[#6B7280]">Status</label>
+                <select
+                  value={status}
+                  onChange={(e) => {
+                    setStatus(e.target.value as "all" | AttendanceStatus)
+                    setPage(1)
+                  }}
+                  className="h-[42px] rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[13px]"
+                >
+                  <option value="all">All Statuses</option>
+                  {ATTENDANCE_STATUSES.map((value) => (
+                    <option key={value} value={value}>
+                      {ATTENDANCE_STATUS_LABELS[value]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[12px] font-semibold text-[#6B7280]">Date</label>
                 <input
-                  id="attendance-date"
                   type="date"
                   value={date}
                   onChange={(e) => {
@@ -222,9 +229,7 @@ export default function Page() {
               </div>
 
               <div className="flex flex-1 flex-col gap-1.5">
-                <label className="text-[12px] font-semibold text-[#6B7280]">
-                  Quick Search
-                </label>
+                <label className="text-[12px] font-semibold text-[#6B7280]">Quick Search</label>
                 <input
                   type="text"
                   value={query}
@@ -250,85 +255,76 @@ export default function Page() {
               <table className="w-full text-left">
                 <thead className="bg-[#EEF2FF]">
                   <tr>
-                    {[
-                      "Employee",
-                      "Date",
-                      "Clock In",
-                      "Clock Out",
-                      "Total Hours",
-                      "Status",
-                    ].map((h) => (
-                      <th
-                        key={h}
-                        className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]"
-                      >
-                        {h}
-                      </th>
-                    ))}
+                    {["Employee", "Date", "Clock In", "Clock Out", "Total Hours", "Status"].map(
+                      (h) => (
+                        <th
+                          key={h}
+                          className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]"
+                        >
+                          {h}
+                        </th>
+                      ),
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#F3F4F6]">
-                  {rows.map((row) => (
-                    <tr key={row.id}>
-                      <td className="px-4 py-4 text-[13px]">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#EEF2FF] text-[12px] font-bold text-[#2563EB]">
-                            {initials(row.employeeName)}
-                          </div>
-                          <div className="flex flex-col">
-                            <span className="font-bold text-[#111827]">
-                              {row.employeeName || "Unnamed staff"}
-                            </span>
-                            <span className="text-[12px] text-[#6B7280]">
-                              {row.department || row.jobTitle || "—"}
-                            </span>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                        {formatDate(row.date)}
-                      </td>
-                      <td
-                        className={cn(
-                          "px-4 py-4 text-[13px]",
-                          row.status === "late" ? "font-semibold text-amber-600" : "text-[#4B5563]"
-                        )}
-                      >
-                        {formatTime(row.clockIn)}
-                      </td>
-                      <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                        {formatTime(row.clockOut)}
-                      </td>
-                      <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                        {formatDuration(row.durationMinutes)}
-                      </td>
-                      <td className="px-4 py-4 text-[13px]">
-                        <StatusPill status={row.status} />
-                      </td>
-                    </tr>
-                  ))}
-                  <HrTableStateRow
+                  <HrTableState
                     colSpan={6}
-                    loading={loading}
-                    error={error}
-                    isEmpty={rows.length === 0}
-                    emptyMessage="No records match your filters."
-                    onRetry={refresh}
+                    isLoading={logs.isLoading}
+                    error={logs.error}
+                    isEmpty={filtered.length === 0}
+                    emptyTitle="No attendance records"
+                    emptyDescription="Records appear here once staff clock in or entries are added."
+                    onRetry={() => logs.refetch()}
                   />
+
+                  {!logs.isLoading &&
+                    !logs.error &&
+                    filtered.map((row) => (
+                      <tr key={row.id}>
+                        <td className="px-4 py-4 text-[13px]">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#EEF2FF] text-[12px] font-bold text-[#2563EB]">
+                              {initials(row.name)}
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="font-bold text-[#111827]">{row.name}</span>
+                              <span className="text-[12px] text-[#6B7280]">{row.department}</span>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-4 text-[13px] text-[#4B5563]">{row.date}</td>
+                        <td
+                          className={cn(
+                            "px-4 py-4 text-[13px]",
+                            row.clockInLate ? "font-semibold text-amber-600" : "text-[#4B5563]",
+                          )}
+                        >
+                          {row.clockIn}
+                        </td>
+                        <td className="px-4 py-4 text-[13px] text-[#4B5563]">{row.clockOut}</td>
+                        <td className="px-4 py-4 text-[13px] text-[#4B5563]">{row.totalHours}</td>
+                        <td className="px-4 py-4 text-[13px]">
+                          <StatusPill status={row.status} />
+                        </td>
+                      </tr>
+                    ))}
                 </tbody>
               </table>
             </div>
 
-            <HrPaginationBar pagination={pagination} onPageChange={setPage} noun="records" />
+            <HrPagination
+              pagination={logs.data?.pagination}
+              page={page}
+              onPageChange={setPage}
+              itemCount={rows.length}
+              noun="records"
+            />
           </div>
         </main>
       </div>
 
-      <BranchAdminAttendanceModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        onRecorded={handleRecorded}
-      />
+      <BranchAdminAttendanceModal open={modalOpen} onClose={() => setModalOpen(false)} />
     </div>
   )
 }

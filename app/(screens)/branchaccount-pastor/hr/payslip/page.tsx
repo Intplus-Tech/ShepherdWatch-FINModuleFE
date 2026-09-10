@@ -1,91 +1,84 @@
 "use client"
 
-import { Suspense, useMemo } from "react"
+import { useMemo } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { useHrPayrollRun, useHrPayslip } from "@/components/hooks/useHrPayroll"
-import { useToast } from "@/components/ui/toast"
-import { initials } from "@/lib/hr/display"
-import { exportHrRows } from "@/lib/hr/export"
-import { Search, Bell, ArrowLeft, Download, Calculator } from "lucide-react"
+import { Search, Bell, ArrowLeft, Download } from "lucide-react"
 import BranchAccountantSidebar from "@/components/navigation/BranchAccountantSidebar"
+import { HrPanelState } from "@/components/hr/HrDataState"
+import { useBranchId } from "@/components/hooks/hr/useBranchId"
+import { useCurrentPayrollRun, usePayslip } from "@/components/hooks/hr/useHrPayroll"
+import { currentPeriod, initials, periodLabel, refId } from "@/lib/hr/normalize"
+import { downloadCsv, rowsToCsv } from "@/lib/export-csv"
+import { formatCurrency } from "@/lib/format"
+import { withSuspense } from "@/lib/withSuspense"
 
-type LineItem = {
-  description: string
-  amount: number
-}
+type LineItem = { description: string; amount: number }
 
-/** Payslip keys come back camelCased; this is what a reader expects to see. */
-function labelFor(key: string): string {
-  return key
-    .replace(/([A-Z])/g, " $1")
-    .replace(/^./, (char) => char.toUpperCase())
-    .trim()
-}
-
-function formatNaira(amount: number): string {
-  return `₦${amount.toLocaleString("en-NG", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`
-}
-
-function formatAmount(amount: number): string {
-  return amount.toLocaleString("en-NG", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })
-}
-
-export default function Page() {
-  return (
-    <Suspense fallback={null}>
-      <PayslipScreen />
-    </Suspense>
-  )
-}
-
-function PayslipScreen() {
+function Page() {
+  const router = useRouter()
   const searchParams = useSearchParams()
-  const employeeId = searchParams.get("employeeId") ?? ""
-  const { pushToast } = useToast()
+  const employeeId = searchParams.get("employeeId")
+  const period = searchParams.get("period") ?? currentPeriod()
+  const branchId = useBranchId()
 
-  // A payslip belongs to a payroll run, so the branch's current run supplies
-  // the run id the employee's slip is read from.
-  const { run } = useHrPayrollRun()
-  const { payslip, loading, error } = useHrPayslip(run?.id ?? "", employeeId)
+  /**
+   * A payslip is addressed by run + employee, so the current run for this
+   * branch and period is resolved first, then the employee's entry within it.
+   */
+  const run = useCurrentPayrollRun({ branchId, period })
+  const runId = run.data?._id ?? null
 
-  const earnings = useMemo<LineItem[]>(
-    () =>
-      Object.entries(payslip?.earnings ?? {})
-        .filter(([key]) => key !== "grossPay")
-        .map(([key, amount]) => ({ description: labelFor(key), amount })),
-    [payslip]
-  )
+  const payslipQuery = usePayslip(runId, employeeId)
+  const payslip = payslipQuery.data
 
-  const deductions = useMemo<LineItem[]>(
-    () =>
-      Object.entries(payslip?.deductions ?? {})
-        .filter(([key]) => key !== "totalDeductions")
-        .map(([key, amount]) => ({ description: labelFor(key), amount })),
-    [payslip]
-  )
+  const entry = payslip?.payslip
+  const employee = payslip?.employee
 
-  const grossEarnings =
-    payslip?.earnings?.grossPay ?? earnings.reduce((sum, item) => sum + item.amount, 0)
-  const totalDeductions =
-    payslip?.deductions?.totalDeductions ?? deductions.reduce((sum, item) => sum + item.amount, 0)
-  const netPay = payslip?.netPay ?? grossEarnings - totalDeductions
+  const earnings: LineItem[] = useMemo(() => {
+    if (!entry) return []
+    return [
+      { description: "Basic Salary", amount: entry.basicSalary },
+      ...(entry.allowances ?? []).map((allowance) => ({
+        description: allowance.title,
+        amount: allowance.amount,
+      })),
+    ]
+  }, [entry])
 
-  const handleDownload = () => {
-    const exported = exportHrRows("payslip", [
-      ...earnings.map((item) => ({ Section: "Earnings", Item: item.description, Amount: item.amount })),
-      ...deductions.map((item) => ({ Section: "Deductions", Item: item.description, Amount: item.amount })),
-      { Section: "Summary", Item: "Net Pay", Amount: netPay },
+  const deductions: LineItem[] = useMemo(() => {
+    if (!entry) return []
+    return [
+      { description: "PAYE Tax", amount: entry.payeDeduction ?? 0 },
+      { description: "Pension Contribution", amount: entry.pensionDeduction ?? 0 },
+      { description: "Loan Repayment", amount: entry.loanDeduction ?? 0 },
+      { description: "Other Deductions", amount: entry.otherDeductions ?? 0 },
+    ].filter((item) => item.amount > 0)
+  }, [entry])
+
+  const name = entry?.employeeName ?? "—"
+
+  function handleDownload() {
+    if (!entry) return
+    const csv = rowsToCsv([
+      ...earnings.map((item) => ({
+        Section: "Earnings",
+        Description: item.description,
+        Amount: item.amount,
+      })),
+      ...deductions.map((item) => ({
+        Section: "Deductions",
+        Description: item.description,
+        Amount: item.amount,
+      })),
+      { Section: "Summary", Description: "Gross Pay", Amount: entry.grossPay },
+      { Section: "Summary", Description: "Total Deductions", Amount: entry.totalDeductions },
+      { Section: "Summary", Description: "Net Pay", Amount: entry.netPay },
     ])
-    if (!exported) pushToast("Nothing to download yet", "info")
+    downloadCsv(`payslip-${entry.employeeName.replace(/\s+/g, "-")}-${period}.csv`, csv)
   }
 
-  const router = useRouter()
+  const isLoading = run.isLoading || payslipQuery.isLoading
+  const error = run.error ?? payslipQuery.error
 
   return (
     <div className="flex min-h-screen flex-col lg:flex-row bg-[#F8FAFC]">
@@ -126,7 +119,7 @@ function PayslipScreen() {
           <button
             type="button"
             onClick={handleDownload}
-            disabled={!payslip}
+            disabled={!entry}
             className="flex items-center gap-2 rounded-md bg-[#111827] px-4 py-2 text-[12px] font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Download className="h-4 w-4" />
@@ -134,179 +127,180 @@ function PayslipScreen() {
           </button>
         </div>
 
-        {/* Employee card */}
-        <div className="mb-5 rounded-xl border border-[#EEF1F6] bg-white p-5">
-          <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#E8EDFF] text-[16px] font-bold text-[#3B5BDB]">
-              {initials(payslip?.employee.name ?? "")}
-            </div>
-            <div className="flex flex-col gap-1">
-              <span className="text-[20px] font-bold text-[#111827]">
-                {payslip?.employee.name || (loading ? "Loading…" : "Payslip")}
-              </span>
-              <div className="flex items-center gap-2">
-                <span className="text-[13px] text-[#6B7280]">
-                  {payslip?.employee.jobTitle ||
-                    payslip?.employee.department ||
-                    error ||
-                    (employeeId ? "" : "Open a staff member from the directory")}
-                </span>
-                {payslip?.employee.employeeCode ? (
-                  <span className="inline-flex items-center rounded-full bg-[#EEF2FF] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#3B5BDB]">
-                    {payslip.employee.employeeCode}
-                  </span>
-                ) : null}
-                {payslip?.period ? (
-                  <span className="inline-flex items-center rounded-full bg-[#F3F4F6] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#4B5563]">
-                    {payslip.period}
-                  </span>
-                ) : null}
+        {!employeeId ? (
+          <HrPanelState
+            isLoading={false}
+            error={null}
+            isEmpty
+            emptyTitle="No employee selected"
+            emptyDescription="Open a payslip from the Employee Directory."
+          />
+        ) : !branchId ? (
+          <HrPanelState
+            isLoading={false}
+            error={null}
+            isEmpty
+            emptyTitle="No branch assigned"
+            emptyDescription="Your account needs a branch before payroll can be looked up."
+          />
+        ) : isLoading || error || !entry ? (
+          <HrPanelState
+            isLoading={isLoading}
+            error={error}
+            isEmpty={!entry}
+            emptyTitle={`No payslip for ${periodLabel(period)}`}
+            emptyDescription="Generate and process the payroll run for this period first."
+            onRetry={() => {
+              run.refetch()
+              payslipQuery.refetch()
+            }}
+          />
+        ) : (
+          <>
+            {/* Employee card */}
+            <div className="mb-5 rounded-xl border border-[#EEF1F6] bg-white p-5">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#E8EDFF] text-[16px] font-bold text-[#3B5BDB]">
+                    {initials(name)}
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[20px] font-bold text-[#111827]">{name}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[13px] text-[#6B7280]">{entry.jobTitle}</span>
+                      <span className="inline-flex items-center rounded-full bg-[#EEF2FF] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#3B5BDB]">
+                        {employee?.employeeId ?? refId(payslip?.branch) ?? "—"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF]">
+                    Pay Period
+                  </div>
+                  <div className="mt-1 text-[15px] font-bold text-[#111827]">
+                    {periodLabel(payslip?.runPeriod ?? period)}
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* Final Net Pay Computation card */}
-        <div className="mb-5 rounded-xl border border-[#EEF1F6] bg-white p-5">
-          <div className="mb-4 flex items-center gap-2">
-            <span className="flex h-7 w-7 items-center justify-center rounded-md bg-[#111827] text-white">
-              <Calculator className="h-4 w-4" />
-            </span>
-            <h2 className="text-[16px] font-bold text-[#111827]">Final Net Pay Computation</h2>
-          </div>
-
-          <div className="rounded-lg bg-[#F9FAFB] p-5">
-            <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-[1fr_auto_1fr_auto_1fr]">
-              {/* Gross Earnings */}
-              <div className="flex flex-col justify-center rounded-lg border border-[#EEF1F6] bg-white px-4 py-4">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                  Gross Earnings
-                </span>
-                <span className="mt-1 text-[18px] font-bold text-[#111827]">
-                  {formatNaira(grossEarnings)}
-                </span>
-              </div>
-
-              {/* minus */}
-              <div className="flex items-center justify-center text-[22px] font-bold text-[#9CA3AF]">
-                −
-              </div>
-
-              {/* Total Deductions */}
-              <div className="flex flex-col justify-center rounded-lg border border-[#EEF1F6] bg-white px-4 py-4">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                  Total Deductions
-                </span>
-                <span className="mt-1 text-[18px] font-bold text-rose-600">
-                  {formatNaira(totalDeductions)}
-                </span>
-              </div>
-
-              {/* equals */}
-              <div className="flex items-center justify-center text-[22px] font-bold text-[#9CA3AF]">
-                =
-              </div>
-
-              {/* Net Pay */}
-              <div className="flex flex-col justify-center rounded-lg bg-[#111827] px-4 py-4 text-white">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-white/60">
-                  Net Pay (Take Home)
-                </span>
-                <span className="mt-1 text-[18px] font-bold text-white">
-                  {formatNaira(netPay)}
-                </span>
+            {/* Final Net Pay Computation card */}
+            <div className="mb-5 rounded-xl border border-[#EEF1F6] bg-white p-5">
+              <h2 className="text-[16px] font-bold text-[#111827]">Final Net Pay Computation</h2>
+              <div className="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
+                <div className="rounded-[12px] border border-[#F3F4F6] bg-[#FAFBFF] p-4">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF]">
+                    Gross Earnings
+                  </div>
+                  <div className="mt-2 text-[20px] font-bold text-[#111827]">
+                    {formatCurrency(entry.grossPay)}
+                  </div>
+                </div>
+                <div className="rounded-[12px] border border-[#F3F4F6] bg-[#FAFBFF] p-4">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF]">
+                    Total Deductions
+                  </div>
+                  <div className="mt-2 text-[20px] font-bold text-rose-600">
+                    {formatCurrency(entry.totalDeductions)}
+                  </div>
+                </div>
+                <div className="rounded-[12px] bg-[#111827] p-4">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-white/60">
+                    Net Pay (Take Home)
+                  </div>
+                  <div className="mt-2 text-[20px] font-bold text-white">
+                    {formatCurrency(entry.netPay)}
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* Earnings + Deductions tables */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          {/* Earnings */}
-          <div className="rounded-xl border border-[#EEF1F6] bg-white">
-            <div className="flex items-center justify-between gap-3 border-b border-[#EEF1F6] p-5">
-              <h2 className="text-[16px] font-bold text-[#111827]">Earnings</h2>
-              <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
-                Credit
-              </span>
+            {/* Earnings + Deductions tables */}
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+              <PayslipTable
+                title="Earnings"
+                items={earnings}
+                total={entry.grossPay}
+                totalLabel="Gross Earnings"
+              />
+              <PayslipTable
+                title="Deductions"
+                items={deductions}
+                total={entry.totalDeductions}
+                totalLabel="Total Deductions"
+                tone="rose"
+              />
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead className="bg-[#F9FAFB]">
-                  <tr>
-                    <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">
-                      Description
-                    </th>
-                    <th className="px-4 py-3 text-right text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">
-                      Amount (₦)
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#F3F4F6]">
-                  {earnings.map((item) => (
-                    <tr key={item.description}>
-                      <td className="px-4 py-4 text-[13px] text-[#4B5563]">{item.description}</td>
-                      <td className="px-4 py-4 text-right text-[13px] font-semibold text-[#111827]">
-                        {formatAmount(item.amount)}
-                      </td>
-                    </tr>
-                  ))}
-                  <tr className="bg-[#EEF2FF]">
-                    <td className="px-4 py-4 text-[13px] font-bold uppercase tracking-wider text-[#111827]">
-                      Total Earnings
-                    </td>
-                    <td className="px-4 py-4 text-right text-[13px] font-bold text-[#111827]">
-                      {formatAmount(grossEarnings)}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Deductions */}
-          <div className="rounded-xl border border-[#EEF1F6] bg-white">
-            <div className="flex items-center justify-between gap-3 border-b border-[#EEF1F6] p-5">
-              <h2 className="text-[16px] font-bold text-[#111827]">Deductions</h2>
-              <span className="inline-flex items-center rounded-full bg-rose-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-rose-700">
-                Debit
-              </span>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead className="bg-[#F9FAFB]">
-                  <tr>
-                    <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">
-                      Description
-                    </th>
-                    <th className="px-4 py-3 text-right text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">
-                      Amount (₦)
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#F3F4F6]">
-                  {deductions.map((item) => (
-                    <tr key={item.description}>
-                      <td className="px-4 py-4 text-[13px] text-[#4B5563]">{item.description}</td>
-                      <td className="px-4 py-4 text-right text-[13px] font-semibold text-[#111827]">
-                        {formatAmount(item.amount)}
-                      </td>
-                    </tr>
-                  ))}
-                  <tr className="bg-[#FFF1F2]">
-                    <td className="px-4 py-4 text-[13px] font-bold uppercase tracking-wider text-rose-700">
-                      Total Deductions
-                    </td>
-                    <td className="px-4 py-4 text-right text-[13px] font-bold text-rose-600">
-                      {formatAmount(totalDeductions)}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
+          </>
+        )}
       </main>
     </div>
   )
 }
+
+function PayslipTable({
+  title,
+  items,
+  total,
+  totalLabel,
+  tone = "default",
+}: {
+  title: string
+  items: LineItem[]
+  total: number
+  totalLabel: string
+  tone?: "default" | "rose"
+}) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-[#EEF1F6] bg-white">
+      <div className="border-b border-[#EEF1F6] p-5">
+        <h2 className="text-[16px] font-bold text-[#111827]">{title}</h2>
+      </div>
+      <table className="w-full text-left">
+        <thead className="bg-[#F9FAFB]">
+          <tr>
+            <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">
+              Description
+            </th>
+            <th className="px-5 py-3 text-right text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">
+              Amount
+            </th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-[#F3F4F6]">
+          {items.length === 0 ? (
+            <tr>
+              <td colSpan={2} className="px-5 py-6 text-center text-[13px] text-[#9CA3AF]">
+                Nothing recorded.
+              </td>
+            </tr>
+          ) : (
+            items.map((item) => (
+              <tr key={item.description}>
+                <td className="px-5 py-3.5 text-[13px] text-[#4B5563]">{item.description}</td>
+                <td className="px-5 py-3.5 text-right text-[13px] font-semibold text-[#111827]">
+                  {formatCurrency(item.amount)}
+                </td>
+              </tr>
+            ))
+          )}
+          <tr className="bg-[#FAFBFF]">
+            <td className="px-5 py-3.5 text-[13px] font-bold text-[#111827]">{totalLabel}</td>
+            <td
+              className={
+                tone === "rose"
+                  ? "px-5 py-3.5 text-right text-[13px] font-bold text-rose-600"
+                  : "px-5 py-3.5 text-right text-[13px] font-bold text-[#111827]"
+              }
+            >
+              {formatCurrency(total)}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+export default withSuspense(Page)

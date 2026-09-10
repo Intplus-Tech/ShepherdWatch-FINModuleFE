@@ -1,96 +1,105 @@
 "use client"
 
-import { useMemo, useState } from "react"
-import { X, Banknote, Loader2 } from "lucide-react"
+import { useEffect, useState } from "react"
+import { Banknote, Loader2, X } from "lucide-react"
 import { ModalShell } from "@/components/ui/modal-shell"
 import { SectionLabel, btnDark, btnOutline } from "./shared"
-import { useLoanMutations } from "@/components/hooks/useHrLoans"
-import { useToast } from "@/components/ui/toast"
-import { formatNaira } from "@/lib/hr/display"
+import { HrFileDrop, type UploadedFile } from "@/components/hr/HrFileDrop"
+import { hrErrorMessage } from "@/components/hr/HrDataState"
+import { useEmployee } from "@/components/hooks/hr/useHrEmployees"
+import { useApplyLoan } from "@/components/hooks/hr/useHrLoans"
+import { refId } from "@/lib/hr/normalize"
+
+const labelCls = "text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]"
+const inputCls =
+  "mt-1.5 h-[42px] w-full rounded-md border border-[#E5E7EB] bg-white px-3 text-[13px] text-[#111827] outline-none focus:border-[#3B5BDB]"
 
 const PURPOSES = ["Housing", "Medical", "Education", "Vehicle", "Other"]
 const TENURES = [6, 12, 18, 24]
 
-const inputCls =
-  "mt-1.5 w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2.5 text-[13px] text-[#111827] outline-none focus:border-[#3B5BDB]"
-
-/** Files a loan for the employee whose profile is open. */
+/**
+ * Files a loan for the employee whose profile is open, so the employee is fixed
+ * rather than picked. The branch comes from that employee's own record.
+ */
 export default function NewLoanApplicationModal({
   open,
   onClose,
   employeeId,
-  branchId,
-  onCreated,
 }: {
   open: boolean
   onClose: () => void
-  employeeId: string
-  branchId: string
-  onCreated?: () => void
+  employeeId: string | null
 }) {
-  const { applyForLoan } = useLoanMutations()
-  const { pushToast } = useToast()
+  const employeeQuery = useEmployee(open ? employeeId : null)
+  const applyLoan = useApplyLoan()
 
   const [amount, setAmount] = useState("")
-  const [purpose, setPurpose] = useState(PURPOSES[0])
+  const [purpose, setPurpose] = useState("Housing")
   const [tenureMonths, setTenureMonths] = useState(12)
   const [firstDeductionDate, setFirstDeductionDate] = useState("")
-  const [reason, setReason] = useState("")
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [note, setNote] = useState("")
+  const [documents, setDocuments] = useState<UploadedFile[]>([])
+  const [formError, setFormError] = useState<string | null>(null)
 
-  const monthlyEstimate = useMemo(() => {
-    const value = Number(amount)
-    if (!Number.isFinite(value) || value <= 0 || !tenureMonths) return 0
-    return Math.round(value / tenureMonths)
-  }, [amount, tenureMonths])
+  useEffect(() => {
+    if (!open) return
+    const nextMonth = new Date()
+    nextMonth.setMonth(nextMonth.getMonth() + 1, 1)
 
-  const reset = () => {
     setAmount("")
-    setPurpose(PURPOSES[0])
+    setPurpose("Housing")
     setTenureMonths(12)
-    setFirstDeductionDate("")
-    setReason("")
-    setError(null)
-  }
+    setFirstDeductionDate(nextMonth.toISOString().slice(0, 10))
+    setNote("")
+    setDocuments([])
+    setFormError(null)
+    applyLoan.reset()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
-  const handleClose = () => {
-    if (saving) return
-    reset()
-    onClose()
-  }
+  const branchId = refId(employeeQuery.data?.branchId)
 
-  const handleSubmit = async () => {
-    setError(null)
-    if (!employeeId) return setError("No employee is selected.")
-    if (!branchId) return setError("This employee has no branch, so the loan cannot be filed.")
+  async function handleSubmit() {
+    setFormError(null)
 
-    const value = Number(amount)
-    if (!Number.isFinite(value) || value <= 0) return setError("Enter the loan amount.")
+    const parsedAmount = Number(amount.replace(/[^0-9.]/g, ""))
 
-    setSaving(true)
+    if (!employeeId) {
+      setFormError("No employee selected.")
+      return
+    }
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      setFormError("Enter a loan amount greater than zero.")
+      return
+    }
+    if (!branchId) {
+      setFormError("This employee has no branch on record, so a loan can't be filed.")
+      return
+    }
+
     try {
-      await applyForLoan({
+      await applyLoan.mutateAsync({
         employeeId,
         branchId,
-        amount: value,
-        purpose: reason.trim() ? `${purpose}: ${reason.trim()}` : purpose,
+        amount: parsedAmount,
+        purpose: note.trim() ? `${purpose} — ${note.trim()}` : purpose,
         tenureMonths,
-        firstDeductionDate: firstDeductionDate || undefined,
+        firstDeductionDate: firstDeductionDate
+          ? new Date(firstDeductionDate).toISOString()
+          : undefined,
+        supportingDocumentUrls: documents.map((file) => file.url),
       })
-      pushToast("Loan application submitted", "success")
-      reset()
-      onCreated?.()
       onClose()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to submit this application.")
-    } finally {
-      setSaving(false)
+    } catch (error) {
+      setFormError(hrErrorMessage(error))
     }
   }
 
+  const error = formError ?? (applyLoan.error ? hrErrorMessage(applyLoan.error) : null)
+
   return (
-    <ModalShell open={open} onClose={handleClose} className="max-w-lg">
+    <ModalShell open={open} onClose={onClose} className="max-w-lg">
+      {/* Header */}
       <div className="flex items-center justify-between border-b border-[#EEF1F6] px-6 py-5">
         <div className="flex items-center gap-2.5">
           <span className="flex h-8 w-8 items-center justify-center rounded-md bg-[#EEF2FF] text-[#3B5BDB]">
@@ -100,99 +109,116 @@ export default function NewLoanApplicationModal({
         </div>
         <button
           aria-label="Close"
-          onClick={handleClose}
+          onClick={onClose}
           className="rounded-md p-1 text-[#9CA3AF] hover:bg-[#F1F5F9] hover:text-[#4B5563]"
         >
           <X className="h-5 w-5" />
         </button>
       </div>
 
-      <div className="flex max-h-[68vh] flex-col gap-4 overflow-y-auto px-6 py-5">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div>
-            <SectionLabel>Loan Amount</SectionLabel>
-            <input
-              aria-label="Loan amount"
-              value={amount}
-              onChange={(event) => setAmount(event.target.value.replace(/[^\d.]/g, ""))}
-              inputMode="decimal"
-              placeholder="500000"
-              className={inputCls}
-            />
-          </div>
-          <div>
-            <SectionLabel>Purpose</SectionLabel>
-            <select
-              aria-label="Loan purpose"
-              value={purpose}
-              onChange={(event) => setPurpose(event.target.value)}
-              className={inputCls}
-            >
-              {PURPOSES.map((entry) => (
-                <option key={entry} value={entry}>
-                  {entry}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <SectionLabel>Repayment Duration</SectionLabel>
-            <select
-              aria-label="Repayment duration"
-              value={tenureMonths}
-              onChange={(event) => setTenureMonths(Number(event.target.value))}
-              className={inputCls}
-            >
-              {TENURES.map((months) => (
-                <option key={months} value={months}>
-                  {months} Months
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <SectionLabel>First Deduction</SectionLabel>
-            <input
-              aria-label="First deduction date"
-              type="date"
-              value={firstDeductionDate}
-              onChange={(event) => setFirstDeductionDate(event.target.value)}
-              className={inputCls}
-            />
+      {/* Body */}
+      <div className="flex max-h-[70vh] flex-col gap-5 overflow-y-auto px-6 py-5">
+        <div>
+          <SectionLabel>Facility Details</SectionLabel>
+          <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <label className={labelCls}>Loan Amount</label>
+              <div className="relative mt-1.5">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-[#6B7280]">
+                  ₦
+                </span>
+                <input
+                  className="h-[42px] w-full rounded-md border border-[#E5E7EB] bg-white pl-7 pr-3 text-[13px] outline-none focus:border-[#3B5BDB]"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  inputMode="decimal"
+                  placeholder="500,000"
+                  disabled={applyLoan.isPending}
+                />
+              </div>
+            </div>
+            <div>
+              <label className={labelCls}>Purpose</label>
+              <select
+                className={inputCls}
+                value={purpose}
+                onChange={(e) => setPurpose(e.target.value)}
+                disabled={applyLoan.isPending}
+              >
+                {PURPOSES.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>Repayment Duration</label>
+              <select
+                className={inputCls}
+                value={tenureMonths}
+                onChange={(e) => setTenureMonths(Number(e.target.value))}
+                disabled={applyLoan.isPending}
+              >
+                {TENURES.map((months) => (
+                  <option key={months} value={months}>
+                    {months} Months
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>First Deduction Date</label>
+              <input
+                type="date"
+                className={inputCls}
+                value={firstDeductionDate}
+                onChange={(e) => setFirstDeductionDate(e.target.value)}
+                disabled={applyLoan.isPending}
+              />
+            </div>
           </div>
         </div>
 
-        {monthlyEstimate > 0 ? (
-          <p className="rounded-md bg-[#EEF2FF] px-3 py-2 text-[12px] text-[#3B5BDB]">
-            Roughly {formatNaira(monthlyEstimate)} a month over {tenureMonths} months. Finance
-            confirms the final deduction on review.
-          </p>
-        ) : null}
-
         <div>
-          <SectionLabel>Reason</SectionLabel>
+          <label className={labelCls}>Reason for Loan</label>
           <textarea
-            aria-label="Reason for the loan"
             rows={3}
-            value={reason}
-            onChange={(event) => setReason(event.target.value)}
+            className="mt-1.5 w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2.5 text-[13px] outline-none focus:border-[#3B5BDB]"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
             placeholder="Brief explanation for the reviewers…"
-            className={inputCls}
+            disabled={applyLoan.isPending}
           />
         </div>
 
-        {error ? (
-          <p className="rounded-md bg-rose-50 px-3 py-2 text-[12px] text-rose-600">{error}</p>
-        ) : null}
+        <div>
+          <label className={labelCls}>Supporting Documents (optional)</label>
+          <HrFileDrop
+            files={documents}
+            onChange={setDocuments}
+            folder="hr/loans"
+            branchId={branchId || undefined}
+            disabled={applyLoan.isPending}
+          />
+        </div>
+
+        <p className="text-[12px] text-[#9CA3AF]">
+          The monthly deduction and debt service ratio are calculated from this employee&apos;s
+          salary when the application is filed.
+        </p>
+
+        {error && <p className="text-[12px] font-medium text-red-600">{error}</p>}
       </div>
 
+      {/* Footer */}
       <div className="flex items-center justify-end gap-3 border-t border-[#EEF1F6] px-6 py-4">
-        <button className={btnOutline} onClick={handleClose} disabled={saving}>
+        <button className={btnOutline} onClick={onClose} disabled={applyLoan.isPending}>
           Cancel
         </button>
-        <button className={btnDark} onClick={handleSubmit} disabled={saving}>
-          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-          {saving ? "Submitting…" : "Submit Application"}
+        <button className={btnDark} onClick={handleSubmit} disabled={applyLoan.isPending}>
+          {applyLoan.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          Submit Application
         </button>
       </div>
     </ModalShell>

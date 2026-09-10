@@ -1,46 +1,51 @@
 "use client"
 
-import { X, Banknote, Check, XCircle } from "lucide-react"
+import { X } from "lucide-react"
 import { ModalShell } from "@/components/ui/modal-shell"
-import { SectionLabel, StatusBadge, btnOutline } from "./shared"
-import { LOAN_STATUS_LABELS, formatDate, formatNaira, statusLabel } from "@/lib/hr/display"
-import { cn } from "@/lib/utils"
-import type { HrLoan } from "@/lib/hr/types"
+import {
+  CardHeading,
+  Field,
+  ProgressBar,
+  StatusBadge,
+  Th,
+  Td,
+  btnOutline,
+} from "./shared"
+import { HrPanelState } from "@/components/hr/HrDataState"
+import {
+  LOAN_STATUS_LABELS,
+  employeeName,
+  loanBalance,
+  loanProgress,
+  lookup,
+  titleCase,
+  userName,
+} from "@/lib/hr/normalize"
+import type { EmployeeLoan } from "@/lib/hr/types"
+import { formatCurrency, formatDate } from "@/lib/format"
 
-/** Read-only view of one loan application and where it sits in the chain. */
+/** Read-only view of one loan facility and its repayment ledger. */
 export default function LoanApplicationDetailModal({
-  open,
-  onClose,
   loan,
+  onClose,
 }: {
-  open: boolean
+  loan: EmployeeLoan | null
   onClose: () => void
-  loan: HrLoan | null
 }) {
-  const steps = [
-    { key: "accountant", title: "Finance Verification", review: loan?.accountantReview },
-    { key: "pastor", title: "Pastor Authorization", review: loan?.pastorApproval },
-    { key: "director", title: "Director Override", review: loan?.directorOverride },
-  ].filter((step) => step.review)
-
-  const repaid = loan ? Math.max(loan.amount - loan.remainingBalance, 0) : 0
+  const repayments = [...(loan?.repayments ?? [])].sort(
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+  )
 
   return (
-    <ModalShell open={open} onClose={onClose} className="max-w-2xl">
-      {/* Header */}
+    <ModalShell open={loan !== null} onClose={onClose} className="max-w-2xl">
       <div className="flex items-start justify-between gap-4 border-b border-[#EEF1F6] px-6 py-5">
-        <div className="flex items-center gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#EEF2FF] text-[#3B5BDB]">
-            <Banknote className="h-5 w-5" />
-          </span>
-          <div>
-            <h2 className="text-[16px] font-bold text-[#111827]">
-              {loan?.purpose || "Loan Application"}
-            </h2>
-            <p className="mt-0.5 text-[13px] text-[#6B7280]">
-              {loan?.employeeName || "Staff member"} · applied {formatDate(loan?.createdAt ?? "")}
+        <div>
+          <h2 className="text-[16px] font-bold text-[#111827]">Loan Application</h2>
+          {loan && (
+            <p className="mt-1 text-[13px] text-[#6B7280]">
+              {employeeName(loan.employeeId)}
             </p>
-          </div>
+          )}
         </div>
         <button
           aria-label="Close"
@@ -51,115 +56,155 @@ export default function LoanApplicationDetailModal({
         </button>
       </div>
 
-      <div className="max-h-[68vh] overflow-y-auto px-6 py-5">
-        <StatusBadge status={statusLabel(LOAN_STATUS_LABELS, loan?.status ?? "").toUpperCase()} />
+      <div className="flex max-h-[70vh] flex-col gap-5 overflow-y-auto px-6 py-5">
+        {!loan ? (
+          <HrPanelState
+            isLoading={false}
+            error={null}
+            isEmpty
+            emptyTitle="No loan selected"
+            className="border-0 p-4"
+          />
+        ) : (
+          <>
+            <div className="flex items-center justify-between">
+              <CardHeading>{loan.purpose}</CardHeading>
+              <StatusBadge status={lookup(LOAN_STATUS_LABELS, loan.status).toUpperCase()} />
+            </div>
 
-        <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <div>
-            <SectionLabel>Principal</SectionLabel>
-            <p className="mt-1 text-[14px] font-semibold text-[#111827]">
-              {formatNaira(loan?.amount ?? 0)}
-            </p>
-          </div>
-          <div>
-            <SectionLabel>Monthly</SectionLabel>
-            <p className="mt-1 text-[14px] font-semibold text-[#111827]">
-              {formatNaira(loan?.monthlyDeduction ?? 0)}
-            </p>
-          </div>
-          <div>
-            <SectionLabel>Repaid</SectionLabel>
-            <p className="mt-1 text-[14px] font-semibold text-emerald-600">
-              {formatNaira(repaid)}
-            </p>
-          </div>
-          <div>
-            <SectionLabel>Outstanding</SectionLabel>
-            <p className="mt-1 text-[14px] font-semibold text-rose-600">
-              {formatNaira(loan?.remainingBalance ?? 0)}
-            </p>
-          </div>
-        </div>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <Field
+                label="Principal"
+                value={formatCurrency(loan.amount, { maximumFractionDigits: 0 })}
+              />
+              <Field
+                label="Monthly"
+                value={formatCurrency(loan.monthlyDeduction, { maximumFractionDigits: 0 })}
+              />
+              <Field label="Tenure" value={`${loan.tenureMonths} months`} />
+              <Field
+                label="DSR"
+                value={`${Math.round(loan.debtServiceRatio * 100) / 100}%`}
+              />
+            </div>
 
-        <div className="mt-5 grid grid-cols-2 gap-4">
-          <div>
-            <SectionLabel>Tenure</SectionLabel>
-            <p className="mt-1 text-[13px] text-[#4B5563]">
-              {loan?.tenureMonths ? `${loan.tenureMonths} months` : "—"}
-            </p>
-          </div>
-          <div>
-            <SectionLabel>Debt Service Ratio</SectionLabel>
-            <p
-              className={cn(
-                "mt-1 text-[13px] font-semibold",
-                loan?.exceedsPolicyLimit ? "text-rose-600" : "text-[#4B5563]"
+            <div>
+              <div className="flex items-center justify-between text-[12px] text-[#6B7280]">
+                <span>Repayment Progress</span>
+                <span className="font-semibold text-[#111827]">{loanProgress(loan)}%</span>
+              </div>
+              <div className="mt-2">
+                <ProgressBar percent={loanProgress(loan)} tone="emerald" />
+              </div>
+              <div className="mt-2 flex items-center justify-between text-[12px] text-[#6B7280]">
+                <span>
+                  Repaid:{" "}
+                  {formatCurrency(loan.totalRepaid ?? 0, { maximumFractionDigits: 0 })}
+                </span>
+                <span>
+                  Balance: {formatCurrency(loanBalance(loan), { maximumFractionDigits: 0 })}
+                </span>
+              </div>
+            </div>
+
+            {loan.accountantReview?.comment && (
+              <div className="rounded-[10px] border border-[#EEF1F6] bg-[#F9FAFB] p-3">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+                  Accountant Review
+                </div>
+                <p className="mt-1 text-[12px] text-[#4B5563]">
+                  {loan.accountantReview.comment}
+                  {loan.accountantReview.timestamp
+                    ? ` (${formatDate(loan.accountantReview.timestamp, "medium")})`
+                    : ""}
+                </p>
+              </div>
+            )}
+
+            {(loan.approvals?.length ?? 0) > 0 && (
+              <div className="rounded-[10px] border border-[#EEF1F6] bg-[#F9FAFB] p-3">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+                  Approvals
+                </div>
+                <ul className="mt-2 space-y-1.5">
+                  {loan.approvals?.map((approval, index) => (
+                    <li key={index} className="text-[12px] text-[#4B5563]">
+                      <span className="font-semibold text-[#111827]">
+                        {titleCase(approval.role)}:
+                      </span>{" "}
+                      {approval.action}
+                      {approval.userId ? ` by ${userName(approval.userId)}` : ""}
+                      {approval.comment ? ` — ${approval.comment}` : ""}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {loan.declineReason && (
+              <p className="rounded-md bg-rose-50 p-3 text-[12px] text-rose-700">
+                {loan.declineReason}
+              </p>
+            )}
+
+            {/* Repayment ledger */}
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+                Repayments
+              </div>
+              {repayments.length === 0 ? (
+                <p className="mt-2 text-[12px] text-[#9CA3AF]">
+                  No repayments recorded yet.
+                </p>
+              ) : (
+                <div className="mt-2 overflow-hidden rounded-[10px] border border-[#EEF1F6]">
+                  <table className="w-full">
+                    <thead className="bg-[#F8FAFC]">
+                      <tr>
+                        <Th>Date</Th>
+                        <Th className="text-right">Amount</Th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#EEF1F6]">
+                      {repayments.map((repayment, index) => (
+                        <tr key={`${repayment.date}-${index}`}>
+                          <Td className="text-[#4B5563]">
+                            {formatDate(repayment.date, "medium")}
+                          </Td>
+                          <Td className="text-right font-semibold text-[#111827]">
+                            {formatCurrency(repayment.amount, { maximumFractionDigits: 0 })}
+                          </Td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
-            >
-              {loan?.debtServiceRatio ?? 0}%
-              {loan?.exceedsPolicyLimit ? " — above policy limit" : ""}
-            </p>
-          </div>
-        </div>
+            </div>
 
-        <div className="mt-6">
-          <SectionLabel>Approval Trail</SectionLabel>
-          <ol className="mt-3 space-y-4">
-            {steps.map((step) => {
-              const review = step.review!
-              const declined = review.action === "declined"
-              return (
-                <li key={step.key} className="flex gap-3">
-                  <span
-                    className={cn(
-                      "flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
-                      declined ? "bg-rose-100 text-rose-600" : "bg-emerald-100 text-emerald-600"
-                    )}
-                  >
-                    {declined ? <XCircle className="h-4 w-4" /> : <Check className="h-4 w-4" />}
-                  </span>
-                  <div className="min-w-0">
-                    <div className="text-[14px] font-bold text-[#111827]">{step.title}</div>
-                    {review.comment ? (
-                      <div className="text-[12px] text-[#6B7280]">{review.comment}</div>
-                    ) : null}
-                    {review.at ? (
-                      <div className="mt-0.5 text-[12px] text-[#9CA3AF]">
-                        {formatDate(review.at)}
-                      </div>
-                    ) : null}
-                  </div>
-                </li>
-              )
-            })}
-
-            {steps.length === 0 ? (
-              <li className="text-[13px] text-[#9CA3AF]">
-                Awaiting the first review on this application.
-              </li>
-            ) : null}
-          </ol>
-        </div>
-
-        {loan?.repayments.length ? (
-          <div className="mt-6">
-            <SectionLabel>Repayments</SectionLabel>
-            <ul className="mt-3 space-y-2">
-              {loan.repayments.map((repayment, index) => (
-                <li
-                  key={`${repayment.reference}-${index}`}
-                  className="flex items-center justify-between rounded-md bg-[#F8FAFC] px-3 py-2 text-[13px]"
-                >
-                  <span className="text-[#4B5563]">{formatDate(repayment.paidAt)}</span>
-                  <span className="font-semibold text-[#111827]">
-                    {formatNaira(repayment.amount)}
-                  </span>
-                  <span className="text-[12px] text-[#9CA3AF]">{repayment.reference || "—"}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
+            {(loan.supportingDocumentUrls?.length ?? 0) > 0 && (
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+                  Supporting Documents
+                </div>
+                <ul className="mt-2 space-y-1.5">
+                  {loan.supportingDocumentUrls?.map((url, index) => (
+                    <li key={url}>
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[13px] font-semibold text-[#3B5BDB] hover:underline"
+                      >
+                        Document {index + 1}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       <div className="flex items-center justify-end gap-3 border-t border-[#EEF1F6] px-6 py-4">

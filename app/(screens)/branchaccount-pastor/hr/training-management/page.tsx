@@ -1,334 +1,290 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import {
-  Search,
-  Bell,
-  Menu,
-  GraduationCap,
-  Users,
-  CalendarClock,
-  Calendar,
-  Plus,
-  ArrowUpRight,
-} from "lucide-react"
+import { Search, Bell, GraduationCap, Users, Wallet } from "lucide-react"
 import BranchAccountantSidebar from "@/components/navigation/BranchAccountantSidebar"
-import BranchAdminCreateTrainingModal from "@/components/hr/BranchAdminCreateTrainingModal"
-import { useToast } from "@/components/ui/toast"
-import { useHrTrainings, useHrTrainingMetrics } from "@/components/hooks/useHrTrainings"
-import { TRAINING_RECORD_LABELS, formatDate, formatTime, statusLabel } from "@/lib/hr/display"
-import type { HrTraining } from "@/lib/hr/types"
-import BranchAdminRegisterStaffModal from "@/components/hr/BranchAdminRegisterStaffModal"
-import BranchAdminTrainingCalendarModal from "@/components/hr/BranchAdminTrainingCalendarModal"
+import { HrStatValue, HrTableState } from "@/components/hr/HrDataState"
+import { HrPagination } from "@/components/hr/HrPagination"
+import {
+  useTrainingBudgetOverview,
+  useTrainingEvents,
+  useTrainingMetrics,
+} from "@/components/hooks/hr/useHrTraining"
+import { branchName } from "@/lib/hr/normalize"
+import { downloadCsv, rowsToCsv, todayStamp } from "@/lib/export-csv"
+import { formatCurrency, formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
-const cardCls = "rounded-xl border border-[#EEF1F6] bg-white p-5"
-const statLabelCls = "text-[11px] font-bold uppercase tracking-wider text-[#6B7280]"
+const PAGE_SIZE = 10
 
-function initials(name: string) {
-  return name
-    .split(" ")
-    .map((part) => part[0])
-    .filter(Boolean)
-    .slice(0, 2)
-    .join("")
-    .toUpperCase()
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const done = status === "certified" || status === "attended"
-  return (
-    <span
-      className={cn(
-        "rounded-full px-2.5 py-1 text-[10px] font-bold",
-        done ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
-      )}
-    >
-      {statusLabel(TRAINING_RECORD_LABELS, status)}
-    </span>
-  )
-}
-
+/**
+ * Finance's view of training.
+ *
+ * Budget approval is the director's action, so this screen reports spend and
+ * the pipeline of paid sessions rather than offering an approve button.
+ */
 export default function Page() {
-  const [mobileOpen, setMobileOpen] = useState(false)
-  const [createOpen, setCreateOpen] = useState(false)
-  const [registerOpen, setRegisterOpen] = useState(false)
-  const [calendarOpen, setCalendarOpen] = useState(false)
-  const [registerTarget, setRegisterTarget] = useState<HrTraining | null>(null)
+  const [page, setPage] = useState(1)
 
-  useToast()
-  const { trainings, loading, error, refresh } = useHrTrainings({ limit: 50 })
-  const { metrics } = useHrTrainingMetrics()
+  const metrics = useTrainingMetrics()
+  const budget = useTrainingBudgetOverview()
+  const events = useTrainingEvents({ page, limit: PAGE_SIZE })
 
-  // The registry is per participant, so the events are flattened onto their roster.
-  const registry = useMemo(
+  const rows = useMemo(() => events.data?.items ?? [], [events.data])
+
+  const pendingBudget = useMemo(
     () =>
-      trainings.flatMap((training) =>
-        training.participants.map((participant) => ({
-          id: participant.recordId || `${training.id}-${participant.employeeId}`,
-          name: participant.employeeName || "Unnamed staff",
-          title: training.title,
-          status: participant.status,
-          date: training.startDate,
-        }))
-      ),
-    [trainings]
+      rows
+        .filter((event) => event.isPaid && !event.budgetApproved)
+        .reduce((sum, event) => sum + (event.budgetRequested ?? 0), 0),
+    [rows],
   )
 
-  // Read the clock once on mount so the memo stays pure across re-renders.
-  const [now] = useState(() => Date.now())
-
-  const upcoming = useMemo(() => {
-    return trainings
-      .filter((training) => {
-        const start = new Date(training.startDate).getTime()
-        return Number.isFinite(start) && start >= now
-      })
-      .sort(
-        (a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
-      )
-      .slice(0, 3)
-  }, [trainings, now])
-
-  const openRegister = (training: HrTraining) => {
-    setRegisterTarget(training)
-    setRegisterOpen(true)
+  function handleExport() {
+    const csv = rowsToCsv(
+      rows.map((event) => ({
+        Title: event.title,
+        Trainer: event.trainerName,
+        Scope: event.isGlobal ? "All branches" : branchName(event.branchId),
+        Start: formatDate(event.startDate, "iso"),
+        End: formatDate(event.endDate, "iso"),
+        Paid: event.isPaid ? "Yes" : "No",
+        "Budget Requested": event.budgetRequested ?? 0,
+        "Budget Approved": event.budgetApproved ? "Yes" : "No",
+      })),
+    )
+    downloadCsv(`training-budget-${todayStamp()}.csv`, csv)
   }
 
   return (
-    <div className="flex flex-col lg:flex-row min-h-screen bg-[#F8FAFC] w-full">
-      {mobileOpen && (
-        <div
-          className="lg:hidden fixed inset-0 z-40 bg-gray-900/40 backdrop-blur-sm"
-          onClick={() => setMobileOpen(false)}
-        />
-      )}
-      <BranchAccountantSidebar
-        activeHref="/branchaccount-pastor/hr/training-management"
-        mobileOpen={mobileOpen}
-        onMobileClose={() => setMobileOpen(false)}
-      />
-
-      <div className="flex-1 flex flex-col w-full relative min-h-[100dvh]">
-        <header className="flex h-[64px] shrink-0 items-center justify-between border-b border-[#EEF1F6] bg-white px-4 sm:px-6 lg:px-8">
+    <div className="flex min-h-screen flex-col lg:flex-row bg-[#F8FAFC]">
+      <BranchAccountantSidebar activeHref="/branchaccount-pastor/hr/training-management" />
+      <main className="flex-1 p-6 lg:p-8 bg-[#F8FAFC] min-w-0">
+        {/* Top bar */}
+        <div className="mb-6 flex items-center justify-between">
+          <span className="text-[14px] font-bold text-[#111827]">Dashboard</span>
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setMobileOpen(true)}
-              className="lg:hidden -ml-1 h-9 w-9 flex items-center justify-center rounded-[8px] text-[#6B7280] hover:bg-[#F3F4F6]"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-            <div className="text-[15px] font-bold text-[#111827]">Training</div>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="relative hidden md:block">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
               <input
-                className="h-10 w-64 rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] pl-9 pr-3 text-sm"
+                type="text"
                 placeholder="Search requisitions..."
+                className="h-[34px] w-[220px] rounded-full border border-[#E5E7EB] bg-white pl-9 pr-3 text-[13px]"
               />
             </div>
-            <button className="text-[#6B7280]">
-              <Bell className="h-5 w-5" />
+            <button
+              type="button"
+              aria-label="Notifications"
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-[#EEF1F6] bg-white text-[#6B7280] hover:bg-gray-50"
+            >
+              <Bell className="h-4 w-4" />
             </button>
           </div>
-        </header>
+        </div>
 
-        <main className="flex-1 p-6 lg:p-8 min-w-0">
-          {/* Stat cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-            <div className={cardCls}>
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className={statLabelCls}>Total Sessions</p>
-                  <p className="mt-2 text-[28px] font-bold text-[#111827]">
-                    {metrics.totalEvents}
-                  </p>
-                  <p className="mt-1 text-[12px] font-semibold text-emerald-600">
-                    {metrics.completionRate}% completion rate
-                  </p>
-                </div>
-                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#EEF2FF] text-[#2563EB]">
-                  <GraduationCap className="h-5 w-5" />
-                </span>
-              </div>
-            </div>
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h1 className="text-[22px] font-bold text-[#111827]">Training Budget</h1>
+            <p className="mt-1 text-[13px] text-[#6B7280]">
+              Training spend and the sessions awaiting budget approval.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={rows.length === 0}
+            className="rounded-md bg-[#111827] px-4 py-2 text-[12px] font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Export
+          </button>
+        </div>
 
-            <div className={cardCls}>
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className={statLabelCls}>Staff Enrolled</p>
-                  <p className="mt-2 text-[28px] font-bold text-[#111827]">
-                    {metrics.totalEnrolled}
-                  </p>
-                  <p className="mt-1 text-[12px] font-semibold text-[#6B7280]">
-                    {metrics.certifiedStaff} certified so far
-                  </p>
-                </div>
-                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
-                  <Users className="h-5 w-5" />
-                </span>
+        {/* Budget cards */}
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
+          <div className="rounded-xl border border-[#EEF1F6] bg-white p-5">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
+                  Annual Allocation
+                </p>
+                <p className="mt-2 text-[24px] font-bold text-[#111827]">
+                  {budget.isLoading
+                    ? "—"
+                    : formatCurrency(budget.data?.annualAllocation ?? 0, {
+                        maximumFractionDigits: 0,
+                      })}
+                </p>
               </div>
-            </div>
-
-            <div className={cardCls}>
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className={statLabelCls}>Pending Completions</p>
-                  <p className="mt-2 text-[28px] font-bold text-[#111827]">
-                    {Math.max(metrics.totalEnrolled - metrics.certifiedStaff, 0)}
-                  </p>
-                  <p className="mt-1 text-[12px] font-semibold text-rose-600">
-                    {metrics.pendingBudgetsCount} budget
-                    {metrics.pendingBudgetsCount === 1 ? "" : "s"} awaiting approval
-                  </p>
-                </div>
-                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-rose-50 text-rose-600">
-                  <CalendarClock className="h-5 w-5" />
-                </span>
-              </div>
+              <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#EEF2FF] text-[#3B5BDB]">
+                <Wallet className="h-5 w-5" />
+              </span>
             </div>
           </div>
 
-          {/* Two-column grid */}
-          <div className="mt-5 grid grid-cols-1 lg:grid-cols-3 gap-5">
-            {/* LEFT: Training Registry */}
-            <div className={cn(cardCls, "lg:col-span-2 p-0 overflow-hidden")}>
-              <div className="flex items-center justify-between p-5 pb-4">
-                <h2 className="text-[16px] font-bold text-[#111827]">Training Registry</h2>
-                <button
-                  type="button"
-                  onClick={() => setCreateOpen(true)}
-                  className="flex items-center gap-1.5 text-[12px] font-semibold text-[#2563EB] hover:underline"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  New Training
-                </button>
+          <div className="rounded-xl border border-[#EEF1F6] bg-white p-5">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
+              Approved Spend
+            </p>
+            <p className="mt-2 text-[24px] font-bold text-rose-600">
+              {budget.isLoading
+                ? "—"
+                : formatCurrency(budget.data?.totalSpent ?? 0, { maximumFractionDigits: 0 })}
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-[#EEF1F6] bg-white p-5">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
+              Available Balance
+            </p>
+            <p className="mt-2 text-[24px] font-bold text-emerald-600">
+              {budget.isLoading
+                ? "—"
+                : formatCurrency(budget.data?.availableBalance ?? 0, {
+                    maximumFractionDigits: 0,
+                  })}
+            </p>
+          </div>
+        </div>
+
+        {/* Session stats */}
+        <div className="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
+          <div className="rounded-xl border border-[#EEF1F6] bg-white p-5">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
+                  Total Sessions
+                </p>
+                <p className="mt-2 text-[24px] font-bold text-[#111827]">
+                  <HrStatValue
+                    isLoading={metrics.isLoading}
+                    error={metrics.error}
+                    value={metrics.data?.totalSessions ?? 0}
+                  />
+                </p>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead className="bg-[#EEF2FF]">
-                    <tr>
-                      {["Staff Member", "Training Title", "Status", "Date"].map((h) => (
-                        <th
-                          key={h}
-                          className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]"
-                        >
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#F3F4F6]">
-                    {registry.map((row) => (
-                      <tr
-                        key={row.id}
-                        className="cursor-pointer hover:bg-[#FAFBFF]"
+              <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#EEF2FF] text-[#3B5BDB]">
+                <GraduationCap className="h-5 w-5" />
+              </span>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-[#EEF1F6] bg-white p-5">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
+                  Staff Enrolled
+                </p>
+                <p className="mt-2 text-[24px] font-bold text-[#111827]">
+                  <HrStatValue
+                    isLoading={metrics.isLoading}
+                    error={metrics.error}
+                    value={metrics.data?.staffEnrolled ?? 0}
+                  />
+                </p>
+              </div>
+              <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
+                <Users className="h-5 w-5" />
+              </span>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-[#EEF1F6] bg-white p-5">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
+              Awaiting Budget Approval (This Page)
+            </p>
+            <p className="mt-2 text-[24px] font-bold text-amber-600">
+              {events.isLoading
+                ? "—"
+                : formatCurrency(pendingBudget, { maximumFractionDigits: 0 })}
+            </p>
+          </div>
+        </div>
+
+        {/* Table */}
+        <div className="mt-5 overflow-hidden rounded-xl border border-[#EEF1F6] bg-white">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead className="bg-[#EEF2FF]">
+                <tr>
+                  {["Training", "Trainer", "Dates", "Budget Requested", "Budget Status"].map(
+                    (h) => (
+                      <th
+                        key={h}
+                        className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]"
                       >
-                        <td className="px-4 py-3 text-[13px]">
-                          <div className="flex items-center gap-3">
-                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EEF2FF] text-[11px] font-bold text-[#2563EB]">
-                              {initials(row.name)}
-                            </span>
-                            <span className="font-semibold text-[#111827]">{row.name}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-[13px] text-[#6B7280]">{row.title}</td>
-                        <td className="px-4 py-3 text-[13px]">
-                          <StatusBadge status={row.status} />
-                        </td>
-                        <td className="px-4 py-3 text-[13px] text-[#6B7280]">
-                          {formatDate(row.date)}
-                        </td>
-                      </tr>
-                    ))}
+                        {h}
+                      </th>
+                    ),
+                  )}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#F3F4F6]">
+                <HrTableState
+                  colSpan={5}
+                  isLoading={events.isLoading}
+                  error={events.error}
+                  isEmpty={rows.length === 0}
+                  emptyTitle="No training scheduled"
+                  emptyDescription="Sessions created by the branch appear here."
+                  onRetry={() => events.refetch()}
+                />
 
-                    {!loading && registry.length === 0 ? (
-                      <tr>
-                        <td
-                          colSpan={4}
-                          className="px-4 py-8 text-center text-[13px] text-[#9CA3AF]"
+                {!events.isLoading &&
+                  !events.error &&
+                  rows.map((event) => (
+                    <tr key={event._id} className="hover:bg-[#F9FAFB]">
+                      <td className="px-4 py-4 text-[13px]">
+                        <div className="flex flex-col">
+                          <span className="font-bold text-[#111827]">{event.title}</span>
+                          <span className="text-[12px] text-[#9CA3AF]">
+                            {event.isGlobal ? "All branches" : branchName(event.branchId)}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 text-[13px] text-[#4B5563]">
+                        {event.trainerName}
+                      </td>
+                      <td className="px-4 py-4 text-[13px] text-[#4B5563]">
+                        {formatDate(event.startDate, "medium")}
+                      </td>
+                      <td className="px-4 py-4 text-[13px] font-semibold text-[#111827]">
+                        {formatCurrency(event.budgetRequested ?? 0, {
+                          maximumFractionDigits: 0,
+                        })}
+                      </td>
+                      <td className="px-4 py-4 text-[13px]">
+                        <span
+                          className={cn(
+                            "inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold",
+                            !event.isPaid
+                              ? "bg-[#F3F4F6] text-[#4B5563]"
+                              : event.budgetApproved
+                                ? "bg-emerald-50 text-emerald-700"
+                                : "bg-amber-50 text-amber-700",
+                          )}
                         >
-                          {error || "No staff have been enrolled in training yet."}
-                        </td>
-                      </tr>
-                    ) : null}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* RIGHT: Upcoming Sessions */}
-            <div className={cn(cardCls, "lg:col-span-1")}>
-              <div className="flex items-center gap-2">
-                <Calendar className="h-[18px] w-[18px] text-[#2563EB]" />
-                <h2 className="text-[16px] font-bold text-[#111827]">Upcoming Sessions</h2>
-              </div>
-
-              <div className="mt-5 flex flex-col gap-4">
-                {upcoming.map((session, index) => (
-                  <div
-                    key={session.id}
-                    className="rounded-[12px] border border-[#F3F4F6] bg-[#FAFBFF] p-4"
-                  >
-                    <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
-                      <span>{formatDate(session.startDate)}</span>
-                      <span className="h-1 w-1 rounded-full bg-[#D1D5DB]" />
-                      <span>{formatTime(session.startTime)}</span>
-                    </div>
-                    <p className="mt-2 text-[15px] font-bold text-[#111827]">{session.title}</p>
-                    <button
-                      type="button"
-                      onClick={() => openRegister(session)}
-                      className={cn(
-                        "mt-3 w-full rounded-md px-4 py-2 text-[12px] font-semibold",
-                        index === 0
-                          ? "bg-[#111827] text-white"
-                          : "border border-[#E5E7EB] bg-white text-[#4B5563]"
-                      )}
-                    >
-                      REGISTER STAFF
-                    </button>
-                  </div>
-                ))}
-
-                {!loading && upcoming.length === 0 ? (
-                  <p className="text-[13px] text-[#9CA3AF]">No sessions scheduled yet.</p>
-                ) : null}
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setCalendarOpen(true)}
-                className="mt-5 flex w-full items-center justify-center gap-1 text-[12px] font-semibold text-[#2563EB] hover:underline"
-              >
-                VIEW FULL CALENDAR
-                <ArrowUpRight className="h-3.5 w-3.5" />
-              </button>
-            </div>
+                          {!event.isPaid
+                            ? "Free"
+                            : event.budgetApproved
+                              ? "Approved"
+                              : "Pending"}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
           </div>
-        </main>
-      </div>
 
-      <BranchAdminCreateTrainingModal
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-        onCreated={refresh}
-      />
-      <BranchAdminRegisterStaffModal
-        open={registerOpen}
-        onClose={() => {
-          setRegisterOpen(false)
-          setRegisterTarget(null)
-        }}
-        training={registerTarget}
-        onRegistered={refresh}
-      />
-      <BranchAdminTrainingCalendarModal
-        open={calendarOpen}
-        onClose={() => setCalendarOpen(false)}
-        trainings={trainings}
-      />
+          <HrPagination
+            pagination={events.data?.pagination}
+            page={page}
+            onPageChange={setPage}
+            itemCount={rows.length}
+            noun="sessions"
+          />
+        </div>
+      </main>
     </div>
   )
 }

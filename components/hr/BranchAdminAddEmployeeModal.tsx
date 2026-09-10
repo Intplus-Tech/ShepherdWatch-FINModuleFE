@@ -1,15 +1,14 @@
 "use client"
 
-import { useMemo, useState } from "react"
-import { UserPlus, X, Info, Loader2 } from "lucide-react"
+import { useEffect, useState } from "react"
+import { Info, Loader2, UserPlus, X } from "lucide-react"
 import { ModalShell } from "@/components/ui/modal-shell"
-import { useEmployeeMutations } from "@/components/hooks/useHrEmployees"
-import { useUsers } from "@/components/hooks/useUsers"
-import { useHrScope } from "@/lib/hr/useHrScope"
-import { useToast } from "@/components/ui/toast"
+import { UserAccountPicker } from "@/components/hr/UserAccountPicker"
+import { hrErrorMessage } from "@/components/hr/HrDataState"
+import { useBranchId } from "@/components/hooks/hr/useBranchId"
+import { useCreateEmployee } from "@/components/hooks/hr/useHrEmployees"
 
-const labelCls =
-  "text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]"
+const labelCls = "text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]"
 const inputCls =
   "mt-1.5 w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2.5 text-[13px] text-[#111827] outline-none focus:border-[#2563EB]"
 
@@ -17,127 +16,84 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2">
       <span className="h-4 w-1 rounded-full bg-[#2563EB]" />
-      <h3 className="text-[13px] font-bold uppercase tracking-wider text-[#111827]">
-        {children}
-      </h3>
+      <h3 className="text-[13px] font-bold uppercase tracking-wider text-[#111827]">{children}</h3>
     </div>
   )
 }
 
-type UserOption = { id: string; label: string }
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10)
+}
 
-/**
- * An employee profile hangs off an existing user account — the HR API takes a
- * `userId`, not a name and email — so the form links an invited user rather
- * than re-typing their identity. Anyone not yet in the list has to be invited
- * from Users first.
- */
 export default function BranchAdminAddEmployeeModal({
   open,
   onClose,
-  onCreated,
 }: {
   open: boolean
   onClose: () => void
-  onCreated?: () => void
 }) {
-  const scope = useHrScope()
-  const { pushToast } = useToast()
-  const { createEmployee } = useEmployeeMutations()
+  const branchId = useBranchId()
+  const createEmployee = useCreateEmployee()
 
   const [userId, setUserId] = useState("")
   const [jobTitle, setJobTitle] = useState("")
   const [department, setDepartment] = useState("")
-  const [hireDate, setHireDate] = useState("")
-  const [salary, setSalary] = useState("")
   const [phone, setPhone] = useState("")
-  const [gender, setGender] = useState("")
-  const [maritalStatus, setMaritalStatus] = useState("")
-  const [address, setAddress] = useState("")
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [hireDate, setHireDate] = useState(todayIso())
+  const [salary, setSalary] = useState("")
+  const [formError, setFormError] = useState<string | null>(null)
 
-  const { data: usersResponse, isLoading: usersLoading } = useUsers({
-    limit: 100,
-    branchId: scope.branchId || undefined,
-  })
-
-  const userOptions = useMemo<UserOption[]>(() => {
-    const raw = usersResponse as { data?: unknown } | undefined
-    const rows = Array.isArray(raw?.data) ? raw?.data : []
-    return rows
-      .map((entry) => {
-        const user = (entry ?? {}) as Record<string, unknown>
-        const id = String(user._id ?? user.id ?? "")
-        const name =
-          String(user.fullName ?? "") ||
-          `${String(user.firstName ?? "")} ${String(user.lastName ?? "")}`.trim()
-        const email = String(user.email ?? "")
-        if (!id) return null
-        return { id, label: [name || "Unnamed user", email].filter(Boolean).join(" · ") }
-      })
-      .filter((option): option is UserOption => Boolean(option))
-  }, [usersResponse])
-
-  const reset = () => {
+  useEffect(() => {
+    if (!open) return
     setUserId("")
     setJobTitle("")
     setDepartment("")
-    setHireDate("")
-    setSalary("")
     setPhone("")
-    setGender("")
-    setMaritalStatus("")
-    setAddress("")
-    setError(null)
-  }
+    setHireDate(todayIso())
+    setSalary("")
+    setFormError(null)
+    createEmployee.reset()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
-  const handleClose = () => {
-    if (saving) return
-    reset()
-    onClose()
-  }
+  async function handleSave() {
+    setFormError(null)
 
-  const handleSubmit = async () => {
-    setError(null)
-
-    const branchId = scope.branchId || scope.ownBranchId
+    if (!userId) {
+      setFormError("Select the staff member's user account.")
+      return
+    }
+    if (jobTitle.trim().length < 2) {
+      setFormError("Enter a job title.")
+      return
+    }
     if (!branchId) {
-      setError("No branch is attached to your account, so the staff record cannot be filed.")
-      return
-    }
-    if (!jobTitle.trim()) {
-      setError("Job title is required.")
+      setFormError("Your account has no branch assigned, so this can't be saved.")
       return
     }
 
-    setSaving(true)
+    const parsedSalary = Number(salary.replace(/,/g, ""))
+
     try {
-      await createEmployee({
-        userId: userId || undefined,
+      await createEmployee.mutateAsync({
+        userId,
         branchId,
         jobTitle: jobTitle.trim(),
         department: department.trim() || undefined,
-        salary: salary ? Number(salary) : undefined,
         phone: phone.trim() || undefined,
-        address: address.trim() || undefined,
-        gender: gender || undefined,
-        maritalStatus: maritalStatus || undefined,
-        hireDate: hireDate || undefined,
+        hireDate: new Date(hireDate).toISOString(),
+        salary: Number.isFinite(parsedSalary) && parsedSalary > 0 ? parsedSalary : undefined,
       })
-      pushToast("Employee profile created", "success")
-      reset()
-      onCreated?.()
       onClose()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to create the employee profile.")
-    } finally {
-      setSaving(false)
+    } catch (error) {
+      setFormError(hrErrorMessage(error))
     }
   }
 
+  const error = formError ?? (createEmployee.error ? hrErrorMessage(createEmployee.error) : null)
+
   return (
-    <ModalShell open={open} onClose={handleClose} className="max-w-2xl">
+    <ModalShell open={open} onClose={onClose} className="max-w-2xl">
       {/* Header */}
       <div className="flex items-center justify-between gap-4 border-b border-[#EEF1F6] px-6 py-5">
         <div className="flex items-center gap-3">
@@ -148,7 +104,7 @@ export default function BranchAdminAddEmployeeModal({
         </div>
         <button
           type="button"
-          onClick={handleClose}
+          onClick={onClose}
           aria-label="Close"
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[#9CA3AF] hover:bg-gray-100 hover:text-[#111827]"
         >
@@ -158,184 +114,113 @@ export default function BranchAdminAddEmployeeModal({
 
       {/* Body */}
       <div className="flex max-h-[68vh] flex-col gap-6 overflow-y-auto px-6 py-5">
+        {/* Staff account */}
         <section>
           <SectionHeading>Staff Account</SectionHeading>
-          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <label className={labelCls} htmlFor="employee-user">
-                Linked User Account
-              </label>
-              <select
-                id="employee-user"
-                value={userId}
-                onChange={(event) => setUserId(event.target.value)}
-                className={inputCls}
-              >
-                <option value="">
-                  {usersLoading ? "Loading user accounts…" : "Select an invited user (optional)"}
-                </option>
-                {userOptions.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-1.5 text-[11px] text-[#9CA3AF]">
-                Names and emails come from the user account. Invite the person under Users first
-                if they are not listed.
-              </p>
-            </div>
+          <div className="mt-4">
+            <label className={labelCls}>User Account</label>
+            <UserAccountPicker
+              value={userId}
+              onChange={setUserId}
+              branchId={branchId || undefined}
+              disabled={createEmployee.isPending}
+            />
+            <p className="mt-1.5 text-[11px] text-[#9CA3AF]">
+              An employee record attaches to an existing ShepherdWatch account. If the person has
+              no account yet, invite them from User Management first.
+            </p>
           </div>
         </section>
 
+        {/* Employment Details */}
         <section>
           <SectionHeading>Employment Details</SectionHeading>
           <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label className={labelCls} htmlFor="employee-job-title">
-                Job Title
-              </label>
+              <label className={labelCls}>Job Title</label>
               <input
-                id="employee-job-title"
-                value={jobTitle}
-                onChange={(event) => setJobTitle(event.target.value)}
                 className={inputCls}
+                value={jobTitle}
+                onChange={(e) => setJobTitle(e.target.value)}
                 placeholder="e.g. Senior Administrator"
               />
             </div>
             <div>
-              <label className={labelCls} htmlFor="employee-department">
-                Department
-              </label>
+              <label className={labelCls}>Department</label>
               <input
-                id="employee-department"
-                value={department}
-                onChange={(event) => setDepartment(event.target.value)}
                 className={inputCls}
-                placeholder="e.g. Administration & Protocol"
+                value={department}
+                onChange={(e) => setDepartment(e.target.value)}
+                placeholder="e.g. Administration"
               />
             </div>
             <div>
-              <label className={labelCls} htmlFor="employee-phone">
-                Phone Number
-              </label>
+              <label className={labelCls}>Phone Number</label>
               <input
-                id="employee-phone"
-                value={phone}
-                onChange={(event) => setPhone(event.target.value)}
                 className={inputCls}
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
                 placeholder="+234 000-000-0000"
               />
             </div>
             <div>
-              <label className={labelCls} htmlFor="employee-hire-date">
-                Date Hired
-              </label>
+              <label className={labelCls}>Date Hired</label>
               <input
-                id="employee-hire-date"
                 type="date"
-                value={hireDate}
-                onChange={(event) => setHireDate(event.target.value)}
                 className={inputCls}
+                value={hireDate}
+                onChange={(e) => setHireDate(e.target.value)}
               />
             </div>
             <div>
-              <label className={labelCls} htmlFor="employee-gender">
-                Gender
-              </label>
-              <select
-                id="employee-gender"
-                value={gender}
-                onChange={(event) => setGender(event.target.value)}
-                className={inputCls}
-              >
-                <option value="">Not specified</option>
-                <option value="male">Male</option>
-                <option value="female">Female</option>
-              </select>
-            </div>
-            <div>
-              <label className={labelCls} htmlFor="employee-marital-status">
-                Marital Status
-              </label>
-              <select
-                id="employee-marital-status"
-                value={maritalStatus}
-                onChange={(event) => setMaritalStatus(event.target.value)}
-                className={inputCls}
-              >
-                <option value="">Not specified</option>
-                <option value="single">Single</option>
-                <option value="married">Married</option>
-                <option value="divorced">Divorced</option>
-                <option value="widowed">Widowed</option>
-              </select>
-            </div>
-            <div>
-              <label className={labelCls} htmlFor="employee-salary">
-                Basic Monthly Salary
-              </label>
+              <label className={labelCls}>Basic Monthly Salary</label>
               <div className="relative mt-1.5">
                 <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-[#6B7280]">
                   ₦
                 </span>
                 <input
-                  id="employee-salary"
-                  value={salary}
-                  onChange={(event) => setSalary(event.target.value.replace(/[^\d.]/g, ""))}
-                  inputMode="decimal"
                   className="w-full rounded-md border border-[#E5E7EB] bg-white py-2.5 pl-7 pr-3 text-[13px] text-[#111827] outline-none focus:border-[#2563EB]"
+                  value={salary}
+                  onChange={(e) => setSalary(e.target.value)}
+                  inputMode="decimal"
                   placeholder="0.00"
                 />
               </div>
             </div>
-            <div className="sm:col-span-2">
-              <label className={labelCls} htmlFor="employee-address">
-                Residential Address
-              </label>
-              <input
-                id="employee-address"
-                value={address}
-                onChange={(event) => setAddress(event.target.value)}
-                className={inputCls}
-                placeholder="e.g. 12 Isaac John Street, Ikeja, Lagos"
-              />
-            </div>
           </div>
         </section>
 
+        {/* Info note */}
         <div className="flex items-start gap-3 rounded-lg bg-[#EEF2FF] p-4 text-[#4B5563]">
           <Info className="mt-0.5 h-5 w-5 shrink-0 text-[#2563EB]" />
           <p className="text-[12px] leading-relaxed">
-            Saving files the staff record against{" "}
-            {scope.branchName || "your branch"} and generates a ShepherdWatch employee ID. The
-            profile integrity score starts low until documents and bank details are added.
+            Saving generates a ShepherdWatch employee ID automatically. The profile integrity score
+            is calculated from how complete the record is, so filling in salary and department now
+            saves a follow-up later.
           </p>
         </div>
 
-        {error ? (
-          <p className="rounded-md bg-rose-50 px-3 py-2 text-[12px] text-rose-600">{error}</p>
-        ) : null}
+        {error && <p className="text-[12px] font-medium text-red-600">{error}</p>}
       </div>
 
       {/* Footer */}
       <div className="flex items-center justify-end gap-3 border-t border-[#EEF1F6] px-6 py-4">
         <button
           type="button"
-          onClick={handleClose}
-          disabled={saving}
-          className="inline-flex items-center justify-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[12px] font-medium text-[#4B5563] hover:bg-[#F8FAFC] disabled:opacity-60"
+          onClick={onClose}
+          disabled={createEmployee.isPending}
+          className="inline-flex items-center justify-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[12px] font-medium text-[#4B5563] hover:bg-[#F8FAFC] disabled:opacity-50"
         >
           Cancel
         </button>
         <button
           type="button"
-          onClick={handleSubmit}
-          disabled={saving}
+          onClick={handleSave}
+          disabled={createEmployee.isPending}
           className="inline-flex items-center justify-center gap-2 rounded-md bg-[#111827] px-4 py-2 text-[12px] font-semibold text-white hover:bg-black disabled:opacity-60"
         >
-          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-          {saving ? "Saving…" : "Save Employee Record"}
+          {createEmployee.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          Save Employee
         </button>
       </div>
     </ModalShell>

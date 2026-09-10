@@ -157,7 +157,7 @@ export function ProgressBar({
   className,
 }: {
   percent: number
-  tone?: "blue" | "emerald"
+  tone?: "blue" | "emerald" | "amber"
   className?: string
 }) {
   return (
@@ -165,7 +165,11 @@ export function ProgressBar({
       <div
         className={cn(
           "h-full rounded-full",
-          tone === "emerald" ? "bg-emerald-500" : "bg-[#3B5BDB]"
+          tone === "emerald"
+            ? "bg-emerald-500"
+            : tone === "amber"
+              ? "bg-amber-500"
+              : "bg-[#3B5BDB]"
         )}
         style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
       />

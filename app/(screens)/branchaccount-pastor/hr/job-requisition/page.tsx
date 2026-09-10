@@ -1,134 +1,85 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Menu, Search, Bell, Plus, SlidersHorizontal } from "lucide-react"
+import { Search, Bell } from "lucide-react"
 import BranchAccountantSidebar from "@/components/navigation/BranchAccountantSidebar"
-import BranchAdminNewRoleRequisitionModal from "@/components/hr/BranchAdminNewRoleRequisitionModal"
-import ReviewRequisitionModal from "@/components/hr/ReviewRequisitionModal"
-import { HrTableStateRow } from "@/components/hr/HrTableState"
-import { useHrJobRequisitions } from "@/components/hooks/useHrJobRequisitions"
+import { HrStatValue, HrTableState } from "@/components/hr/HrDataState"
+import { HrPagination } from "@/components/hr/HrPagination"
 import {
-  PRIORITY_LABELS,
-  PRIORITY_STYLES,
-  REQUISITION_STATUS_LABELS,
-  REQUISITION_STATUS_STYLES,
-  formatDate,
-  statusLabel,
-  statusStyle,
-} from "@/lib/hr/display"
-import type { HrJobRequisition } from "@/lib/hr/types"
+  useJobRequisitionMetrics,
+  useJobRequisitions,
+} from "@/components/hooks/hr/useHrJobRequisitions"
+import {
+  JOB_REQUISITION_PRIORITY_BADGES,
+  JOB_REQUISITION_PRIORITY_LABELS,
+  JOB_REQUISITION_STATUS_BADGES,
+  JOB_REQUISITION_STATUS_LABELS,
+  badgeFor,
+  lookup,
+} from "@/lib/hr/normalize"
+import {
+  JOB_REQUISITION_STATUSES,
+  type JobRequisitionStatus,
+} from "@/lib/hr/types"
+import { downloadCsv, rowsToCsv, todayStamp } from "@/lib/export-csv"
+import { formatCurrency, formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
-const PRIORITIES = [
-  { value: "", label: "All Priorities" },
-  { value: "critical", label: "Critical" },
-  { value: "high", label: "High" },
-  { value: "medium", label: "Medium" },
-  { value: "low", label: "Low" },
-]
+const PAGE_SIZE = 10
 
-function UrgencyPill({ urgency }: { urgency: string }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold",
-        statusStyle(PRIORITY_STYLES, urgency)
-      )}
-    >
-      {statusLabel(PRIORITY_LABELS, urgency)}
-    </span>
-  )
-}
-
-type Tab = "awaiting" | "past"
-
+/**
+ * Finance's view of hiring requests.
+ *
+ * Approval is the director's call, so this screen focuses on the payroll
+ * commitment each open requisition represents.
+ */
 export default function Page() {
-  const [mobileOpen, setMobileOpen] = useState(false)
-  const [modalOpen, setModalOpen] = useState(false)
-  const [tab, setTab] = useState<Tab>("awaiting")
-  const [role, setRole] = useState("All Roles")
-  const [priority, setPriority] = useState("")
-  const [viewing, setViewing] = useState<HrJobRequisition | null>(null)
+  const [status, setStatus] = useState<"all" | JobRequisitionStatus>("all")
+  const [page, setPage] = useState(1)
 
-  // Awaiting = still with the director; past = everything already decided.
-  const {
-    requisitions: awaiting,
-    loading: awaitingLoading,
-    error: awaitingError,
-    refresh: refreshAwaiting,
-  } = useHrJobRequisitions({ status: "pending_review", priority, limit: 50 })
+  const requisitions = useJobRequisitions({ page, limit: PAGE_SIZE, status })
+  const metrics = useJobRequisitionMetrics()
 
-  const {
-    requisitions: history,
-    loading: historyLoading,
-    error: historyError,
-    refresh: refreshHistory,
-  } = useHrJobRequisitions({ priority, limit: 50 })
+  const rows = useMemo(() => requisitions.data?.items ?? [], [requisitions.data])
 
-  const roleOptions = useMemo(
+  /** Monthly salary commitment of the requisitions currently listed. */
+  const committedMonthly = useMemo(
     () =>
-      Array.from(
-        new Set([...awaiting, ...history].map((row) => row.roleTitle).filter(Boolean))
-      ).sort(),
-    [awaiting, history]
+      rows
+        .filter((r) => r.status === "approved" || r.status === "awaiting_director")
+        .reduce((sum, r) => sum + (r.salarySuggested ?? 0), 0),
+    [rows],
   )
 
-  const awaitingRows = useMemo(
-    () => (role === "All Roles" ? awaiting : awaiting.filter((r) => r.roleTitle === role)),
-    [awaiting, role]
-  )
-
-  // "Past" is the decided set — the list endpoint has no "not pending" filter.
-  const pastRows = useMemo(() => {
-    const decided = history.filter((r) => r.status !== "pending_review")
-    return role === "All Roles" ? decided : decided.filter((r) => r.roleTitle === role)
-  }, [history, role])
-
-  const resetFilters = () => {
-    setRole("All Roles")
-    setPriority("")
-  }
-
-  const refreshAll = () => {
-    refreshAwaiting()
-    refreshHistory()
+  function handleExport() {
+    const csv = rowsToCsv(
+      rows.map((r) => ({
+        Ref: r.refNumber,
+        Role: r.roleTitle,
+        Department: r.department,
+        "Suggested Salary": r.salarySuggested,
+        Priority: lookup(JOB_REQUISITION_PRIORITY_LABELS, r.priority),
+        "Expected Start": formatDate(r.expectedStartDate, "iso"),
+        Status: lookup(JOB_REQUISITION_STATUS_LABELS, r.status),
+      })),
+    )
+    downloadCsv(`job-requisitions-${todayStamp()}.csv`, csv)
   }
 
   return (
-    <div className="flex flex-col lg:flex-row min-h-screen bg-[#F8FAFC] w-full">
-      {mobileOpen && (
-        <div
-          className="lg:hidden fixed inset-0 z-40 bg-gray-900/40 backdrop-blur-sm"
-          onClick={() => setMobileOpen(false)}
-        />
-      )}
-      <BranchAccountantSidebar
-        activeHref="/branchaccount-pastor/hr/job-requisition"
-        mobileOpen={mobileOpen}
-        onMobileClose={() => setMobileOpen(false)}
-      />
-
-      <div className="flex-1 flex flex-col w-full relative min-h-[100dvh]">
-        {/* Header */}
-        <header className="flex h-[64px] shrink-0 items-center justify-between border-b border-[#EEF1F6] bg-white px-4 sm:px-6 lg:px-8">
+    <div className="flex min-h-screen flex-col lg:flex-row bg-[#F8FAFC]">
+      <BranchAccountantSidebar activeHref="/branchaccount-pastor/hr/job-requisition" />
+      <main className="flex-1 p-6 lg:p-8 bg-[#F8FAFC] min-w-0">
+        {/* Top bar */}
+        <div className="mb-6 flex items-center justify-between">
+          <span className="text-[14px] font-bold text-[#111827]">Dashboard</span>
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setMobileOpen(true)}
-              aria-label="Open menu"
-              className="lg:hidden flex h-9 w-9 items-center justify-center rounded-md text-[#4B5563] hover:bg-gray-50"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-            <span className="text-[15px] font-bold text-[#111827]">Job Requisition</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="relative hidden sm:block">
+            <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
               <input
                 type="text"
                 placeholder="Search requisitions..."
-                className="h-[38px] w-[240px] rounded-full border border-[#E5E7EB] bg-white pl-9 pr-3 text-[13px]"
+                className="h-[34px] w-[220px] rounded-full border border-[#E5E7EB] bg-white pl-9 pr-3 text-[13px]"
               />
             </div>
             <button
@@ -139,270 +90,174 @@ export default function Page() {
               <Bell className="h-4 w-4" />
             </button>
           </div>
-        </header>
+        </div>
 
-        <main className="flex-1 p-6 lg:p-8 min-w-0">
-          {/* Stat cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 max-w-3xl">
-            <div className="rounded-xl border border-[#EEF1F6] bg-white p-5">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
-                Active Requests
-              </p>
-              <p className="mt-2 text-[32px] font-bold text-[#111827]">12</p>
-              <p className="mt-1 text-[13px] text-[#6B7280]">Currently awaiting approval</p>
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h1 className="text-[22px] font-bold text-[#111827]">Job Requisitions</h1>
+            <p className="mt-1 text-[13px] text-[#6B7280]">
+              Hiring requests and the payroll commitment they carry. Approval sits with the
+              director.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={rows.length === 0}
+            className="rounded-md bg-[#111827] px-4 py-2 text-[12px] font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Export
+          </button>
+        </div>
+
+        {/* Stats */}
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
+          <div className="rounded-xl border border-[#EEF1F6] bg-white p-5">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
+              Active Requests
             </div>
-            <div className="rounded-xl border border-[#EEF1F6] bg-white p-5">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
-                Approved This Month
-              </p>
-              <p className="mt-2 text-[32px] font-bold text-[#111827]">08</p>
+            <div className="mt-2 text-[24px] font-bold text-[#111827]">
+              <HrStatValue
+                isLoading={metrics.isLoading}
+                error={metrics.error}
+                value={metrics.data?.activeRequests ?? 0}
+              />
             </div>
           </div>
+          <div className="rounded-xl border border-[#EEF1F6] bg-white p-5">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
+              Approved This Month
+            </div>
+            <div className="mt-2 text-[24px] font-bold text-[#111827]">
+              <HrStatValue
+                isLoading={metrics.isLoading}
+                error={metrics.error}
+                value={metrics.data?.approvedThisMonth ?? 0}
+              />
+            </div>
+          </div>
+          <div className="rounded-xl border border-[#EEF1F6] bg-white p-5">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
+              Monthly Commitment (This Page)
+            </div>
+            <div className="mt-2 text-[24px] font-bold text-[#111827]">
+              {requisitions.isLoading
+                ? "—"
+                : formatCurrency(committedMonthly, { maximumFractionDigits: 0 })}
+            </div>
+          </div>
+        </div>
 
-          {/* New requisition button */}
-          <div className="mt-5 flex justify-end">
-            <button
-              type="button"
-              onClick={() => setModalOpen(true)}
-              className="inline-flex items-center gap-2 rounded-md bg-[#111827] px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-black"
+        {/* Filter */}
+        <div className="mt-5 rounded-xl border border-[#EEF1F6] bg-white p-5">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[12px] font-semibold text-[#6B7280]">Status</label>
+            <select
+              value={status}
+              onChange={(e) => {
+                setStatus(e.target.value as "all" | JobRequisitionStatus)
+                setPage(1)
+              }}
+              className="h-[42px] w-full max-w-[260px] rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[13px]"
             >
-              <Plus className="h-4 w-4" />
-              New Requisition
-            </button>
+              <option value="all">All Statuses</option>
+              {JOB_REQUISITION_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {JOB_REQUISITION_STATUS_LABELS[s]}
+                </option>
+              ))}
+            </select>
           </div>
+        </div>
 
-          {/* Filters card */}
-          <div className="mt-5 rounded-xl border border-[#EEF1F6] bg-white p-5">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
-              <div className="flex items-center gap-2 text-[#4B5563] lg:pb-2.5">
-                <SlidersHorizontal className="h-4 w-4" />
-                <span className="text-[13px] font-semibold">Filters</span>
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[11px] font-bold uppercase text-[#6B7280]">Role</label>
-                <select
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                  className="h-[42px] rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[13px]"
-                >
-                  <option value="All Roles">All Roles</option>
-                  {roleOptions.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
-                    </option>
+        {/* Table */}
+        <div className="mt-5 overflow-hidden rounded-xl border border-[#EEF1F6] bg-white">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead className="bg-[#EEF2FF]">
+                <tr>
+                  {[
+                    "Role",
+                    "Department",
+                    "Suggested Salary",
+                    "Expected Start",
+                    "Priority",
+                    "Status",
+                  ].map((h) => (
+                    <th
+                      key={h}
+                      className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]"
+                    >
+                      {h}
+                    </th>
                   ))}
-                </select>
-              </div>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#F3F4F6]">
+                <HrTableState
+                  colSpan={6}
+                  isLoading={requisitions.isLoading}
+                  error={requisitions.error}
+                  isEmpty={rows.length === 0}
+                  emptyTitle="No requisitions"
+                  emptyDescription="Hiring requests raised by the branch appear here."
+                  onRetry={() => requisitions.refetch()}
+                />
 
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[11px] font-bold uppercase text-[#6B7280]">Priority</label>
-                <select
-                  value={priority}
-                  onChange={(e) => setPriority(e.target.value)}
-                  className="h-[42px] rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[13px]"
-                >
-                  {PRIORITIES.map((option) => (
-                    <option key={option.value || "all"} value={option.value}>
-                      {option.label}
-                    </option>
+                {!requisitions.isLoading &&
+                  !requisitions.error &&
+                  rows.map((row) => (
+                    <tr key={row._id} className="hover:bg-[#F9FAFB]">
+                      <td className="px-4 py-4 text-[13px]">
+                        <div className="flex flex-col">
+                          <span className="font-bold text-[#111827]">{row.roleTitle}</span>
+                          <span className="text-[12px] text-[#9CA3AF]">
+                            Ref: #{row.refNumber}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 text-[13px] text-[#4B5563]">{row.department}</td>
+                      <td className="px-4 py-4 text-[13px] font-semibold text-[#111827]">
+                        {formatCurrency(row.salarySuggested, { maximumFractionDigits: 0 })}
+                      </td>
+                      <td className="px-4 py-4 text-[13px] text-[#4B5563]">
+                        {formatDate(row.expectedStartDate, "medium")}
+                      </td>
+                      <td className="px-4 py-4 text-[13px]">
+                        <span
+                          className={cn(
+                            "inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold",
+                            badgeFor(JOB_REQUISITION_PRIORITY_BADGES, row.priority),
+                          )}
+                        >
+                          {lookup(JOB_REQUISITION_PRIORITY_LABELS, row.priority)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4 text-[13px]">
+                        <span
+                          className={cn(
+                            "inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold",
+                            badgeFor(JOB_REQUISITION_STATUS_BADGES, row.status),
+                          )}
+                        >
+                          {lookup(JOB_REQUISITION_STATUS_LABELS, row.status)}
+                        </span>
+                      </td>
+                    </tr>
                   ))}
-                </select>
-              </div>
-
-              <button
-                type="button"
-                className="h-[42px] rounded-md bg-[#2563EB] px-4 py-2 text-[12px] font-semibold text-white hover:bg-[#1D4ED8]"
-              >
-                Search
-              </button>
-
-              <button
-                type="button"
-                onClick={resetFilters}
-                className="text-[13px] font-semibold text-[#2563EB] hover:underline lg:pb-2.5"
-              >
-                Reset All
-              </button>
-            </div>
+              </tbody>
+            </table>
           </div>
 
-          {/* Tabs + table card */}
-          <div className="mt-6 overflow-hidden rounded-xl border border-[#EEF1F6] bg-white">
-            {/* Tabs */}
-            <div className="flex items-center gap-6 border-b border-[#EEF1F6] px-5">
-              <button
-                type="button"
-                onClick={() => setTab("awaiting")}
-                className={cn(
-                  "-mb-px border-b-2 py-4 text-[13px]",
-                  tab === "awaiting"
-                    ? "border-[#2563EB] text-[#111827] font-bold"
-                    : "border-transparent text-[#6B7280]"
-                )}
-              >
-                Awaiting Approval
-              </button>
-              <button
-                type="button"
-                onClick={() => setTab("past")}
-                className={cn(
-                  "-mb-px border-b-2 py-4 text-[13px]",
-                  tab === "past"
-                    ? "border-[#2563EB] text-[#111827] font-bold"
-                    : "border-transparent text-[#6B7280]"
-                )}
-              >
-                Past Requests
-              </button>
-            </div>
-
-            <div className="overflow-x-auto">
-              {tab === "awaiting" ? (
-                <table className="w-full text-left">
-                  <thead>
-                    <tr>
-                      {[
-                        "Role Title",
-                        "Department",
-                        "Date Requested",
-                        "Urgency",
-                        "Clearance Status",
-                      ].map((h) => (
-                        <th
-                          key={h}
-                          className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]"
-                        >
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#F3F4F6]">
-                    {awaitingRows.map((row) => (
-                      <tr
-                        key={row.id}
-                        onClick={() => setViewing(row)}
-                        className="cursor-pointer hover:bg-[#F9FAFB]"
-                      >
-                        <td className="px-4 py-4 text-[13px]">
-                          <div className="flex flex-col">
-                            <span className="font-bold text-[#111827]">{row.roleTitle}</span>
-                            <span className="text-[12px] text-[#6B7280]">
-                              {row.requisitionNumber || "—"}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                          {row.department || "—"}
-                        </td>
-                        <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                          {formatDate(row.createdAt)}
-                        </td>
-                        <td className="px-4 py-4 text-[13px]">
-                          <UrgencyPill urgency={row.priority} />
-                        </td>
-                        <td className="px-4 py-4 text-[13px]">
-                          <span className="inline-flex items-center gap-2 text-[#6B7280]">
-                            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                            Awaiting Director Sign-off
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                    <HrTableStateRow
-                      colSpan={5}
-                      loading={awaitingLoading}
-                      error={awaitingError}
-                      isEmpty={awaitingRows.length === 0}
-                      emptyMessage="No requisitions match your filters."
-                      onRetry={refreshAwaiting}
-                    />
-                  </tbody>
-                </table>
-              ) : (
-                <table className="w-full text-left">
-                  <thead>
-                    <tr>
-                      {[
-                        "Role Title",
-                        "Department",
-                        "Date Requested",
-                        "Urgency",
-                        "Status",
-                      ].map((h) => (
-                        <th
-                          key={h}
-                          className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]"
-                        >
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#F3F4F6]">
-                    {pastRows.map((row) => (
-                      <tr
-                        key={row.id}
-                        onClick={() => setViewing(row)}
-                        className="cursor-pointer hover:bg-[#F9FAFB]"
-                      >
-                        <td className="px-4 py-4 text-[13px]">
-                          <div className="flex flex-col">
-                            <span className="font-bold text-[#111827]">{row.roleTitle}</span>
-                            <span className="text-[12px] text-[#6B7280]">
-                              {row.requisitionNumber || "—"}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                          {row.department || "—"}
-                        </td>
-                        <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                          {formatDate(row.createdAt)}
-                        </td>
-                        <td className="px-4 py-4 text-[13px]">
-                          <UrgencyPill urgency={row.priority} />
-                        </td>
-                        <td className="px-4 py-4 text-[13px]">
-                          <span
-                            className={cn(
-                              "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold",
-                              statusStyle(REQUISITION_STATUS_STYLES, row.status)
-                            )}
-                          >
-                            {statusLabel(REQUISITION_STATUS_LABELS, row.status)}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                    <HrTableStateRow
-                      colSpan={5}
-                      loading={historyLoading}
-                      error={historyError}
-                      isEmpty={pastRows.length === 0}
-                      emptyMessage="No requisitions match your filters."
-                      onRetry={refreshHistory}
-                    />
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </div>
-        </main>
-      </div>
-
-      <BranchAdminNewRoleRequisitionModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        onCreated={refreshAll}
-      />
-
-      <ReviewRequisitionModal
-        requisition={viewing}
-        onClose={() => setViewing(null)}
-        readOnly
-      />
+          <HrPagination
+            pagination={requisitions.data?.pagination}
+            page={page}
+            onPageChange={setPage}
+            itemCount={rows.length}
+            noun="requisitions"
+          />
+        </div>
+      </main>
     </div>
   )
 }

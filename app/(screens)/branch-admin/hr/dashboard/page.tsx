@@ -3,12 +3,11 @@
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import BranchAdminSidebar from "@/components/navigation/BranchAdminSidebar"
+import { HrPanelState, HrStatValue } from "@/components/hr/HrDataState"
+import { useAdminHrDashboard } from "@/components/hooks/hr/useHrDashboard"
+import { useAttendanceLogs } from "@/components/hooks/hr/useHrAttendance"
 import { useAuth } from "@/components/auth/AuthProvider"
-import { useToast } from "@/components/ui/toast"
-import { useAdminHrDashboard } from "@/components/hooks/useHrDashboard"
-import { useHrAttendance } from "@/components/hooks/useHrAttendance"
-import { ATTENDANCE_STATUS_LABELS, formatTime, initials, statusLabel } from "@/lib/hr/display"
-import { exportHrRows } from "@/lib/hr/export"
+import { clockTime, employeeName } from "@/lib/hr/normalize"
 import { cn } from "@/lib/utils"
 import {
   Search,
@@ -22,99 +21,91 @@ import {
   UserPlus,
   ChevronRight,
   ArrowRight,
-  ArrowUpRight,
 } from "lucide-react"
 
-/** Where each pending-action type sends the admin, and what the button says. */
-const PENDING_ACTION_ROUTES: Record<string, { href: string; action: string }> = {
-  leave_review: { href: "/branch-admin/hr/leave", action: "Process" },
-  loan_verification: { href: "/branch-admin/hr/employee-loans", action: "Review" },
-  document_verification: { href: "/branch-admin/hr/employee-directory", action: "Review" },
-  exit_clearance: { href: "/branch-admin/hr/exit-clearance", action: "Process" },
-  training_budget: { href: "/branch-admin/hr/training-management", action: "Review" },
+/** Where each backend `pendingActions[].type` sends the admin. */
+const PENDING_ACTION_ROUTES: Record<string, { href: string; cta: string }> = {
+  leave_review: { href: "/branch-admin/hr/leave", cta: "Process" },
+  loan_verification: { href: "/branch-admin/hr/employee-loans", cta: "Review" },
 }
 
 const ACTIVITY_DOTS: Record<string, string> = {
   present: "bg-emerald-500",
   late: "bg-amber-500",
-  absent: "bg-rose-500",
+  absent: "bg-red-500",
   half_day: "bg-blue-500",
   missing: "bg-[#6B7280]",
+}
+
+function greeting(date = new Date()): string {
+  const hour = date.getHours()
+  if (hour < 12) return "Good morning"
+  if (hour < 17) return "Good afternoon"
+  return "Good evening"
 }
 
 export default function Page() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const router = useRouter()
   const { user } = useAuth()
-  const { pushToast } = useToast()
 
-  const { dashboard, loading, error, refresh } = useAdminHrDashboard()
-  // The API has no activity feed, so the latest attendance punches stand in as
-  // "what just happened on this branch".
-  const { logs: recentLogs } = useHrAttendance({ limit: 5 })
+  const dashboard = useAdminHrDashboard()
 
-  const clockInRate = dashboard.clockInRate
-  const firstName = (user?.firstName || user?.name || "Admin").split(" ")[0]
-  const today = useMemo(
-    () =>
-      new Date().toLocaleDateString("en-GB", {
-        weekday: "long",
-        day: "numeric",
-        month: "long",
-        year: "numeric",
-      }),
-    []
-  )
+  /**
+   * The admin dashboard endpoint returns counters only, so the activity feed
+   * reads the most recent attendance logs instead of inventing entries.
+   */
+  const activity = useAttendanceLogs({ limit: 5 })
+
+  const kpis = dashboard.data?.kpis
 
   const statCards = useMemo(
     () => [
       {
-        value: String(dashboard.totalEmployees),
+        key: "total",
+        value: kpis ? String(kpis.totalEmployees) : "—",
         label: "TOTAL EMPLOYEES",
         icon: Users,
         tint: "bg-blue-50",
         iconColor: "text-blue-600",
       },
       {
-        value: String(dashboard.onLeaveToday),
+        key: "onLeave",
+        value: kpis ? String(kpis.onLeaveToday) : "—",
         label: "ON LEAVE TODAY",
         icon: Calendar,
         tint: "bg-amber-50",
         iconColor: "text-amber-600",
       },
       {
-        value: `${dashboard.clockedInToday} / ${dashboard.totalEmployees}`,
+        key: "clockedIn",
+        value: kpis ? `${kpis.clockedInToday} / ${kpis.totalEmployees}` : "—",
         label: "CLOCKED IN TODAY",
         icon: Clock,
         tint: "bg-emerald-50",
         iconColor: "text-emerald-600",
       },
       {
-        value: String(dashboard.activeTrainings),
+        key: "trainings",
+        value: kpis ? String(kpis.activeTrainings) : "—",
         label: "ACTIVE TRAINING EVENTS",
         icon: GraduationCap,
         tint: "bg-violet-50",
         iconColor: "text-violet-600",
       },
     ],
-    [dashboard]
+    [kpis],
   )
 
-  const pendingTotal = dashboard.pendingActions.reduce((sum, item) => sum + item.count, 0)
+  const clockInPercent = `${kpis?.clockInRate ?? 0}%`
 
-  const handleExport = () => {
-    const exported = exportHrRows("branch-hr-summary", [
-      {
-        "Total Employees": dashboard.totalEmployees,
-        "On Leave Today": dashboard.onLeaveToday,
-        "Clocked In Today": dashboard.clockedInToday,
-        "Clock-in Rate (%)": dashboard.clockInRate,
-        "Active Trainings": dashboard.activeTrainings,
-        "Pending Actions": pendingTotal,
-      },
-    ])
-    if (!exported) pushToast("Nothing to export yet", "info")
-  }
+  const pendingActions = useMemo(
+    () => (dashboard.data?.pendingActions ?? []).filter((action) => action.count > 0),
+    [dashboard.data],
+  )
+  const pendingTotal = pendingActions.reduce((sum, action) => sum + action.count, 0)
+
+  const today = new Date()
 
   return (
     <div className="flex flex-col lg:flex-row min-h-screen bg-[#F8FAFC] w-full">
@@ -159,14 +150,20 @@ export default function Page() {
           {/* Header row */}
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h1 className="text-[26px] font-bold text-[#111827]">Welcome back, {firstName}</h1>
-              <p className="text-[14px] text-[#6B7280]">{today}</p>
+              <h1 className="text-[26px] font-bold text-[#111827]">
+                {greeting(today)}, {user?.firstName ?? user?.name ?? "Admin"}
+              </h1>
+              <p className="text-[14px] text-[#6B7280]">
+                {today.toLocaleDateString("en-NG", {
+                  weekday: "long",
+                  month: "long",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+              </p>
             </div>
             <div className="flex items-center gap-3">
-              <button
-                onClick={handleExport}
-                className="flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[12px] font-medium text-[#4B5563]"
-              >
+              <button className="flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[12px] font-medium text-[#4B5563]">
                 <Download className="h-4 w-4" />
                 Export Summary
               </button>
@@ -178,28 +175,29 @@ export default function Page() {
             {statCards.map((card) => {
               const Icon = card.icon
               return (
-                <div key={card.label} className="rounded-xl border border-[#EEF1F6] bg-white p-5">
+                <div key={card.key} className="rounded-xl border border-[#EEF1F6] bg-white p-5">
                   <div className="flex items-start justify-between">
                     <div>
-                      <div className="text-[28px] font-bold text-[#111827] leading-none">{card.value}</div>
+                      <div className="text-[28px] font-bold text-[#111827] leading-none">
+                        <HrStatValue
+                          isLoading={dashboard.isLoading}
+                          error={dashboard.error}
+                          value={card.value}
+                        />
+                      </div>
                       <div className="mt-2 text-[12px] font-semibold text-[#6B7280]">{card.label}</div>
                     </div>
-                    <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg", card.tint)}>
+                    <div
+                      className={cn(
+                        "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
+                        card.tint,
+                      )}
+                    >
                       <Icon className={cn("h-5 w-5", card.iconColor)} />
                     </div>
                   </div>
 
-                  {card.label === "TOTAL EMPLOYEES" && (
-                    <button
-                      onClick={() => router.push("/branch-admin/hr/employee-directory")}
-                      className="mt-3 flex items-center gap-1 text-[12px] font-semibold text-[#2563EB]"
-                    >
-                      View directory
-                      <ArrowUpRight className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-
-                  {card.label === "ON LEAVE TODAY" && (
+                  {card.key === "onLeave" && (
                     <button
                       onClick={() => router.push("/branch-admin/hr/leave")}
                       className="mt-3 text-[12px] font-semibold text-[#2563EB]"
@@ -208,13 +206,15 @@ export default function Page() {
                     </button>
                   )}
 
-                  {card.label === "CLOCKED IN TODAY" && (
+                  {card.key === "clockedIn" && (
                     <div className="mt-3">
-                      <div className="mb-1.5 text-[12px] font-semibold text-[#6B7280]">{clockInRate}%</div>
+                      <div className="mb-1.5 text-[12px] font-semibold text-[#6B7280]">
+                        {clockInPercent}
+                      </div>
                       <div className="h-2 rounded-full bg-[#EEF1F6]">
                         <div
-                          className="h-2 rounded-full bg-emerald-500"
-                          style={{ width: `${Math.min(Math.max(clockInRate, 0), 100)}%` }}
+                          className="h-2 rounded-full bg-emerald-500 transition-all"
+                          style={{ width: clockInPercent }}
                         />
                       </div>
                     </div>
@@ -230,67 +230,55 @@ export default function Page() {
             <div className="lg:col-span-2 overflow-hidden rounded-xl border border-[#EEF1F6] bg-white">
               <div className="flex items-center justify-between p-5">
                 <h2 className="text-[16px] font-bold text-[#111827]">Pending Actions</h2>
-                {pendingTotal > 0 ? (
+                {pendingTotal > 0 && (
                   <span className="rounded-full bg-rose-100 px-2.5 py-1 text-[10px] font-bold text-rose-700">
-                    {pendingTotal} Outstanding
+                    {pendingTotal} Pending
                   </span>
-                ) : null}
+                )}
               </div>
 
-              <div className="divide-y divide-[#EEF1F6] border-t border-[#EEF1F6]">
-                {dashboard.pendingActions.map((item) => {
-                  const route = PENDING_ACTION_ROUTES[item.type]
-                  return (
-                    <div key={item.type} className="flex items-center gap-4 px-5 py-4">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#EEF2FF] text-[13px] font-bold text-[#2563EB]">
-                        {item.count}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-[14px] font-bold text-[#111827]">{item.label}</div>
-                        <div className="truncate text-[13px] text-[#6B7280]">
-                          {item.count} awaiting your attention
+              {dashboard.isLoading || dashboard.error || pendingActions.length === 0 ? (
+                <div className="border-t border-[#EEF1F6] p-5">
+                  <HrPanelState
+                    isLoading={dashboard.isLoading}
+                    error={dashboard.error}
+                    isEmpty={pendingActions.length === 0}
+                    emptyTitle="Nothing needs your attention"
+                    emptyDescription="Leave and loan requests will appear here as they come in."
+                    onRetry={() => dashboard.refetch()}
+                    className="border-0 p-4"
+                  />
+                </div>
+              ) : (
+                <div className="divide-y divide-[#EEF1F6] border-t border-[#EEF1F6]">
+                  {pendingActions.map((item) => {
+                    const route = PENDING_ACTION_ROUTES[item.type]
+                    return (
+                      <div key={item.type} className="flex items-center gap-4 px-5 py-4">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#EEF2FF] text-[13px] font-bold text-[#2563EB]">
+                          {item.count}
                         </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-[14px] font-bold text-[#111827]">
+                            {item.label}
+                          </div>
+                          <div className="truncate text-[13px] text-[#6B7280]">
+                            {item.count} awaiting action
+                          </div>
+                        </div>
+                        {route && (
+                          <button
+                            onClick={() => router.push(route.href)}
+                            className="shrink-0 rounded-md bg-[#111827] px-4 py-2 text-[12px] font-semibold text-white"
+                          >
+                            {route.cta}
+                          </button>
+                        )}
                       </div>
-                      <button
-                        onClick={() => route && router.push(route.href)}
-                        disabled={!route}
-                        className="shrink-0 rounded-md bg-[#111827] px-4 py-2 text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        {route?.action ?? "Open"}
-                      </button>
-                    </div>
-                  )
-                })}
-
-                {!loading && !error && dashboard.pendingActions.length === 0 ? (
-                  <div className="px-5 py-10 text-center text-[13px] text-[#9CA3AF]">
-                    Nothing is waiting on you right now.
-                  </div>
-                ) : null}
-
-                {loading ? (
-                  <div className="px-5 py-10 text-center text-[13px] text-[#6B7280]">Loading…</div>
-                ) : null}
-
-                {error ? (
-                  <div className="px-5 py-10 text-center text-[13px] text-rose-600">
-                    {error}
-                    <button
-                      onClick={refresh}
-                      className="ml-2 rounded-md border border-rose-200 px-2 py-1 text-[12px] font-medium"
-                    >
-                      Try again
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-
-              <button
-                onClick={() => router.push("/branch-admin/hr/leave")}
-                className="w-full bg-[#F8FAFC] py-3 text-center text-[13px] font-semibold text-[#2563EB]"
-              >
-                View All Task Queue ({pendingTotal})
-              </button>
+                    )
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Right column */}
@@ -337,38 +325,47 @@ export default function Page() {
               {/* Recent Activity */}
               <div className="rounded-xl border border-[#EEF1F6] bg-white p-5">
                 <h2 className="text-[16px] font-bold text-[#111827]">Recent Activity</h2>
-                <div className="mt-4 space-y-4">
-                  {recentLogs.map((log, idx) => (
-                    <div key={log.id} className="flex gap-3">
-                      <div className="flex flex-col items-center">
-                        <span
-                          className={cn(
-                            "mt-1 h-2.5 w-2.5 shrink-0 rounded-full",
-                            ACTIVITY_DOTS[log.status] ?? "bg-[#6B7280]"
-                          )}
-                        />
-                        {idx < recentLogs.length - 1 && (
-                          <span className="mt-1 w-px flex-1 bg-[#EEF1F6]" />
-                        )}
-                      </div>
-                      <div className="pb-1">
-                        <div className="text-[13px] font-semibold text-[#111827]">
-                          {log.employeeName || initials(log.employeeName) || "Staff"}{" "}
-                          <span className="font-normal text-[#6B7280]">
-                            marked {statusLabel(ATTENDANCE_STATUS_LABELS, log.status).toLowerCase()}
-                          </span>
+                {activity.isLoading || activity.error || (activity.data?.items.length ?? 0) === 0 ? (
+                  <HrPanelState
+                    isLoading={activity.isLoading}
+                    error={activity.error}
+                    isEmpty={(activity.data?.items.length ?? 0) === 0}
+                    emptyTitle="No activity yet"
+                    emptyDescription="Clock-ins will show up here."
+                    onRetry={() => activity.refetch()}
+                    className="mt-4 border-0 p-4"
+                  />
+                ) : (
+                  <div className="mt-4 space-y-4">
+                    {activity.data?.items.map((log, idx, all) => (
+                      <div key={log._id} className="flex gap-3">
+                        <div className="flex flex-col items-center">
+                          <span
+                            className={cn(
+                              "mt-1 h-2.5 w-2.5 shrink-0 rounded-full",
+                              ACTIVITY_DOTS[log.status] ?? "bg-[#6B7280]",
+                            )}
+                          />
+                          {idx < all.length - 1 && <span className="mt-1 w-px flex-1 bg-[#EEF1F6]" />}
                         </div>
-                        <div className="text-[12px] text-[#9CA3AF]">
-                          {log.clockIn ? formatTime(log.clockIn) : "No clock-in"}
+                        <div className="pb-1">
+                          <div className="text-[13px] font-semibold text-[#111827]">
+                            {employeeName(log.employeeId)}{" "}
+                            {log.clockIn ? "clocked in" : `marked ${log.status.replace("_", " ")}`}
+                          </div>
+                          <div className="text-[12px] text-[#9CA3AF]">
+                            {log.clockIn
+                              ? clockTime(log.clockIn)
+                              : new Date(log.date).toLocaleDateString("en-NG", {
+                                  month: "short",
+                                  day: "numeric",
+                                })}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-
-                  {recentLogs.length === 0 ? (
-                    <p className="text-[13px] text-[#9CA3AF]">No attendance recorded yet today.</p>
-                  ) : null}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>

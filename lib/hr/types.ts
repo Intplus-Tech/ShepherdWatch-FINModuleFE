@@ -1,67 +1,210 @@
-/** Normalized HR domain models. Hooks map the backend payloads onto these. */
+/**
+ * Types mirroring the backend HR domain (`/api/v1/hr/*`).
+ *
+ * These follow `shepherdwatch-be/src/models/*` and `utils/enums/hr.enums.ts`.
+ * Reference fields (`employeeId`, `branchId`, `userId`, ...) are declared as
+ * `Ref<T>` because the backend populates some of them and leaves others as raw
+ * ObjectId strings depending on the endpoint — callers must narrow with the
+ * `deref`/`refId` helpers in `lib/hr/normalize.ts` rather than assuming.
+ */
 
-export type EmploymentStatus = "active" | "on_leave" | "suspended" | "terminated" | "resigned"
-export type AttendanceStatus = "present" | "late" | "absent" | "half_day" | "missing"
-export type LeaveStatus = "pending_supervisor" | "pending_hr" | "approved" | "declined" | "cancelled"
-export type LoanStatus =
-  | "pending_accountant"
-  | "pending_pastor"
-  | "pending_director"
-  | "approved"
-  | "active"
-  | "completed"
-  | "rejected"
-  | "withdrawn"
-export type RequisitionStatus = "draft" | "pending_review" | "approved" | "rejected" | "filled" | "cancelled"
-export type RequisitionPriority = "low" | "medium" | "high" | "critical"
-export type ExitClearanceStatus =
-  | "pending_admin"
-  | "pending_finance"
-  | "pending_pastor"
-  | "completed"
-  | "cancelled"
-export type DocumentType =
-  | "contract"
-  | "id_proof"
-  | "academic_credential"
-  | "certification"
-  | "medical_clearance"
-  | "background_check"
-  | "other"
-export type DocumentStatus = "pending" | "verified" | "flagged"
-export type TrainingRecordStatus = "enrolled" | "attended" | "certified" | "failed" | "no_show"
+export type Ref<T> = string | T | null | undefined
 
-export type HrEmployee = {
-  id: string
-  employeeCode: string
-  name: string
-  email: string
-  avatarUrl: string
+export type ApiEnvelope<T> = {
+  success: boolean
+  message: string
+  data: T
+  timestamp: string
+}
+
+export type Pagination = {
+  total: number
+  page: number
+  limit: number
+  pages: number
+}
+
+export type Paginated<T> = {
+  items: T[]
+  pagination: Pagination
+}
+
+/* ---------------------------------------------------------------- enums -- */
+
+export const EMPLOYMENT_STATUSES = [
+  "active",
+  "on_leave",
+  "suspended",
+  "terminated",
+  "resigned",
+] as const
+export type EmploymentStatus = (typeof EMPLOYMENT_STATUSES)[number]
+
+export const LEAVE_STATUSES = [
+  "pending_supervisor",
+  "pending_hr",
+  "approved",
+  "declined",
+  "cancelled",
+] as const
+export type LeaveStatus = (typeof LEAVE_STATUSES)[number]
+
+export const LOAN_STATUSES = [
+  "pending_pastor",
+  "pending_director",
+  "approved",
+  "declined",
+  "active",
+  "completed",
+] as const
+export type LoanStatus = (typeof LOAN_STATUSES)[number]
+
+export const ATTENDANCE_STATUSES = ["present", "late", "absent", "half_day", "missing"] as const
+export type AttendanceStatus = (typeof ATTENDANCE_STATUSES)[number]
+
+export const CLEARANCE_STATUSES = ["pending", "in_progress", "completed", "cancelled"] as const
+export type ClearanceStatus = (typeof CLEARANCE_STATUSES)[number]
+
+export const CLEARANCE_STEPS = ["line_manager", "finance", "admin", "it", "hr"] as const
+export type ClearanceStep = (typeof CLEARANCE_STEPS)[number]
+
+export const JOB_REQUISITION_STATUSES = [
+  "awaiting_director",
+  "approved",
+  "rejected",
+  "cancelled",
+] as const
+export type JobRequisitionStatus = (typeof JOB_REQUISITION_STATUSES)[number]
+
+export const JOB_REQUISITION_PRIORITIES = ["normal", "urgent", "critical"] as const
+export type JobRequisitionPriority = (typeof JOB_REQUISITION_PRIORITIES)[number]
+
+export const PAYROLL_RUN_STATUSES = [
+  "draft",
+  "processing",
+  "submitted",
+  "approved",
+  "disbursed",
+] as const
+export type PayrollRunStatus = (typeof PAYROLL_RUN_STATUSES)[number]
+
+export const TRAINING_PARTICIPANT_STATUSES = [
+  "enrolled",
+  "attended",
+  "certified",
+  "failed",
+] as const
+export type TrainingParticipantStatus = (typeof TRAINING_PARTICIPANT_STATUSES)[number]
+
+export const TRAINING_LOCATION_TYPES = ["physical", "virtual", "hybrid"] as const
+export type TrainingLocationType = (typeof TRAINING_LOCATION_TYPES)[number]
+
+export const EMPLOYEE_DOCUMENT_TYPES = [
+  "contract",
+  "kyc",
+  "educational",
+  "professional",
+  "performance",
+  "misc",
+] as const
+export type EmployeeDocumentType = (typeof EMPLOYEE_DOCUMENT_TYPES)[number]
+
+export const EMPLOYEE_DOCUMENT_STATUSES = ["pending", "verified", "flagged"] as const
+export type EmployeeDocumentStatus = (typeof EMPLOYEE_DOCUMENT_STATUSES)[number]
+
+/* --------------------------------------------------------------- shared -- */
+
+export type UserRef = {
+  _id?: string
+  fullName?: string
+  firstName?: string
+  lastName?: string
+  email?: string
+  avatarUrl?: string
+}
+
+export type BranchRef = {
+  _id?: string
+  name?: string
+  state?: string
+}
+
+/* ------------------------------------------------------------- employee -- */
+
+export type Qualification = {
+  institution: string
+  degree: string
+  yearObtained: number
+}
+
+export type BankDetails = {
+  bankName?: string
+  accountNumber?: string
+  accountName?: string
+}
+
+export type EmergencyContact = {
+  name?: string
+  relationship?: string
+  phone?: string
+  address?: string
+}
+
+export type NextOfKin = {
+  name?: string
+  relationship?: string
+  phone?: string
+  email?: string
+}
+
+export type AssignedAsset = {
+  assetId?: string
+  name?: string
+  serialNumber?: string
+  issuedDate?: string
+  status?: string
+}
+
+export type AllowanceItem = {
+  title: string
+  amount: number
+}
+
+export type EmployeeProfile = {
+  _id: string
+  userId?: Ref<UserRef>
+  branchId?: Ref<BranchRef>
+  employeeId: string
+  employmentStatus: EmploymentStatus
+  dateOfBirth?: string
+  gender?: "male" | "female"
+  maritalStatus?: "single" | "married" | "divorced" | "widowed"
+  phone?: string
+  address?: string
+  stateOfOrigin?: string
+  nationality?: string
+  religion?: string
+  profileIntegrityScore?: number
+  emergencyContact?: EmergencyContact
+  nextOfKin?: NextOfKin
   jobTitle: string
-  department: string
-  employmentStatus: EmploymentStatus | string
-  salary: number
-  hireDate: string
-  branchId: string
-  branchName: string
-  role: string
-  phone: string
-  profileIntegrityScore: number
+  department?: string
+  hireDate?: string
+  confirmationDate?: string
+  supervisorId?: Ref<UserRef>
+  qualifications?: Qualification[]
+  bankDetails?: BankDetails
+  salary?: number
+  allowances?: AllowanceItem[]
+  assets?: AssignedAsset[]
+  taxId?: string
+  pensionId?: string
+  nhfId?: string
+  createdAt?: string
+  updatedAt?: string
 }
 
-export type HrEmployeeDetail = HrEmployee & {
-  dateOfBirth: string
-  gender: string
-  maritalStatus: string
-  address: string
-  nationality: string
-  religion: string
-  emergencyContact: { name: string; relationship: string; phone: string; email: string }
-  allowances: { title: string; amount: number }[]
-  disbursementDetails: { bankName: string; accountNumber: string; accountName: string }
-}
-
-export type HrEmployeeMetrics = {
+export type EmployeeMetrics = {
   totalStaff: number
   activeStaff: number
   onLeaveStaff: number
@@ -69,286 +212,478 @@ export type HrEmployeeMetrics = {
   exitPendingStaff: number
 }
 
-export type HrAttendanceLog = {
-  id: string
-  date: string
-  clockIn: string
-  clockOut: string
-  durationMinutes: number
-  status: AttendanceStatus | string
-  isManualEntry: boolean
-  reason: string
-  anomalyFixed: boolean
-  employeeId: string
-  employeeCode: string
-  employeeName: string
-  jobTitle: string
-  department: string
-  avatarUrl: string
+/* ---------------------------------------------------------------- leave -- */
+
+export type LeaveTypeConfig = {
+  _id: string
+  name: string
+  code: string
+  maxDaysPerYear: number
+  carryOverAllowed?: boolean
+  maxCarryOverDays?: number
+  requiresApproval?: boolean
+  isActive?: boolean
 }
 
-export type HrAttendanceMetrics = {
-  totalEmployees: number
-  clockedInToday: number
-  lateToday: number
-  absentToday: number
-  attendanceRate: number
-  avgClockInTime: string
+export type LeaveActionRecord = {
+  action?: "approved" | "declined"
+  comment?: string
+  userId?: Ref<UserRef>
+  timestamp?: string
 }
 
-export type HrLeave = {
-  id: string
+export type LeaveRequest = {
+  _id: string
+  employeeId?: Ref<EmployeeProfile>
+  branchId?: Ref<BranchRef>
+  leaveTypeId?: Ref<LeaveTypeConfig>
   startDate: string
   endDate: string
   totalDays: number
-  reason: string
-  handoverNote: string
-  status: LeaveStatus | string
-  conflictCount: number
-  employeeId: string
-  employeeCode: string
-  employeeName: string
-  jobTitle: string
-  department: string
-  avatarUrl: string
-  leaveTypeId: string
-  leaveTypeName: string
-  leaveTypeCode: string
-  createdAt: string
+  reason?: string
+  handoverNote?: string
+  appliedOnBehalfBy?: Ref<UserRef>
+  conflictCount?: number
+  attachments?: { name: string; url: string; size?: number; mimeType?: string }[]
+  status: LeaveStatus
+  supervisorId?: Ref<UserRef>
+  supervisorAction?: LeaveActionRecord
+  hrAction?: LeaveActionRecord
+  createdAt?: string
+  updatedAt?: string
 }
 
-export type HrLeaveMetrics = {
+export type LeaveMetrics = {
   total: number
   pending: number
   approved: number
   declined: number
 }
 
-export type HrLoanReview = {
-  isVerified: boolean
-  action: string
-  comment: string
-  at: string
+export type LeaveBalance = {
+  leaveTypeId: string
+  name: string
+  code: string
+  entitlement: number
+  used: number
+  remaining: number
+  requiresApproval?: boolean
 }
 
-export type HrLoanRepayment = {
-  amount: number
-  paidAt: string
-  reference: string
-}
-
-export type HrLoan = {
-  id: string
+/** `GET /leave-types/balances/:employeeId` wraps the rows with its context. */
+export type LeaveBalancesResponse = {
   employeeId: string
-  employeeCode: string
-  employeeName: string
-  jobTitle: string
-  department: string
-  branchId: string
-  branchName: string
+  year: number
+  balances: LeaveBalance[]
+}
+
+/* ----------------------------------------------------------------- loan -- */
+
+export type LoanApproval = {
+  role: string
+  userId?: Ref<UserRef>
+  action: "approved" | "declined"
+  comment?: string
+  timestamp?: string
+}
+
+export type LoanRepayment = {
   amount: number
-  monthlyDeduction: number
-  remainingBalance: number
-  tenureMonths: number
+  date: string
+  transactionId?: string
+  payrollRunId?: string
+}
+
+export const LOAN_INSTALLMENT_STATUSES = ["pending", "partial", "paid", "overdue"] as const
+export type LoanInstallmentStatus = (typeof LOAN_INSTALLMENT_STATUSES)[number]
+
+/**
+ * One row of the stored repayment plan.
+ *
+ * Generated by the backend when the loan is activated, so the dates and amounts
+ * are the real plan rather than a client-side projection.
+ */
+export type LoanInstallment = {
+  installment: number
+  dueDate: string
+  amount: number
+  paidAmount: number
+  status: LoanInstallmentStatus
+  paidAt?: string
+}
+
+/** Returned alongside a loan by `GET /loans/:id`. */
+export type LoanScheduleSummary = {
+  totalInstallments: number
+  paidInstallments: number
+  overdueInstallments: number
+  remainingInstallments: number
+  nextDueDate: string | null
+  nextDueAmount: number
+}
+
+export type EmployeeLoan = {
+  _id: string
+  employeeId?: Ref<EmployeeProfile>
+  branchId?: Ref<BranchRef>
+  amount: number
   purpose: string
-  status: LoanStatus | string
+  tenureMonths: number
+  monthlyDeduction: number
   debtServiceRatio: number
-  exceedsPolicyLimit: boolean
-  createdAt: string
-  basicSalary: number
-  netSalary: number
-  accountantReview: HrLoanReview | null
-  pastorApproval: HrLoanReview | null
-  directorOverride: HrLoanReview | null
-  repayments: HrLoanRepayment[]
-}
-
-export type HrPayrollLineItem = {
-  employeeId: string
-  employeeCode: string
-  employeeName: string
-  basicSalary: number
-  allowances: number
-  grossPay: number
-  tax: number
-  pension: number
-  loanDeduction: number
-  netPay: number
-}
-
-export type HrPayrollRun = {
-  id: string
-  branchId: string
-  period: string
-  status: string
-  totalGrossPay: number
-  totalDeductions: number
-  totalNetPay: number
-  employeeCount: number
-  lineItems: HrPayrollLineItem[]
-}
-
-export type HrPayrollOverview = {
-  period: string
-  totalBranches: number
-  totalStaffCount: number
-  totalGrossPayroll: number
-  totalTaxWithheld: number
-  totalPensionWithheld: number
-  totalLoanRecovered: number
-  totalNetPayable: number
-  statusDistribution: Record<string, number>
-}
-
-export type HrPayslip = {
-  period: string
-  employee: {
-    id: string
-    employeeCode: string
-    name: string
-    department: string
-    jobTitle: string
-    bankName: string
-    accountNumber: string
+  status: LoanStatus
+  firstDeductionDate?: string
+  supportingDocumentUrls?: string[]
+  accountantReview?: {
+    reviewedBy?: Ref<UserRef>
+    comment?: string
+    timestamp?: string
+    isVerified?: boolean
   }
-  earnings: Record<string, number>
-  deductions: Record<string, number>
-  netPay: number
+  overrideDetails?: {
+    approvedBy?: Ref<UserRef>
+    reason?: string
+    acknowledgedPolicyViolation?: boolean
+    timestamp?: string
+  }
+  approvals?: LoanApproval[]
+  declineReason?: string
+  disbursedAt?: string
+  totalRepaid?: number
+  repayments?: LoanRepayment[]
+  schedule?: LoanInstallment[]
+  createdAt?: string
+  updatedAt?: string
 }
 
-export type HrTrainingParticipant = {
-  recordId: string
-  employeeId: string
-  employeeName: string
-  jobTitle: string
-  status: TrainingRecordStatus | string
-  score: number
-  certificateUrl: string
+/** `GET /loans/:id` returns the loan plus its schedule summary. */
+export type EmployeeLoanDetail = EmployeeLoan & {
+  scheduleSummary?: LoanScheduleSummary
 }
 
-export type HrTraining = {
-  id: string
+/* ----------------------------------------------------------- attendance -- */
+
+export type AttendanceLog = {
+  _id: string
+  employeeId?: Ref<EmployeeProfile>
+  branchId?: Ref<BranchRef>
+  date: string
+  clockIn?: string
+  clockOut?: string
+  durationMinutes?: number
+  status: AttendanceStatus
+  isManualEntry?: boolean
+  markedBy?: Ref<UserRef>
+  reason?: string
+  anomalyFixed?: boolean
+  resolutionNote?: string
+  resolvedBy?: Ref<UserRef>
+  resolvedAt?: string
+  createdAt?: string
+}
+
+export type AttendanceMetrics = {
+  totalEmployees: number
+  clockedInToday: number
+  lateToday: number
+  absentToday: number
+  attendanceRate: number
+  avgClockInTime?: string
+}
+
+/* ------------------------------------------------------------- training -- */
+
+export type TrainingEvent = {
+  _id: string
   title: string
-  description: string
-  locationType: string
+  branchId?: Ref<BranchRef>
+  isGlobal?: boolean
+  locationType: TrainingLocationType
   venueOrLink: string
   startDate: string
   endDate: string
   startTime: string
   endTime: string
   trainerName: string
-  trainerType: string
-  maxCapacity: number
-  enrolledCount: number
-  isPaid: boolean
-  amount: number
-  budgetRequested: number
-  budgetApproved: boolean
-  certificationIncluded: boolean
-  status: string
-  branchId: string
-  participants: HrTrainingParticipant[]
+  trainerType?: "internal" | "external"
+  maxCapacity?: number
+  isPaid?: boolean
+  amount?: number
+  budgetRequested?: number
+  budgetApproved?: boolean
+  budgetApprovedBy?: Ref<UserRef>
+  budgetJustification?: string
+  flyerUrl?: string
+  certificationIncluded?: boolean
+  description?: string
+  participantCount?: number
+  createdAt?: string
 }
 
-export type HrTrainingMetrics = {
-  totalEvents: number
-  totalEnrolled: number
-  certifiedStaff: number
-  completionRate: number
-  pendingBudgetsCount: number
+export type TrainingParticipant = {
+  _id: string
+  trainingEventId?: Ref<TrainingEvent>
+  employeeId?: Ref<EmployeeProfile>
+  enrolledBy?: Ref<UserRef>
+  status: TrainingParticipantStatus
+  score?: number
+  completionDate?: string
+  renewalDate?: string
+  certificateUrl?: string
 }
 
-export type HrTrainingBudget = {
+export type TrainingMetrics = {
+  totalSessions: number
+  staffEnrolled: number
+  pendingCompletions: number
+}
+
+/**
+ * `GET /trainings/budget-overview`.
+ *
+ * `annualAllocation` comes from `GlobalHrConfig` (with an optional per-branch
+ * override) and `totalSpent` is scoped to the caller's branch, so a branch view
+ * measures its own spend against its own budget.
+ */
+export type TrainingBudgetOverview = {
   annualAllocation: number
   totalSpent: number
-  committedPending: number
   availableBalance: number
-  percentageUtilized: number
+  currency: string
+  /** "branch" when scoped to the caller's branch, "organisation" otherwise. */
+  scope: "branch" | "organisation"
 }
 
-export type HrJobRequisition = {
-  id: string
-  requisitionNumber: string
-  roleTitle: string
-  department: string
-  branchId: string
-  branchName: string
-  salarySuggested: number
-  priority: RequisitionPriority | string
-  status: RequisitionStatus | string
-  expectedStartDate: string
-  justification: string
-  reviewComment: string
-  createdAt: string
+/* ------------------------------------------------------- exit clearance -- */
+
+export type ClearanceStepRecord = {
+  step: ClearanceStep
+  clearedBy?: Ref<UserRef>
+  status: ClearanceStatus
+  comment?: string
+  timestamp?: string
 }
 
-export type HrJobRequisitionMetrics = {
-  totalRequisitions: number
-  pendingReviewCount: number
-  approvedCount: number
-  rejectedCount: number
-  criticalVacancies: number
-}
-
-export type HrClearanceChecklistItem = {
+export type AdminChecklistItem = {
   key: string
   label: string
-  isReturned: boolean
-  itemDetails: string
+  isReturned?: boolean
+  itemDetails?: string
 }
 
-export type HrExitClearance = {
-  id: string
-  employeeId: string
-  employeeCode: string
-  employeeName: string
-  jobTitle: string
-  department: string
-  branchId: string
-  branchName: string
+export type FinanceSettlement = {
+  outstandingLoanBalance?: number
+  unreturnedAssetsCost?: number
+  loanDeductionApproved?: boolean
+  netFinalPay?: number
+  note?: string
+}
+
+export type PastorRelease = {
+  confirmedBy?: Ref<UserRef>
+  confirmedAt?: string
+  dischargeLetterSent?: boolean
+}
+
+export type ExitClearance = {
+  _id: string
+  employeeId?: Ref<EmployeeProfile>
+  branchId?: Ref<BranchRef>
   reason: string
   lastWorkingDate: string
-  status: ExitClearanceStatus | string
-  createdAt: string
-  adminSignOff: {
-    isCompleted: boolean
-    notes: string
-    signedOffAt: string
-    checklist: HrClearanceChecklistItem[]
-  }
-  financeSignOff: {
-    isCompleted: boolean
-    outstandingLoanBalance: number
-    unreturnedAssetsCost: number
-    loanDeductionApproved: boolean
-    netFinalPay: number
-    note: string
-    signedOffAt: string
-    directorOverride: boolean
-  }
-  pastorRelease: { isCompleted: boolean; releasedAt: string }
+  status: ClearanceStatus
+  steps?: ClearanceStepRecord[]
+  adminChecklist?: AdminChecklistItem[]
+  financeSettlement?: FinanceSettlement
+  pastorRelease?: PastorRelease
+  initiatedBy?: Ref<UserRef>
+  completedAt?: string
+  createdAt?: string
 }
 
-export type HrExitClearanceMetrics = {
-  inProgressCount: number
-  pendingAdminCount: number
-  pendingFinanceCount: number
-  pendingPastorCount: number
-  completedCount: number
+export type ExitClearanceMetrics = {
+  total: number
+  inProgress: number
+  completed: number
 }
 
-export type HrDocument = {
-  id: string
-  employeeId: string
+/* ------------------------------------------------------ job requisition -- */
+
+export type JobRequisition = {
+  _id: string
+  refNumber: string
+  roleTitle: string
+  department: string
+  branchId?: Ref<BranchRef>
+  salarySuggested: number
+  priority: JobRequisitionPriority
+  expectedStartDate: string
+  justification: string
+  status: JobRequisitionStatus
+  submittedBy?: Ref<UserRef>
+  reviewedBy?: Ref<UserRef>
+  reviewComment?: string
+  reviewedAt?: string
+  createdAt?: string
+}
+
+export type JobRequisitionMetrics = {
+  activeRequests: number
+  approvedThisMonth: number
+}
+
+/* -------------------------------------------------------------- payroll -- */
+
+export type PayrollEntry = {
+  employeeId?: Ref<EmployeeProfile>
+  employeeName: string
+  jobTitle: string
+  department?: string
+  basicSalary: number
+  allowances?: AllowanceItem[]
+  totalAllowances?: number
+  grossPay: number
+  payeDeduction?: number
+  pensionDeduction?: number
+  loanDeduction?: number
+  otherDeductions?: number
+  totalDeductions: number
+  netPay: number
+  employmentStatus?: string
+}
+
+export type PayrollRun = {
+  _id: string
+  branchId?: Ref<BranchRef>
+  period: string
+  status: PayrollRunStatus
+  entries?: PayrollEntry[]
+  totalEmployees?: number
+  totalGross?: number
+  totalDeductions?: number
+  totalNet?: number
+  processedBy?: Ref<UserRef>
+  submittedBy?: Ref<UserRef>
+  submittedAt?: string
+  approvedBy?: Ref<UserRef>
+  approvedAt?: string
+  disbursedBy?: Ref<UserRef>
+  disbursedAt?: string
+  rejectionReason?: string
+  createdAt?: string
+}
+
+export type PayrollOverview = {
+  period: string
+  summary: {
+    totalGross: number
+    totalDeductions: number
+    totalNet: number
+    totalEmployees: number
+    totalBranches: number
+  }
+  branchRuns: PayrollRun[]
+}
+
+export type Payslip = {
+  runPeriod: string
+  branch?: Ref<BranchRef>
+  employee?: EmployeeProfile
+  payslip?: PayrollEntry
+}
+
+/* ------------------------------------------------------------ documents -- */
+
+export type EmployeeDocument = {
+  _id: string
+  employeeId?: Ref<EmployeeProfile>
+  documentType: EmployeeDocumentType
   title: string
-  documentType: DocumentType | string
   fileUrl: string
-  fileSize: number
-  mimeType: string
-  verificationStatus: DocumentStatus | string
-  verifiedAt: string
-  flagReason: string
-  effectiveDate: string
-  expiryDate: string
-  createdAt: string
+  fileSize?: number
+  mimeType?: string
+  effectiveDate?: string
+  expiryDate?: string
+  status: EmployeeDocumentStatus
+  verifiedBy?: Ref<UserRef>
+  verifiedAt?: string
+  flagReason?: string
+  isLocked?: boolean
+  uploadedBy?: Ref<UserRef>
+  createdAt?: string
+}
+
+/* --------------------------------------------------------------- config -- */
+
+export type TrainingBranchAllocation = {
+  branchId: string
+  annualAllocation: number
+}
+
+/** `GET /hr/config` — organisation-wide HR settings. */
+export type GlobalHrConfig = {
+  _id: string
+  training: {
+    annualAllocation: number
+    currency: string
+    branchAllocations: TrainingBranchAllocation[]
+  }
+  updatedBy?: Ref<UserRef>
+  updatedAt?: string
+}
+
+/* ----------------------------------------------------------- dashboards -- */
+
+export type AccountantDashboard = {
+  kpis: {
+    totalEmployees: number
+    payrollMtd: number
+    activeLoans: number
+    loanBalance: number
+  }
+  workforceCostTrend: { period: string; month: string; payroll: number; deductions: number }[]
+  loanPortfolioHealth: { category: string; count: number; principal: number }[]
+  recentActions: { action: string; timestamp: string; user: string }[]
+}
+
+export type AdminDashboard = {
+  kpis: {
+    totalEmployees: number
+    onLeaveToday: number
+    clockedInToday: number
+    clockInRate: number
+    activeTrainings: number
+  }
+  pendingActions: { type: string; count: number; label: string }[]
+}
+
+export type PastorDashboard = {
+  operationalSummary: {
+    attendanceRate: number
+    totalEmployees: number
+    presentToday: number
+    staffOnLeave: { employee?: Ref<EmployeeProfile>; returnDate: string }[]
+    nextTraining?: TrainingEvent | null
+  }
+}
+
+export type DirectorOverview = {
+  metrics: {
+    totalHeadcount: number
+    totalBranches: number
+    totalActiveLoans: number
+    turnoverRate: number
+    turnoverBasis: { leaversThisYear: number; since: string }
+    totalPayrollCost: number
+    payrollPeriod: string
+  }
+  headcountByBranch: {
+    branchId: string
+    branchName: string
+    state?: string
+    count: number
+    presentToday: number
+    attendanceRate: number
+    attendanceHealth: "GOOD" | "WARNING" | "CRITICAL" | "UNKNOWN"
+  }[]
 }

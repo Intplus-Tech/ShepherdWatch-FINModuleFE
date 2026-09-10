@@ -6,86 +6,105 @@ import {
   Search,
   Bell,
   Calendar,
-  CalendarDays,
   Plus,
   ChevronLeft,
   ChevronRight,
+  Loader2,
   X,
 } from "lucide-react"
 import BranchAdminSidebar from "@/components/navigation/BranchAdminSidebar"
 import BranchAdminApplyLeaveModal from "@/components/hr/BranchAdminApplyLeaveModal"
-import { HrPaginationBar, HrTableStateRow } from "@/components/hr/HrTableState"
-import { useToast } from "@/components/ui/toast"
-import { useHrLeaves, useHrLeaveCalendar, useLeaveMutations } from "@/components/hooks/useHrLeaves"
+import { HrPanelState, HrTableState, hrErrorMessage } from "@/components/hr/HrDataState"
+import { HrPagination } from "@/components/hr/HrPagination"
 import {
+  useApproveLeave,
+  useLeaveBalances,
+  useLeaveCalendar,
+  useLeaveMetrics,
+  useLeaveRequests,
+  useRejectLeave,
+} from "@/components/hooks/hr/useHrLeave"
+import {
+  LEAVE_STATUS_BADGES,
   LEAVE_STATUS_LABELS,
-  LEAVE_STATUS_STYLES,
-  formatDate,
-  formatShortDate,
+  badgeFor,
+  deref,
+  employeeName,
   initials,
-  statusLabel,
-  statusStyle,
-} from "@/lib/hr/display"
-import type { HrLeave } from "@/lib/hr/types"
+  isLeavePending,
+  lookup,
+} from "@/lib/hr/normalize"
+import type { LeaveRequest, LeaveStatus } from "@/lib/hr/types"
+import { formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
-/** Tab → the status value the leaves endpoint filters on. */
-const TAB_STATUS: Record<string, string> = {
-  All: "",
-  Pending: "pending_supervisor",
-  Approved: "approved",
-  Declined: "declined",
-}
-
-const AVATAR_TINTS = ["bg-[#EEF2FF] text-[#2563EB]", "bg-[#111827] text-white"]
-
-/** Calendar chips cycle these tints per leave type. */
-const CHIP_TONE_ORDER = ["vacation", "sick", "casual"] as const
-
-const PAGE_SIZE = 20
-
-const TABS = ["All", "Pending", "Approved", "Declined"] as const
-type Tab = (typeof TABS)[number]
+const PAGE_SIZE = 10
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 
-type CalendarChip = { label: string; tone: "vacation" | "sick" | "casual" }
+/** Tab label -> the backend statuses it covers. */
+const TABS: { label: string; statuses: LeaveStatus[] | null }[] = [
+  { label: "All", statuses: null },
+  { label: "Pending", statuses: ["pending_supervisor", "pending_hr"] },
+  { label: "Approved", statuses: ["approved"] },
+  { label: "Declined", statuses: ["declined"] },
+]
 
-const CHIP_TONES: Record<CalendarChip["tone"], string> = {
-  vacation: "bg-[#EFF6FF] text-[#2563EB]",
-  sick: "bg-rose-50 text-rose-600",
-  casual: "bg-amber-50 text-amber-600",
+/** Stable colour per leave type code so the dot and calendar chip agree. */
+const TYPE_TONES = [
+  { dot: "bg-[#2563EB]", chip: "bg-[#EFF6FF] text-[#2563EB]" },
+  { dot: "bg-rose-500", chip: "bg-rose-50 text-rose-600" },
+  { dot: "bg-purple-500", chip: "bg-purple-50 text-purple-600" },
+  { dot: "bg-amber-500", chip: "bg-amber-50 text-amber-600" },
+  { dot: "bg-emerald-500", chip: "bg-emerald-50 text-emerald-600" },
+]
+
+function toneFor(code: string) {
+  let hash = 0
+  for (let i = 0; i < code.length; i += 1) hash = (hash * 31 + code.charCodeAt(i)) % 997
+  return TYPE_TONES[hash % TYPE_TONES.length]
+}
+
+function leaveTypeName(request: LeaveRequest): string {
+  return deref(request.leaveTypeId)?.name ?? "Leave"
+}
+
+function leaveTypeCode(request: LeaveRequest): string {
+  const type = deref(request.leaveTypeId)
+  return type?.code ?? type?.name ?? "GEN"
 }
 
 export default function Page() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [calendarView, setCalendarView] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
-  const [activeTab, setActiveTab] = useState<Tab>("All")
+  const [activeTab, setActiveTab] = useState("All")
   const [typeFilter, setTypeFilter] = useState("")
-  const [selected, setSelected] = useState<HrLeave | null>(null)
   const [page, setPage] = useState(1)
+  const [selected, setSelected] = useState<LeaveRequest | null>(null)
 
-  const { pushToast } = useToast()
-  const { leaves, pagination, loading, error, refresh } = useHrLeaves({
-    page,
-    limit: PAGE_SIZE,
-    status: TAB_STATUS[activeTab] ?? "",
-  })
+  const tab = TABS.find((t) => t.label === activeTab) ?? TABS[0]
 
-  // The endpoint filters by status only, so the type box narrows what came back.
-  const filtered = useMemo(() => {
-    const term = typeFilter.trim().toLowerCase()
-    if (!term) return leaves
-    return leaves.filter((leave) =>
-      `${leave.leaveTypeName} ${leave.leaveTypeCode}`.toLowerCase().includes(term)
-    )
-  }, [leaves, typeFilter])
+  /**
+   * "Pending" spans two backend statuses, so it is fetched unfiltered and
+   * narrowed here; the single-status tabs filter server-side.
+   */
+  const serverStatus = tab.statuses?.length === 1 ? tab.statuses[0] : "all"
 
-  const handleDecision = () => {
-    setSelected(null)
-    refresh()
-  }
+  const leaves = useLeaveRequests({ page, limit: PAGE_SIZE, status: serverStatus })
+  const metrics = useLeaveMetrics()
+
+  const rows = useMemo(() => {
+    const items = leaves.data?.items ?? []
+    const byTab =
+      tab.statuses && tab.statuses.length > 1
+        ? items.filter((item) => tab.statuses?.includes(item.status))
+        : items
+
+    const q = typeFilter.trim().toLowerCase()
+    if (!q) return byTab
+    return byTab.filter((item) => leaveTypeName(item).toLowerCase().includes(q))
+  }, [leaves.data, tab, typeFilter])
 
   return (
     <div className="flex flex-col lg:flex-row min-h-screen bg-[#F8FAFC] w-full">
@@ -151,7 +170,7 @@ export default function Page() {
                   "flex items-center gap-2 rounded-md border px-3.5 py-2 text-[12px] font-semibold",
                   calendarView
                     ? "border-[#2563EB] bg-[#EFF6FF] text-[#2563EB]"
-                    : "border-[#E5E7EB] bg-white text-[#4B5563] hover:bg-gray-50"
+                    : "border-[#E5E7EB] bg-white text-[#4B5563] hover:bg-gray-50",
                 )}
               >
                 <Calendar className="h-4 w-4" />
@@ -172,6 +191,7 @@ export default function Page() {
             <CalendarView
               onBack={() => setCalendarView(false)}
               onOpenModal={() => setModalOpen(true)}
+              pendingCount={metrics.data?.pending ?? 0}
             />
           ) : (
             <>
@@ -179,34 +199,27 @@ export default function Page() {
               <div className="mt-6 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-1 rounded-full bg-[#F3F4F6] p-1">
-                    {TABS.map((tab) => (
+                    {TABS.map((t) => (
                       <button
-                        key={tab}
+                        key={t.label}
                         type="button"
                         onClick={() => {
-                          setActiveTab(tab)
+                          setActiveTab(t.label)
                           setPage(1)
                         }}
                         className={cn(
                           "rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-colors",
-                          activeTab === tab
+                          activeTab === t.label
                             ? "bg-[#111827] text-white"
-                            : "text-[#6B7280] hover:text-[#111827]"
+                            : "text-[#6B7280] hover:text-[#111827]",
                         )}
                       >
-                        {tab}
+                        {t.label}
+                        {t.label === "Pending" && (metrics.data?.pending ?? 0) > 0
+                          ? ` (${metrics.data?.pending})`
+                          : ""}
                       </button>
                     ))}
-                  </div>
-                  <div className="relative">
-                    <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9CA3AF]" />
-                    <select
-                      defaultValue="oct"
-                      className="h-9 appearance-none rounded-md border border-[#E5E7EB] bg-white pl-9 pr-8 text-[12px] font-semibold text-[#4B5563] outline-none focus:border-[#2563EB]"
-                    >
-                      <option value="oct">This Month (October 2023)</option>
-                      <option value="nov">Next Month (November 2023)</option>
-                    </select>
                   </div>
                 </div>
                 <input
@@ -224,97 +237,95 @@ export default function Page() {
                   <table className="w-full text-left">
                     <thead className="bg-[#EEF2FF]">
                       <tr>
-                        {["Employee", "Leave Type", "Duration & Dates", "Status"].map(
-                          (h) => (
-                            <th
-                              key={h}
-                              className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]"
-                            >
-                              {h}
-                            </th>
-                          )
-                        )}
+                        {["Employee", "Leave Type", "Duration & Dates", "Status"].map((h) => (
+                          <th
+                            key={h}
+                            className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]"
+                          >
+                            {h}
+                          </th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#F3F4F6]">
-                      {filtered.map((req, index) => (
-                        <tr
-                          key={req.id}
-                          onClick={() => setSelected(req)}
-                          className="cursor-pointer hover:bg-[#FAFBFF]"
-                        >
-                          <td className="px-4 py-4 text-[13px]">
-                            <div className="flex items-center gap-3">
-                              <div
-                                className={cn(
-                                  "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[12px] font-bold",
-                                  AVATAR_TINTS[index % AVATAR_TINTS.length]
-                                )}
-                              >
-                                {initials(req.employeeName)}
-                              </div>
-                              <div className="flex flex-col">
-                                <span className="font-semibold text-[#111827]">
-                                  {req.employeeName || "Unnamed staff"}
-                                </span>
-                                <span className="text-[12px] text-[#6B7280]">
-                                  {req.jobTitle || req.employeeCode || "—"}
-                                </span>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-4 py-4 text-[13px]">
-                            <span className="inline-flex items-center gap-2 text-[#111827]">
-                              <span
-                                className={cn(
-                                  "h-2.5 w-2.5 rounded-full",
-                                  index % 3 === 0
-                                    ? "bg-[#2563EB]"
-                                    : index % 3 === 1
-                                      ? "bg-amber-500"
-                                      : "bg-emerald-500"
-                                )}
-                              />
-                              {req.leaveTypeName || "Leave"}
-                            </span>
-                          </td>
-                          <td className="px-4 py-4 text-[13px]">
-                            <div className="flex flex-col">
-                              <span className="font-bold text-[#111827]">
-                                {req.totalDays} {req.totalDays === 1 ? "Day" : "Days"}
-                              </span>
-                              <span className="text-[12px] text-[#6B7280]">
-                                {formatShortDate(req.startDate)} - {formatShortDate(req.endDate)}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-4 text-[13px]">
-                            <span
-                              className={cn(
-                                "rounded-full px-2.5 py-1 text-[10px] font-bold",
-                                statusStyle(LEAVE_STATUS_STYLES, req.status)
-                              )}
-                            >
-                              {statusLabel(LEAVE_STATUS_LABELS, req.status)}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                      <HrTableStateRow
+                      <HrTableState
                         colSpan={4}
-                        loading={loading}
-                        error={error}
-                        isEmpty={filtered.length === 0}
-                        emptyMessage="No leave requests match your filters."
-                        onRetry={refresh}
+                        isLoading={leaves.isLoading}
+                        error={leaves.error}
+                        isEmpty={rows.length === 0}
+                        emptyTitle="No leave requests"
+                        emptyDescription="Requests appear here once staff apply for time off."
+                        onRetry={() => leaves.refetch()}
                       />
+
+                      {!leaves.isLoading &&
+                        !leaves.error &&
+                        rows.map((req) => {
+                          const name = employeeName(req.employeeId)
+                          const employee = deref(req.employeeId)
+                          return (
+                            <tr
+                              key={req._id}
+                              onClick={() => setSelected(req)}
+                              className="cursor-pointer hover:bg-[#FAFBFF]"
+                            >
+                              <td className="px-4 py-4 text-[13px]">
+                                <div className="flex items-center gap-3">
+                                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#2563EB] text-[12px] font-bold text-white">
+                                    {initials(name)}
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <span className="font-semibold text-[#111827]">{name}</span>
+                                    <span className="text-[12px] text-[#6B7280]">
+                                      {employee?.jobTitle ?? "—"}
+                                    </span>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-4 py-4 text-[13px]">
+                                <span className="inline-flex items-center gap-2 text-[#111827]">
+                                  <span
+                                    className={cn(
+                                      "h-2.5 w-2.5 rounded-full",
+                                      toneFor(leaveTypeCode(req)).dot,
+                                    )}
+                                  />
+                                  {leaveTypeName(req)}
+                                </span>
+                              </td>
+                              <td className="px-4 py-4 text-[13px]">
+                                <div className="flex flex-col">
+                                  <span className="font-bold text-[#111827]">
+                                    {req.totalDays} {req.totalDays === 1 ? "Day" : "Days"}
+                                  </span>
+                                  <span className="text-[12px] text-[#6B7280]">
+                                    {formatDate(req.startDate, "medium")} –{" "}
+                                    {formatDate(req.endDate, "medium")}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-4 text-[13px]">
+                                <span
+                                  className={cn(
+                                    "rounded-full px-2.5 py-1 text-[10px] font-bold",
+                                    badgeFor(LEAVE_STATUS_BADGES, req.status),
+                                  )}
+                                >
+                                  {lookup(LEAVE_STATUS_LABELS, req.status)}
+                                </span>
+                              </td>
+                            </tr>
+                          )
+                        })}
                     </tbody>
                   </table>
                 </div>
 
-                <HrPaginationBar
-                  pagination={pagination}
+                <HrPagination
+                  pagination={leaves.data?.pagination}
+                  page={page}
                   onPageChange={setPage}
+                  itemCount={leaves.data?.items.length ?? 0}
                   noun="requests"
                 />
               </div>
@@ -324,21 +335,9 @@ export default function Page() {
       </div>
 
       {/* Slide-over */}
-      <LeaveRequestDrawer
-        request={selected}
-        onClose={() => setSelected(null)}
-        onDecided={handleDecision}
-        pushToast={pushToast}
-      />
+      <LeaveDetailDrawer request={selected} onClose={() => setSelected(null)} />
 
-      <BranchAdminApplyLeaveModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        onApplied={() => {
-          setPage(1)
-          refresh()
-        }}
-      />
+      <BranchAdminApplyLeaveModal open={modalOpen} onClose={() => setModalOpen(false)} />
     </div>
   )
 }
@@ -346,65 +345,68 @@ export default function Page() {
 function CalendarView({
   onBack,
   onOpenModal,
+  pendingCount,
 }: {
   onBack: () => void
   onOpenModal: () => void
+  pendingCount: number
 }) {
-  const today = new Date()
-  const [month, setMonth] = useState(today.getMonth() + 1)
-  const [year, setYear] = useState(today.getFullYear())
+  const [cursor, setCursor] = useState(() => {
+    const now = new Date()
+    return { year: now.getFullYear(), month: now.getMonth() }
+  })
 
-  const { entries, loading, error } = useHrLeaveCalendar({ month, year })
+  const calendar = useLeaveCalendar({ month: cursor.month, year: cursor.year })
 
-  const firstWeekday = new Date(year, month - 1, 1).getDay()
-  const daysInMonth = new Date(year, month, 0).getDate()
+  const monthLabel = new Date(cursor.year, cursor.month, 1).toLocaleDateString("en-NG", {
+    month: "long",
+    year: "numeric",
+  })
+
+  const firstWeekday = new Date(cursor.year, cursor.month, 1).getDay()
+  const daysInMonth = new Date(cursor.year, cursor.month + 1, 0).getDate()
   const cells: (number | null)[] = [
     ...Array(firstWeekday).fill(null),
     ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
   ]
 
-  const monthLabel = new Date(year, month - 1, 1).toLocaleDateString("en-GB", {
-    month: "long",
-    year: "numeric",
-  })
-
-  // A leave spans days, so each entry is stamped onto every day it covers.
+  /** Spread each approved request across every day it covers in this month. */
   const chipsByDay = useMemo(() => {
-    const map = new Map<number, { label: string; tone: (typeof CHIP_TONE_ORDER)[number] }[]>()
-    entries.forEach((entry, index) => {
-      const start = new Date(entry.startDate)
-      const end = new Date(entry.endDate)
-      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return
+    const map = new Map<number, { label: string; chip: string }[]>()
+    for (const request of calendar.data ?? []) {
+      const start = new Date(request.startDate)
+      const end = new Date(request.endDate)
+      const code = leaveTypeCode(request)
+      const label = `${employeeName(request.employeeId).split(" ")[0]} (${code
+        .slice(0, 1)
+        .toUpperCase()})`
+      const tone = toneFor(code).chip
 
       for (let day = 1; day <= daysInMonth; day += 1) {
-        const cursor = new Date(year, month - 1, day)
-        if (cursor < new Date(start.toDateString())) continue
-        if (cursor > new Date(end.toDateString())) continue
-        const list = map.get(day) ?? []
-        list.push({
-          label: `${entry.employeeName || "Staff"} · ${entry.leaveTypeCode || entry.leaveTypeName || "Leave"}`,
-          tone: CHIP_TONE_ORDER[index % CHIP_TONE_ORDER.length],
-        })
-        map.set(day, list)
+        const date = new Date(cursor.year, cursor.month, day)
+        if (date >= startOfDay(start) && date <= startOfDay(end)) {
+          const list = map.get(day) ?? []
+          list.push({ label, chip: tone })
+          map.set(day, list)
+        }
       }
-    })
+    }
     return map
-  }, [entries, daysInMonth, month, year])
+  }, [calendar.data, cursor, daysInMonth])
 
   const upcoming = useMemo(() => {
-    const now = new Date()
-    return entries
-      .filter((entry) => new Date(entry.endDate) >= now)
+    const now = startOfDay(new Date())
+    return (calendar.data ?? [])
+      .filter((request) => new Date(request.endDate) >= now)
       .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
       .slice(0, 5)
-  }, [entries])
+  }, [calendar.data])
 
-  const pendingCount = entries.filter((entry) => entry.status.startsWith("pending")).length
-
-  const step = (delta: number) => {
-    const next = new Date(year, month - 1 + delta, 1)
-    setMonth(next.getMonth() + 1)
-    setYear(next.getFullYear())
+  function shiftMonth(delta: number) {
+    setCursor((current) => {
+      const next = new Date(current.year, current.month + delta, 1)
+      return { year: next.getFullYear(), month: next.getMonth() }
+    })
   }
 
   return (
@@ -415,82 +417,104 @@ function CalendarView({
         className="mb-4 inline-flex items-center gap-1 text-[12px] font-semibold text-[#2563EB] hover:underline"
       >
         <ChevronLeft className="h-4 w-4" />
-        Back to list
+        Back
       </button>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+        {/* Month grid */}
         <div className="lg:col-span-2">
           <div className="rounded-xl border border-[#EEF1F6] bg-white p-5">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-[16px] font-bold text-[#111827]">{monthLabel}</h3>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="flex items-center gap-2 text-[16px] font-bold text-[#111827]">
+                {monthLabel}
+                {calendar.isFetching && (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-[#9CA3AF]" />
+                )}
+              </h3>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
+                  onClick={() => {
+                    const now = new Date()
+                    setCursor({ year: now.getFullYear(), month: now.getMonth() })
+                  }}
+                  className="rounded-md border border-[#E5E7EB] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#4B5563] hover:bg-gray-50"
+                >
+                  Today
+                </button>
+                <button
+                  type="button"
+                  onClick={() => shiftMonth(-1)}
                   aria-label="Previous month"
-                  onClick={() => step(-1)}
-                  className="flex h-8 w-8 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[#4B5563] hover:bg-gray-50"
+                  className="flex h-7 w-7 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[#4B5563] hover:bg-gray-50"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </button>
                 <button
                   type="button"
+                  onClick={() => shiftMonth(1)}
                   aria-label="Next month"
-                  onClick={() => step(1)}
-                  className="flex h-8 w-8 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[#4B5563] hover:bg-gray-50"
+                  className="flex h-7 w-7 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[#4B5563] hover:bg-gray-50"
                 >
                   <ChevronRight className="h-4 w-4" />
                 </button>
               </div>
             </div>
 
-            {error ? (
-              <p className="mb-3 text-[12px] text-rose-600">{error}</p>
-            ) : null}
-            {loading ? (
-              <p className="mb-3 text-[12px] text-[#6B7280]">Loading leave calendar…</p>
-            ) : null}
-
-            <div className="overflow-hidden rounded-[10px] border border-[#EEF1F6]">
-              <div className="grid grid-cols-7 bg-[#EEF2FF]">
-                {WEEKDAYS.map((d) => (
-                  <div
-                    key={d}
-                    className="px-2 py-2 text-center text-[10px] font-bold uppercase tracking-wider text-[#6B7280]"
-                  >
-                    {d}
-                  </div>
-                ))}
+            {calendar.error ? (
+              <HrPanelState
+                isLoading={false}
+                error={calendar.error}
+                onRetry={() => calendar.refetch()}
+              />
+            ) : (
+              <div className="overflow-hidden rounded-[10px] border border-[#EEF1F6]">
+                <div className="grid grid-cols-7 bg-[#EEF2FF]">
+                  {WEEKDAYS.map((d) => (
+                    <div
+                      key={d}
+                      className="px-2 py-2 text-center text-[10px] font-bold uppercase tracking-wider text-[#6B7280]"
+                    >
+                      {d}
+                    </div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-7">
+                  {cells.map((day, idx) => (
+                    <div
+                      key={idx}
+                      className="min-h-[84px] border-b border-r border-[#F3F4F6] p-1.5 last:border-r-0"
+                    >
+                      {day && (
+                        <>
+                          <div className="mb-1 text-[11px] font-semibold text-[#6B7280]">
+                            {day}
+                          </div>
+                          <div className="space-y-1">
+                            {(chipsByDay.get(day) ?? []).slice(0, 3).map((chip, i) => (
+                              <div
+                                key={i}
+                                className={cn(
+                                  "truncate rounded px-1.5 py-0.5 text-[10px] font-semibold",
+                                  chip.chip,
+                                )}
+                              >
+                                {chip.label}
+                              </div>
+                            ))}
+                            {(chipsByDay.get(day)?.length ?? 0) > 3 && (
+                              <div className="px-1.5 text-[10px] font-semibold text-[#9CA3AF]">
+                                +{(chipsByDay.get(day)?.length ?? 0) - 3} more
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="grid grid-cols-7">
-                {cells.map((day, idx) => (
-                  <div
-                    key={idx}
-                    className="min-h-[84px] border-b border-r border-[#F3F4F6] p-1.5 last:border-r-0"
-                  >
-                    {day && (
-                      <>
-                        <div className="mb-1 text-[11px] font-semibold text-[#6B7280]">
-                          {day}
-                        </div>
-                        <div className="space-y-1">
-                          {(chipsByDay.get(day) ?? []).slice(0, 3).map((chip, i) => (
-                            <div
-                              key={i}
-                              className={cn(
-                                "truncate rounded px-1.5 py-0.5 text-[10px] font-semibold",
-                                CHIP_TONES[chip.tone]
-                              )}
-                            >
-                              {chip.label}
-                            </div>
-                          ))}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
+            )}
           </div>
         </div>
 
@@ -508,49 +532,63 @@ function CalendarView({
           <div className="rounded-xl border border-[#EEF1F6] bg-white p-5">
             <div className="flex items-center justify-between">
               <h3 className="text-[16px] font-bold text-[#111827]">Upcoming Leave</h3>
-              {pendingCount > 0 ? (
+              {pendingCount > 0 && (
                 <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-600">
                   {pendingCount} Pending
                 </span>
-              ) : null}
+              )}
             </div>
 
-            <div className="mt-4 space-y-3">
-              {upcoming.map((entry) => (
-                <div key={entry.id} className="rounded-[10px] border border-[#EEF1F6] p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="text-[13px] font-semibold text-[#111827]">
-                        {entry.employeeName || "Staff member"}
+            {calendar.isLoading || upcoming.length === 0 ? (
+              <HrPanelState
+                isLoading={calendar.isLoading}
+                error={null}
+                isEmpty={upcoming.length === 0}
+                emptyTitle="Nothing scheduled"
+                emptyDescription="Approved leave for this month will show here."
+                className="mt-4 border-0 p-4"
+              />
+            ) : (
+              <div className="mt-4 space-y-3">
+                {upcoming.map((request) => {
+                  const employee = deref(request.employeeId)
+                  return (
+                    <div
+                      key={request._id}
+                      className="rounded-[10px] border border-[#EEF1F6] p-3"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="text-[13px] font-semibold text-[#111827]">
+                            {employeeName(request.employeeId)}
+                          </div>
+                          <div className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
+                            {employee?.department ?? employee?.jobTitle ?? "—"}
+                          </div>
+                        </div>
+                        <span
+                          className={cn(
+                            "shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold",
+                            badgeFor(LEAVE_STATUS_BADGES, request.status),
+                          )}
+                        >
+                          {lookup(LEAVE_STATUS_LABELS, request.status)}
+                        </span>
                       </div>
-                      <div className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                        {entry.department || entry.jobTitle || "—"}
+                      <div className="mt-2 flex items-center justify-between text-[12px] text-[#6B7280]">
+                        <span>
+                          {formatDate(request.startDate, "short")} –{" "}
+                          {formatDate(request.endDate, "short")}
+                        </span>
+                        <span className="font-semibold text-[#4B5563]">
+                          {leaveTypeName(request)}
+                        </span>
                       </div>
                     </div>
-                    <span
-                      className={cn(
-                        "shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold",
-                        statusStyle(LEAVE_STATUS_STYLES, entry.status)
-                      )}
-                    >
-                      {statusLabel(LEAVE_STATUS_LABELS, entry.status).toUpperCase()}
-                    </span>
-                  </div>
-                  <div className="mt-2 flex items-center justify-between text-[12px] text-[#6B7280]">
-                    <span>
-                      {formatShortDate(entry.startDate)} - {formatShortDate(entry.endDate)}
-                    </span>
-                    <span className="font-semibold text-[#4B5563]">
-                      {entry.leaveTypeName || "Leave"}
-                    </span>
-                  </div>
-                </div>
-              ))}
-
-              {!loading && upcoming.length === 0 ? (
-                <p className="text-[12px] text-[#9CA3AF]">No leave scheduled this month.</p>
-              ) : null}
-            </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -558,24 +596,34 @@ function CalendarView({
   )
 }
 
-/**
- * Request dossier. Leave *balances* have no endpoint yet, so this shows what the
- * API does return — the request itself — and carries the approve/decline actions.
- */
-function LeaveRequestDrawer({
+function startOfDay(date: Date): Date {
+  const copy = new Date(date)
+  copy.setHours(0, 0, 0, 0)
+  return copy
+}
+
+function LeaveDetailDrawer({
   request,
   onClose,
-  onDecided,
-  pushToast,
 }: {
-  request: HrLeave | null
+  request: LeaveRequest | null
   onClose: () => void
-  onDecided: () => void
-  pushToast: (message: string, type: "success" | "error" | "info") => void
 }) {
-  const { approveLeave, rejectLeave } = useLeaveMutations()
+  const employee = deref(request?.employeeId)
+  const balances = useLeaveBalances(employee?._id)
+  const approve = useApproveLeave()
+  const reject = useRejectLeave()
+
   const [comment, setComment] = useState("")
-  const [busy, setBusy] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  /** Clear the decision form whenever a different request is opened. */
+  const [formFor, setFormFor] = useState<string | null>(null)
+  if (request && formFor !== request._id) {
+    setFormFor(request._id)
+    setComment("")
+    setActionError(null)
+  }
 
   useEffect(() => {
     if (!request) return
@@ -586,33 +634,38 @@ function LeaveRequestDrawer({
     return () => document.removeEventListener("keydown", onKey)
   }, [request, onClose])
 
-  useEffect(() => {
-    setComment("")
-  }, [request])
-
   if (!request) return null
 
-  const decided = request.status === "approved" || request.status === "declined"
+  const name = employeeName(request.employeeId)
+  const rows = balances.data?.balances ?? []
+  const totals = rows.reduce(
+    (acc, row) => ({
+      entitlement: acc.entitlement + row.entitlement,
+      used: acc.used + row.used,
+      remaining: acc.remaining + row.remaining,
+    }),
+    { entitlement: 0, used: 0, remaining: 0 },
+  )
+  const usedPct =
+    totals.entitlement > 0 ? Math.round((totals.used / totals.entitlement) * 100) : 0
 
-  const decide = async (action: "approve" | "reject") => {
-    if (action === "reject" && !comment.trim()) {
-      pushToast("A reason is required to decline a request", "error")
+  const pending = approve.isPending || reject.isPending
+
+  async function decide(kind: "approve" | "reject") {
+    if (!request) return
+    setActionError(null)
+
+    if (kind === "reject" && comment.trim().length < 2) {
+      setActionError("A reason is required to decline a request.")
       return
     }
-    setBusy(true)
+
     try {
-      if (action === "approve") {
-        await approveLeave(request.id, comment.trim() || undefined)
-        pushToast("Leave approved", "success")
-      } else {
-        await rejectLeave(request.id, comment.trim())
-        pushToast("Leave declined", "success")
-      }
-      onDecided()
-    } catch (err) {
-      pushToast(err instanceof Error ? err.message : "Unable to record that decision", "error")
-    } finally {
-      setBusy(false)
+      const mutation = kind === "approve" ? approve : reject
+      await mutation.mutateAsync({ id: request._id, comment: comment.trim() || undefined })
+      onClose()
+    } catch (error) {
+      setActionError(hrErrorMessage(error))
     }
   }
 
@@ -620,6 +673,7 @@ function LeaveRequestDrawer({
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div className="absolute right-0 top-0 flex h-full w-full max-w-[400px] flex-col overflow-y-auto bg-white shadow-2xl">
+        {/* Top */}
         <div className="flex items-center justify-between px-6 pt-6">
           <button
             type="button"
@@ -632,122 +686,208 @@ function LeaveRequestDrawer({
           <span
             className={cn(
               "rounded-full px-2.5 py-1 text-[10px] font-bold",
-              statusStyle(LEAVE_STATUS_STYLES, request.status)
+              badgeFor(LEAVE_STATUS_BADGES, request.status),
             )}
           >
-            {statusLabel(LEAVE_STATUS_LABELS, request.status)}
+            {lookup(LEAVE_STATUS_LABELS, request.status)}
           </span>
         </div>
 
         {/* Identity */}
         <div className="flex flex-col items-center px-6 pt-4 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#EEF2FF] text-[18px] font-bold text-[#2563EB]">
-            {initials(request.employeeName)}
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#2563EB] text-[18px] font-bold text-white">
+            {initials(name)}
           </div>
-          <div className="mt-3 text-[18px] font-bold text-[#111827]">
-            {request.employeeName || "Unnamed staff"}
-          </div>
-          <div className="text-[13px] text-[#6B7280]">
-            {request.jobTitle || request.employeeCode || "—"}
+          <div className="mt-3 text-[18px] font-bold text-[#111827]">{name}</div>
+          <div className="text-[13px] text-[#6B7280]">{employee?.jobTitle ?? "—"}</div>
+        </div>
+
+        {/* Request summary */}
+        <div className="px-6 pt-6">
+          <div className="rounded-[10px] border border-[#EEF1F6] p-4">
+            <div className="flex items-center justify-between text-[13px]">
+              <span className="text-[#6B7280]">Type</span>
+              <span className="font-semibold text-[#111827]">{leaveTypeName(request)}</span>
+            </div>
+            <div className="mt-2 flex items-center justify-between text-[13px]">
+              <span className="text-[#6B7280]">Duration</span>
+              <span className="font-semibold text-[#111827]">
+                {request.totalDays} {request.totalDays === 1 ? "day" : "days"}
+              </span>
+            </div>
+            <div className="mt-2 flex items-center justify-between text-[13px]">
+              <span className="text-[#6B7280]">Dates</span>
+              <span className="font-semibold text-[#111827]">
+                {formatDate(request.startDate, "short")} – {formatDate(request.endDate, "short")}
+              </span>
+            </div>
+            {request.conflictCount ? (
+              <div className="mt-2 flex items-center justify-between text-[13px]">
+                <span className="text-[#6B7280]">Overlaps</span>
+                <span className="font-semibold text-amber-600">
+                  {request.conflictCount} other request{request.conflictCount === 1 ? "" : "s"}
+                </span>
+              </div>
+            ) : null}
+            {request.reason ? (
+              <p className="mt-3 border-t border-[#F3F4F6] pt-3 text-[12px] leading-relaxed text-[#4B5563]">
+                {request.reason}
+              </p>
+            ) : null}
           </div>
         </div>
 
-        {/* Request detail */}
+        {/* Leave Balance */}
         <div className="px-6 pt-6">
-          <h3 className="text-[16px] font-bold text-[#111827]">Request</h3>
-          <dl className="mt-4 space-y-3 text-[13px]">
-            <div className="flex items-start justify-between gap-3">
-              <dt className="text-[#6B7280]">Type</dt>
-              <dd className="text-right font-semibold text-[#111827]">
-                {request.leaveTypeName || "Leave"}
-              </dd>
-            </div>
-            <div className="flex items-start justify-between gap-3">
-              <dt className="text-[#6B7280]">Dates</dt>
-              <dd className="text-right font-semibold text-[#111827]">
-                {formatDate(request.startDate)} — {formatDate(request.endDate)}
-              </dd>
-            </div>
-            <div className="flex items-start justify-between gap-3">
-              <dt className="text-[#6B7280]">Duration</dt>
-              <dd className="text-right font-semibold text-[#111827]">
-                {request.totalDays} {request.totalDays === 1 ? "day" : "days"}
-              </dd>
-            </div>
-            {request.conflictCount > 0 ? (
-              <div className="flex items-start justify-between gap-3">
-                <dt className="text-[#6B7280]">Clashes</dt>
-                <dd className="text-right font-semibold text-rose-600">
-                  {request.conflictCount} overlapping
-                </dd>
-              </div>
-            ) : null}
-          </dl>
+          <div className="flex items-center justify-between">
+            <h3 className="text-[16px] font-bold text-[#111827]">Leave Balance</h3>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF]">
+              FY {balances.data?.year ?? new Date().getFullYear()}
+            </span>
+          </div>
 
-          {request.reason ? (
-            <div className="mt-4">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                Reason
+          {balances.isLoading || balances.error || rows.length === 0 ? (
+            <HrPanelState
+              isLoading={balances.isLoading}
+              error={balances.error}
+              isEmpty={rows.length === 0}
+              emptyTitle="No leave types configured"
+              emptyDescription="Set up leave types to track entitlements."
+              onRetry={() => balances.refetch()}
+              className="mt-4 border-0 p-4"
+            />
+          ) : (
+            <>
+              <div className="mt-4 grid grid-cols-3 gap-3">
+                <div className="rounded-[10px] border border-[#EEF1F6] bg-white p-3 text-center">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
+                    Accrued
+                  </div>
+                  <div className="mt-1 text-[18px] font-bold text-[#111827]">
+                    {totals.entitlement}
+                  </div>
+                </div>
+                <div className="rounded-[10px] border border-[#EEF1F6] bg-white p-3 text-center">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
+                    Taken
+                  </div>
+                  <div className="mt-1 text-[18px] font-bold text-[#111827]">{totals.used}</div>
+                </div>
+                <div className="rounded-[10px] bg-[#111827] p-3 text-center">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-white/60">
+                    Left
+                  </div>
+                  <div className="mt-1 text-[18px] font-bold text-white">{totals.remaining}</div>
+                </div>
               </div>
-              <p className="mt-1 text-[13px] leading-relaxed text-[#4B5563]">{request.reason}</p>
-            </div>
-          ) : null}
 
-          {request.handoverNote ? (
-            <div className="mt-4">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                Handover
+              <div className="mt-4">
+                <div className="h-2 rounded-full bg-[#F3F4F6]">
+                  <div
+                    className="h-2 rounded-full bg-[#2563EB]"
+                    style={{ width: `${usedPct}%` }}
+                  />
+                </div>
+                <div className="mt-2 flex items-center justify-between text-[11px] text-[#6B7280]">
+                  <span>{totals.used} days taken</span>
+                  <span>{totals.entitlement} days total allowance</span>
+                </div>
               </div>
-              <p className="mt-1 text-[13px] leading-relaxed text-[#4B5563]">
-                {request.handoverNote}
-              </p>
-            </div>
-          ) : null}
+
+              <div className="mt-6">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF]">
+                  Category Breakdown
+                </div>
+                <div className="mt-4 space-y-4">
+                  {rows.map((row) => (
+                    <CategoryBar
+                      key={row.leaveTypeId}
+                      label={row.name}
+                      value={`${row.used} / ${row.entitlement} Days`}
+                      pct={row.entitlement > 0 ? (row.used / row.entitlement) * 100 : 0}
+                      barClass={toneFor(row.code).dot}
+                    />
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Decision */}
-        {!decided ? (
-          <div className="mt-auto px-6 py-6">
-            <label
-              className="text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF]"
-              htmlFor="leave-comment"
+        <div className="mt-auto px-6 py-6">
+          {isLeavePending(request) ? (
+            <>
+              <label className="text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF]">
+                Comment
+              </label>
+              <textarea
+                rows={3}
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                placeholder="Required when declining…"
+                className="mt-1.5 w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-[13px] outline-none focus:border-[#2563EB]"
+              />
+              {actionError && (
+                <p className="mt-2 text-[12px] font-medium text-red-600">{actionError}</p>
+              )}
+              <div className="mt-3 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => decide("reject")}
+                  disabled={pending}
+                  className="flex-1 rounded-md border border-[#E5E7EB] bg-white px-4 py-3 text-[13px] font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                >
+                  Decline
+                </button>
+                <button
+                  type="button"
+                  onClick={() => decide("approve")}
+                  disabled={pending}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-md bg-[#111827] px-4 py-3 text-[13px] font-semibold text-white hover:bg-black disabled:opacity-60"
+                >
+                  {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  Approve
+                </button>
+              </div>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-full rounded-md bg-[#111827] px-4 py-3 text-[13px] font-semibold text-white hover:bg-black"
             >
-              Comment
-            </label>
-            <textarea
-              id="leave-comment"
-              rows={3}
-              value={comment}
-              onChange={(event) => setComment(event.target.value)}
-              placeholder="Required when declining."
-              className="mt-1.5 w-full rounded-[8px] border border-[#E5E7EB] px-3 py-2 text-[13px] outline-none focus:border-[#2563EB]"
-            />
-            <div className="mt-3 flex gap-3">
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => decide("reject")}
-                className="flex-1 rounded-md border border-rose-200 px-4 py-3 text-[13px] font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-60"
-              >
-                Decline
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => decide("approve")}
-                className="flex-1 rounded-md bg-[#111827] px-4 py-3 text-[13px] font-semibold text-white hover:bg-black disabled:opacity-60"
-              >
-                {busy ? "Saving…" : "Approve"}
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="mt-auto px-6 py-6">
-            <div className="rounded-[10px] bg-[#F8FAFC] p-3 text-[12px] leading-relaxed text-[#6B7280]">
-              This request was already {statusLabel(LEAVE_STATUS_LABELS, request.status).toLowerCase()}.
-            </div>
-          </div>
-        )}
+              Close
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CategoryBar({
+  label,
+  value,
+  pct,
+  barClass,
+}: {
+  label: string
+  value: string
+  pct: number
+  barClass: string
+}) {
+  return (
+    <div>
+      <div className="flex items-center justify-between">
+        <span className="text-[13px] font-semibold text-[#111827]">{label}</span>
+        <span className="text-[12px] font-semibold text-[#6B7280]">{value}</span>
+      </div>
+      <div className="mt-2 h-2 rounded-full bg-[#F3F4F6]">
+        <div
+          className={cn("h-2 rounded-full", barClass)}
+          style={{ width: `${Math.min(100, pct)}%` }}
+        />
       </div>
     </div>
   )

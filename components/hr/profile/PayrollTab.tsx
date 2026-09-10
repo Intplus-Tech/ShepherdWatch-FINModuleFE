@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { Copy, CheckCircle2 } from "lucide-react"
+import { useMemo } from "react"
+import { CheckCircle2 } from "lucide-react"
 import {
   SectionCard,
   CardHeading,
@@ -12,120 +12,123 @@ import {
   Th,
   Td,
 } from "./shared"
-import { useHrEmployee } from "@/components/hooks/useHrEmployees"
-import { useHrLoans } from "@/components/hooks/useHrLoans"
-import { useHrLeaves } from "@/components/hooks/useHrLeaves"
-import { useHrDocuments } from "@/components/hooks/useHrDocuments"
-import { useToast } from "@/components/ui/toast"
-import {
-  DOCUMENT_TYPE_LABELS,
-  LOAN_STATUS_LABELS,
-  formatDate,
-  formatNaira,
-  statusLabel,
-} from "@/lib/hr/display"
+import { HrPanelState } from "@/components/hr/HrDataState"
+import { useEmployee } from "@/components/hooks/hr/useHrEmployees"
+import { useLeaveBalances } from "@/components/hooks/hr/useHrLeave"
+import { useLoans } from "@/components/hooks/hr/useHrLoans"
+import { loanBalance, loanProgress } from "@/lib/hr/normalize"
+import { formatCurrency, formatDate } from "@/lib/format"
 
-function amountText(value: number, negative = false): string {
-  const formatted = value.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  return negative ? `(${formatted})` : formatted
-}
+type SalaryRow = { desc: string; amount: number; type: "CREDIT" | "DEBIT" | ""; bold?: boolean }
 
-export default function PayrollTab({ employeeId }: { employeeId: string }) {
-  const { pushToast } = useToast()
-  const { employee } = useHrEmployee(employeeId)
-  const { loans } = useHrLoans({ employeeId, limit: 20 })
-  const { leaves } = useHrLeaves({ employeeId, limit: 50 })
-  // Assets are not linked to staff in the API; the personnel vault is, and it
-  // is the closest thing to an issued-items record.
-  const { documents } = useHrDocuments(employeeId)
-  const [copied, setCopied] = useState(false)
+export default function PayrollTab({ employeeId }: { employeeId: string | null }) {
+  const employeeQuery = useEmployee(employeeId)
+  const employee = employeeQuery.data
 
-  const activeLoan = loans.find((loan) => loan.status === "active") ?? loans[0] ?? null
-  const outstanding = loans
-    .filter((loan) => loan.status === "active")
-    .reduce((sum, loan) => sum + loan.remainingBalance, 0)
+  const loans = useLoans({
+    employeeId: employeeId ?? undefined,
+    limit: 50,
+    enabled: Boolean(employeeId),
+  })
+  const balances = useLeaveBalances(employeeId)
 
-  const basic = employee?.salary ?? 0
-  const allowanceTotal = (employee?.allowances ?? []).reduce((sum, item) => sum + item.amount, 0)
-  const gross = basic + allowanceTotal
-  const loanDeduction = activeLoan?.status === "active" ? activeLoan.monthlyDeduction : 0
-  const net = Math.max(gross - loanDeduction, 0)
+  const activeLoans = useMemo(
+    () =>
+      (loans.data?.items ?? []).filter(
+        (loan) => loan.status === "active" || loan.status === "approved",
+      ),
+    [loans.data],
+  )
 
-  // Cheap to build each render; the compiler memoizes it.
-  const salaryRows = [
-      { desc: "Basic Salary", amount: amountText(basic), type: "CREDIT", bold: false },
-      ...(employee?.allowances ?? []).map((allowance) => ({
-        desc: allowance.title || "Allowance",
-        amount: amountText(allowance.amount),
-        type: "CREDIT",
-        bold: false,
-      })),
-      { desc: "Gross Pay", amount: amountText(gross), type: "", bold: true },
-      ...(loanDeduction
-        ? [
-            {
-              desc: "Loan Repayment",
-              amount: amountText(loanDeduction, true),
-              type: "DEBIT",
-              bold: false,
-            },
-          ]
-        : []),
-  ]
+  const outstanding = activeLoans.reduce((sum, loan) => sum + loanBalance(loan), 0)
 
-  const leaveDaysTaken = leaves
-    .filter((leave) => leave.status === "approved")
-    .reduce((sum, leave) => sum + leave.totalDays, 0)
+  const leaveRemaining = (balances.data?.balances ?? []).reduce(
+    (sum, row) => sum + row.remaining,
+    0,
+  )
 
-  const repaymentProgress = activeLoan?.amount
-    ? Math.round(((activeLoan.amount - activeLoan.remainingBalance) / activeLoan.amount) * 100)
-    : 0
-  const monthsLeft =
-    activeLoan?.monthlyDeduction && activeLoan.monthlyDeduction > 0
-      ? Math.ceil(activeLoan.remainingBalance / activeLoan.monthlyDeduction)
-      : 0
+  /**
+   * The salary breakdown comes from the stored profile, not a payroll run —
+   * statutory deductions are computed at run time, so only the earnings side
+   * can be shown here. The payslip screen carries the full computation.
+   */
+  const salaryRows = useMemo<SalaryRow[]>(() => {
+    if (!employee) return []
+    const allowances = employee.allowances ?? []
+    const basic = employee.salary ?? 0
+    const allowanceTotal = allowances.reduce((sum, item) => sum + (item.amount ?? 0), 0)
 
-  const bank = employee?.disbursementDetails
+    return [
+      { desc: "Basic Salary", amount: basic, type: "CREDIT" },
+      ...allowances.map(
+        (item): SalaryRow => ({ desc: item.title, amount: item.amount, type: "CREDIT" }),
+      ),
+      { desc: "Gross Pay", amount: basic + allowanceTotal, type: "", bold: true },
+      ...activeLoans.map(
+        (loan): SalaryRow => ({
+          desc: `Loan Deduction — ${loan.purpose}`,
+          amount: loan.monthlyDeduction,
+          type: "DEBIT",
+        }),
+      ),
+    ]
+  }, [employee, activeLoans])
 
-  const copyAccount = async () => {
-    if (!bank?.accountNumber) return
-    try {
-      await navigator.clipboard.writeText(bank.accountNumber)
-      setCopied(true)
-      pushToast("Account number copied", "success")
-      setTimeout(() => setCopied(false), 2000)
-    } catch {
-      pushToast("Could not copy the account number", "error")
-    }
+  if (employeeQuery.isLoading || employeeQuery.error || !employee) {
+    return (
+      <HrPanelState
+        isLoading={employeeQuery.isLoading}
+        error={employeeQuery.error}
+        isEmpty={!employee}
+        emptyTitle="No employee selected"
+        emptyDescription="Open a profile from the Employee Directory."
+        onRetry={() => employeeQuery.refetch()}
+      />
+    )
   }
+
+  const bank = employee.bankDetails
+  const assets = employee.assets ?? []
+  const primaryLoan = activeLoans[0]
+
+  const monthlyDeductions = activeLoans.reduce(
+    (sum, loan) => sum + (loan.monthlyDeduction ?? 0),
+    0,
+  )
+  const grossPay =
+    (employee.salary ?? 0) +
+    (employee.allowances ?? []).reduce((sum, item) => sum + (item.amount ?? 0), 0)
 
   return (
     <div className="flex flex-col gap-5">
       {/* Stat cards */}
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
         <StatCard
-          label="Leave Taken"
-          value={`${leaveDaysTaken} Days`}
-          sub={`${leaves.length} request${leaves.length === 1 ? "" : "s"} on record`}
+          label="Leave Balance"
+          value={balances.isLoading ? "—" : `${leaveRemaining} Days`}
+          sub="Across all leave types"
         />
-        <StatCard label="Net Monthly Pay" value={formatNaira(net)} />
+        <StatCard
+          label="Gross Monthly Pay"
+          value={formatCurrency(grossPay, { maximumFractionDigits: 0 })}
+          sub={`Less ${formatCurrency(monthlyDeductions, { maximumFractionDigits: 0 })} loan deductions`}
+        />
         <StatCard
           label="Active Loans"
-          value={formatNaira(outstanding)}
+          value={loans.isLoading ? "—" : formatCurrency(outstanding, { maximumFractionDigits: 0 })}
           sub="Outstanding Balance"
         />
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-        {/* Salary Breakdown */}
+        {/* Salary breakdown */}
         <SectionCard className="lg:col-span-2">
-          <div className="flex items-start justify-between gap-3">
-            <CardHeading>Salary Breakdown</CardHeading>
-            <span className="rounded-full bg-[#111827] px-3 py-1 text-[10px] font-bold text-white">
-              MONTHLY
-            </span>
-          </div>
-          <div className="mt-4 overflow-hidden rounded-xl border border-[#EEF1F6]">
+          <CardHeading>Salary Structure</CardHeading>
+          <p className="mt-1 text-[12px] text-[#9CA3AF]">
+            Earnings and standing deductions on record. Statutory tax and pension are computed
+            when payroll is run.
+          </p>
+          <div className="mt-4 overflow-x-auto">
             <table className="w-full">
               <thead className="bg-[#F8FAFC]">
                 <tr>
@@ -135,37 +138,28 @@ export default function PayrollTab({ employeeId }: { employeeId: string }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#EEF1F6]">
-                {salaryRows.map((row) => (
-                  <tr key={row.desc}>
-                    <Td
-                      className={
-                        row.bold ? "font-bold text-[#111827]" : "font-semibold text-[#111827]"
-                      }
-                    >
+                {salaryRows.map((row, index) => (
+                  <tr key={`${row.desc}-${index}`}>
+                    <Td className={row.bold ? "font-bold text-[#111827]" : "text-[#4B5563]"}>
                       {row.desc}
                     </Td>
                     <Td
                       className={
-                        "text-right " + (row.bold ? "font-bold text-[#111827]" : "text-[#4B5563]")
+                        row.bold
+                          ? "text-right font-bold text-[#111827]"
+                          : "text-right text-[#4B5563]"
                       }
                     >
-                      {row.amount}
+                      {row.type === "DEBIT"
+                        ? `(${formatCurrency(row.amount, { maximumFractionDigits: 0 })})`
+                        : formatCurrency(row.amount, { maximumFractionDigits: 0 })}
                     </Td>
                     <Td>{row.type ? <StatusBadge status={row.type} /> : null}</Td>
                   </tr>
                 ))}
-                <tr className="bg-[#111827] text-white">
-                  <Td className="font-bold text-white">Net Take-Home Pay</Td>
-                  <Td className="text-right font-bold text-white">{amountText(net)}</Td>
-                  <Td> </Td>
-                </tr>
               </tbody>
             </table>
           </div>
-          <p className="mt-3 text-[11px] text-[#9CA3AF]">
-            Statutory deductions are applied on the payroll run; this view shows the standing
-            salary structure and any loan recovery.
-          </p>
         </SectionCard>
 
         {/* Right column */}
@@ -173,121 +167,130 @@ export default function PayrollTab({ employeeId }: { employeeId: string }) {
           {/* Disbursement Info */}
           <SectionCard>
             <CardHeading>Disbursement Info</CardHeading>
-            <div className="mt-4 flex flex-col gap-4">
-              <Field label="Primary Bank" value={bank?.bankName || "—"} />
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                  Account Number
-                </div>
-                <div className="mt-1 flex items-center gap-2 text-[14px] font-semibold text-[#111827]">
-                  {bank?.accountNumber || "—"}
-                  {bank?.accountNumber ? (
-                    <button
-                      onClick={copyAccount}
-                      aria-label="Copy account number"
-                      className="text-[#9CA3AF] hover:text-[#3B5BDB]"
-                    >
-                      <Copy className="h-3.5 w-3.5" />
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-              {bank?.accountNumber ? (
+            {!bank?.bankName ? (
+              <HrPanelState
+                isLoading={false}
+                error={null}
+                isEmpty
+                emptyTitle="No bank details"
+                emptyDescription="Add them when editing this employee record."
+                className="mt-4 border-0 p-4"
+              />
+            ) : (
+              <div className="mt-4 flex flex-col gap-4">
+                <Field label="Primary Bank" value={bank.bankName} />
+                <Field label="Account Name" value={bank.accountName || "—"} />
+                <Field label="Account Number" value={bank.accountNumber || "—"} />
                 <div className="flex items-center gap-2 text-[13px] font-semibold text-emerald-600">
                   <CheckCircle2 className="h-4 w-4" />
-                  {copied ? "Copied to clipboard" : "Bank details on file"}
+                  Bank details on file
                 </div>
-              ) : (
-                <div className="text-[13px] text-[#9CA3AF]">
-                  No bank details on file — payroll cannot disburse to this staff member.
-                </div>
-              )}
-            </div>
+              </div>
+            )}
           </SectionCard>
 
           {/* Active Loan */}
           <SectionCard>
             <div className="flex items-center justify-between">
               <CardHeading>Active Loan</CardHeading>
-              {activeLoan ? (
-                <StatusBadge
-                  status={statusLabel(LOAN_STATUS_LABELS, activeLoan.status).toUpperCase()}
-                />
-              ) : null}
+              {primaryLoan && <StatusBadge status="IN PROGRESS" />}
             </div>
-            {activeLoan ? (
+            {!primaryLoan ? (
+              <HrPanelState
+                isLoading={loans.isLoading}
+                error={loans.error}
+                isEmpty={!loans.isLoading}
+                emptyTitle="No active loan"
+                emptyDescription="Approved loans appear here."
+                onRetry={() => loans.refetch()}
+                className="mt-4 border-0 p-4"
+              />
+            ) : (
               <div className="mt-4">
                 <div className="text-[14px] font-semibold text-[#111827]">
-                  {activeLoan.purpose || "Staff loan"}
+                  {primaryLoan.purpose}
                 </div>
-                <div className="text-[12px] text-[#6B7280]">
-                  Applied {formatDate(activeLoan.createdAt)}
-                </div>
+                {primaryLoan.disbursedAt && (
+                  <div className="text-[12px] text-[#6B7280]">
+                    Disbursed {formatDate(primaryLoan.disbursedAt, "medium")}
+                  </div>
+                )}
                 <div className="mt-4 grid grid-cols-2 gap-4">
-                  <Field label="Principal" value={formatNaira(activeLoan.amount)} />
-                  <Field label="Monthly" value={formatNaira(activeLoan.monthlyDeduction)} />
+                  <Field
+                    label="Principal"
+                    value={formatCurrency(primaryLoan.amount, { maximumFractionDigits: 0 })}
+                  />
+                  <Field
+                    label="Monthly"
+                    value={formatCurrency(primaryLoan.monthlyDeduction, {
+                      maximumFractionDigits: 0,
+                    })}
+                  />
                 </div>
                 <div className="mt-4 flex items-center justify-between text-[12px] text-[#6B7280]">
                   <span>Repayment Progress</span>
-                  <span className="font-semibold text-[#111827]">{repaymentProgress}%</span>
-                </div>
-                <div className="mt-2">
-                  <ProgressBar percent={repaymentProgress} />
-                </div>
-                <div className="mt-2 flex items-center justify-between text-[12px] text-[#6B7280]">
-                  <span>Balance: {formatNaira(activeLoan.remainingBalance)}</span>
-                  <span>
-                    {monthsLeft} month{monthsLeft === 1 ? "" : "s"} left
+                  <span className="font-semibold text-[#111827]">
+                    {loanProgress(primaryLoan)}%
                   </span>
                 </div>
+                <div className="mt-2">
+                  <ProgressBar percent={loanProgress(primaryLoan)} />
+                </div>
+                <div className="mt-2 flex items-center justify-between text-[12px] text-[#6B7280]">
+                  <span>
+                    Balance:{" "}
+                    {formatCurrency(loanBalance(primaryLoan), { maximumFractionDigits: 0 })}
+                  </span>
+                  <span>{primaryLoan.tenureMonths} month term</span>
+                </div>
               </div>
-            ) : (
-              <p className="mt-4 text-[13px] text-[#9CA3AF]">No loans on record.</p>
             )}
           </SectionCard>
         </div>
       </div>
 
-      {/* Personnel documents */}
+      {/* Assets Allocated */}
       <SectionCard className="p-0">
         <div className="flex items-center justify-between px-5 py-4">
-          <CardHeading>Personnel Documents</CardHeading>
+          <CardHeading>Assets Allocated</CardHeading>
         </div>
-        <div className="overflow-x-auto border-t border-[#EEF1F6]">
-          <table className="w-full">
-            <thead className="bg-[#F8FAFC]">
-              <tr>
-                <Th>Document</Th>
-                <Th>Type</Th>
-                <Th>Filed</Th>
-                <Th>Status</Th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#EEF1F6]">
-              {documents.map((document) => (
-                <tr key={document.id}>
-                  <Td className="font-semibold text-[#111827]">{document.title}</Td>
-                  <Td className="text-[#4B5563]">
-                    {statusLabel(DOCUMENT_TYPE_LABELS, document.documentType)}
-                  </Td>
-                  <Td className="text-[#4B5563]">{formatDate(document.createdAt)}</Td>
-                  <Td>
-                    <StatusBadge status={String(document.verificationStatus).toUpperCase()} />
-                  </Td>
-                </tr>
-              ))}
-
-              {documents.length === 0 ? (
+        {assets.length === 0 ? (
+          <HrPanelState
+            isLoading={false}
+            error={null}
+            isEmpty
+            emptyTitle="No assets assigned"
+            emptyDescription="Assets issued to this employee will be listed here."
+            className="border-0 border-t border-[#EEF1F6] p-6"
+          />
+        ) : (
+          <div className="overflow-x-auto border-t border-[#EEF1F6]">
+            <table className="w-full">
+              <thead className="bg-[#F8FAFC]">
                 <tr>
-                  <Td className="text-[#9CA3AF]">No documents filed.</Td>
-                  <Td> </Td>
-                  <Td> </Td>
-                  <Td> </Td>
+                  <Th>Asset Name</Th>
+                  <Th>Serial No.</Th>
+                  <Th>Date Issued</Th>
+                  <Th>Status</Th>
                 </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-[#EEF1F6]">
+                {assets.map((asset, index) => (
+                  <tr key={`${asset.name}-${index}`}>
+                    <Td className="font-semibold text-[#111827]">{asset.name}</Td>
+                    <Td className="text-[#4B5563]">{asset.serialNumber || "—"}</Td>
+                    <Td className="text-[#4B5563]">
+                      {asset.issuedDate ? formatDate(asset.issuedDate, "medium") : "—"}
+                    </Td>
+                    <Td>
+                      <StatusBadge status={(asset.status ?? "assigned").toUpperCase()} />
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </SectionCard>
     </div>
   )

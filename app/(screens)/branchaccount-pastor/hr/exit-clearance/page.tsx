@@ -1,91 +1,92 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
-import { useToast } from "@/components/ui/toast"
-import { useHrExitClearances, useExitClearanceMutations } from "@/components/hooks/useHrExitClearances"
-import { useHrLoans } from "@/components/hooks/useHrLoans"
-import { formatDate, formatNaira, initials } from "@/lib/hr/display"
-import { Search, Bell, Info } from "lucide-react"
+import { useMemo, useState } from "react"
+import { Search, Bell, Info, Loader2 } from "lucide-react"
 import BranchAccountantSidebar from "@/components/navigation/BranchAccountantSidebar"
+import { HrPanelState, hrErrorMessage } from "@/components/hr/HrDataState"
+import {
+  useExitClearances,
+  useFinanceSignOffClearance,
+} from "@/components/hooks/hr/useHrExitClearance"
+import {
+  CLEARANCE_STATUS_BADGES,
+  CLEARANCE_STATUS_LABELS,
+  badgeFor,
+  deref,
+  employeeName,
+  initials,
+  lookup,
+} from "@/lib/hr/normalize"
+import { formatCurrency, formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
-const AVATAR_TINTS = ["bg-[#EEF2FF] text-[#3B5BDB]", "bg-[#111827] text-white"]
-
-function AwaitingReviewPill() {
-  return (
-    <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold text-amber-700">
-      AWAITING REVIEW
-    </span>
-  )
-}
+const AVATAR_TINTS = [
+  "bg-[#EEF2FF] text-[#3B5BDB]",
+  "bg-emerald-50 text-emerald-600",
+  "bg-amber-50 text-amber-600",
+  "bg-violet-50 text-violet-600",
+]
 
 export default function Page() {
-  const [selectedId, setSelectedId] = useState<string>("")
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [loanBalanceInput, setLoanBalanceInput] = useState("")
+  const [assetCostInput, setAssetCostInput] = useState("")
+  const [deductLoan, setDeductLoan] = useState(true)
   const [note, setNote] = useState("")
-  const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
-  const { pushToast } = useToast()
-  // Finance acts on the clearances the admin has already signed off.
-  const { clearances, loading, error, refresh } = useHrExitClearances({
-    status: "pending_finance",
-    limit: 50,
-  })
-  const { financeSignOff } = useExitClearanceMutations()
+  /** Finance acts on clearances that are still moving through the workflow. */
+  const clearances = useExitClearances({ status: "in_progress", limit: 50 })
+  const signOff = useFinanceSignOffClearance()
 
+  const items = useMemo(() => clearances.data?.items ?? [], [clearances.data])
   const selected = useMemo(
-    () => clearances.find((row) => row.id === selectedId) ?? clearances[0] ?? null,
-    [clearances, selectedId]
+    () => items.find((item) => item._id === selectedId) ?? items[0] ?? null,
+    [items, selectedId],
   )
 
-  useEffect(() => {
-    if (!selectedId && clearances.length) setSelectedId(clearances[0].id)
-  }, [clearances, selectedId])
-
-  // The exiting employee's running loans decide what has to be recovered.
-  const { loans } = useHrLoans({
-    employeeId: selected?.employeeId ?? "",
-    status: "active",
-    limit: 20,
-  })
-
-  const outstandingLoanBalance = useMemo(
-    () => loans.reduce((sum, loan) => sum + loan.remainingBalance, 0),
-    [loans]
-  )
-
-  // Anything the admin ticked as not returned still has to be settled.
-  const unreturned = useMemo(
-    () => (selected?.adminSignOff.checklist ?? []).filter((item) => !item.isReturned),
-    [selected]
-  )
-
-  const netFinalPay = Math.max(-outstandingLoanBalance, 0)
-
-  const handleApprove = async () => {
+  /**
+   * Seed the settlement fields from whatever the backend computed at
+   * initiation. Adjusted during render (keyed on the clearance) rather than in
+   * an effect, so switching rows never shows the previous row's figures.
+   */
+  const [seededFor, setSeededFor] = useState<string | null>(null)
+  if (selected && seededFor !== selected._id) {
+    const settlement = selected.financeSettlement
+    setSeededFor(selected._id)
+    setLoanBalanceInput(String(settlement?.outstandingLoanBalance ?? 0))
+    setAssetCostInput(String(settlement?.unreturnedAssetsCost ?? 0))
+    setDeductLoan(settlement?.loanDeductionApproved ?? true)
+    setNote(settlement?.note ?? "")
     setFormError(null)
-    if (!selected) {
-      setFormError("Select a clearance to sign off.")
-      return
-    }
+  }
 
-    setSaving(true)
+  const employee = deref(selected?.employeeId)
+  const financeStep = selected?.steps?.find((step) => step.step === "finance")
+  const alreadySigned = financeStep?.status === "completed"
+
+  const loanBalanceValue = Number(loanBalanceInput.replace(/[^0-9.-]/g, "")) || 0
+  const assetCostValue = Number(assetCostInput.replace(/[^0-9.-]/g, "")) || 0
+  const salary = employee?.salary ?? 0
+
+  /** Net final pay = salary less whatever finance decides to recover. */
+  const netFinalPay = salary - (deductLoan ? loanBalanceValue : 0) - assetCostValue
+
+  async function handleApprove() {
+    if (!selected) return
+    setFormError(null)
+
     try {
-      await financeSignOff(selected.id, {
-        outstandingLoanBalance,
-        unreturnedAssetsCost: 0,
-        loanDeductionApproved: outstandingLoanBalance > 0,
+      await signOff.mutateAsync({
+        id: selected._id,
+        outstandingLoanBalance: loanBalanceValue,
+        unreturnedAssetsCost: assetCostValue,
+        loanDeductionApproved: deductLoan,
         netFinalPay,
         note: note.trim() || undefined,
       })
-      pushToast("Finance clearance completed", "success")
-      setNote("")
-      setSelectedId("")
-      refresh()
-    } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Unable to complete the sign-off.")
-    } finally {
-      setSaving(false)
+    } catch (error) {
+      setFormError(hrErrorMessage(error))
     }
   }
 
@@ -120,185 +121,239 @@ export default function Page() {
           {/* LEFT: Pending Clearances */}
           <div className="rounded-xl border border-[#EEF1F6] bg-white">
             <div className="border-b border-[#EEF1F6] p-5">
-              <h2 className="text-[16px] font-bold text-[#111827]">
-                Pending Clearances
-              </h2>
+              <h2 className="text-[16px] font-bold text-[#111827]">Pending Clearances</h2>
               <p className="mt-1 text-[13px] text-[#6B7280]">
-                3 personnel awaiting financial sign-off
+                {clearances.isLoading
+                  ? "Loading…"
+                  : `${items.length} personnel awaiting financial sign-off`}
               </p>
             </div>
 
-            <div className="p-3">
-              {clearances.map((p, index) => {
-                const isActive = selected?.id === p.id
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => setSelectedId(p.id)}
-                    className={cn(
-                      "flex w-full items-start gap-3 rounded-lg border p-4 text-left transition-colors",
-                      isActive
-                        ? "border-[#3B5BDB] bg-[#F8FAFF]"
-                        : "border-[#EEF1F6] bg-white hover:bg-[#F8FAFC]"
-                    )}
-                  >
-                    <span
+            {clearances.isLoading || clearances.error || items.length === 0 ? (
+              <HrPanelState
+                isLoading={clearances.isLoading}
+                error={clearances.error}
+                isEmpty={items.length === 0}
+                emptyTitle="Nothing pending"
+                emptyDescription="Clearances awaiting finance appear here."
+                onRetry={() => clearances.refetch()}
+                className="border-0 p-6"
+              />
+            ) : (
+              <div className="p-3">
+                {items.map((clearance, index) => {
+                  const isSelected = clearance._id === selected?._id
+                  const name = employeeName(clearance.employeeId)
+                  const staff = deref(clearance.employeeId)
+                  return (
+                    <button
+                      key={clearance._id}
+                      type="button"
+                      onClick={() => setSelectedId(clearance._id)}
                       className={cn(
-                        "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[12px] font-bold",
-                        AVATAR_TINTS[index % AVATAR_TINTS.length]
+                        "mb-2 flex w-full items-start gap-3 rounded-lg p-3 text-left transition-colors last:mb-0",
+                        isSelected ? "bg-[#EEF2FF]" : "hover:bg-[#F8FAFC]",
                       )}
                     >
-                      {initials(p.employeeName)}
-                    </span>
-                    <div className="min-w-0">
-                      <div className="text-[14px] font-bold text-[#111827]">
-                        {p.employeeName || "Unnamed staff"}
+                      <span
+                        className={cn(
+                          "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[13px] font-bold",
+                          AVATAR_TINTS[index % AVATAR_TINTS.length],
+                        )}
+                      >
+                        {initials(name)}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[14px] font-bold text-[#111827]">{name}</div>
+                        <div className="text-[12px] text-[#6B7280]">
+                          {staff?.jobTitle ?? "—"}
+                        </div>
+                        <div className="mt-2 flex items-center gap-2">
+                          <span
+                            className={cn(
+                              "rounded-full px-2.5 py-1 text-[10px] font-bold",
+                              badgeFor(CLEARANCE_STATUS_BADGES, clearance.status),
+                            )}
+                          >
+                            {lookup(CLEARANCE_STATUS_LABELS, clearance.status)}
+                          </span>
+                        </div>
+                        <div className="mt-2 text-[11px] text-[#9CA3AF]">
+                          Exit: {formatDate(clearance.lastWorkingDate, "medium")}
+                        </div>
                       </div>
-                      <div className="text-[12px] text-[#6B7280]">
-                        {p.jobTitle || p.department || "—"}
-                      </div>
-                      <div className="mt-2 flex items-center gap-2">
-                        <AwaitingReviewPill />
-                      </div>
-                      <div className="mt-2 text-[11px] text-[#9CA3AF]">
-                        Exit: {formatDate(p.lastWorkingDate)}
-                      </div>
-                    </div>
-                  </button>
-                )
-              })}
-
-              {loading ? (
-                <p className="px-2 py-6 text-center text-[13px] text-[#6B7280]">Loading…</p>
-              ) : null}
-
-              {error ? (
-                <p className="px-2 py-6 text-center text-[13px] text-rose-600">{error}</p>
-              ) : null}
-
-              {!loading && !error && clearances.length === 0 ? (
-                <p className="px-2 py-6 text-center text-[13px] text-[#9CA3AF]">
-                  Nothing is waiting on finance sign-off.
-                </p>
-              ) : null}
-            </div>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
           </div>
 
           {/* RIGHT: Detail */}
-          <div className="flex flex-col gap-5">
-            {/* Profile card */}
-            <div className="rounded-xl border border-[#EEF1F6] bg-white p-6">
-              <div className="flex items-center gap-5">
-                <span className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-[#EEF2FF] text-[26px] font-bold text-[#3B5BDB]">
-                  {initials(selected?.employeeName ?? "")}
-                </span>
-                <div className="min-w-0">
-                  <h1 className="text-[32px] font-bold text-[#111827] leading-tight">
-                    {selected?.employeeName || "No clearance selected"}
-                  </h1>
-                  <p className="mt-1 text-[14px] text-[#6B7280]">
-                    {[selected?.jobTitle, selected?.department].filter(Boolean).join(" | ") || "—"}
-                  </p>
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <span className="rounded-full bg-[#F8FAFC] px-2.5 py-1 text-[10px] font-bold text-[#4B5563]">
-                      📅 Exit Date: {formatDate(selected?.lastWorkingDate ?? "")}
-                    </span>
-                    <span className="rounded-full bg-[#F8FAFC] px-2.5 py-1 text-[10px] font-bold text-[#4B5563]">
-                      🪪 ID: {selected?.employeeCode || "—"}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Two-column grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-              {/* LEFT: Outstanding liabilities */}
-              <div className="rounded-xl border border-[#EEF1F6] bg-white p-5">
-                <h3 className="text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                  Outstanding Liabilities
-                </h3>
-
-                {/* Loan balance */}
-                <div className="mt-4 rounded-lg border border-rose-100 bg-rose-50 p-4">
-                  <div className="text-[12px] font-semibold text-[#6B7280]">
-                    Loan Balance
-                  </div>
-                  <div className="mt-1 text-[22px] font-bold text-rose-600">
-                    {formatNaira(outstandingLoanBalance)}
-                  </div>
-                </div>
-
-                {/* Unreturned assets */}
-                <div className="mt-4 rounded-lg border border-rose-100 bg-rose-50 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="text-[12px] font-semibold text-[#6B7280]">
-                      Unreturned Assets
+          {!selected ? (
+            <HrPanelState
+              isLoading={clearances.isLoading}
+              error={null}
+              isEmpty={!clearances.isLoading}
+              emptyTitle="No clearance selected"
+              emptyDescription="Pick a pending clearance to review its settlement."
+            />
+          ) : (
+            <div className="flex flex-col gap-5">
+              {/* Profile card */}
+              <div className="rounded-xl border border-[#EEF1F6] bg-white p-6">
+                <div className="flex items-center gap-5">
+                  <span className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-[#EEF2FF] text-[26px] font-bold text-[#3B5BDB]">
+                    {initials(employeeName(selected.employeeId))}
+                  </span>
+                  <div className="min-w-0">
+                    <h1 className="text-[32px] font-bold text-[#111827] leading-tight">
+                      {employeeName(selected.employeeId)}
+                    </h1>
+                    <p className="mt-1 text-[14px] text-[#6B7280]">
+                      {employee?.jobTitle ?? "—"}
+                      {employee?.department ? ` | ${employee.department}` : ""}
+                    </p>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-[#F8FAFC] px-2.5 py-1 text-[10px] font-bold text-[#4B5563]">
+                        Exit Date: {formatDate(selected.lastWorkingDate, "medium")}
+                      </span>
+                      <span className="rounded-full bg-[#F8FAFC] px-2.5 py-1 text-[10px] font-bold text-[#4B5563]">
+                        ID: {employee?.employeeId ?? "—"}
+                      </span>
+                      <span className="rounded-full bg-[#F8FAFC] px-2.5 py-1 text-[10px] font-bold text-[#4B5563]">
+                        Reason: {selected.reason}
+                      </span>
                     </div>
-                    <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold text-amber-700">
-                      {unreturned.length} item{unreturned.length === 1 ? "" : "s"}
-                    </span>
                   </div>
-                  <div className="mt-1 text-[14px] font-semibold text-rose-600">
-                    {unreturned.length
-                      ? unreturned.map((item) => item.label).join(", ")
-                      : "All assets returned"}
-                  </div>
-                </div>
-
-                {/* Info note */}
-                <div className="mt-4 flex items-start gap-2.5 rounded-lg bg-[#EEF2FF] p-3">
-                  <Info className="mt-0.5 h-4 w-4 shrink-0 text-[#3B5BDB]" />
-                  <p className="text-[12px] italic text-[#4B5563]">
-                    Sign-off is restricted until asset recovery is confirmed by
-                    the IT and Asset Management departments.
-                  </p>
                 </div>
               </div>
 
-              {/* RIGHT: Decision note */}
-              <div className="rounded-xl border border-[#EEF1F6] bg-white p-5">
-                <h3 className="text-[16px] font-bold text-[#111827]">
-                  Add Decision Note / Reason for Hold
-                </h3>
-                <textarea
-                  rows={6}
-                  value={note}
-                  onChange={(event) => setNote(event.target.value)}
-                  placeholder="Enter reason for hold or additional clearance notes..."
-                  className="mt-4 w-full rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] p-3 text-[13px] outline-none"
-                />
+              {/* Two-column grid */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                {/* LEFT: Outstanding liabilities */}
+                <div className="rounded-xl border border-[#EEF1F6] bg-white p-5">
+                  <h3 className="text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF]">
+                    Outstanding Liabilities
+                  </h3>
 
-                <div className="mt-4 rounded-lg bg-[#F8FAFC] p-3 text-[12px] text-[#4B5563]">
-                  Settlement: {formatNaira(outstandingLoanBalance)} recovered from final pay
-                  {outstandingLoanBalance > 0 ? " (loan deduction approved)" : ""}.
+                  <div className="mt-4">
+                    <label className="text-[12px] font-semibold text-[#6B7280]">
+                      Loan Balance
+                    </label>
+                    <div className="relative mt-1.5">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-[#6B7280]">
+                        ₦
+                      </span>
+                      <input
+                        value={loanBalanceInput}
+                        onChange={(e) => setLoanBalanceInput(e.target.value)}
+                        inputMode="decimal"
+                        disabled={alreadySigned || signOff.isPending}
+                        className="h-[42px] w-full rounded-lg border border-rose-100 bg-rose-50 pl-7 pr-3 text-[15px] font-bold text-rose-600 outline-none focus:border-rose-300 disabled:opacity-70"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-4">
+                    <label className="text-[12px] font-semibold text-[#6B7280]">
+                      Unreturned Assets (cost)
+                    </label>
+                    <div className="relative mt-1.5">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-[#6B7280]">
+                        ₦
+                      </span>
+                      <input
+                        value={assetCostInput}
+                        onChange={(e) => setAssetCostInput(e.target.value)}
+                        inputMode="decimal"
+                        disabled={alreadySigned || signOff.isPending}
+                        className="h-[42px] w-full rounded-lg border border-rose-100 bg-rose-50 pl-7 pr-3 text-[15px] font-bold text-rose-600 outline-none focus:border-rose-300 disabled:opacity-70"
+                      />
+                    </div>
+                    {(selected.adminChecklist?.filter((item) => !item.isReturned).length ?? 0) >
+                      0 && (
+                      <p className="mt-2 text-[12px] text-amber-600">
+                        {selected.adminChecklist?.filter((item) => !item.isReturned).length} item(s)
+                        still outstanding on the admin checklist.
+                      </p>
+                    )}
+                  </div>
+
+                  <label className="mt-4 flex items-center gap-2 text-[13px] font-medium text-[#111827]">
+                    <input
+                      type="checkbox"
+                      checked={deductLoan}
+                      onChange={(e) => setDeductLoan(e.target.checked)}
+                      disabled={alreadySigned || signOff.isPending}
+                      className="h-4 w-4 rounded border-[#D1D5DB] accent-[#3B5BDB]"
+                    />
+                    Deduct loan balance from final pay
+                  </label>
+
+                  <div className="mt-4 rounded-lg bg-[#111827] p-4">
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-white/60">
+                      Net Final Pay
+                    </div>
+                    <div className="mt-1 text-[22px] font-bold text-white">
+                      {formatCurrency(netFinalPay)}
+                    </div>
+                    <div className="mt-1 text-[11px] text-white/50">
+                      Based on a recorded salary of {formatCurrency(salary)}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex items-start gap-2.5 rounded-lg bg-[#EEF2FF] p-3">
+                    <Info className="mt-0.5 h-4 w-4 shrink-0 text-[#3B5BDB]" />
+                    <p className="text-[12px] italic text-[#4B5563]">
+                      Sign-off is restricted until asset recovery is confirmed by the IT and Asset
+                      Management departments.
+                    </p>
+                  </div>
                 </div>
 
-                {formError ? (
-                  <p className="mt-3 rounded-md bg-rose-50 px-3 py-2 text-[12px] text-rose-600">
-                    {formError}
-                  </p>
-                ) : null}
+                {/* RIGHT: Decision note */}
+                <div className="rounded-xl border border-[#EEF1F6] bg-white p-5">
+                  <h3 className="text-[16px] font-bold text-[#111827]">
+                    Add Decision Note / Reason for Hold
+                  </h3>
+                  <textarea
+                    rows={6}
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    disabled={alreadySigned || signOff.isPending}
+                    placeholder="Enter reason for hold or additional clearance notes..."
+                    className="mt-4 w-full rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] p-3 text-[13px] outline-none disabled:opacity-70"
+                  />
 
-                <div className="mt-4 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={handleApprove}
-                    disabled={saving || !selected || unreturned.length > 0}
-                    title={
-                      unreturned.length > 0
-                        ? "Sign-off is blocked until every asset is confirmed returned."
-                        : undefined
-                    }
-                    className="rounded-md bg-[#111827] px-5 py-2.5 text-[13px] font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:bg-[#9CA3AF]"
-                  >
-                    {saving ? "Submitting…" : "Approve Clearance"}
-                  </button>
+                  {formError && (
+                    <p className="mt-3 text-[12px] font-medium text-red-600">{formError}</p>
+                  )}
+
+                  <div className="mt-4 flex items-center justify-between gap-3">
+                    <span className="text-[12px] text-[#9CA3AF]">
+                      {alreadySigned
+                        ? `Finance cleared ${
+                            financeStep?.timestamp
+                              ? formatDate(financeStep.timestamp, "medium")
+                              : ""
+                          }`
+                        : "This records the finance step on the clearance."}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleApprove}
+                      disabled={alreadySigned || signOff.isPending}
+                      className="inline-flex items-center gap-2 rounded-md bg-[#111827] px-5 py-2.5 text-[13px] font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:bg-[#9CA3AF]"
+                    >
+                      {signOff.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                      {alreadySigned ? "Cleared" : "Approve Clearance"}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       </main>
     </div>

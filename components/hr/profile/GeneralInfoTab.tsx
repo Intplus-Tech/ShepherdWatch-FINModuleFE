@@ -2,9 +2,11 @@
 
 import { User, Contact, Phone, GraduationCap } from "lucide-react"
 import { SectionCard, CardHeading, Field, ProgressBar } from "./shared"
-import { useHrEmployee } from "@/components/hooks/useHrEmployees"
-import { useHrDocuments } from "@/components/hooks/useHrDocuments"
-import { DOCUMENT_TYPE_LABELS, formatDate, statusLabel } from "@/lib/hr/display"
+import { HrPanelState } from "@/components/hr/HrDataState"
+import { useEmployee } from "@/components/hooks/hr/useHrEmployees"
+import { titleCase, userName } from "@/lib/hr/normalize"
+import { deref } from "@/lib/hr/normalize"
+import { formatDate } from "@/lib/format"
 
 function CardTitle({
   icon: Icon,
@@ -23,18 +25,27 @@ function CardTitle({
   )
 }
 
-const EMPTY = "—"
+export default function GeneralInfoTab({ employeeId }: { employeeId: string | null }) {
+  const query = useEmployee(employeeId)
+  const employee = query.data
 
-export default function GeneralInfoTab({ employeeId }: { employeeId: string }) {
-  const { employee, loading } = useHrEmployee(employeeId)
-  // Credentials live in the document vault rather than on the profile record.
-  const { documents } = useHrDocuments(employeeId)
-  const credentials = documents.filter((document) =>
-    ["academic_credential", "certification"].includes(String(document.documentType))
-  )
+  if (query.isLoading || query.error || !employee) {
+    return (
+      <HrPanelState
+        isLoading={query.isLoading}
+        error={query.error}
+        isEmpty={!employee}
+        emptyTitle="No employee selected"
+        emptyDescription="Open a profile from the Employee Directory."
+        onRetry={() => query.refetch()}
+      />
+    )
+  }
 
-  const emergency = employee?.emergencyContact
-  const integrity = employee?.profileIntegrityScore ?? 0
+  const user = deref(employee.userId)
+  const integrity = employee.profileIntegrityScore ?? 0
+  const emergency = employee.emergencyContact
+  const qualifications = employee.qualifications ?? []
 
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
@@ -44,12 +55,15 @@ export default function GeneralInfoTab({ employeeId }: { employeeId: string }) {
         <SectionCard>
           <CardTitle icon={User}>Personal Information</CardTitle>
           <div className="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            <Field label="Full Name" value={employee?.name || (loading ? "Loading…" : EMPTY)} />
-            <Field label="Date of Birth" value={formatDate(employee?.dateOfBirth ?? "", EMPTY)} />
-            <Field label="Gender" value={employee?.gender || EMPTY} />
-            <Field label="Marital Status" value={employee?.maritalStatus || EMPTY} />
-            <Field label="Nationality" value={employee?.nationality || EMPTY} />
-            <Field label="Religion" value={employee?.religion || EMPTY} />
+            <Field label="Full Name" value={userName(employee.userId, employee.employeeId)} />
+            <Field
+              label="Date of Birth"
+              value={employee.dateOfBirth ? formatDate(employee.dateOfBirth, "long") : "—"}
+            />
+            <Field label="Gender" value={titleCase(employee.gender)} />
+            <Field label="Marital Status" value={titleCase(employee.maritalStatus)} />
+            <Field label="Nationality" value={employee.nationality || "—"} />
+            <Field label="State of Origin" value={employee.stateOfOrigin || "—"} />
           </div>
         </SectionCard>
 
@@ -57,11 +71,11 @@ export default function GeneralInfoTab({ employeeId }: { employeeId: string }) {
         <SectionCard>
           <CardTitle icon={Contact}>Contact Details</CardTitle>
           <div className="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-2">
-            <Field label="Personal Email" value={employee?.email || EMPTY} />
-            <Field label="Phone Number" value={employee?.phone || EMPTY} />
+            <Field label="Work Email" value={user?.email || "—"} />
+            <Field label="Phone Number" value={employee.phone || "—"} />
             <Field
               label="Home Address"
-              value={employee?.address || EMPTY}
+              value={employee.address || "—"}
               className="sm:col-span-2"
             />
           </div>
@@ -70,40 +84,37 @@ export default function GeneralInfoTab({ employeeId }: { employeeId: string }) {
         {/* Education & Certifications */}
         <SectionCard>
           <CardTitle icon={GraduationCap}>Education &amp; Certifications</CardTitle>
-          <div className="mt-5 flex flex-col gap-3">
-            {credentials.map((credential) => (
-              <div
-                key={credential.id}
-                className="flex items-start justify-between gap-4 rounded-[10px] border border-[#EEF1F6] bg-[#F9FAFB] p-4"
-              >
-                <div>
-                  <div className="text-[14px] font-semibold text-[#111827]">
-                    {credential.title}
-                  </div>
-                  <div className="mt-0.5 text-[13px] text-[#6B7280]">
-                    {statusLabel(DOCUMENT_TYPE_LABELS, credential.documentType)}
-                  </div>
-                </div>
-                <span
-                  className={
-                    credential.verificationStatus === "verified"
-                      ? "shrink-0 rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-bold text-emerald-700"
-                      : "shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-600"
-                  }
+          {qualifications.length === 0 ? (
+            <HrPanelState
+              isLoading={false}
+              error={null}
+              isEmpty
+              emptyTitle="No qualifications on file"
+              emptyDescription="Add them when editing this employee record."
+              className="mt-5 border-0 p-4"
+            />
+          ) : (
+            <div className="mt-5 flex flex-col gap-3">
+              {qualifications.map((qualification, index) => (
+                <div
+                  key={`${qualification.degree}-${index}`}
+                  className="flex items-start justify-between gap-4 rounded-[10px] border border-[#EEF1F6] bg-[#F9FAFB] p-4"
                 >
-                  {credential.verificationStatus === "verified"
-                    ? `Verified ${formatDate(credential.verifiedAt, "")}`.trim()
-                    : credential.verificationStatus}
-                </span>
-              </div>
-            ))}
-
-            {credentials.length === 0 ? (
-              <p className="text-[13px] text-[#9CA3AF]">
-                No academic credentials or certifications have been filed.
-              </p>
-            ) : null}
-          </div>
+                  <div>
+                    <div className="text-[14px] font-semibold text-[#111827]">
+                      {qualification.degree}
+                    </div>
+                    <div className="mt-0.5 text-[13px] text-[#6B7280]">
+                      {qualification.institution}
+                    </div>
+                  </div>
+                  <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-600">
+                    {qualification.yearObtained}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </SectionCard>
       </div>
 
@@ -116,35 +127,66 @@ export default function GeneralInfoTab({ employeeId }: { employeeId: string }) {
           </div>
           <div className="mt-2 text-[32px] font-bold leading-none">{integrity}%</div>
           <div className="mt-4">
-            <ProgressBar percent={integrity} tone="emerald" className="bg-white/10" />
+            <ProgressBar
+              percent={integrity}
+              tone={integrity >= 80 ? "emerald" : "amber"}
+              className="bg-white/10"
+            />
           </div>
           <p className="mt-4 text-[13px] text-white/70">
             {integrity >= 100
-              ? "This profile is complete."
-              : "The score rises as personal details, bank details and documents are filed."}
+              ? "This record is complete."
+              : "Score is calculated from how much of the record is filled in — bank details, next of kin, qualifications and salary all count."}
           </p>
         </div>
+
+        {/* Employment */}
+        <SectionCard>
+          <CardHeading>Employment</CardHeading>
+          <div className="mt-5 flex flex-col gap-4">
+            <Field label="Job Title" value={employee.jobTitle} />
+            <Field label="Department" value={employee.department || "—"} />
+            <Field
+              label="Hire Date"
+              value={employee.hireDate ? formatDate(employee.hireDate, "long") : "—"}
+            />
+            {employee.confirmationDate && (
+              <Field
+                label="Confirmed"
+                value={formatDate(employee.confirmationDate, "long")}
+              />
+            )}
+          </div>
+        </SectionCard>
 
         {/* Emergency Contact */}
         <SectionCard>
           <CardHeading>Emergency Contact</CardHeading>
-          <div className="mt-5 flex flex-col gap-4">
-            <Field label="Primary Name" value={emergency?.name || EMPTY} />
-            <Field label="Relationship" value={emergency?.relationship || EMPTY} />
-            <Field label="Phone Number" value={emergency?.phone || EMPTY} />
-            <a
-              href={emergency?.phone ? `tel:${emergency.phone}` : undefined}
-              aria-disabled={!emergency?.phone}
-              className={
-                emergency?.phone
-                  ? "inline-flex w-full items-center justify-center gap-2 rounded-md bg-[#3B5BDB] px-4 py-2 text-[12px] font-medium text-white hover:bg-[#3149b8]"
-                  : "pointer-events-none inline-flex w-full items-center justify-center gap-2 rounded-md bg-[#9CA3AF] px-4 py-2 text-[12px] font-medium text-white"
-              }
-            >
-              <Phone className="h-4 w-4" />
-              Call Now
-            </a>
-          </div>
+          {!emergency?.name ? (
+            <HrPanelState
+              isLoading={false}
+              error={null}
+              isEmpty
+              emptyTitle="No emergency contact"
+              emptyDescription="Add one when editing this employee record."
+              className="mt-5 border-0 p-4"
+            />
+          ) : (
+            <div className="mt-5 flex flex-col gap-4">
+              <Field label="Primary Name" value={emergency.name} />
+              <Field label="Relationship" value={emergency.relationship || "—"} />
+              <Field label="Phone Number" value={emergency.phone || "—"} />
+              {emergency.phone && (
+                <a
+                  href={`tel:${emergency.phone}`}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-[#3B5BDB] px-4 py-2 text-[12px] font-medium text-white hover:bg-[#3149b8]"
+                >
+                  <Phone className="h-4 w-4" />
+                  Call Now
+                </a>
+              )}
+            </div>
+          )}
         </SectionCard>
       </div>
     </div>
