@@ -189,11 +189,20 @@ export async function GET(req: NextRequest) {
     const payload = await backendResponse.json().catch(() => null)
 
     if (!backendResponse.ok) {
+      // Pass the backend's own error body through untouched. It carries the
+      // field-level detail behind "Validation failed", which was previously
+      // reduced to the bare message and lost.
+      const detail = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : null
+      console.error(
+        `Backend GET /chart-of-accounts${url.search} -> ${backendResponse.status}`,
+        JSON.stringify(detail ?? {})
+      )
       return applyCors(
         NextResponse.json(
           {
             success: false,
             message: payload?.message ?? "Unable to fetch COA entries",
+            ...(detail ?? {}),
           },
           { status: backendResponse.status || 502 }
         ),
