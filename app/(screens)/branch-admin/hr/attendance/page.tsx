@@ -4,108 +4,45 @@ import { useMemo, useState } from "react"
 import { Menu, Search, Bell, Plus } from "lucide-react"
 import BranchAdminSidebar from "@/components/navigation/BranchAdminSidebar"
 import BranchAdminAttendanceModal from "@/components/hr/BranchAdminAttendanceModal"
+import { HrTableState } from "@/components/hr/HrDataState"
+import { HrPagination } from "@/components/hr/HrPagination"
+import { useAttendanceLogs } from "@/components/hooks/hr/useHrAttendance"
+import {
+  ATTENDANCE_STATUS_LABELS,
+  clockTime,
+  deref,
+  duration,
+  employeeName,
+  initials,
+  lookup,
+} from "@/lib/hr/normalize"
+import { ATTENDANCE_STATUSES, type AttendanceStatus } from "@/lib/hr/types"
+import { formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
-type Status = "Present" | "Late" | "Absent" | "Half-Day"
+const PAGE_SIZE = 10
 
-type AttendanceRow = {
-  id: string
-  name: string
-  department: string
-  initials: string
-  date: string
-  clockIn: string
-  clockInLate?: boolean
-  clockOut: string
-  totalHours: string
-  status: Status
+const ALL_DEPARTMENTS = "All Departments"
+
+const STATUS_STYLES: Record<AttendanceStatus, { pill: string; dot: string }> = {
+  present: { pill: "bg-emerald-100 text-emerald-700", dot: "bg-emerald-500" },
+  late: { pill: "bg-amber-100 text-amber-700", dot: "bg-amber-500" },
+  absent: { pill: "bg-rose-100 text-rose-700", dot: "bg-rose-500" },
+  half_day: { pill: "bg-blue-100 text-blue-700", dot: "bg-blue-500" },
+  missing: { pill: "bg-gray-100 text-gray-700", dot: "bg-gray-400" },
 }
 
-const ROWS: AttendanceRow[] = [
-  {
-    id: "elena-rodriguez",
-    name: "Dr. Elena Rodriguez",
-    department: "Administration",
-    initials: "ER",
-    date: "Oct 26, 2023",
-    clockIn: "08:45 AM",
-    clockOut: "05:15 PM",
-    totalHours: "8h 30m",
-    status: "Present",
-  },
-  {
-    id: "marcus-thorne",
-    name: "Marcus Thorne",
-    department: "Pastoral Care",
-    initials: "MT",
-    date: "Oct 26, 2023",
-    clockIn: "09:12 AM",
-    clockInLate: true,
-    clockOut: "05:00 PM",
-    totalHours: "7h 48m",
-    status: "Late",
-  },
-  {
-    id: "sarah-jenkins",
-    name: "Sarah Jenkins",
-    department: "Finance",
-    initials: "SJ",
-    date: "Oct 26, 2023",
-    clockIn: "—",
-    clockOut: "—",
-    totalHours: "0h 0m",
-    status: "Absent",
-  },
-  {
-    id: "timothy-park",
-    name: "Timothy Park",
-    department: "Youth Ministry",
-    initials: "TP",
-    date: "Oct 26, 2023",
-    clockIn: "09:00 AM",
-    clockOut: "01:00 PM",
-    totalHours: "4h 0m",
-    status: "Half-Day",
-  },
-  {
-    id: "david-wilson",
-    name: "David Wilson",
-    department: "Finance",
-    initials: "DW",
-    date: "Oct 26, 2023",
-    clockIn: "08:00 AM",
-    clockOut: "04:30 PM",
-    totalHours: "8h 30m",
-    status: "Present",
-  },
-]
-
-const DEPARTMENTS = [
-  "All Departments",
-  "Administration",
-  "Pastoral Care",
-  "Finance",
-  "Youth Ministry",
-]
-
-const STATUS_STYLES: Record<Status, { pill: string; dot: string }> = {
-  Present: { pill: "bg-emerald-100 text-emerald-700", dot: "bg-emerald-500" },
-  Late: { pill: "bg-amber-100 text-amber-700", dot: "bg-amber-500" },
-  Absent: { pill: "bg-rose-100 text-rose-700", dot: "bg-rose-500" },
-  "Half-Day": { pill: "bg-blue-100 text-blue-700", dot: "bg-blue-500" },
-}
-
-function StatusPill({ status }: { status: Status }) {
-  const s = STATUS_STYLES[status]
+function StatusPill({ status }: { status: AttendanceStatus }) {
+  const style = STATUS_STYLES[status] ?? STATUS_STYLES.missing
   return (
     <span
       className={cn(
         "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold",
-        s.pill
+        style.pill,
       )}
     >
-      <span className={cn("h-1.5 w-1.5 rounded-full", s.dot)} />
-      {status}
+      <span className={cn("h-1.5 w-1.5 rounded-full", style.dot)} />
+      {lookup(ATTENDANCE_STATUS_LABELS, status)}
     </span>
   )
 }
@@ -113,22 +50,66 @@ function StatusPill({ status }: { status: Status }) {
 export default function Page() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
-  const [department, setDepartment] = useState("All Departments")
+  const [department, setDepartment] = useState(ALL_DEPARTMENTS)
+  const [status, setStatus] = useState<"all" | AttendanceStatus>("all")
+  const [date, setDate] = useState("")
   const [query, setQuery] = useState("")
+  const [page, setPage] = useState(1)
 
-  const rows = useMemo(() => {
+  const logs = useAttendanceLogs({
+    page,
+    limit: PAGE_SIZE,
+    status,
+    date: date || undefined,
+  })
+
+  const rows = useMemo(
+    () =>
+      (logs.data?.items ?? []).map((log) => {
+        const employee = deref(log.employeeId)
+        return {
+          id: log._id,
+          name: employeeName(log.employeeId),
+          department: employee?.department ?? "—",
+          date: formatDate(log.date, "medium"),
+          clockIn: clockTime(log.clockIn),
+          clockInLate: log.status === "late",
+          clockOut: clockTime(log.clockOut),
+          totalHours: duration(log.durationMinutes),
+          status: log.status,
+        }
+      }),
+    [logs.data],
+  )
+
+  /**
+   * Department and name filtering happen on the loaded page: the attendance
+   * list endpoint takes branch, employee, status and date, but has no
+   * department or free-text search parameter.
+   */
+  const departments = useMemo(
+    () => [
+      ALL_DEPARTMENTS,
+      ...Array.from(new Set(rows.map((row) => row.department).filter((d) => d !== "—"))),
+    ],
+    [rows],
+  )
+
+  const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return ROWS.filter((row) => {
-      if (department !== "All Departments" && row.department !== department)
-        return false
+    return rows.filter((row) => {
+      if (department !== ALL_DEPARTMENTS && row.department !== department) return false
       if (q && !row.name.toLowerCase().includes(q)) return false
       return true
     })
-  }, [department, query])
+  }, [rows, department, query])
 
   const resetFilters = () => {
-    setDepartment("All Departments")
+    setDepartment(ALL_DEPARTMENTS)
+    setStatus("all")
+    setDate("")
     setQuery("")
+    setPage(1)
   }
 
   return (
@@ -201,15 +182,13 @@ export default function Page() {
           <div className="mt-6 rounded-xl border border-[#EEF1F6] bg-white p-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
               <div className="flex flex-col gap-1.5">
-                <label className="text-[12px] font-semibold text-[#6B7280]">
-                  Department
-                </label>
+                <label className="text-[12px] font-semibold text-[#6B7280]">Department</label>
                 <select
                   value={department}
                   onChange={(e) => setDepartment(e.target.value)}
                   className="h-[42px] rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[13px]"
                 >
-                  {DEPARTMENTS.map((d) => (
+                  {departments.map((d) => (
                     <option key={d} value={d}>
                       {d}
                     </option>
@@ -217,10 +196,40 @@ export default function Page() {
                 </select>
               </div>
 
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[12px] font-semibold text-[#6B7280]">Status</label>
+                <select
+                  value={status}
+                  onChange={(e) => {
+                    setStatus(e.target.value as "all" | AttendanceStatus)
+                    setPage(1)
+                  }}
+                  className="h-[42px] rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[13px]"
+                >
+                  <option value="all">All Statuses</option>
+                  {ATTENDANCE_STATUSES.map((value) => (
+                    <option key={value} value={value}>
+                      {ATTENDANCE_STATUS_LABELS[value]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[12px] font-semibold text-[#6B7280]">Date</label>
+                <input
+                  type="date"
+                  value={date}
+                  onChange={(e) => {
+                    setDate(e.target.value)
+                    setPage(1)
+                  }}
+                  className="h-[42px] rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[13px]"
+                />
+              </div>
+
               <div className="flex flex-1 flex-col gap-1.5">
-                <label className="text-[12px] font-semibold text-[#6B7280]">
-                  Quick Search
-                </label>
+                <label className="text-[12px] font-semibold text-[#6B7280]">Quick Search</label>
                 <input
                   type="text"
                   value={query}
@@ -246,112 +255,71 @@ export default function Page() {
               <table className="w-full text-left">
                 <thead className="bg-[#EEF2FF]">
                   <tr>
-                    {[
-                      "Employee",
-                      "Date",
-                      "Clock In",
-                      "Clock Out",
-                      "Total Hours",
-                      "Status",
-                    ].map((h) => (
-                      <th
-                        key={h}
-                        className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]"
-                      >
-                        {h}
-                      </th>
-                    ))}
+                    {["Employee", "Date", "Clock In", "Clock Out", "Total Hours", "Status"].map(
+                      (h) => (
+                        <th
+                          key={h}
+                          className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]"
+                        >
+                          {h}
+                        </th>
+                      ),
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#F3F4F6]">
-                  {rows.map((row) => (
-                    <tr key={row.id}>
-                      <td className="px-4 py-4 text-[13px]">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#EEF2FF] text-[12px] font-bold text-[#2563EB]">
-                            {row.initials}
+                  <HrTableState
+                    colSpan={6}
+                    isLoading={logs.isLoading}
+                    error={logs.error}
+                    isEmpty={filtered.length === 0}
+                    emptyTitle="No attendance records"
+                    emptyDescription="Records appear here once staff clock in or entries are added."
+                    onRetry={() => logs.refetch()}
+                  />
+
+                  {!logs.isLoading &&
+                    !logs.error &&
+                    filtered.map((row) => (
+                      <tr key={row.id}>
+                        <td className="px-4 py-4 text-[13px]">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#EEF2FF] text-[12px] font-bold text-[#2563EB]">
+                              {initials(row.name)}
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="font-bold text-[#111827]">{row.name}</span>
+                              <span className="text-[12px] text-[#6B7280]">{row.department}</span>
+                            </div>
                           </div>
-                          <div className="flex flex-col">
-                            <span className="font-bold text-[#111827]">{row.name}</span>
-                            <span className="text-[12px] text-[#6B7280]">
-                              {row.department}
-                            </span>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 text-[13px] text-[#4B5563]">{row.date}</td>
-                      <td
-                        className={cn(
-                          "px-4 py-4 text-[13px]",
-                          row.clockInLate ? "font-semibold text-amber-600" : "text-[#4B5563]"
-                        )}
-                      >
-                        {row.clockIn}
-                      </td>
-                      <td className="px-4 py-4 text-[13px] text-[#4B5563]">{row.clockOut}</td>
-                      <td className="px-4 py-4 text-[13px] text-[#4B5563]">{row.totalHours}</td>
-                      <td className="px-4 py-4 text-[13px]">
-                        <StatusPill status={row.status} />
-                      </td>
-                    </tr>
-                  ))}
-                  {rows.length === 0 && (
-                    <tr>
-                      <td
-                        colSpan={6}
-                        className="px-4 py-10 text-center text-[13px] text-[#9CA3AF]"
-                      >
-                        No records match your filters.
-                      </td>
-                    </tr>
-                  )}
+                        </td>
+                        <td className="px-4 py-4 text-[13px] text-[#4B5563]">{row.date}</td>
+                        <td
+                          className={cn(
+                            "px-4 py-4 text-[13px]",
+                            row.clockInLate ? "font-semibold text-amber-600" : "text-[#4B5563]",
+                          )}
+                        >
+                          {row.clockIn}
+                        </td>
+                        <td className="px-4 py-4 text-[13px] text-[#4B5563]">{row.clockOut}</td>
+                        <td className="px-4 py-4 text-[13px] text-[#4B5563]">{row.totalHours}</td>
+                        <td className="px-4 py-4 text-[13px]">
+                          <StatusPill status={row.status} />
+                        </td>
+                      </tr>
+                    ))}
                 </tbody>
               </table>
             </div>
 
-            {/* Footer */}
-            <div className="flex flex-col gap-4 border-t border-[#EEF1F6] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-              <span className="text-[13px] text-[#6B7280]">Showing 5 of 48 records</span>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  className="flex h-8 items-center rounded-md border border-[#E5E7EB] bg-white px-3 text-[12px] font-semibold text-[#4B5563] hover:bg-[#F8FAFC]"
-                >
-                  Prev
-                </button>
-                <button
-                  type="button"
-                  className="flex h-8 w-8 items-center justify-center rounded-md bg-[#111827] text-[12px] font-semibold text-white"
-                >
-                  1
-                </button>
-                <button
-                  type="button"
-                  className="flex h-8 w-8 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[12px] font-semibold text-[#4B5563] hover:bg-[#F8FAFC]"
-                >
-                  2
-                </button>
-                <button
-                  type="button"
-                  className="flex h-8 w-8 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[12px] font-semibold text-[#4B5563] hover:bg-[#F8FAFC]"
-                >
-                  3
-                </button>
-                <span className="px-1 text-[12px] text-[#9CA3AF]">…</span>
-                <button
-                  type="button"
-                  className="flex h-8 w-8 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[12px] font-semibold text-[#4B5563] hover:bg-[#F8FAFC]"
-                >
-                  10
-                </button>
-                <button
-                  type="button"
-                  className="flex h-8 items-center rounded-md border border-[#E5E7EB] bg-white px-3 text-[12px] font-semibold text-[#4B5563] hover:bg-[#F8FAFC]"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
+            <HrPagination
+              pagination={logs.data?.pagination}
+              page={page}
+              onPageChange={setPage}
+              itemCount={rows.length}
+              noun="records"
+            />
           </div>
         </main>
       </div>

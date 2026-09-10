@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { CalendarDays, ChevronDown, Pencil, Plus, Search, Trash2 } from "lucide-react"
+import { AlertTriangle, CalendarDays, ChevronDown, Pencil, Plus, Search, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import AddServiceLogModal from "./AddServiceLogModal"
 import {
@@ -118,6 +118,20 @@ export default function ServiceAttendanceLog({
 
   return (
     <div className="flex flex-col gap-6">
+      {/*
+        Sample-data notice. Congregational service attendance has no backend
+        domain (see `attendance-data.ts`), so this screen is the one part of HR
+        that is not reading the API — say so rather than let it pass as real.
+      */}
+      <div className="flex items-start gap-3 rounded-lg border-l-4 border-amber-400 bg-amber-50 px-4 py-3">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+        <p className="text-[12px] leading-relaxed text-[#4B5563]">
+          <span className="font-bold text-[#111827]">Sample data.</span> Congregational service
+          attendance has no API yet, so these figures are placeholders and nothing entered here
+          is saved. Staff clock-in records on the Attendance screens are live.
+        </p>
+      </div>
+
       {/* Header */}
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
         <div>

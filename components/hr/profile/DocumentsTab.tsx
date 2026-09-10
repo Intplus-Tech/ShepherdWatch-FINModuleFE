@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { Plus, Eye, Download, Trash2 } from "lucide-react"
+import { useMemo, useState } from "react"
+import { Download, Eye, FileText, ShieldCheck, Trash2 } from "lucide-react"
 import {
   SectionCard,
   CardHeading,
@@ -11,164 +11,148 @@ import {
   Td,
   btnDark,
 } from "./shared"
+import { HrTableState, hrErrorMessage } from "@/components/hr/HrDataState"
+import {
+  useEmployeeDocuments,
+  useVerifyEmployeeDocument,
+} from "@/components/hooks/hr/useHrDocuments"
+import { EMPLOYEE_DOCUMENT_STATUS_LABELS, lookup, titleCase } from "@/lib/hr/normalize"
+import { EMPLOYEE_DOCUMENT_TYPES, type EmployeeDocument } from "@/lib/hr/types"
+import { formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
-const CATEGORIES = [
-  { label: "All Documents", count: 12 },
-  { label: "Employment Contracts", count: 3 },
-  { label: "Identification & KYC", count: 2 },
-  { label: "Educational Certificates", count: 4 },
-  { label: "Professional Certifications", count: 2 },
-  { label: "Miscellaneous", count: 1 },
-]
+const ALL = "All Documents"
 
-type DocRow = {
-  name: string
-  meta: string
-  type: string
-  uploaded: string
-  size: string
-  status: string
-  category: string
+function fileSize(bytes: number | undefined): string {
+  if (!bytes) return "—"
+  const mb = bytes / (1024 * 1024)
+  if (mb >= 1) return `${mb.toFixed(1)} MB`
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`
 }
 
-const DOCUMENTS: DocRow[] = [
-  {
-    name: "Employment Contract 2020.pdf",
-    meta: "Version 1.0",
-    type: "Contract",
-    uploaded: "Jan 02, 2020",
-    size: "1.2 MB",
-    status: "VERIFIED",
-    category: "Employment Contracts",
-  },
-  {
-    name: "M.Sc Certificate - UNILAG.pdf",
-    meta: "Masters Level",
-    type: "Educational",
-    uploaded: "Jan 15, 2020",
-    size: "4.5 MB",
-    status: "VERIFIED",
-    category: "Educational Certificates",
-  },
-  {
-    name: "ID Card - National ID.jpg",
-    meta: "NIN-55621",
-    type: "KYC",
-    uploaded: "Jan 20, 2020",
-    size: "0.8 MB",
-    status: "VERIFIED",
-    category: "Identification & KYC",
-  },
-  {
-    name: "CIPM Membership Cert.pdf",
-    meta: "",
-    type: "Professional",
-    uploaded: "Feb 01, 2020",
-    size: "1.1 MB",
-    status: "VERIFIED",
-    category: "Professional Certifications",
-  },
-  {
-    name: "Annual Appraisal - 2023.pdf",
-    meta: "Performance Track",
-    type: "Performance",
-    uploaded: "Jan 10, 2024",
-    size: "2.0 MB",
-    status: "VERIFIED",
-    category: "Miscellaneous",
-  },
-]
-
 export default function DocumentsTab({
+  employeeId,
   onUpload,
   onPreview,
   onDelete,
 }: {
+  employeeId: string | null
   onUpload: () => void
-  onPreview: () => void
-  onDelete: () => void
+  onPreview: (document: EmployeeDocument) => void
+  onDelete: (document: EmployeeDocument) => void
 }) {
-  const [selected, setSelected] = useState("All Documents")
+  const [selected, setSelected] = useState<string>(ALL)
+  const [actionError, setActionError] = useState<string | null>(null)
 
-  const rows =
-    selected === "All Documents"
-      ? DOCUMENTS
-      : DOCUMENTS.filter((d) => d.category === selected)
+  const documents = useEmployeeDocuments(employeeId)
+  const verify = useVerifyEmployeeDocument()
+
+  const items = useMemo(() => documents.data ?? [], [documents.data])
+
+  /** Counts per document type, so the sidebar reflects what is actually stored. */
+  const categories = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const doc of items) {
+      counts.set(doc.documentType, (counts.get(doc.documentType) ?? 0) + 1)
+    }
+    return EMPLOYEE_DOCUMENT_TYPES.map((type) => ({
+      key: type,
+      label: titleCase(type),
+      count: counts.get(type) ?? 0,
+    }))
+  }, [items])
+
+  const rows = useMemo(
+    () => (selected === ALL ? items : items.filter((doc) => doc.documentType === selected)),
+    [items, selected],
+  )
+
+  const pending = items.filter((doc) => doc.status === "pending").length
+
+  // Captured once per mount so the render stays pure and stable.
+  const [now] = useState(() => Date.now())
+  const recent = items.filter((doc) => {
+    if (!doc.createdAt) return false
+    return now - new Date(doc.createdAt).getTime() <= 30 * 24 * 60 * 60 * 1000
+  }).length
+
+  async function handleVerify(doc: EmployeeDocument) {
+    setActionError(null)
+    try {
+      await verify.mutateAsync({ id: doc._id, employeeId: employeeId ?? undefined })
+    } catch (error) {
+      setActionError(hrErrorMessage(error))
+    }
+  }
 
   return (
     <div className="flex flex-col gap-5">
       {/* Stat cards */}
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
-        <StatCard label="Total Documents" value="12" />
-        <StatCard label="Pending Verification" value="2" />
-        <StatCard label="Recent Uploads (30d)" value="4" />
+        <StatCard
+          label="Total Documents"
+          value={documents.isLoading ? "—" : String(items.length)}
+        />
+        <StatCard
+          label="Pending Verification"
+          value={documents.isLoading ? "—" : String(pending)}
+        />
+        <StatCard
+          label="Recent Uploads (30d)"
+          value={documents.isLoading ? "—" : String(recent)}
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-4">
         {/* Categories */}
         <SectionCard className="lg:col-span-1">
-          <div className="flex items-center justify-between">
-            <CardHeading>Categories</CardHeading>
-            <button
-              aria-label="Add category"
-              className="flex h-7 w-7 items-center justify-center rounded-md border border-[#E5E7EB] text-[#4B5563] hover:bg-[#F8FAFC]"
-            >
-              <Plus className="h-4 w-4" />
-            </button>
-          </div>
+          <CardHeading>Categories</CardHeading>
           <div className="mt-4 flex flex-col gap-1">
-            {CATEGORIES.map((c) => {
-              const active = selected === c.label
-              return (
-                <button
-                  key={c.label}
-                  onClick={() => setSelected(c.label)}
-                  className={cn(
-                    "flex items-center justify-between rounded-md px-3 py-2 text-[13px] font-medium",
-                    active
-                      ? "bg-[#EEF2FF] text-[#3B5BDB]"
-                      : "text-[#4B5563] hover:bg-[#F8FAFC]"
-                  )}
-                >
-                  <span>{c.label}</span>
-                  <span
-                    className={cn(
-                      "rounded-full px-2 py-0.5 text-[11px] font-semibold",
-                      active
-                        ? "bg-[#3B5BDB] text-white"
-                        : "bg-[#F1F5F9] text-[#6B7280]"
-                    )}
-                  >
-                    {c.count}
-                  </span>
-                </button>
-              )
-            })}
+            <button
+              onClick={() => setSelected(ALL)}
+              className={cn(
+                "flex items-center justify-between rounded-md px-3 py-2 text-left text-[13px]",
+                selected === ALL
+                  ? "bg-[#EEF2FF] font-semibold text-[#3B5BDB]"
+                  : "text-[#4B5563] hover:bg-[#F8FAFC]",
+              )}
+            >
+              {ALL}
+              <span className="text-[12px] text-[#9CA3AF]">{items.length}</span>
+            </button>
+            {categories.map((category) => (
+              <button
+                key={category.key}
+                onClick={() => setSelected(category.key)}
+                className={cn(
+                  "flex items-center justify-between rounded-md px-3 py-2 text-left text-[13px]",
+                  selected === category.key
+                    ? "bg-[#EEF2FF] font-semibold text-[#3B5BDB]"
+                    : "text-[#4B5563] hover:bg-[#F8FAFC]",
+                )}
+              >
+                {category.label}
+                <span className="text-[12px] text-[#9CA3AF]">{category.count}</span>
+              </button>
+            ))}
           </div>
         </SectionCard>
 
-        {/* Documents table */}
+        {/* Document list */}
         <SectionCard className="p-0 lg:col-span-3">
-          <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
-            <div className="flex items-center gap-3">
-              <select className="rounded-md border border-[#E5E7EB] bg-white px-3 py-1.5 text-[12px] font-medium text-[#4B5563]">
-                <option>All Types</option>
-                <option>Contract</option>
-                <option>Educational</option>
-                <option>KYC</option>
-                <option>Professional</option>
-                <option>Performance</option>
-              </select>
-              <span className="text-[12px] text-[#6B7280]">
-                Showing {rows.length} of 12 documents
-              </span>
-            </div>
-            <button className={btnDark} onClick={onUpload}>
-              <Plus className="h-4 w-4" />
-              Upload New Document
+          <div className="flex items-center justify-between px-5 py-4">
+            <CardHeading>Document Vault</CardHeading>
+            <button className={btnDark} onClick={onUpload} disabled={!employeeId}>
+              Upload Document
             </button>
           </div>
+
+          {actionError && (
+            <p className="border-t border-[#EEF1F6] px-5 py-3 text-[12px] font-medium text-red-600">
+              {actionError}
+            </p>
+          )}
+
           <div className="overflow-x-auto border-t border-[#EEF1F6]">
             <table className="w-full">
               <thead className="bg-[#F8FAFC]">
@@ -182,63 +166,84 @@ export default function DocumentsTab({
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#EEF1F6]">
-                {rows.map((d) => (
-                  <tr key={d.name}>
-                    <Td>
-                      <div className="font-semibold text-[#111827]">
-                        {d.name}
-                      </div>
-                      {d.meta ? (
-                        <div className="text-[12px] text-[#9CA3AF]">
-                          {d.meta}
+                <HrTableState
+                  colSpan={6}
+                  isLoading={documents.isLoading}
+                  error={documents.error}
+                  isEmpty={rows.length === 0}
+                  emptyTitle="No documents"
+                  emptyDescription="Upload contracts, KYC and certificates to the vault."
+                  onRetry={() => documents.refetch()}
+                />
+
+                {!documents.isLoading &&
+                  !documents.error &&
+                  rows.map((doc) => (
+                    <tr key={doc._id}>
+                      <Td className="font-semibold text-[#111827]">
+                        <span className="flex items-center gap-2">
+                          <FileText className="h-4 w-4 shrink-0 text-[#9CA3AF]" />
+                          {doc.title}
+                        </span>
+                        {doc.expiryDate && (
+                          <span className="mt-0.5 block text-[11px] font-normal text-[#9CA3AF]">
+                            Expires {formatDate(doc.expiryDate, "medium")}
+                          </span>
+                        )}
+                      </Td>
+                      <Td className="text-[#4B5563]">{titleCase(doc.documentType)}</Td>
+                      <Td className="text-[#4B5563]">{formatDate(doc.createdAt, "medium")}</Td>
+                      <Td className="text-[#4B5563]">{fileSize(doc.fileSize)}</Td>
+                      <Td>
+                        <StatusBadge
+                          status={lookup(
+                            EMPLOYEE_DOCUMENT_STATUS_LABELS,
+                            doc.status,
+                          ).toUpperCase()}
+                        />
+                      </Td>
+                      <Td>
+                        <div className="flex items-center gap-2 text-[#9CA3AF]">
+                          <button
+                            aria-label="Preview"
+                            onClick={() => onPreview(doc)}
+                            className="hover:text-[#3B5BDB]"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </button>
+                          <a
+                            href={doc.fileUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            aria-label="Download"
+                            className="hover:text-[#3B5BDB]"
+                          >
+                            <Download className="h-4 w-4" />
+                          </a>
+                          {doc.status === "pending" && (
+                            <button
+                              aria-label="Verify"
+                              onClick={() => handleVerify(doc)}
+                              disabled={verify.isPending}
+                              className="hover:text-emerald-600 disabled:opacity-50"
+                            >
+                              <ShieldCheck className="h-4 w-4" />
+                            </button>
+                          )}
+                          <button
+                            aria-label="Delete"
+                            onClick={() => onDelete(doc)}
+                            disabled={doc.isLocked}
+                            className="hover:text-rose-600 disabled:opacity-40"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
                         </div>
-                      ) : null}
-                    </Td>
-                    <Td className="text-[#4B5563]">{d.type}</Td>
-                    <Td className="text-[#4B5563]">{d.uploaded}</Td>
-                    <Td className="text-[#4B5563]">{d.size}</Td>
-                    <Td>
-                      <StatusBadge status={d.status} />
-                    </Td>
-                    <Td>
-                      <div className="flex items-center gap-2 text-[#9CA3AF]">
-                        <button
-                          aria-label="Preview"
-                          onClick={onPreview}
-                          className="hover:text-[#3B5BDB]"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </button>
-                        <button
-                          aria-label="Download"
-                          className="hover:text-[#3B5BDB]"
-                        >
-                          <Download className="h-4 w-4" />
-                        </button>
-                        <button
-                          aria-label="Delete"
-                          onClick={onDelete}
-                          className="hover:text-rose-600"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </Td>
-                  </tr>
-                ))}
+                      </Td>
+                    </tr>
+                  ))}
               </tbody>
             </table>
-          </div>
-          <div className="flex items-center justify-between border-t border-[#EEF1F6] px-5 py-3">
-            <span className="text-[12px] text-[#6B7280]">Page 1 of 3</span>
-            <div className="flex items-center gap-2">
-              <button className="rounded-md border border-[#E5E7EB] px-3 py-1.5 text-[12px] font-medium text-[#4B5563] hover:bg-[#F8FAFC]">
-                Previous
-              </button>
-              <button className="rounded-md border border-[#E5E7EB] px-3 py-1.5 text-[12px] font-medium text-[#4B5563] hover:bg-[#F8FAFC]">
-                Next
-              </button>
-            </div>
           </div>
         </SectionCard>
       </div>

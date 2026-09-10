@@ -1,9 +1,16 @@
 // Congregational service-attendance data.
 //
-// The backend has no attendance endpoints yet, so these typed fixtures stand in
-// for the eventual API payloads. Keep the shapes stable — the views below read
-// them directly, so swapping in a live fetch later only means replacing the
-// constants with the parsed response.
+// These are FIXTURES, not live data.
+//
+// The backend has an HR attendance domain (`/api/v1/hr/attendance`) but that
+// tracks *staff* clock-ins. There is no congregational service-attendance
+// domain at all — no model, service or route stores headcounts by service with
+// a male/female/teens/children split — so there is nothing for these screens to
+// read. Every other HR screen now reads the API; these three are the exception,
+// and `ServiceAttendanceLog` says so on screen.
+//
+// Keep the shapes stable: when the backend ships the domain, swapping in a live
+// fetch means replacing these constants with the parsed response.
 
 export type ServiceType = "1st Service" | "2nd Service" | "Evening" | "Midweek"
 

@@ -2,134 +2,28 @@
 
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Search, Bell, ChevronLeft, ChevronRight } from "lucide-react"
+import { Search, Bell } from "lucide-react"
 import BranchAccountantSidebar from "@/components/navigation/BranchAccountantSidebar"
+import { HrTableState } from "@/components/hr/HrDataState"
+import { HrPagination } from "@/components/hr/HrPagination"
+import { useEmployees } from "@/components/hooks/hr/useHrEmployees"
+import { useLoans } from "@/components/hooks/hr/useHrLoans"
+import {
+  EMPLOYMENT_STATUS_BADGES,
+  EMPLOYMENT_STATUS_LABELS,
+  badgeFor,
+  initials,
+  loanBalance,
+  lookup,
+  refId,
+  userName,
+} from "@/lib/hr/normalize"
+import { EMPLOYMENT_STATUSES, type EmploymentStatus } from "@/lib/hr/types"
+import { formatCurrency } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
-type EmployeeStatus = "ACTIVE" | "ON LEAVE" | "PROBATION"
-
-type Employee = {
-  id: string
-  name: string
-  employeeId: string
-  jobTitle: string
-  department: string
-  basicSalary: number
-  monthlyAllowance: number
-  loanBalance: number
-  monthlyDeduction: number
-  status: EmployeeStatus
-}
-
-const EMPLOYEES: Employee[] = [
-  {
-    id: "emmanuel-okeke",
-    name: "Emmanuel Okeke",
-    employeeId: "EMP-2023-001",
-    jobTitle: "Senior Pastor",
-    department: "Pastoral",
-    basicSalary: 850_000,
-    monthlyAllowance: 120_000,
-    loanBalance: 0,
-    monthlyDeduction: 45_500,
-    status: "ACTIVE",
-  },
-  {
-    id: "mary-adebayo",
-    name: "Mary Adebayo",
-    employeeId: "EMP-2023-042",
-    jobTitle: "Admin Manager",
-    department: "Administration",
-    basicSalary: 450_000,
-    monthlyAllowance: 65_000,
-    loanBalance: 240_000,
-    monthlyDeduction: 32_000,
-    status: "ACTIVE",
-  },
-  {
-    id: "chidi-ike",
-    name: "Chidi Ike",
-    employeeId: "EMP-2024-012",
-    jobTitle: "Youth Coordinator",
-    department: "Ministry",
-    basicSalary: 320_000,
-    monthlyAllowance: 40_000,
-    loanBalance: 0,
-    monthlyDeduction: 18_400,
-    status: "ACTIVE",
-  },
-  {
-    id: "sarah-tunde",
-    name: "Sarah Tunde",
-    employeeId: "EMP-2022-088",
-    jobTitle: "Facility Head",
-    department: "Facilities",
-    basicSalary: 280_000,
-    monthlyAllowance: 35_000,
-    loanBalance: 0,
-    monthlyDeduction: 12_500,
-    status: "ON LEAVE",
-  },
-  {
-    id: "james-nwachukwu",
-    name: "James Nwachukwu",
-    employeeId: "EMP-2023-115",
-    jobTitle: "Choir Director",
-    department: "Ministry",
-    basicSalary: 400_000,
-    monthlyAllowance: 50_000,
-    loanBalance: 105_000,
-    monthlyDeduction: 24_000,
-    status: "ACTIVE",
-  },
-  {
-    id: "rose-akintola",
-    name: "Rose Akintola",
-    employeeId: "EMP-2024-081",
-    jobTitle: "Front Desk Officer",
-    department: "Administration",
-    basicSalary: 150_000,
-    monthlyAllowance: 20_000,
-    loanBalance: 0,
-    monthlyDeduction: 8_200,
-    status: "PROBATION",
-  },
-  {
-    id: "peter-musa",
-    name: "Peter Musa",
-    employeeId: "EMP-2022-019",
-    jobTitle: "Chief Security Officer",
-    department: "Facilities",
-    basicSalary: 250_000,
-    monthlyAllowance: 30_000,
-    loanBalance: 0,
-    monthlyDeduction: 14_000,
-    status: "ACTIVE",
-  },
-  {
-    id: "lydia-udoh",
-    name: "Lydia Udoh",
-    employeeId: "EMP-2023-204",
-    jobTitle: "Accountant II",
-    department: "Finance",
-    basicSalary: 380_000,
-    monthlyAllowance: 45_000,
-    loanBalance: 0,
-    monthlyDeduction: 21_500,
-    status: "ACTIVE",
-  },
-]
-
-const DEPARTMENTS = [
-  "All Departments",
-  "Pastoral",
-  "Administration",
-  "Ministry",
-  "Facilities",
-  "Finance",
-]
-
-const STATUSES = ["All Statuses", "ACTIVE", "ON LEAVE", "PROBATION"]
+const PAGE_SIZE = 10
+const ALL_DEPARTMENTS = "All Departments"
 
 const AVATAR_TINTS = [
   "bg-[#E8EDFF] text-[#3B5BDB]",
@@ -140,51 +34,82 @@ const AVATAR_TINTS = [
   "bg-sky-50 text-sky-700",
 ]
 
-function formatNaira(amount: number): string {
-  return `₦${amount.toLocaleString("en-NG", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`
-}
-
-function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join("")
-}
-
-function StatusBadge({ status }: { status: EmployeeStatus }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider",
-        status === "ACTIVE"
-          ? "bg-emerald-100 text-emerald-700"
-          : "bg-amber-100 text-amber-700"
-      )}
-    >
-      {status}
-    </span>
-  )
-}
-
 export default function Page() {
   const router = useRouter()
-  const [departmentFilter, setDepartmentFilter] = useState("All Departments")
-  const [statusFilter, setStatusFilter] = useState("All Statuses")
+  const [departmentFilter, setDepartmentFilter] = useState(ALL_DEPARTMENTS)
+  const [statusFilter, setStatusFilter] = useState<"all" | EmploymentStatus>("all")
+  const [page, setPage] = useState(1)
 
-  const filtered = useMemo(() => {
-    return EMPLOYEES.filter((e) => {
-      const matchesDepartment =
-        departmentFilter === "All Departments" || e.department === departmentFilter
-      const matchesStatus =
-        statusFilter === "All Statuses" || e.status === statusFilter
-      return matchesDepartment && matchesStatus
-    })
-  }, [departmentFilter, statusFilter])
+  const employees = useEmployees({
+    page,
+    limit: PAGE_SIZE,
+    employmentStatus: statusFilter,
+    department: departmentFilter === ALL_DEPARTMENTS ? undefined : departmentFilter,
+  })
+
+  /**
+   * Loan balances are per-employee but there is no combined endpoint, so the
+   * branch's active loans are fetched once and summed per employee here.
+   */
+  const loans = useLoans({ status: "active", limit: 100 })
+
+  const loanByEmployee = useMemo(() => {
+    const map = new Map<string, { balance: number; monthly: number }>()
+    for (const loan of loans.data?.items ?? []) {
+      const id = refId(loan.employeeId)
+      if (!id) continue
+      const current = map.get(id) ?? { balance: 0, monthly: 0 }
+      map.set(id, {
+        balance: current.balance + loanBalance(loan),
+        monthly: current.monthly + (loan.monthlyDeduction ?? 0),
+      })
+    }
+    return map
+  }, [loans.data])
+
+  const rows = useMemo(
+    () =>
+      (employees.data?.items ?? []).map((employee) => {
+        const loanInfo = loanByEmployee.get(employee._id)
+        const allowances = (employee.allowances ?? []).reduce(
+          (sum, item) => sum + (item.amount ?? 0),
+          0,
+        )
+        return {
+          id: employee._id,
+          name: userName(employee.userId, employee.employeeId),
+          employeeCode: employee.employeeId,
+          jobTitle: employee.jobTitle,
+          basicSalary: employee.salary ?? 0,
+          monthlyAllowance: allowances,
+          loanBalance: loanInfo?.balance ?? 0,
+          monthlyDeduction: loanInfo?.monthly ?? 0,
+          status: employee.employmentStatus,
+        }
+      }),
+    [employees.data, loanByEmployee],
+  )
+
+  /** Department options come from the loaded page — there is no departments endpoint. */
+  const departments = useMemo(
+    () => [
+      ALL_DEPARTMENTS,
+      ...Array.from(
+        new Set(
+          (employees.data?.items ?? [])
+            .map((employee) => employee.department)
+            .filter((d): d is string => Boolean(d)),
+        ),
+      ),
+    ],
+    [employees.data],
+  )
+
+  /** Monthly cost of the staff currently listed. */
+  const payrollTotal = useMemo(
+    () => rows.reduce((sum, row) => sum + row.basicSalary + row.monthlyAllowance, 0),
+    [rows],
+  )
 
   return (
     <div className="flex min-h-screen flex-col lg:flex-row bg-[#F8FAFC]">
@@ -199,14 +124,10 @@ export default function Page() {
               <input
                 type="text"
                 placeholder="Search requisitions..."
-                className="h-[38px] w-[220px] rounded-full border border-[#E5E7EB] bg-white pl-9 pr-4 text-[13px] text-[#111827] placeholder:text-[#9CA3AF] focus:outline-none"
+                className="h-9 w-[220px] rounded-full border border-[#E5E7EB] bg-white pl-9 pr-3 text-[12px]"
               />
             </div>
-            <button
-              type="button"
-              aria-label="Notifications"
-              className="flex h-[38px] w-[38px] items-center justify-center rounded-full border border-[#E5E7EB] bg-white text-[#6B7280] hover:text-[#111827]"
-            >
+            <button className="text-[#6B7280]">
               <Bell className="h-4.5 w-4.5" />
             </button>
           </div>
@@ -225,10 +146,13 @@ export default function Page() {
                 <label className="text-[12px] font-semibold text-[#6B7280]">Department</label>
                 <select
                   value={departmentFilter}
-                  onChange={(e) => setDepartmentFilter(e.target.value)}
+                  onChange={(e) => {
+                    setDepartmentFilter(e.target.value)
+                    setPage(1)
+                  }}
                   className="h-[42px] rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[13px]"
                 >
-                  {DEPARTMENTS.map((d) => (
+                  {departments.map((d) => (
                     <option key={d} value={d}>
                       {d}
                     </option>
@@ -242,12 +166,16 @@ export default function Page() {
                 </label>
                 <select
                   value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
+                  onChange={(e) => {
+                    setStatusFilter(e.target.value as "all" | EmploymentStatus)
+                    setPage(1)
+                  }}
                   className="h-[42px] rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[13px]"
                 >
-                  {STATUSES.map((s) => (
+                  <option value="all">All Statuses</option>
+                  {EMPLOYMENT_STATUSES.map((s) => (
                     <option key={s} value={s}>
-                      {s}
+                      {EMPLOYMENT_STATUS_LABELS[s]}
                     </option>
                   ))}
                 </select>
@@ -256,9 +184,11 @@ export default function Page() {
 
             <div className="lg:text-right">
               <div className="text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                Average Total Monthly Payroll
+                Monthly Payroll (This Page)
               </div>
-              <div className="mt-1 text-[22px] font-bold text-[#111827]">₦14,850,000.00</div>
+              <div className="mt-1 text-[22px] font-bold text-[#111827]">
+                {employees.isLoading ? "—" : formatCurrency(payrollTotal)}
+              </div>
             </div>
           </div>
 
@@ -267,44 +197,43 @@ export default function Page() {
             <table className="w-full text-left">
               <thead className="bg-[#EEF2FF]">
                 <tr>
-                  <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">
-                    Employee Name
-                  </th>
-                  <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">
-                    Job Title
-                  </th>
-                  <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">
-                    Basic Salary
-                  </th>
-                  <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">
-                    Monthly Allowance
-                  </th>
-                  <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">
-                    Loan Balance
-                  </th>
-                  <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">
-                    Monthly Deduction
-                  </th>
-                  <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">
-                    Status
-                  </th>
+                  {[
+                    "Employee Name",
+                    "Job Title",
+                    "Basic Salary",
+                    "Monthly Allowance",
+                    "Loan Balance",
+                    "Monthly Deduction",
+                    "Status",
+                  ].map((h) => (
+                    <th
+                      key={h}
+                      className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]"
+                    >
+                      {h}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#F3F4F6]">
-                {filtered.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={7}
-                      className="px-4 py-8 text-center text-[13px] text-[#6B7280]"
-                    >
-                      No staff records match your filters.
-                    </td>
-                  </tr>
-                ) : (
-                  filtered.map((e, i) => (
+                <HrTableState
+                  colSpan={7}
+                  isLoading={employees.isLoading}
+                  error={employees.error}
+                  isEmpty={rows.length === 0}
+                  emptyTitle="No staff records"
+                  emptyDescription="Employees added to this branch will appear here."
+                  onRetry={() => employees.refetch()}
+                />
+
+                {!employees.isLoading &&
+                  !employees.error &&
+                  rows.map((e, i) => (
                     <tr
                       key={e.id}
-                      onClick={() => router.push("/branchaccount-pastor/hr/payslip")}
+                      onClick={() =>
+                        router.push(`/branchaccount-pastor/hr/payslip?employeeId=${e.id}`)
+                      }
                       className="cursor-pointer transition-colors hover:bg-[#F8FAFC]"
                     >
                       <td className="px-4 py-4 text-[13px]">
@@ -312,88 +241,58 @@ export default function Page() {
                           <div
                             className={cn(
                               "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[12px] font-bold",
-                              AVATAR_TINTS[i % AVATAR_TINTS.length]
+                              AVATAR_TINTS[i % AVATAR_TINTS.length],
                             )}
                           >
                             {initials(e.name)}
                           </div>
                           <div className="flex flex-col">
                             <span className="font-bold text-[#111827]">{e.name}</span>
-                            <span className="text-[12px] text-[#9CA3AF]">{e.employeeId}</span>
+                            <span className="text-[12px] text-[#9CA3AF]">{e.employeeCode}</span>
                           </div>
                         </div>
                       </td>
                       <td className="px-4 py-4 text-[13px] text-[#4B5563]">{e.jobTitle}</td>
                       <td className="px-4 py-4 text-[13px] font-semibold text-[#111827]">
-                        {formatNaira(e.basicSalary)}
+                        {formatCurrency(e.basicSalary)}
                       </td>
                       <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                        {formatNaira(e.monthlyAllowance)}
+                        {formatCurrency(e.monthlyAllowance)}
                       </td>
                       <td
                         className={cn(
                           "px-4 py-4 text-[13px] font-semibold",
-                          e.loanBalance > 0 ? "text-rose-600" : "text-[#9CA3AF]"
+                          e.loanBalance > 0 ? "text-rose-600" : "text-[#9CA3AF]",
                         )}
                       >
-                        {formatNaira(e.loanBalance)}
+                        {formatCurrency(e.loanBalance)}
                       </td>
                       <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                        {formatNaira(e.monthlyDeduction)}
+                        {formatCurrency(e.monthlyDeduction)}
                       </td>
                       <td className="px-4 py-4 text-[13px]">
-                        <StatusBadge status={e.status} />
+                        <span
+                          className={cn(
+                            "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider",
+                            badgeFor(EMPLOYMENT_STATUS_BADGES, e.status),
+                          )}
+                        >
+                          {lookup(EMPLOYMENT_STATUS_LABELS, e.status)}
+                        </span>
                       </td>
                     </tr>
-                  ))
-                )}
+                  ))}
               </tbody>
             </table>
           </div>
 
-          {/* Footer + pagination */}
-          <div className="flex flex-col items-center justify-between gap-4 border-t border-[#EEF1F6] p-5 sm:flex-row">
-            <span className="text-[13px] text-[#6B7280]">
-              Showing 1 to 8 of 84 staff records
-            </span>
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                aria-label="Previous page"
-                className="flex h-8 w-8 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[#6B7280] hover:bg-gray-50"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-              {["1", "2", "3"].map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  className={cn(
-                    "flex h-8 min-w-8 items-center justify-center rounded-md px-2 text-[12px] font-semibold",
-                    p === "1"
-                      ? "bg-[#111827] text-white"
-                      : "border border-[#E5E7EB] bg-white text-[#4B5563] hover:bg-gray-50"
-                  )}
-                >
-                  {p}
-                </button>
-              ))}
-              <span className="px-1 text-[12px] text-[#9CA3AF]">…</span>
-              <button
-                type="button"
-                className="flex h-8 min-w-8 items-center justify-center rounded-md border border-[#E5E7EB] bg-white px-2 text-[12px] font-semibold text-[#4B5563] hover:bg-gray-50"
-              >
-                11
-              </button>
-              <button
-                type="button"
-                aria-label="Next page"
-                className="flex h-8 w-8 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[#6B7280] hover:bg-gray-50"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
+          <HrPagination
+            pagination={employees.data?.pagination}
+            page={page}
+            onPageChange={setPage}
+            itemCount={rows.length}
+            noun="staff records"
+          />
         </div>
       </main>
     </div>

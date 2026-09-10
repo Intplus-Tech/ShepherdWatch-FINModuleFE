@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import {
   Search,
   Bell,
@@ -14,71 +15,60 @@ import {
 import BranchLeadPastorSidebar from "@/components/navigation/BranchLeadPastorSidebar"
 import BranchLeadRegisterStaffModal from "@/components/hr/BranchLeadRegisterStaffModal"
 import BranchLeadTrainingCalendarModal from "@/components/hr/BranchLeadTrainingCalendarModal"
+import { HrPanelState, HrStatValue, HrTableState } from "@/components/hr/HrDataState"
+import { useTrainingEvents, useTrainingMetrics } from "@/components/hooks/hr/useHrTraining"
+import { branchName } from "@/lib/hr/normalize"
+import { downloadCsv, rowsToCsv, todayStamp } from "@/lib/export-csv"
+import { formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
-
-type TrainingStatus = "Certified" | "Pending"
-
-type RegistryRow = {
-  name: string
-  title: string
-  status: TrainingStatus
-  date: string
-}
-
-type UpcomingSession = {
-  date: string
-  time: string
-  title: string
-  variant: "dark" | "outline"
-}
-
-const REGISTRY: RegistryRow[] = [
-  { name: "Sarah Jenkins", title: "Child Safety Protocol", status: "Certified", date: "Oct 12, 2023" },
-  { name: "Marcus Chen", title: "Financial Ethics", status: "Certified", date: "Nov 04, 2023" },
-  { name: "Elizabeth Thorne", title: "Pastoral Care Fundamentals", status: "Pending", date: "Dec 20, 2023" },
-  { name: "David Miller", title: "Crisis Management", status: "Certified", date: "Sep 28, 2023" },
-]
-
-const UPCOMING: UpcomingSession[] = [
-  { date: "NOV 15, 2023", time: "09:00 AM", title: "Stewardship Leadership", variant: "dark" },
-  { date: "NOV 18, 2023", time: "02:30 PM", title: "Cybersecurity & PII", variant: "outline" },
-]
 
 const cardCls =
   "rounded-[14px] border border-[#EEF1F6] bg-white p-5 shadow-[0px_4px_10px_rgba(0,0,0,0.02)]"
 
-const labelCls =
-  "text-[11px] font-bold uppercase tracking-wider text-[#6B7280]"
-
-function initials(name: string) {
-  return name
-    .split(" ")
-    .map((part) => part[0])
-    .filter(Boolean)
-    .slice(0, 2)
-    .join("")
-    .toUpperCase()
-}
-
-function StatusBadge({ status }: { status: TrainingStatus }) {
-  return (
-    <span
-      className={cn(
-        "rounded-full px-2.5 py-1 text-[10px] font-bold",
-        status === "Certified"
-          ? "bg-emerald-100 text-emerald-700"
-          : "bg-amber-100 text-amber-700"
-      )}
-    >
-      {status}
-    </span>
-  )
-}
+const labelCls = "text-[11px] font-bold uppercase tracking-wider text-[#6B7280]"
 
 export default function Page() {
+  const router = useRouter()
   const [search, setSearch] = useState("")
-  const [registerOpen, setRegisterOpen] = useState(false)
+  const [registerFor, setRegisterFor] = useState<string | null>(null)
   const [calendarOpen, setCalendarOpen] = useState(false)
+
+  const metrics = useTrainingMetrics()
+  const events = useTrainingEvents({ limit: 20 })
+
+  /** The list endpoint has no search parameter, so this narrows the loaded page. */
+  const rows = useMemo(() => {
+    const all = events.data?.items ?? []
+    const query = search.trim().toLowerCase()
+    if (!query) return all
+    return all.filter(
+      (event) =>
+        event.title.toLowerCase().includes(query) ||
+        event.trainerName.toLowerCase().includes(query),
+    )
+  }, [events.data, search])
+
+  // Captured once per mount so the render stays pure and stable.
+  const [now] = useState(() => Date.now())
+
+  const upcoming = useMemo(
+    () => rows.filter((event) => new Date(event.startDate).getTime() >= now).slice(0, 2),
+    [rows, now],
+  )
+
+  function handleExport() {
+    const csv = rowsToCsv(
+      rows.map((event) => ({
+        Title: event.title,
+        Trainer: event.trainerName,
+        Scope: event.isGlobal ? "All branches" : branchName(event.branchId),
+        Start: formatDate(event.startDate, "iso"),
+        End: formatDate(event.endDate, "iso"),
+        Time: `${event.startTime} - ${event.endTime}`,
+      })),
+    )
+    downloadCsv(`training-schedule-${todayStamp()}.csv`, csv)
+  }
 
   return (
     <div className="flex min-h-screen bg-[#F2F4F7] font-sans text-[#111827]">
@@ -110,9 +100,12 @@ export default function Page() {
               <div className="flex items-start justify-between">
                 <div>
                   <p className={labelCls}>Total Sessions</p>
-                  <p className="mt-2 text-[28px] font-bold text-[#111827]">24</p>
-                  <p className="mt-1 text-[12px] font-semibold text-emerald-600">
-                    ↗ +12% vs last month
+                  <p className="mt-2 text-[28px] font-bold text-[#111827]">
+                    <HrStatValue
+                      isLoading={metrics.isLoading}
+                      error={metrics.error}
+                      value={metrics.data?.totalSessions ?? 0}
+                    />
                   </p>
                 </div>
                 <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#EEF2FF] text-[#3B5BDB]">
@@ -125,9 +118,12 @@ export default function Page() {
               <div className="flex items-start justify-between">
                 <div>
                   <p className={labelCls}>Staff Enrolled</p>
-                  <p className="mt-2 text-[28px] font-bold text-[#111827]">142</p>
-                  <p className="mt-1 text-[12px] font-semibold text-[#6B7280]">
-                    94% active participation
+                  <p className="mt-2 text-[28px] font-bold text-[#111827]">
+                    <HrStatValue
+                      isLoading={metrics.isLoading}
+                      error={metrics.error}
+                      value={metrics.data?.staffEnrolled ?? 0}
+                    />
                   </p>
                 </div>
                 <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#ECFDF5] text-emerald-600">
@@ -140,9 +136,12 @@ export default function Page() {
               <div className="flex items-start justify-between">
                 <div>
                   <p className={labelCls}>Pending Completions</p>
-                  <p className="mt-2 text-[28px] font-bold text-[#111827]">18</p>
-                  <p className="mt-1 text-[12px] font-semibold text-rose-600">
-                    5 expiring this week
+                  <p className="mt-2 text-[28px] font-bold text-[#111827]">
+                    <HrStatValue
+                      isLoading={metrics.isLoading}
+                      error={metrics.error}
+                      value={metrics.data?.pendingCompletions ?? 0}
+                    />
                   </p>
                 </div>
                 <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#FEF2F2] text-rose-600">
@@ -158,47 +157,70 @@ export default function Page() {
             <div className={cn(cardCls, "lg:col-span-2 p-0 overflow-hidden")}>
               <div className="flex items-center justify-between p-5 pb-4">
                 <h2 className="text-[16px] font-bold text-[#111827]">Training Registry</h2>
-                <button className="flex items-center gap-1.5 text-[12px] font-semibold text-[#2563EB] hover:underline">
+                <button
+                  type="button"
+                  onClick={handleExport}
+                  disabled={rows.length === 0}
+                  className="flex items-center gap-1.5 text-[12px] font-semibold text-[#3B5BDB] hover:underline disabled:opacity-50"
+                >
                   <Download className="h-3.5 w-3.5" />
-                  Export Report
+                  Export
                 </button>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
                   <thead className="bg-[#F9FAFB]">
                     <tr>
-                      <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                        Staff Member
-                      </th>
-                      <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                        Training Title
-                      </th>
-                      <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                        Status
-                      </th>
-                      <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                        Date
-                      </th>
+                      {["Training Title", "Trainer", "Scope", "Date"].map((h) => (
+                        <th
+                          key={h}
+                          className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]"
+                        >
+                          {h}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#F3F4F6]">
-                    {REGISTRY.map((row) => (
-                      <tr key={row.name}>
-                        <td className="px-4 py-3 text-[13px]">
-                          <div className="flex items-center gap-3">
-                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EEF2FF] text-[11px] font-bold text-[#3B5BDB]">
-                              {initials(row.name)}
-                            </span>
-                            <span className="font-semibold text-[#111827]">{row.name}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-[13px] text-[#6B7280]">{row.title}</td>
-                        <td className="px-4 py-3 text-[13px]">
-                          <StatusBadge status={row.status} />
-                        </td>
-                        <td className="px-4 py-3 text-[13px] text-[#6B7280]">{row.date}</td>
-                      </tr>
-                    ))}
+                    <HrTableState
+                      colSpan={4}
+                      isLoading={events.isLoading}
+                      error={events.error}
+                      isEmpty={rows.length === 0}
+                      emptyTitle="No training scheduled"
+                      emptyDescription="Sessions for this branch will appear here."
+                      onRetry={() => events.refetch()}
+                    />
+
+                    {!events.isLoading &&
+                      !events.error &&
+                      rows.map((event) => (
+                        <tr
+                          key={event._id}
+                          onClick={() =>
+                            router.push(`/branchlead-pastor/hr/training-management`)
+                          }
+                          className="hover:bg-[#FAFBFF]"
+                        >
+                          <td className="px-4 py-3 text-[13px]">
+                            <div className="flex flex-col">
+                              <span className="font-semibold text-[#111827]">{event.title}</span>
+                              <span className="text-[12px] text-[#9CA3AF]">
+                                {event.venueOrLink}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-[13px] text-[#6B7280]">
+                            {event.trainerName}
+                          </td>
+                          <td className="px-4 py-3 text-[13px] text-[#6B7280]">
+                            {event.isGlobal ? "All branches" : branchName(event.branchId)}
+                          </td>
+                          <td className="px-4 py-3 text-[13px] text-[#6B7280]">
+                            {formatDate(event.startDate, "medium")}
+                          </td>
+                        </tr>
+                      ))}
                   </tbody>
                 </table>
               </div>
@@ -207,42 +229,54 @@ export default function Page() {
             {/* RIGHT: Upcoming Sessions */}
             <div className={cn(cardCls, "lg:col-span-1")}>
               <div className="flex items-center gap-2">
-                <Calendar className="h-4.5 w-4.5 text-[#3B5BDB]" />
+                <Calendar className="h-[18px] w-[18px] text-[#3B5BDB]" />
                 <h2 className="text-[16px] font-bold text-[#111827]">Upcoming Sessions</h2>
               </div>
 
-              <div className="mt-5 flex flex-col gap-4">
-                {UPCOMING.map((session) => (
-                  <div
-                    key={session.title}
-                    className="rounded-[12px] border border-[#F3F4F6] bg-[#FAFBFF] p-4"
-                  >
-                    <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                      <span>{session.date}</span>
-                      <span className="h-1 w-1 rounded-full bg-[#D1D5DB]" />
-                      <span>{session.time}</span>
-                    </div>
-                    <p className="mt-2 text-[15px] font-bold text-[#111827]">{session.title}</p>
-                    <button
-                      type="button"
-                      onClick={() => setRegisterOpen(true)}
-                      className={cn(
-                        "mt-3 w-full rounded-md px-4 py-2 text-[12px] font-semibold",
-                        session.variant === "dark"
-                          ? "bg-[#111827] text-white"
-                          : "border border-[#E5E7EB] bg-white text-[#4B5563]"
-                      )}
+              {events.isLoading || events.error || upcoming.length === 0 ? (
+                <HrPanelState
+                  isLoading={events.isLoading}
+                  error={events.error}
+                  isEmpty={upcoming.length === 0}
+                  emptyTitle="Nothing upcoming"
+                  emptyDescription="Future sessions will show here."
+                  onRetry={() => events.refetch()}
+                  className="mt-5 border-0 p-4"
+                />
+              ) : (
+                <div className="mt-5 flex flex-col gap-4">
+                  {upcoming.map((session, index) => (
+                    <div
+                      key={session._id}
+                      className="rounded-[12px] border border-[#F3F4F6] bg-[#FAFBFF] p-4"
                     >
-                      REGISTER STAFF
-                    </button>
-                  </div>
-                ))}
-              </div>
+                      <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
+                        <span>{formatDate(session.startDate, "medium")}</span>
+                        <span className="h-1 w-1 rounded-full bg-[#D1D5DB]" />
+                        <span>{session.startTime}</span>
+                      </div>
+                      <p className="mt-2 text-[15px] font-bold text-[#111827]">{session.title}</p>
+                      <button
+                        type="button"
+                        onClick={() => setRegisterFor(session._id)}
+                        className={cn(
+                          "mt-3 w-full rounded-md px-4 py-2 text-[12px] font-semibold",
+                          index === 0
+                            ? "bg-[#111827] text-white"
+                            : "border border-[#E5E7EB] bg-white text-[#4B5563]",
+                        )}
+                      >
+                        REGISTER STAFF
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               <button
                 type="button"
                 onClick={() => setCalendarOpen(true)}
-                className="mt-5 flex w-full items-center justify-center gap-1 text-[12px] font-semibold text-[#2563EB] hover:underline"
+                className="mt-5 flex w-full items-center justify-center gap-1 text-[12px] font-semibold text-[#3B5BDB] hover:underline"
               >
                 VIEW FULL CALENDAR
                 <ArrowUpRight className="h-3.5 w-3.5" />
@@ -253,8 +287,9 @@ export default function Page() {
       </main>
 
       <BranchLeadRegisterStaffModal
-        open={registerOpen}
-        onClose={() => setRegisterOpen(false)}
+        open={registerFor !== null}
+        trainingEventId={registerFor}
+        onClose={() => setRegisterFor(null)}
       />
       <BranchLeadTrainingCalendarModal
         open={calendarOpen}

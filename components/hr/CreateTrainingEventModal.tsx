@@ -1,30 +1,50 @@
 "use client"
 
-import { useState } from "react"
-import {
-  X,
-  UploadCloud,
-  FileText,
-  Trash2,
-  AlertTriangle,
-} from "lucide-react"
+import { useEffect, useState } from "react"
+import { Loader2, X } from "lucide-react"
 import { ModalShell } from "@/components/ui/modal-shell"
-import { cn } from "@/lib/utils"
+import { EmployeeMultiPicker } from "@/components/hr/EmployeePicker"
+import { HrFileDrop, type UploadedFile } from "@/components/hr/HrFileDrop"
+import { hrErrorMessage } from "@/components/hr/HrDataState"
+import { useBranchId } from "@/components/hooks/hr/useBranchId"
+import {
+  useCreateTrainingEvent,
+  useEnrollParticipants,
+} from "@/components/hooks/hr/useHrTraining"
+import type { EmployeeProfile, TrainingLocationType } from "@/lib/hr/types"
 
-const labelCls =
-  "text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]"
+const labelCls = "text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]"
 const inputCls =
-  "mt-1.5 w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2.5 text-[13px] text-[#111827] outline-none focus:border-[#3B5BDB]"
+  "mt-1.5 w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2.5 text-[13px] text-[#111827] outline-none focus:border-[#2563EB]"
 
-const LOCATION_TYPES = ["Physical", "Virtual", "Hybrid"] as const
-type LocationType = (typeof LOCATION_TYPES)[number]
+const LOCATION_TYPES: { value: TrainingLocationType; label: string }[] = [
+  { value: "virtual", label: "Virtual" },
+  { value: "physical", label: "Physical" },
+  { value: "hybrid", label: "Hybrid" },
+]
 
-function SectionHeading({ children }: { children: React.ReactNode }) {
+function Radio({
+  checked,
+  onChange,
+  label,
+  disabled,
+}: {
+  checked: boolean
+  onChange: () => void
+  label: string
+  disabled?: boolean
+}) {
   return (
-    <div className="flex items-center gap-2">
-      <span className="h-4 w-1 rounded-full bg-[#3B5BDB]" />
-      <h3 className="text-[15px] font-bold text-[#111827]">{children}</h3>
-    </div>
+    <label className="flex cursor-pointer items-center gap-2 text-[13px] text-[#111827]">
+      <input
+        type="radio"
+        checked={checked}
+        onChange={onChange}
+        disabled={disabled}
+        className="h-4 w-4 accent-[#2563EB]"
+      />
+      {label}
+    </label>
   )
 }
 
@@ -35,177 +55,379 @@ export default function CreateTrainingEventModal({
   open: boolean
   onClose: () => void
 }) {
-  const [locationType, setLocationType] = useState<LocationType>("Physical")
+  const branchId = useBranchId()
+  const createEvent = useCreateTrainingEvent()
+  const enroll = useEnrollParticipants()
+
+  const [scope, setScope] = useState<"branch" | "global">("branch")
+  const [title, setTitle] = useState("")
+  const [locationType, setLocationType] = useState<TrainingLocationType>("virtual")
+  const [isPaid, setIsPaid] = useState(false)
+  const [amount, setAmount] = useState("")
+  const [budgetRequested, setBudgetRequested] = useState("")
+  const [venueOrLink, setVenueOrLink] = useState("")
+  const [trainerName, setTrainerName] = useState("")
+  const [trainerType, setTrainerType] = useState<"internal" | "external">("internal")
+  const [startDate, setStartDate] = useState("")
+  const [endDate, setEndDate] = useState("")
+  const [startTime, setStartTime] = useState("")
+  const [endTime, setEndTime] = useState("")
+  const [description, setDescription] = useState("")
+  const [certification, setCertification] = useState(true)
+  const [flyer, setFlyer] = useState<UploadedFile[]>([])
+  const [participants, setParticipants] = useState<EmployeeProfile[]>([])
+  const [formError, setFormError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    setScope("branch")
+    setTitle("")
+    setLocationType("virtual")
+    setIsPaid(false)
+    setAmount("")
+    setBudgetRequested("")
+    setVenueOrLink("")
+    setTrainerName("")
+    setTrainerType("internal")
+    setStartDate("")
+    setEndDate("")
+    setStartTime("")
+    setEndTime("")
+    setDescription("")
+    setCertification(true)
+    setFlyer([])
+    setParticipants([])
+    setFormError(null)
+    createEvent.reset()
+    enroll.reset()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  const pending = createEvent.isPending || enroll.isPending
+
+  async function handleCreate() {
+    setFormError(null)
+
+    if (title.trim().length < 3) {
+      setFormError("Enter a training title of at least three characters.")
+      return
+    }
+    if (venueOrLink.trim().length < 2) {
+      setFormError(
+        locationType === "virtual" ? "Enter the meeting link." : "Enter the venue.",
+      )
+      return
+    }
+    if (trainerName.trim().length < 2) {
+      setFormError("Enter the trainer's name.")
+      return
+    }
+    if (!startDate || !endDate) {
+      setFormError("Set both a start and end date.")
+      return
+    }
+    if (new Date(endDate) < new Date(startDate)) {
+      setFormError("The end date can't be before the start date.")
+      return
+    }
+    if (!startTime || !endTime) {
+      setFormError("Set the start and end times.")
+      return
+    }
+    if (scope === "branch" && !branchId) {
+      setFormError("Your account has no branch assigned, so this can't be saved.")
+      return
+    }
+
+    try {
+      const created = await createEvent.mutateAsync({
+        title: title.trim(),
+        branchId: scope === "branch" ? branchId : undefined,
+        isGlobal: scope === "global",
+        locationType,
+        venueOrLink: venueOrLink.trim(),
+        startDate: new Date(startDate).toISOString(),
+        endDate: new Date(endDate).toISOString(),
+        startTime,
+        endTime,
+        trainerName: trainerName.trim(),
+        trainerType,
+        isPaid,
+        amount: isPaid ? Number(amount.replace(/[^0-9.]/g, "")) || 0 : 0,
+        budgetRequested: isPaid
+          ? Number(budgetRequested.replace(/[^0-9.]/g, "")) || 0
+          : undefined,
+        flyerUrl: flyer[0]?.url,
+        certificationIncluded: certification,
+        description: description.trim() || undefined,
+      })
+
+      // Enrolment is a second call against the newly created event.
+      const eventId = (created as { _id?: string } | null)?._id
+      if (eventId && participants.length > 0) {
+        await enroll.mutateAsync({
+          id: eventId,
+          employeeIds: participants.map((p) => p._id),
+        })
+      }
+
+      onClose()
+    } catch (error) {
+      setFormError(hrErrorMessage(error))
+    }
+  }
+
+  const error =
+    formError ??
+    (createEvent.error || enroll.error
+      ? hrErrorMessage(createEvent.error ?? enroll.error)
+      : null)
 
   return (
     <ModalShell open={open} onClose={onClose} className="max-w-2xl">
       {/* Header */}
       <div className="flex items-start justify-between gap-4 border-b border-[#EEF1F6] px-6 py-5">
-        <div>
-          <h2 className="text-[20px] font-bold text-[#111827]">
-            Create New Training Event
-          </h2>
-          <p className="mt-1 text-[13px] text-[#6B7280]">
-            Fill in the details to schedule a new ecclesiastical development
-            session.
-          </p>
-        </div>
+        <h2 className="text-[20px] font-bold text-[#111827]">Create New Training Event</h2>
         <button
           type="button"
           onClick={onClose}
           aria-label="Close"
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[#9CA3AF] hover:bg-gray-100 hover:text-[#111827]"
         >
-          <X className="h-4.5 w-4.5" />
+          <X className="h-[18px] w-[18px]" />
         </button>
       </div>
 
       {/* Body */}
-      <div className="flex max-h-[68vh] flex-col gap-6 overflow-y-auto px-6 py-5">
-        {/* Training Details */}
-        <section>
-          <SectionHeading>Training Details</SectionHeading>
-          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <label className={labelCls}>Name of Training</label>
-              <input
-                className={inputCls}
-                placeholder="e.g. Leadership Excellence Seminar"
-              />
-            </div>
-            <div>
-              <label className={labelCls}>Branch</label>
-              <select className={inputCls} defaultValue="All Branches">
-                <option>All Branches</option>
-                <option>Lagos Region</option>
-                <option>Ibadan Region</option>
-                <option>Virtual / Global</option>
-              </select>
-            </div>
-
-            <div>
-              <label className={labelCls}>Location Type</label>
-              <div className="mt-1.5 grid grid-cols-3 gap-1 rounded-lg bg-[#F8FAFC] p-1">
-                {LOCATION_TYPES.map((type) => (
-                  <button
-                    key={type}
-                    type="button"
-                    onClick={() => setLocationType(type)}
-                    className={cn(
-                      "rounded-md px-3 py-1.5 text-[12px] font-semibold transition-colors",
-                      locationType === type
-                        ? "bg-[#111827] text-white"
-                        : "text-[#6B7280] hover:bg-gray-100"
-                    )}
-                  >
-                    {type}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <label className={labelCls}>Location / Link</label>
-              <input className={inputCls} placeholder="Venue or Meeting Link" />
-            </div>
-
-            <div>
-              <label className={labelCls}>Start Date</label>
-              <input type="date" className={inputCls} />
-            </div>
-            <div>
-              <label className={labelCls}>End Date</label>
-              <input type="date" className={inputCls} />
-            </div>
-
-            <div>
-              <label className={labelCls}>Trainer Name</label>
-              <input
-                className={inputCls}
-                placeholder="Name of Lead Instructor"
-              />
-            </div>
-            <div>
-              <label className={labelCls}>Trainer Type</label>
-              <select className={inputCls} defaultValue="Internal">
-                <option>Internal</option>
-                <option>External</option>
-              </select>
-            </div>
-
-            <div>
-              <label className={labelCls}>Max Capacity</label>
-              <input className={inputCls} placeholder="50" />
-            </div>
+      <div className="flex max-h-[68vh] flex-col gap-5 overflow-y-auto px-6 py-5">
+        {/* Scope */}
+        <div>
+          <label className={labelCls}>Training For</label>
+          <div className="mt-2 flex items-center gap-6">
+            <Radio
+              checked={scope === "branch"}
+              onChange={() => setScope("branch")}
+              label="This Branch"
+              disabled={pending}
+            />
+            <Radio
+              checked={scope === "global"}
+              onChange={() => setScope("global")}
+              label="All Branches"
+              disabled={pending}
+            />
           </div>
-        </section>
+        </div>
 
-        {/* Attachments */}
-        <section>
-          <SectionHeading>Attachments</SectionHeading>
-          <div className="mt-4 flex flex-col items-center rounded-xl border-2 border-dashed border-[#D1D5DB] bg-[#F9FAFB] px-6 py-8 text-center">
-            <UploadCloud className="h-9 w-9 text-[#9CA3AF]" />
-            <div className="mt-3 text-[14px] font-semibold text-[#111827]">
-              Drag &amp; drop training proposals or browse files
-            </div>
-            <div className="text-[12px] text-[#6B7280]">
-              PDF, DOCX up to 10MB
-            </div>
-          </div>
-          <div className="mt-3 flex items-center gap-3 rounded-md border border-[#EEF1F6] bg-white px-3 py-2.5 text-[12px]">
-            <FileText className="h-4 w-4 shrink-0 text-[#3B5BDB]" />
-            <div className="min-w-0 flex-1">
-              <span className="font-medium text-[#111827]">
-                training_proposal.pdf
-              </span>
-              <span className="text-[#9CA3AF]"> · 1.2 MB • Uploaded just now</span>
-            </div>
-            <button
-              type="button"
-              aria-label="Remove training_proposal.pdf"
-              className="text-[#9CA3AF] hover:text-rose-500"
+        {/* Title */}
+        <div>
+          <label className={labelCls}>Training Title</label>
+          <input
+            className={inputCls}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="e.g. Governance & Financial Oversight"
+            disabled={pending}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label className={labelCls}>Event Type</label>
+            <select
+              className={inputCls}
+              value={locationType}
+              onChange={(e) => setLocationType(e.target.value as TrainingLocationType)}
+              disabled={pending}
             >
-              <Trash2 className="h-4 w-4" />
-            </button>
+              {LOCATION_TYPES.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </div>
-        </section>
-
-        {/* Budget & Approval */}
-        <section>
-          <SectionHeading>Budget &amp; Approval</SectionHeading>
-          <div className="mt-4 flex items-start gap-3 rounded-lg border border-rose-200 bg-rose-50 p-4">
-            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-rose-500" />
-            <div>
-              <div className="text-[13px] font-bold text-rose-700">
-                Budget Cap Warning
-              </div>
-              <div className="mt-1 text-[12px] font-semibold text-rose-700">
-                Remaining Training Budget (YTD): ₦180,000 &nbsp;&nbsp; Deficit:
-                ₦70,000
-              </div>
-              <p className="mt-1 text-[12px] text-rose-600">
-                This event exceeds the remaining budget by ₦70,000.
-                Justification required for higher-level review.
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-4 grid grid-cols-1 gap-4">
-            <div>
-              <label className={labelCls}>Total Budget Requested</label>
-              <input className={inputCls} defaultValue="₦ 250,000" />
-            </div>
-            <div>
-              <label className={labelCls}>
-                Justification for Budget Request
-              </label>
-              <textarea
-                rows={3}
-                className={inputCls}
-                placeholder="Explain the value proposition and why this exceeds standard allocation..."
+          <div>
+            <label className={labelCls}>Payment</label>
+            <div className="mt-2 flex items-center gap-6">
+              <Radio
+                checked={!isPaid}
+                onChange={() => setIsPaid(false)}
+                label="Free"
+                disabled={pending}
+              />
+              <Radio
+                checked={isPaid}
+                onChange={() => setIsPaid(true)}
+                label="Paid"
+                disabled={pending}
               />
             </div>
           </div>
-        </section>
+        </div>
+
+        {isPaid && (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <label className={labelCls}>Amount (per participant)</label>
+              <input
+                className={inputCls}
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                inputMode="decimal"
+                placeholder="₦ 0.00"
+                disabled={pending}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Budget Requested</label>
+              <input
+                className={inputCls}
+                value={budgetRequested}
+                onChange={(e) => setBudgetRequested(e.target.value)}
+                inputMode="decimal"
+                placeholder="₦ 0.00"
+                disabled={pending}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Participants */}
+        <div>
+          <label className={labelCls}>Enrol Staff (optional)</label>
+          <EmployeeMultiPicker
+            value={participants}
+            onChange={setParticipants}
+            disabled={pending}
+          />
+        </div>
+
+        {/* Trainer + venue */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label className={labelCls}>Trainer Name</label>
+            <input
+              className={inputCls}
+              value={trainerName}
+              onChange={(e) => setTrainerName(e.target.value)}
+              placeholder="e.g. Pastor Caleb Obi"
+              disabled={pending}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Trainer Type</label>
+            <select
+              className={inputCls}
+              value={trainerType}
+              onChange={(e) => setTrainerType(e.target.value as "internal" | "external")}
+              disabled={pending}
+            >
+              <option value="internal">Internal</option>
+              <option value="external">External</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label className={labelCls}>
+            {locationType === "virtual" ? "Meeting Link" : "Venue"}
+          </label>
+          <input
+            className={inputCls}
+            value={venueOrLink}
+            onChange={(e) => setVenueOrLink(e.target.value)}
+            placeholder={
+              locationType === "virtual" ? "https://…" : "e.g. Main Auditorium, Maryland"
+            }
+            disabled={pending}
+          />
+        </div>
+
+        {/* Upload E-Flyer */}
+        <div>
+          <label className={labelCls}>Upload E-Flyer</label>
+          <HrFileDrop
+            files={flyer}
+            onChange={(files) => setFlyer(files.slice(-1))}
+            folder="hr/trainings"
+            branchId={branchId || undefined}
+            hint="JPG, PNG or PDF (max. 5MB)"
+            disabled={pending}
+          />
+        </div>
+
+        {/* Dates / Times */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label className={labelCls}>Start Date</label>
+            <input
+              type="date"
+              className={inputCls}
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              disabled={pending}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>End Date</label>
+            <input
+              type="date"
+              className={inputCls}
+              value={endDate}
+              min={startDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              disabled={pending}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Start Time</label>
+            <input
+              type="time"
+              className={inputCls}
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+              disabled={pending}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>End Time</label>
+            <input
+              type="time"
+              className={inputCls}
+              value={endTime}
+              onChange={(e) => setEndTime(e.target.value)}
+              disabled={pending}
+            />
+          </div>
+        </div>
+
+        {/* Description */}
+        <div>
+          <label className={labelCls}>Description</label>
+          <textarea
+            rows={3}
+            className={inputCls}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Briefly describe the purpose of this training session..."
+            disabled={pending}
+          />
+        </div>
+
+        {/* Certification Included */}
+        <label className="flex cursor-pointer items-center gap-2 text-[13px] font-medium text-[#111827]">
+          <input
+            type="checkbox"
+            checked={certification}
+            onChange={(e) => setCertification(e.target.checked)}
+            disabled={pending}
+            className="h-4 w-4 rounded border-[#D1D5DB] accent-[#2563EB]"
+          />
+          Certification Included?
+        </label>
+
+        {error && <p className="text-[12px] font-medium text-red-600">{error}</p>}
       </div>
 
       {/* Footer */}
@@ -213,15 +435,19 @@ export default function CreateTrainingEventModal({
         <button
           type="button"
           onClick={onClose}
-          className="inline-flex items-center justify-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[12px] font-medium text-[#4B5563] hover:bg-[#F8FAFC]"
+          disabled={pending}
+          className="inline-flex items-center justify-center rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[12px] font-medium text-[#4B5563] hover:bg-[#F8FAFC] disabled:opacity-50"
         >
           Cancel
         </button>
         <button
           type="button"
-          className="inline-flex items-center justify-center gap-2 rounded-md bg-[#111827] px-4 py-2 text-[12px] font-semibold text-white hover:bg-black"
+          onClick={handleCreate}
+          disabled={pending}
+          className="inline-flex items-center justify-center gap-2 rounded-md bg-[#2563EB] px-4 py-2 text-[12px] font-semibold text-white hover:bg-[#1D4FD7] disabled:opacity-60"
         >
-          CREATE &amp; SUBMIT FOR APPROVAL
+          {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          Create Training
         </button>
       </div>
     </ModalShell>

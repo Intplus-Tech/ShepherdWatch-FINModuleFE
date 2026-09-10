@@ -1,89 +1,104 @@
 "use client"
 
-import { useState } from "react"
-import { X, Search, CalendarClock } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import { CalendarClock, Loader2, Search, X } from "lucide-react"
 import { ModalShell } from "@/components/ui/modal-shell"
+import { HrPanelState, hrErrorMessage } from "@/components/hr/HrDataState"
+import { useDebouncedValue } from "@/components/hooks/useDebouncedValue"
+import { useEmployees } from "@/components/hooks/hr/useHrEmployees"
+import { useEnrollParticipants, useTrainingEvent } from "@/components/hooks/hr/useHrTraining"
+import {
+  EMPLOYMENT_STATUS_BADGES,
+  EMPLOYMENT_STATUS_LABELS,
+  badgeFor,
+  employeeEmail,
+  initials,
+  lookup,
+  refId,
+  userName,
+} from "@/lib/hr/normalize"
+import { formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
-
-type StaffStatus = "Active" | "On Leave"
-
-type StaffMember = {
-  id: string
-  name: string
-  email: string
-  role: string
-  status: StaffStatus
-}
-
-const STAFF: StaffMember[] = [
-  { id: "abigail", name: "Abigail Miller", email: "abigail.m@ecclesia.org", role: "Youth Coordinator", status: "Active" },
-  { id: "benjamin", name: "Benjamin Jones", email: "benjamin.j@ecclesia.org", role: "Head Deacon", status: "Active" },
-  { id: "catherine", name: "Catherine Hayes", email: "catherine.h@ecclesia.org", role: "Financial Admin", status: "On Leave" },
-  { id: "david", name: "David Lawson", email: "david.l@ecclesia.org", role: "Music Director", status: "Active" },
-  { id: "evelyn", name: "Evelyn Wright", email: "evelyn.w@ecclesia.org", role: "Outreach Lead", status: "Active" },
-]
-
-function initials(name: string) {
-  return name
-    .split(" ")
-    .map((part) => part[0])
-    .filter(Boolean)
-    .slice(0, 2)
-    .join("")
-    .toUpperCase()
-}
-
-function StatusPill({ status }: { status: StaffStatus }) {
-  return (
-    <span
-      className={cn(
-        "rounded-full px-2.5 py-1 text-[10px] font-bold",
-        status === "Active"
-          ? "bg-emerald-100 text-emerald-700"
-          : "bg-amber-100 text-amber-700"
-      )}
-    >
-      {status}
-    </span>
-  )
-}
 
 export default function BranchAdminRegisterStaffModal({
   open,
   onClose,
+  trainingEventId,
 }: {
   open: boolean
   onClose: () => void
+  trainingEventId: string | null
 }) {
   const [selected, setSelected] = useState<Record<string, boolean>>({})
   const [filter, setFilter] = useState("")
+  const [formError, setFormError] = useState<string | null>(null)
 
-  const toggle = (id: string) =>
-    setSelected((prev) => ({ ...prev, [id]: !prev[id] }))
+  const debouncedFilter = useDebouncedValue(filter)
 
-  const selectedCount = Object.values(selected).filter(Boolean).length
+  const eventQuery = useTrainingEvent(open ? trainingEventId : null)
+  const employees = useEmployees({
+    limit: 50,
+    search: debouncedFilter || undefined,
+    employmentStatus: "all",
+    enabled: open,
+  })
+  const enroll = useEnrollParticipants()
 
-  const query = filter.trim().toLowerCase()
-  const visible = STAFF.filter(
-    (s) =>
-      !query ||
-      s.name.toLowerCase().includes(query) ||
-      s.role.toLowerCase().includes(query) ||
-      s.status.toLowerCase().includes(query)
+  useEffect(() => {
+    if (!open) return
+    setSelected({})
+    setFilter("")
+    setFormError(null)
+    enroll.reset()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, trainingEventId])
+
+  const event = eventQuery.data?.event
+
+  /** Anyone already enrolled is shown as such rather than offered again. */
+  const enrolledIds = useMemo(
+    () => new Set((eventQuery.data?.participants ?? []).map((p) => refId(p.employeeId))),
+    [eventQuery.data],
   )
 
+  const visible = employees.data?.items ?? []
+  const selectedCount = Object.values(selected).filter(Boolean).length
+
+  function toggle(id: string) {
+    setSelected((current) => ({ ...current, [id]: !current[id] }))
+  }
+
+  async function handleConfirm() {
+    setFormError(null)
+
+    const employeeIds = Object.entries(selected)
+      .filter(([, isSelected]) => isSelected)
+      .map(([id]) => id)
+
+    if (!trainingEventId) {
+      setFormError("No training session selected.")
+      return
+    }
+    if (employeeIds.length === 0) {
+      setFormError("Select at least one staff member.")
+      return
+    }
+
+    try {
+      await enroll.mutateAsync({ id: trainingEventId, employeeIds })
+      onClose()
+    } catch (error) {
+      setFormError(hrErrorMessage(error))
+    }
+  }
+
+  const error = formError ?? (enroll.error ? hrErrorMessage(enroll.error) : null)
+
   return (
-    <ModalShell open={open} onClose={onClose} className="max-w-lg">
+    <ModalShell open={open} onClose={onClose} className="max-w-2xl">
       {/* Header */}
       <div className="flex items-start justify-between gap-4 border-b border-[#EEF1F6] px-6 py-5">
-        <div>
-          <h2 className="text-[18px] font-bold text-[#111827]">
-            Register Staff for Training
-          </h2>
-          <p className="mt-1 text-[13px] text-[#6B7280]">
-            Select staff members to enroll in the upcoming certification program.
-          </p>
-        </div>
+        <h2 className="text-[20px] font-bold text-[#111827]">Register Staff</h2>
         <button
           type="button"
           onClick={onClose}
@@ -95,24 +110,34 @@ export default function BranchAdminRegisterStaffModal({
       </div>
 
       {/* Body */}
-      <div className="flex max-h-[62vh] flex-col gap-5 overflow-y-auto px-6 py-5">
-        {/* Active session card */}
-        <div className="flex items-start gap-3 rounded-[12px] bg-[#EEF2FF] p-4">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#2563EB] text-white">
-            <CalendarClock className="h-5 w-5" />
-          </span>
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">
-              Active Session
-            </p>
-            <p className="mt-0.5 text-[15px] font-bold text-[#111827]">
-              Advanced Leadership & Financial Stewardship
-            </p>
-            <p className="mt-0.5 text-[12px] text-[#6B7280]">
-              Oct 24, 2023 · 09:00 AM - 04:00 PM
-            </p>
+      <div className="flex max-h-[68vh] flex-col gap-5 overflow-y-auto px-6 py-5">
+        {/* Active session */}
+        {eventQuery.isLoading || eventQuery.error || !event ? (
+          <HrPanelState
+            isLoading={eventQuery.isLoading}
+            error={eventQuery.error}
+            isEmpty={!event}
+            emptyTitle="No session selected"
+            emptyDescription="Pick a training session to register staff for."
+            onRetry={() => eventQuery.refetch()}
+            className="p-6"
+          />
+        ) : (
+          <div className="flex items-start gap-3 rounded-[12px] bg-[#EEF2FF] p-4">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#2563EB] text-white">
+              <CalendarClock className="h-5 w-5" />
+            </span>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">
+                Active Session
+              </p>
+              <p className="mt-0.5 text-[15px] font-bold text-[#111827]">{event.title}</p>
+              <p className="mt-0.5 text-[12px] text-[#6B7280]">
+                {formatDate(event.startDate, "medium")} · {event.startTime} - {event.endTime}
+              </p>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Select staff */}
         <div>
@@ -151,36 +176,73 @@ export default function BranchAdminRegisterStaffModal({
               </div>
             </div>
 
-            <div className="divide-y divide-[#F3F4F6]">
-              {visible.map((staff) => (
-                <label
-                  key={staff.id}
-                  className="flex cursor-pointer items-center gap-3 px-4 py-3 hover:bg-[#FAFBFF]"
-                >
-                  <input
-                    type="checkbox"
-                    checked={!!selected[staff.id]}
-                    onChange={() => toggle(staff.id)}
-                    className="h-4 w-4 shrink-0 rounded border-[#D1D5DB] accent-[#2563EB]"
-                  />
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EEF2FF] text-[11px] font-bold text-[#2563EB]">
-                    {initials(staff.name)}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13px] font-semibold text-[#111827]">
-                      {staff.name}
-                    </p>
-                    <p className="truncate text-[11px] text-[#9CA3AF]">{staff.email}</p>
-                  </div>
-                  <span className="w-[110px] shrink-0 text-[12px] text-[#6B7280]">
-                    {staff.role}
-                  </span>
-                  <StatusPill status={staff.status} />
-                </label>
-              ))}
-            </div>
+            {employees.isLoading || employees.error || visible.length === 0 ? (
+              <HrPanelState
+                isLoading={employees.isLoading}
+                error={employees.error}
+                isEmpty={visible.length === 0}
+                emptyTitle="No staff found"
+                emptyDescription="Adjust the filter or add employees to this branch."
+                onRetry={() => employees.refetch()}
+                className="border-0 p-6"
+              />
+            ) : (
+              <div className="divide-y divide-[#F3F4F6]">
+                {visible.map((staff) => {
+                  const name = userName(staff.userId, staff.employeeId)
+                  const alreadyEnrolled = enrolledIds.has(staff._id)
+                  return (
+                    <label
+                      key={staff._id}
+                      className={cn(
+                        "flex items-center gap-3 px-4 py-3",
+                        alreadyEnrolled
+                          ? "cursor-default opacity-60"
+                          : "cursor-pointer hover:bg-[#FAFBFF]",
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={alreadyEnrolled || Boolean(selected[staff._id])}
+                        disabled={alreadyEnrolled || enroll.isPending}
+                        onChange={() => toggle(staff._id)}
+                        className="h-4 w-4 shrink-0 rounded border-[#D1D5DB] accent-[#2563EB]"
+                      />
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EEF2FF] text-[11px] font-bold text-[#2563EB]">
+                        {initials(name)}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[13px] font-semibold text-[#111827]">
+                          {name}
+                        </p>
+                        <p className="truncate text-[11px] text-[#9CA3AF]">
+                          {employeeEmail(staff) || `#${staff.employeeId}`}
+                        </p>
+                      </div>
+                      <span className="w-[110px] shrink-0 text-[12px] text-[#6B7280]">
+                        {staff.jobTitle}
+                      </span>
+                      <span
+                        className={cn(
+                          "rounded-full px-2.5 py-1 text-[10px] font-bold",
+                          alreadyEnrolled
+                            ? "bg-[#F3F4F6] text-[#4B5563]"
+                            : badgeFor(EMPLOYMENT_STATUS_BADGES, staff.employmentStatus),
+                        )}
+                      >
+                        {alreadyEnrolled
+                          ? "Enrolled"
+                          : lookup(EMPLOYMENT_STATUS_LABELS, staff.employmentStatus)}
+                      </span>
+                    </label>
+                  )
+                })}
+              </div>
+            )}
           </div>
         </div>
+
+        {error && <p className="text-[12px] font-medium text-red-600">{error}</p>}
       </div>
 
       {/* Footer */}
@@ -188,14 +250,18 @@ export default function BranchAdminRegisterStaffModal({
         <button
           type="button"
           onClick={onClose}
-          className="inline-flex items-center justify-center rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[12px] font-medium text-[#4B5563] hover:bg-[#F8FAFC]"
+          disabled={enroll.isPending}
+          className="inline-flex items-center justify-center rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[12px] font-medium text-[#4B5563] hover:bg-[#F8FAFC] disabled:opacity-50"
         >
           Cancel
         </button>
         <button
           type="button"
-          className="inline-flex items-center justify-center rounded-md bg-[#111827] px-4 py-2 text-[12px] font-semibold text-white hover:bg-black"
+          onClick={handleConfirm}
+          disabled={enroll.isPending || !trainingEventId}
+          className="inline-flex items-center justify-center gap-2 rounded-md bg-[#111827] px-4 py-2 text-[12px] font-semibold text-white hover:bg-black disabled:opacity-60"
         >
+          {enroll.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
           Confirm Registration
         </button>
       </div>

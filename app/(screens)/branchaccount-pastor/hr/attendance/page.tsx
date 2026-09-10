@@ -1,98 +1,88 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import {
-  Search,
-  Bell,
-  Download,
-  Timer,
-  Power,
-  SlidersHorizontal,
-  Calendar,
-  AlertTriangle,
-} from "lucide-react"
+import { Search, Bell, Download, AlertTriangle } from "lucide-react"
 import BranchAccountantSidebar from "@/components/navigation/BranchAccountantSidebar"
+import { HrTableState } from "@/components/hr/HrDataState"
+import { HrPagination } from "@/components/hr/HrPagination"
+import { useAttendanceLogs } from "@/components/hooks/hr/useHrAttendance"
+import {
+  ATTENDANCE_STATUS_LABELS,
+  branchName,
+  clockTime,
+  deref,
+  duration,
+  employeeName,
+  initials,
+} from "@/lib/hr/normalize"
+import { ATTENDANCE_STATUSES, type AttendanceStatus } from "@/lib/hr/types"
+import { downloadCsv, rowsToCsv, todayStamp } from "@/lib/export-csv"
+import { formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
-type AttendanceStatus = "On Time" | "Late" | null
+const PAGE_SIZE = 10
 
-type AttendanceRow = {
-  id: string
-  name: string
-  title: string
-  initials: string
-  avatarColor: string
-  branch: string
-  date: string
-  timeIn: string
-  status: AttendanceStatus
-  timeOut: string | null
-  duration: string
-  alert?: boolean
-}
-
-const ROWS: AttendanceRow[] = [
-  {
-    id: "amaka-nwachukwu",
-    name: "Amaka Nwachukwu",
-    title: "Senior Administrator",
-    initials: "AN",
-    avatarColor: "bg-[#3B5BDB] text-white",
-    branch: "Ibadan HQ",
-    date: "Oct 19, 2023",
-    timeIn: "07:52 AM",
-    status: "On Time",
-    timeOut: "05:05 PM",
-    duration: "9h 13m",
-  },
-  {
-    id: "tunde-bakare",
-    name: "Tunde Bakare",
-    title: "Finance Officer",
-    initials: "TB",
-    avatarColor: "bg-[#0EA5A4] text-white",
-    branch: "Maryland Lagos",
-    date: "Oct 19, 2023",
-    timeIn: "08:15 AM",
-    status: "Late",
-    timeOut: "05:30 PM",
-    duration: "9h 15m",
-  },
-  {
-    id: "chidi-okechukwu",
-    name: "Chidi Okechukwu",
-    title: "Logistics Coordinator",
-    initials: "CO",
-    avatarColor: "bg-[#111827] text-white",
-    branch: "Ibadan HQ",
-    date: "Oct 19, 2023",
-    timeIn: "08:02 AM",
-    status: null,
-    timeOut: null,
-    duration: "--",
-    alert: true,
-  },
+const AVATAR_TINTS = [
+  "bg-[#E8EDFF] text-[#3B5BDB]",
+  "bg-emerald-50 text-emerald-700",
+  "bg-amber-50 text-amber-700",
+  "bg-violet-50 text-violet-700",
 ]
 
-const BRANCHES = ["All Branches", "Ibadan HQ", "Maryland Lagos"]
-const STATUSES = ["All Status", "On Time", "Late", "Missing"]
-
 export default function Page() {
-  const [branch, setBranch] = useState("All Branches")
-  const [status, setStatus] = useState("All Status")
+  const [status, setStatus] = useState<"all" | AttendanceStatus>("all")
+  const [startDate, setStartDate] = useState("")
+  const [endDate, setEndDate] = useState("")
+  const [page, setPage] = useState(1)
 
-  const rows = useMemo(() => {
-    return ROWS.filter((row) => {
-      if (branch !== "All Branches" && row.branch !== branch) return false
-      if (status === "All Status") return true
-      if (status === "Missing") return row.timeOut === null
-      return row.status === status
-    })
-  }, [branch, status])
+  const logs = useAttendanceLogs({
+    page,
+    limit: PAGE_SIZE,
+    status,
+    startDate: startDate || undefined,
+    endDate: endDate || undefined,
+  })
+
+  const rows = useMemo(
+    () =>
+      (logs.data?.items ?? []).map((log) => {
+        const employee = deref(log.employeeId)
+        return {
+          id: log._id,
+          name: employeeName(log.employeeId),
+          title: employee?.jobTitle ?? "—",
+          branch: branchName(log.branchId),
+          date: formatDate(log.date, "medium"),
+          timeIn: clockTime(log.clockIn),
+          timeOut: log.clockOut ? clockTime(log.clockOut) : null,
+          durationLabel: duration(log.durationMinutes),
+          status: log.status,
+        }
+      }),
+    [logs.data],
+  )
 
   const resetAll = () => {
-    setBranch("All Branches")
-    setStatus("All Status")
+    setStatus("all")
+    setStartDate("")
+    setEndDate("")
+    setPage(1)
+  }
+
+  function handleExport() {
+    const csv = rowsToCsv(
+      rows.map((row) => ({
+        Staff: row.name,
+        "Job Title": row.title,
+        Branch: row.branch,
+        Date: row.date,
+        "Time In": row.timeIn,
+        "Time Out": row.timeOut ?? "Missing",
+        Duration: row.durationLabel,
+        Status: ATTENDANCE_STATUS_LABELS[row.status] ?? row.status,
+      })),
+    )
+    downloadCsv(`attendance-log-${todayStamp()}.csv`, csv)
   }
 
   return (
@@ -131,90 +121,59 @@ export default function Page() {
           </div>
           <button
             type="button"
-            className="inline-flex items-center gap-2 rounded-md bg-[#111827] px-4 py-2 text-[12px] font-semibold text-white hover:bg-black"
+            onClick={handleExport}
+            disabled={rows.length === 0}
+            className="inline-flex items-center gap-2 rounded-md bg-[#111827] px-4 py-2 text-[12px] font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Download className="h-4 w-4" />
-            Export CSV
+            Export Log
           </button>
         </div>
 
-        {/* Summary card */}
+        {/* Filters */}
         <div className="rounded-xl border border-[#EEF1F6] bg-white p-5">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="text-[12px] font-semibold text-[#6B7280]">
-                Avg. Clock-in Time
-              </div>
-              <div className="mt-1 text-[32px] font-bold text-[#111827]">
-                07:54 AM
-              </div>
-              <div className="mt-1 text-[12px] text-[#6B7280]">
-                Standard starts at 08:00 AM
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="inline-flex items-center rounded-full bg-amber-100 px-3 py-1 text-[11px] font-bold text-amber-700">
-                On track
-              </span>
-              <button
-                type="button"
-                className="inline-flex items-center gap-2 rounded-md bg-[#111827] px-4 py-2 text-[12px] font-semibold text-white hover:bg-black"
-              >
-                <Timer className="h-4 w-4" />
-                <Power className="h-4 w-4" />
-                Manual Clock-In/Out
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Filters card */}
-        <div className="mt-6 rounded-xl border border-[#EEF1F6] bg-white p-5">
-          <div className="flex items-center gap-2 text-[#111827]">
-            <SlidersHorizontal className="h-4 w-4 text-[#6B7280]" />
-            <span className="text-[13px] font-bold">Filters</span>
-          </div>
-
-          <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-end">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
             <div className="flex flex-col gap-1.5">
-              <label className="text-[11px] font-bold uppercase text-[#6B7280]">
-                Branch
-              </label>
-              <select
-                value={branch}
-                onChange={(e) => setBranch(e.target.value)}
+              <label className="text-[11px] font-bold uppercase text-[#6B7280]">From</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => {
+                  setStartDate(e.target.value)
+                  setPage(1)
+                }}
                 className="h-[42px] rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[13px]"
-              >
-                {BRANCHES.map((b) => (
-                  <option key={b} value={b}>
-                    {b}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-[11px] font-bold uppercase text-[#6B7280]">
-                Date Range
-              </label>
-              <div className="flex h-[42px] items-center gap-2 rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[13px] text-[#111827]">
-                <span>Oct 12, 2023 - Oct 19, 2023</span>
-                <Calendar className="h-4 w-4 text-[#9CA3AF]" />
-              </div>
+              <label className="text-[11px] font-bold uppercase text-[#6B7280]">To</label>
+              <input
+                type="date"
+                value={endDate}
+                min={startDate}
+                onChange={(e) => {
+                  setEndDate(e.target.value)
+                  setPage(1)
+                }}
+                className="h-[42px] rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[13px]"
+              />
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-[11px] font-bold uppercase text-[#6B7280]">
-                Status
-              </label>
+              <label className="text-[11px] font-bold uppercase text-[#6B7280]">Status</label>
               <select
                 value={status}
-                onChange={(e) => setStatus(e.target.value)}
+                onChange={(e) => {
+                  setStatus(e.target.value as "all" | AttendanceStatus)
+                  setPage(1)
+                }}
                 className="h-[42px] rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[13px]"
               >
-                {STATUSES.map((s) => (
+                <option value="all">All Status</option>
+                {ATTENDANCE_STATUSES.map((s) => (
                   <option key={s} value={s}>
-                    {s}
+                    {ATTENDANCE_STATUS_LABELS[s]}
                   </option>
                 ))}
               </select>
@@ -236,93 +195,92 @@ export default function Page() {
             <table className="w-full text-left">
               <thead className="bg-[#F9FAFB]">
                 <tr>
-                  <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">
-                    Staff Member
-                  </th>
-                  <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">
-                    Branch
-                  </th>
-                  <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">
-                    Date
-                  </th>
-                  <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">
-                    Time In
-                  </th>
-                  <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">
-                    Time Out
-                  </th>
-                  <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">
-                    Duration
-                  </th>
+                  {["Staff Member", "Branch", "Date", "Time In", "Time Out", "Duration"].map(
+                    (h) => (
+                      <th
+                        key={h}
+                        className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]"
+                      >
+                        {h}
+                      </th>
+                    ),
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#F3F4F6]">
-                {rows.map((row) => (
-                  <tr
-                    key={row.id}
-                    className={cn(row.alert && "border-l-2 border-rose-500")}
-                  >
-                    <td className="px-4 py-4 text-[13px]">
-                      <div className="flex items-center gap-3">
-                        <div
-                          className={cn(
-                            "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[12px] font-bold",
-                            row.avatarColor
+                <HrTableState
+                  colSpan={6}
+                  isLoading={logs.isLoading}
+                  error={logs.error}
+                  isEmpty={rows.length === 0}
+                  emptyTitle="No attendance records"
+                  emptyDescription="Clock-ins for the selected period will appear here."
+                  onRetry={() => logs.refetch()}
+                />
+
+                {!logs.isLoading &&
+                  !logs.error &&
+                  rows.map((row, i) => (
+                    <tr key={row.id} className="hover:bg-[#F8FAFC]">
+                      <td className="px-4 py-4 text-[13px]">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={cn(
+                              "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[12px] font-bold",
+                              AVATAR_TINTS[i % AVATAR_TINTS.length],
+                            )}
+                          >
+                            {initials(row.name)}
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="font-bold text-[#111827]">{row.name}</span>
+                            <span className="text-[12px] text-[#9CA3AF]">{row.title}</span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 text-[13px] text-[#4B5563]">{row.branch}</td>
+                      <td className="px-4 py-4 text-[13px] text-[#4B5563]">{row.date}</td>
+                      <td className="px-4 py-4 text-[13px]">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[#4B5563]">{row.timeIn}</span>
+                          {row.status === "late" && (
+                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                              Late
+                            </span>
                           )}
-                        >
-                          {row.initials}
+                          {row.status === "absent" && (
+                            <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700">
+                              Absent
+                            </span>
+                          )}
                         </div>
-                        <div className="flex flex-col">
-                          <span className="font-semibold text-[#111827]">
-                            {row.name}
+                      </td>
+                      <td className="px-4 py-4 text-[13px]">
+                        {row.timeOut === null ? (
+                          <span className="inline-flex items-center gap-1 font-semibold text-rose-600">
+                            <AlertTriangle className="h-3.5 w-3.5" />
+                            Missing
                           </span>
-                          <span className="text-[12px] text-[#6B7280]">
-                            {row.title}
-                          </span>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                      {row.branch}
-                    </td>
-                    <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                      {row.date}
-                    </td>
-                    <td className="px-4 py-4 text-[13px]">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-[#111827]">
-                          {row.timeIn}
-                        </span>
-                        {row.status === "On Time" && (
-                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
-                            On Time
-                          </span>
+                        ) : (
+                          <span className="text-[#4B5563]">{row.timeOut}</span>
                         )}
-                        {row.status === "Late" && (
-                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">
-                            Late
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-4 text-[13px]">
-                      {row.timeOut === null ? (
-                        <span className="inline-flex items-center gap-1 font-semibold text-rose-600">
-                          <AlertTriangle className="h-3.5 w-3.5" />
-                          Missing
-                        </span>
-                      ) : (
-                        <span className="text-[#4B5563]">{row.timeOut}</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                      {row.duration}
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-4 py-4 text-[13px] text-[#4B5563]">
+                        {row.durationLabel}
+                      </td>
+                    </tr>
+                  ))}
               </tbody>
             </table>
           </div>
+
+          <HrPagination
+            pagination={logs.data?.pagination}
+            page={page}
+            onPageChange={setPage}
+            itemCount={rows.length}
+            noun="records"
+          />
         </div>
       </main>
     </div>

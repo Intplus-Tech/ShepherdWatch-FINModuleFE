@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { ArrowLeft } from "lucide-react"
 import SidebarNav from "@/components/navigation/SidebarNav"
 import { cn } from "@/lib/utils"
@@ -21,6 +21,17 @@ import NewLoanApplicationModal from "@/components/hr/profile/NewLoanApplicationM
 import DocumentPreviewModal from "@/components/hr/profile/DocumentPreviewModal"
 import DeleteDocumentModal from "@/components/hr/profile/DeleteDocumentModal"
 
+import { HrPanelState } from "@/components/hr/HrDataState"
+import { useEmployee } from "@/components/hooks/hr/useHrEmployees"
+import {
+  EMPLOYMENT_STATUS_LABELS,
+  initials,
+  lookup,
+  userName,
+} from "@/lib/hr/normalize"
+import type { EmployeeDocument, EmployeeLoan, LeaveRequest } from "@/lib/hr/types"
+import { withSuspense } from "@/lib/withSuspense"
+
 const TABS = [
   "GENERAL INFO",
   "PAYROLL",
@@ -32,16 +43,23 @@ const TABS = [
 
 type Tab = (typeof TABS)[number]
 
-export default function Page() {
+function Page() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const employeeId = searchParams.get("id")
+
   const [activeTab, setActiveTab] = useState<Tab>("GENERAL INFO")
 
-  const [leaveOpen, setLeaveOpen] = useState(false)
+  const [leaveRequest, setLeaveRequest] = useState<LeaveRequest | null>(null)
   const [uploadOpen, setUploadOpen] = useState(false)
-  const [loanDetailOpen, setLoanDetailOpen] = useState(false)
+  const [loanDetail, setLoanDetail] = useState<EmployeeLoan | null>(null)
   const [newLoanOpen, setNewLoanOpen] = useState(false)
-  const [previewOpen, setPreviewOpen] = useState(false)
-  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [previewDoc, setPreviewDoc] = useState<EmployeeDocument | null>(null)
+  const [deleteDoc, setDeleteDoc] = useState<EmployeeDocument | null>(null)
+
+  const employeeQuery = useEmployee(employeeId)
+  const employee = employeeQuery.data
+  const name = employee ? userName(employee.userId, employee.employeeId) : ""
 
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
@@ -67,95 +85,137 @@ export default function Page() {
             </h1>
           </div>
 
-          {/* Identity row */}
-          <div className="mb-6 flex flex-col justify-between gap-4 rounded-xl border border-[#EEF1F6] bg-white p-5 sm:flex-row sm:items-center">
-            <div className="flex items-center gap-4">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#111827] text-[16px] font-bold text-white">
-                OD
-              </div>
-              <div>
-                <div className="flex flex-wrap items-center gap-3">
-                  <span className="text-[18px] font-bold text-[#111827]">
-                    Oluwaseun Daniels
-                  </span>
-                  <StatusBadge status="ACTIVE" />
-                </div>
-                <div className="mt-0.5 text-[13px] text-[#6B7280]">
-                  Senior Accountant • Employee ID: SW-2024-089
-                </div>
-              </div>
-            </div>
-            <button className={btnRoseOutline}>Initiate Exit Process</button>
-          </div>
-
-          {/* Tab bar */}
-          <div className="mb-6 border-b border-[#EEF1F6]">
-            <nav className="-mb-px flex gap-6 overflow-x-auto">
-              {TABS.map((tab) => {
-                const active = activeTab === tab
-                return (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    className={cn(
-                      "whitespace-nowrap border-b-2 py-3 text-[12px] uppercase tracking-wider transition-colors",
-                      active
-                        ? "border-[#111827] font-bold text-[#111827]"
-                        : "border-transparent font-semibold text-[#6B7280] hover:text-[#111827]"
-                    )}
-                  >
-                    {tab}
-                  </button>
-                )
-              })}
-            </nav>
-          </div>
-
-          {/* Active tab */}
-          {activeTab === "GENERAL INFO" && <GeneralInfoTab />}
-          {activeTab === "PAYROLL" && <PayrollTab />}
-          {activeTab === "LOANS" && (
-            <LoansTab
-              onNewLoan={() => setNewLoanOpen(true)}
-              onViewLoan={() => setLoanDetailOpen(true)}
+          {!employeeId ? (
+            <HrPanelState
+              isLoading={false}
+              error={null}
+              isEmpty
+              emptyTitle="No employee selected"
+              emptyDescription="Open a profile from the Employee Directory."
             />
-          )}
-          {activeTab === "PERFORMANCE" && <PerformanceTab />}
-          {activeTab === "LEAVE" && (
-            <LeaveTab onViewLeave={() => setLeaveOpen(true)} />
-          )}
-          {activeTab === "DOCUMENTS" && (
-            <DocumentsTab
-              onUpload={() => setUploadOpen(true)}
-              onPreview={() => setPreviewOpen(true)}
-              onDelete={() => setDeleteOpen(true)}
-            />
+          ) : (
+            <>
+              {/* Identity row */}
+              <div className="mb-6 flex flex-col justify-between gap-4 rounded-xl border border-[#EEF1F6] bg-white p-5 sm:flex-row sm:items-center">
+                {employeeQuery.isLoading || employeeQuery.error || !employee ? (
+                  <HrPanelState
+                    isLoading={employeeQuery.isLoading}
+                    error={employeeQuery.error}
+                    isEmpty={!employee}
+                    emptyTitle="Employee not found"
+                    onRetry={() => employeeQuery.refetch()}
+                    className="w-full border-0 p-2"
+                  />
+                ) : (
+                  <>
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#111827] text-[16px] font-bold text-white">
+                        {initials(name)}
+                      </div>
+                      <div>
+                        <div className="flex flex-wrap items-center gap-3">
+                          <span className="text-[18px] font-bold text-[#111827]">{name}</span>
+                          <StatusBadge
+                            status={lookup(
+                              EMPLOYMENT_STATUS_LABELS,
+                              employee.employmentStatus,
+                            ).toUpperCase()}
+                          />
+                        </div>
+                        <div className="mt-0.5 text-[13px] text-[#6B7280]">
+                          {employee.jobTitle} • Employee ID: {employee.employeeId}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      className={btnRoseOutline}
+                      onClick={() =>
+                        router.push(
+                          `/director-screen/hr/exit-clearance?employeeId=${employee._id}`,
+                        )
+                      }
+                    >
+                      Initiate Exit Process
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {/* Tab bar */}
+              <div className="mb-6 border-b border-[#EEF1F6]">
+                <nav className="-mb-px flex gap-6 overflow-x-auto">
+                  {TABS.map((tab) => {
+                    const active = activeTab === tab
+                    return (
+                      <button
+                        key={tab}
+                        onClick={() => setActiveTab(tab)}
+                        className={cn(
+                          "whitespace-nowrap border-b-2 py-3 text-[12px] uppercase tracking-wider transition-colors",
+                          active
+                            ? "border-[#111827] font-bold text-[#111827]"
+                            : "border-transparent font-semibold text-[#6B7280] hover:text-[#111827]",
+                        )}
+                      >
+                        {tab}
+                      </button>
+                    )
+                  })}
+                </nav>
+              </div>
+
+              {/* Active tab */}
+              {activeTab === "GENERAL INFO" && <GeneralInfoTab employeeId={employeeId} />}
+              {activeTab === "PAYROLL" && <PayrollTab employeeId={employeeId} />}
+              {activeTab === "LOANS" && (
+                <LoansTab
+                  employeeId={employeeId}
+                  onNewLoan={() => setNewLoanOpen(true)}
+                  onViewLoan={setLoanDetail}
+                />
+              )}
+              {activeTab === "PERFORMANCE" && <PerformanceTab />}
+              {activeTab === "LEAVE" && (
+                <LeaveTab employeeId={employeeId} onViewLeave={setLeaveRequest} />
+              )}
+              {activeTab === "DOCUMENTS" && (
+                <DocumentsTab
+                  employeeId={employeeId}
+                  onUpload={() => setUploadOpen(true)}
+                  onPreview={setPreviewDoc}
+                  onDelete={setDeleteDoc}
+                />
+              )}
+            </>
           )}
         </div>
       </main>
 
       {/* Modals */}
-      <LeaveDetailModal open={leaveOpen} onClose={() => setLeaveOpen(false)} />
+      <LeaveDetailModal request={leaveRequest} onClose={() => setLeaveRequest(null)} />
       <UploadDocumentModal
         open={uploadOpen}
+        employeeId={employeeId}
         onClose={() => setUploadOpen(false)}
       />
-      <LoanApplicationDetailModal
-        open={loanDetailOpen}
-        onClose={() => setLoanDetailOpen(false)}
-      />
+      <LoanApplicationDetailModal loan={loanDetail} onClose={() => setLoanDetail(null)} />
       <NewLoanApplicationModal
         open={newLoanOpen}
+        employeeId={employeeId}
         onClose={() => setNewLoanOpen(false)}
       />
       <DocumentPreviewModal
-        open={previewOpen}
-        onClose={() => setPreviewOpen(false)}
+        document={previewDoc}
+        employeeId={employeeId}
+        onClose={() => setPreviewDoc(null)}
       />
       <DeleteDocumentModal
-        open={deleteOpen}
-        onClose={() => setDeleteOpen(false)}
+        document={deleteDoc}
+        employeeId={employeeId}
+        onClose={() => setDeleteDoc(null)}
       />
     </div>
   )
 }
+
+export default withSuspense(Page)

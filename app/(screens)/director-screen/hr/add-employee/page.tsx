@@ -1,16 +1,21 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   ArrowLeft,
   ArrowRight,
-  User,
-  Contact,
   Briefcase,
+  Contact,
+  Loader2,
+  User,
   Wallet,
 } from "lucide-react"
 import SidebarNav from "@/components/navigation/SidebarNav"
+import { UserAccountPicker } from "@/components/hr/UserAccountPicker"
+import { hrErrorMessage } from "@/components/hr/HrDataState"
+import { useBranches } from "@/components/hooks/useUsers"
+import { useCreateEmployee } from "@/components/hooks/hr/useHrEmployees"
 import { cn } from "@/lib/utils"
 
 type StepId = "personal" | "contact" | "employment" | "compensation"
@@ -36,67 +41,162 @@ const TEXTAREA_CLASS =
   "min-h-[88px] w-full rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 py-2.5 text-[14px] focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]/20"
 
 type FormState = {
-  fullName: string
+  userId: string
   dateOfBirth: string
   gender: string
   nationality: string
   maritalStatus: string
-  personalEmail: string
-  phoneNumber: string
-  homeAddress: string
-  city: string
-  state: string
+  phone: string
+  address: string
+  stateOfOrigin: string
   jobTitle: string
   department: string
-  branch: string
-  employmentType: string
-  startDate: string
-  basicSalary: string
-  allowances: string
-  pensionScheme: string
+  branchId: string
+  hireDate: string
+  salary: string
+  allowanceTitle: string
+  allowanceAmount: string
+  taxId: string
+  pensionId: string
   bankName: string
   accountNumber: string
+  accountName: string
 }
 
 const INITIAL_FORM: FormState = {
-  fullName: "",
+  userId: "",
   dateOfBirth: "",
   gender: "",
   nationality: "Nigerian",
-  maritalStatus: "Single",
-  personalEmail: "",
-  phoneNumber: "",
-  homeAddress: "",
-  city: "",
-  state: "",
+  maritalStatus: "single",
+  phone: "",
+  address: "",
+  stateOfOrigin: "",
   jobTitle: "",
   department: "",
-  branch: "",
-  employmentType: "Full-time",
-  startDate: "",
-  basicSalary: "",
-  allowances: "",
-  pensionScheme: "",
+  branchId: "",
+  hireDate: new Date().toISOString().slice(0, 10),
+  salary: "",
+  allowanceTitle: "",
+  allowanceAmount: "",
+  taxId: "",
+  pensionId: "",
   bankName: "",
   accountNumber: "",
+  accountName: "",
+}
+
+type BranchOption = { id: string; name: string }
+
+function readBranches(list: unknown): BranchOption[] {
+  if (!Array.isArray(list)) return []
+  return list
+    .map((entry) => {
+      const branch = (entry ?? {}) as Record<string, unknown>
+      return {
+        id: String(branch._id ?? branch.id ?? ""),
+        name: String(branch.name ?? "Unnamed branch"),
+      }
+    })
+    .filter((branch) => branch.id)
 }
 
 export default function Page() {
   const router = useRouter()
   const [activeStep, setActiveStep] = useState<StepId>("personal")
   const [form, setForm] = useState<FormState>(INITIAL_FORM)
+  const [formError, setFormError] = useState<string | null>(null)
 
-  const set = (key: keyof FormState) => (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
-  ) => setForm((prev) => ({ ...prev, [key]: e.target.value }))
+  const branchesQuery = useBranches()
+  const createEmployee = useCreateEmployee()
+
+  const branches = useMemo(() => readBranches(branchesQuery.data), [branchesQuery.data])
+
+  const set =
+    (key: keyof FormState) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
+      setForm((prev) => ({ ...prev, [key]: e.target.value }))
 
   const activeIndex = STEPS.findIndex((s) => s.id === activeStep)
   const isLastStep = activeIndex === STEPS.length - 1
 
-  const goNext = () => {
-    if (!isLastStep) setActiveStep(STEPS[activeIndex + 1].id)
+  /** Per-step validation, so the wizard blocks before the final submit fails. */
+  function validateStep(step: StepId): string | null {
+    if (step === "personal" && !form.userId) {
+      return "Select the staff member's user account."
+    }
+    if (step === "employment") {
+      if (form.jobTitle.trim().length < 2) return "Enter a job title."
+      if (!form.branchId) return "Choose a branch."
+      if (!form.hireDate) return "Set a hire date."
+    }
+    return null
   }
-  const goBack = () => {
+
+  async function handleSubmit() {
+    setFormError(null)
+
+    for (const step of STEPS) {
+      const problem = validateStep(step.id)
+      if (problem) {
+        setActiveStep(step.id)
+        setFormError(problem)
+        return
+      }
+    }
+
+    const salary = Number(form.salary.replace(/[^0-9.]/g, ""))
+
+    try {
+      await createEmployee.mutateAsync({
+        userId: form.userId,
+        branchId: form.branchId,
+        jobTitle: form.jobTitle.trim(),
+        department: form.department.trim() || undefined,
+        hireDate: new Date(form.hireDate).toISOString(),
+        dateOfBirth: form.dateOfBirth
+          ? new Date(form.dateOfBirth).toISOString()
+          : undefined,
+        gender: form.gender === "male" || form.gender === "female" ? form.gender : undefined,
+        maritalStatus: form.maritalStatus || undefined,
+        nationality: form.nationality.trim() || undefined,
+        stateOfOrigin: form.stateOfOrigin.trim() || undefined,
+        phone: form.phone.trim() || undefined,
+        address: form.address.trim() || undefined,
+        salary: Number.isFinite(salary) && salary > 0 ? salary : undefined,
+        taxId: form.taxId.trim() || undefined,
+        pensionId: form.pensionId.trim() || undefined,
+        bankDetails: form.bankName.trim()
+          ? {
+              bankName: form.bankName.trim(),
+              accountNumber: form.accountNumber.trim(),
+              accountName: form.accountName.trim(),
+            }
+          : undefined,
+        qualifications: undefined,
+      })
+      router.push("/director-screen/hr/employee-directory")
+    } catch (error) {
+      setFormError(hrErrorMessage(error))
+    }
+  }
+
+  function goNext() {
+    const problem = validateStep(activeStep)
+    if (problem) {
+      setFormError(problem)
+      return
+    }
+    setFormError(null)
+    if (isLastStep) {
+      handleSubmit()
+    } else {
+      setActiveStep(STEPS[activeIndex + 1].id)
+    }
+  }
+
+  function goBack() {
+    setFormError(null)
     if (activeIndex > 0) setActiveStep(STEPS[activeIndex - 1].id)
   }
 
@@ -109,46 +209,43 @@ export default function Page() {
       <main className="flex-1 xl:ml-[260px] text-[#111827]">
         <div className="mx-auto w-full px-6 pt-6 pb-8 lg:px-8 lg:pt-8 max-w-7xl">
           {/* Header */}
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div>
+          <div className="mb-6 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => router.back()}
+                aria-label="Back"
+                className="flex h-9 w-9 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[#4B5563] hover:bg-[#F8FAFC]"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </button>
               <h1 className="text-[24px] leading-none font-bold text-[#111827]">
-                Add New Employee
+                Add Employee
               </h1>
-              <p className="text-[13px] text-[#6B7280] mt-1">
-                Maryland LAG Branch Portal • ID Generation Pending
-              </p>
             </div>
-            <button
-              type="button"
-              onClick={() => router.push("/director-screen/hr/employee-directory")}
-              className="inline-flex items-center gap-1.5 border border-[#E5E7EB] bg-white text-[#4B5563] rounded-md px-4 py-2 text-[12px] font-medium hover:bg-gray-50"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              Back to Roster
-            </button>
           </div>
 
-          {/* Body */}
-          <div className="mt-6 grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-6">
-            {/* Left: step nav */}
-            <div className="rounded-xl border border-[#EEF1F6] bg-white p-6 h-fit">
-              <h2 className="text-[16px] font-bold text-[#111827]">
-                Personal Information Management Portal
-              </h2>
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-4">
+            {/* Steps rail */}
+            <div className="rounded-xl border border-[#EEF1F6] bg-white p-5 lg:col-span-1">
+              <h2 className="text-[16px] font-bold text-[#111827]">Steps</h2>
               <div className="mt-4 flex flex-col gap-1">
-                {STEPS.map((step) => {
+                {STEPS.map((step, index) => {
                   const Icon = step.icon
-                  const isActive = step.id === activeStep
+                  const active = step.id === activeStep
+                  const done = index < activeIndex
                   return (
                     <button
                       key={step.id}
                       type="button"
                       onClick={() => setActiveStep(step.id)}
                       className={cn(
-                        "rounded-[8px] px-3 py-2.5 text-[13px] flex items-center gap-2 text-left transition-colors",
-                        isActive
-                          ? "bg-[#EEF2FF] text-[#3B5BDB] font-semibold"
-                          : "text-[#6B7280] hover:bg-gray-50"
+                        "flex items-center gap-3 rounded-md px-3 py-2.5 text-left text-[13px] transition-colors",
+                        active
+                          ? "bg-[#EEF2FF] font-semibold text-[#3B5BDB]"
+                          : done
+                            ? "text-emerald-600 hover:bg-[#F8FAFC]"
+                            : "text-[#6B7280] hover:bg-[#F8FAFC]",
                       )}
                     >
                       <Icon className="h-4 w-4 shrink-0" />
@@ -159,24 +256,26 @@ export default function Page() {
               </div>
             </div>
 
-            {/* Right: active step form */}
-            <div className="rounded-xl border border-[#EEF1F6] bg-white p-6">
+            {/* Form panel */}
+            <div className="rounded-xl border border-[#EEF1F6] bg-white p-6 lg:col-span-3">
               <h2 className="text-[16px] font-bold text-[#111827]">
                 {STEPS[activeIndex].label}
               </h2>
 
               <div className="mt-5">
                 {activeStep === "personal" && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-4">
+                  <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                     <div className="sm:col-span-2">
-                      <label className={LABEL_CLASS}>Full Name</label>
-                      <input
-                        type="text"
-                        value={form.fullName}
-                        onChange={set("fullName")}
-                        placeholder="e.g. Samuel Adebayo"
-                        className={FIELD_CLASS}
+                      <label className={LABEL_CLASS}>User Account</label>
+                      <UserAccountPicker
+                        value={form.userId}
+                        onChange={(userId) => setForm((prev) => ({ ...prev, userId }))}
+                        disabled={createEmployee.isPending}
                       />
+                      <p className="mt-1.5 text-[11px] text-[#9CA3AF]">
+                        An employee record attaches to an existing ShepherdWatch account. Invite
+                        the person from User Management first if they have none.
+                      </p>
                     </div>
                     <div>
                       <label className={LABEL_CLASS}>Date of Birth</label>
@@ -184,20 +283,15 @@ export default function Page() {
                         type="date"
                         value={form.dateOfBirth}
                         onChange={set("dateOfBirth")}
-                        onClick={(e) => e.currentTarget.showPicker?.()}
                         className={FIELD_CLASS}
                       />
                     </div>
                     <div>
                       <label className={LABEL_CLASS}>Gender</label>
-                      <select
-                        value={form.gender}
-                        onChange={set("gender")}
-                        className={FIELD_CLASS}
-                      >
+                      <select value={form.gender} onChange={set("gender")} className={FIELD_CLASS}>
                         <option value="">Select…</option>
-                        <option value="Male">Male</option>
-                        <option value="Female">Female</option>
+                        <option value="male">Male</option>
+                        <option value="female">Female</option>
                       </select>
                     </div>
                     <div>
@@ -216,127 +310,98 @@ export default function Page() {
                         onChange={set("maritalStatus")}
                         className={FIELD_CLASS}
                       >
-                        <option value="Single">Single</option>
-                        <option value="Married">Married</option>
-                        <option value="Divorced">Divorced</option>
-                        <option value="Widowed">Widowed</option>
+                        <option value="single">Single</option>
+                        <option value="married">Married</option>
+                        <option value="divorced">Divorced</option>
+                        <option value="widowed">Widowed</option>
                       </select>
                     </div>
                   </div>
                 )}
 
                 {activeStep === "contact" && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-4">
+                  <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                     <div>
-                      <label className={LABEL_CLASS}>Personal Email</label>
+                      <label className={LABEL_CLASS}>Phone Number</label>
                       <input
-                        type="email"
-                        value={form.personalEmail}
-                        onChange={set("personalEmail")}
-                        placeholder="name@example.com"
+                        type="text"
+                        value={form.phone}
+                        onChange={set("phone")}
+                        placeholder="+234 000-000-0000"
                         className={FIELD_CLASS}
                       />
                     </div>
                     <div>
-                      <label className={LABEL_CLASS}>Phone Number</label>
+                      <label className={LABEL_CLASS}>State of Origin</label>
                       <input
-                        type="tel"
-                        value={form.phoneNumber}
-                        onChange={set("phoneNumber")}
-                        placeholder="+234 800 000 0000"
+                        type="text"
+                        value={form.stateOfOrigin}
+                        onChange={set("stateOfOrigin")}
                         className={FIELD_CLASS}
                       />
                     </div>
                     <div className="sm:col-span-2">
                       <label className={LABEL_CLASS}>Home Address</label>
                       <textarea
-                        value={form.homeAddress}
-                        onChange={set("homeAddress")}
-                        placeholder="Street address"
+                        value={form.address}
+                        onChange={set("address")}
                         className={TEXTAREA_CLASS}
-                      />
-                    </div>
-                    <div>
-                      <label className={LABEL_CLASS}>City</label>
-                      <input
-                        type="text"
-                        value={form.city}
-                        onChange={set("city")}
-                        className={FIELD_CLASS}
-                      />
-                    </div>
-                    <div>
-                      <label className={LABEL_CLASS}>State</label>
-                      <input
-                        type="text"
-                        value={form.state}
-                        onChange={set("state")}
-                        className={FIELD_CLASS}
                       />
                     </div>
                   </div>
                 )}
 
                 {activeStep === "employment" && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-4">
+                  <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                     <div>
                       <label className={LABEL_CLASS}>Job Title</label>
                       <input
                         type="text"
                         value={form.jobTitle}
                         onChange={set("jobTitle")}
-                        placeholder="e.g. Branch Accountant"
+                        placeholder="e.g. Senior Accountant"
                         className={FIELD_CLASS}
                       />
                     </div>
                     <div>
                       <label className={LABEL_CLASS}>Department</label>
-                      <select
+                      <input
+                        type="text"
                         value={form.department}
                         onChange={set("department")}
+                        placeholder="e.g. Finance"
                         className={FIELD_CLASS}
-                      >
-                        <option value="">Select…</option>
-                        <option value="Finance">Finance</option>
-                        <option value="Human Resources">Human Resources</option>
-                        <option value="Operations">Operations</option>
-                        <option value="Administration">Administration</option>
-                        <option value="Ministry">Ministry</option>
-                      </select>
+                      />
                     </div>
                     <div>
                       <label className={LABEL_CLASS}>Branch</label>
                       <select
-                        value={form.branch}
-                        onChange={set("branch")}
+                        value={form.branchId}
+                        onChange={set("branchId")}
+                        disabled={branchesQuery.isLoading}
                         className={FIELD_CLASS}
                       >
-                        <option value="">Select…</option>
-                        <option value="Maryland LAG">Maryland LAG</option>
-                        <option value="Ikeja">Ikeja</option>
-                        <option value="Lekki">Lekki</option>
-                        <option value="Abuja">Abuja</option>
+                        <option value="">
+                          {branchesQuery.isLoading ? "Loading branches…" : "Select a branch"}
+                        </option>
+                        {branches.map((branch) => (
+                          <option key={branch.id} value={branch.id}>
+                            {branch.name}
+                          </option>
+                        ))}
                       </select>
+                      {branchesQuery.error && (
+                        <p className="mt-1.5 text-[12px] text-red-600">
+                          Couldn&apos;t load branches.
+                        </p>
+                      )}
                     </div>
                     <div>
-                      <label className={LABEL_CLASS}>Employment Type</label>
-                      <select
-                        value={form.employmentType}
-                        onChange={set("employmentType")}
-                        className={FIELD_CLASS}
-                      >
-                        <option value="Full-time">Full-time</option>
-                        <option value="Part-time">Part-time</option>
-                        <option value="Contract">Contract</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className={LABEL_CLASS}>Start Date</label>
+                      <label className={LABEL_CLASS}>Hire Date</label>
                       <input
                         type="date"
-                        value={form.startDate}
-                        onChange={set("startDate")}
-                        onClick={(e) => e.currentTarget.showPicker?.()}
+                        value={form.hireDate}
+                        onChange={set("hireDate")}
                         className={FIELD_CLASS}
                       />
                     </div>
@@ -344,40 +409,35 @@ export default function Page() {
                 )}
 
                 {activeStep === "compensation" && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-4">
+                  <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                     <div>
                       <label className={LABEL_CLASS}>Basic Salary</label>
                       <input
-                        type="number"
-                        value={form.basicSalary}
-                        onChange={set("basicSalary")}
-                        placeholder="0"
+                        type="text"
+                        inputMode="decimal"
+                        value={form.salary}
+                        onChange={set("salary")}
+                        placeholder="₦ 0.00"
                         className={FIELD_CLASS}
                       />
                     </div>
                     <div>
-                      <label className={LABEL_CLASS}>Allowances</label>
+                      <label className={LABEL_CLASS}>Tax ID</label>
                       <input
-                        type="number"
-                        value={form.allowances}
-                        onChange={set("allowances")}
-                        placeholder="0"
+                        type="text"
+                        value={form.taxId}
+                        onChange={set("taxId")}
                         className={FIELD_CLASS}
                       />
                     </div>
                     <div>
-                      <label className={LABEL_CLASS}>Pension Scheme</label>
-                      <select
-                        value={form.pensionScheme}
-                        onChange={set("pensionScheme")}
+                      <label className={LABEL_CLASS}>Pension ID</label>
+                      <input
+                        type="text"
+                        value={form.pensionId}
+                        onChange={set("pensionId")}
                         className={FIELD_CLASS}
-                      >
-                        <option value="">Select…</option>
-                        <option value="Stanbic IBTC Pension">Stanbic IBTC Pension</option>
-                        <option value="ARM Pension">ARM Pension</option>
-                        <option value="Leadway Pensure">Leadway Pensure</option>
-                        <option value="Premium Pension">Premium Pension</option>
-                      </select>
+                      />
                     </div>
                     <div>
                       <label className={LABEL_CLASS}>Bank Name</label>
@@ -385,6 +445,15 @@ export default function Page() {
                         type="text"
                         value={form.bankName}
                         onChange={set("bankName")}
+                        className={FIELD_CLASS}
+                      />
+                    </div>
+                    <div>
+                      <label className={LABEL_CLASS}>Account Name</label>
+                      <input
+                        type="text"
+                        value={form.accountName}
+                        onChange={set("accountName")}
                         className={FIELD_CLASS}
                       />
                     </div>
@@ -401,13 +470,18 @@ export default function Page() {
                 )}
               </div>
 
+              {formError && (
+                <p className="mt-5 text-[12px] font-medium text-red-600">{formError}</p>
+              )}
+
               {/* Footer */}
               <div className="mt-6 flex items-center justify-between border-t border-[#EEF1F6] pt-5">
                 {activeIndex > 0 ? (
                   <button
                     type="button"
                     onClick={goBack}
-                    className="border border-[#E5E7EB] bg-white text-[#4B5563] rounded-md px-4 py-2 text-[12px] font-medium hover:bg-gray-50"
+                    disabled={createEmployee.isPending}
+                    className="border border-[#E5E7EB] bg-white text-[#4B5563] rounded-md px-4 py-2 text-[12px] font-medium hover:bg-gray-50 disabled:opacity-50"
                   >
                     Back
                   </button>
@@ -417,10 +491,12 @@ export default function Page() {
                 <button
                   type="button"
                   onClick={goNext}
-                  className="inline-flex items-center gap-1.5 bg-[#111827] text-white rounded-md px-5 py-2.5 text-[13px] font-semibold hover:bg-[#1f2937]"
+                  disabled={createEmployee.isPending}
+                  className="inline-flex items-center gap-1.5 bg-[#111827] text-white rounded-md px-5 py-2.5 text-[13px] font-semibold hover:bg-[#1f2937] disabled:opacity-60"
                 >
-                  Save &amp; Continue
-                  <ArrowRight className="h-3.5 w-3.5" />
+                  {createEmployee.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  {isLastStep ? "Create Employee" : "Save & Continue"}
+                  {!isLastStep && <ArrowRight className="h-3.5 w-3.5" />}
                 </button>
               </div>
             </div>

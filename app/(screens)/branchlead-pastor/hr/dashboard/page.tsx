@@ -1,7 +1,25 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import BranchLeadPastorSidebar from "@/components/navigation/BranchLeadPastorSidebar"
+import { HrPanelState, HrTableState } from "@/components/hr/HrDataState"
+import { usePastorHrDashboard } from "@/components/hooks/hr/useHrDashboard"
+import { useEmployees } from "@/components/hooks/hr/useHrEmployees"
+import { useAttendanceLogs } from "@/components/hooks/hr/useHrAttendance"
+import {
+  ATTENDANCE_STATUS_LABELS,
+  EMPLOYMENT_STATUS_BADGES,
+  EMPLOYMENT_STATUS_LABELS,
+  badgeFor,
+  clockTime,
+  deref,
+  employeeName,
+  initials,
+  lookup,
+  userName,
+} from "@/lib/hr/normalize"
+import { formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import {
   Search,
@@ -13,138 +31,68 @@ import {
   CalendarDays,
   ClipboardCheck,
   Banknote,
-  TrendingUp,
   GraduationCap,
-  CheckCircle2,
-  Flag,
 } from "lucide-react"
 
-type QuickAction = {
-  title: string
-  description: string
-  icon: React.ComponentType<{ className?: string }>
-  tint: string
-}
+const cardCls =
+  "rounded-[14px] border border-[#EEF1F6] bg-white p-5 shadow-[0px_4px_10px_rgba(0,0,0,0.02)]"
 
-type LeaveEntry = {
-  name: string
-  type: string
-}
-
-type StaffStatus = "ACTIVE" | "ON LEAVE"
-
-type StaffRow = {
-  name: string
-  role: string
-  dept: string
-  status: StaffStatus
-}
-
-type Activity = {
-  text: string
-  time: string
-  icon: React.ComponentType<{ className?: string }>
-  tint: string
-}
-
-const QUICK_ACTIONS: QuickAction[] = [
+const QUICK_ACTIONS = [
   {
     title: "Add Employee",
     description: "Onboard new branch staff and ministry volunteers.",
     icon: UserPlus,
     tint: "bg-[#EEF2FF] text-[#3B5BDB]",
+    href: "/branchlead-pastor/hr/employee-directory",
   },
   {
-    title: "Apply for Leave",
+    title: "Review Leave",
     description: "Process time-off requests and sabbatical tracking.",
     icon: CalendarDays,
     tint: "bg-[#ECFDF5] text-emerald-600",
+    href: "/branchlead-pastor/hr/leave",
   },
   {
-    title: "Mark Attendance",
+    title: "Attendance",
     description: "Daily check-ins for operational and ministerial staff.",
     icon: ClipboardCheck,
     tint: "bg-[#FEF3C7] text-amber-600",
+    href: "/branchlead-pastor/hr/attendance",
   },
   {
-    title: "Initiate Loan",
+    title: "Staff Loans",
     description: "Staff welfare fund applications and appraisals.",
     icon: Banknote,
     tint: "bg-[#F3E8FF] text-purple-600",
+    href: "/branchlead-pastor/hr/employee-loans",
   },
 ]
-
-const STAFF_ON_LEAVE: LeaveEntry[] = [
-  { name: "Chidi Okoro", type: "Annual Leave" },
-  { name: "Amina Bello", type: "Sick Leave" },
-  { name: "Yinka Adeyemi", type: "Study Leave" },
-]
-
-const STAFF_STATUS: StaffRow[] = [
-  { name: "Johnathan Doe", role: "Accountant", dept: "Finance", status: "ACTIVE" },
-  { name: "Fatima Yusuf", role: "Front Desk", dept: "Admin", status: "ACTIVE" },
-  { name: "Ikechukwu Nwosu", role: "Maintenance", dept: "Operations", status: "ON LEAVE" },
-]
-
-const RECENT_ACTIVITY: Activity[] = [
-  {
-    text: "Added Tunde Bakare to the Security Department.",
-    time: "2 hours ago",
-    icon: UserPlus,
-    tint: "bg-[#EEF2FF] text-[#3B5BDB]",
-  },
-  {
-    text: "Approved 5 days leave for Sarah Musa.",
-    time: "4 hours ago",
-    icon: CheckCircle2,
-    tint: "bg-[#ECFDF5] text-emerald-600",
-  },
-  {
-    text: "Initiated loan appraisal for Daniel Okon.",
-    time: "Yesterday, 4:30 PM",
-    icon: Banknote,
-    tint: "bg-[#F3E8FF] text-purple-600",
-  },
-  {
-    text: "Flagged Late Attendance for 4 staff members.",
-    time: "Yesterday, 9:15 AM",
-    icon: Flag,
-    tint: "bg-[#FEF2F2] text-rose-600",
-  },
-]
-
-const STATUS_BADGE: Record<StaffStatus, string> = {
-  ACTIVE: "bg-emerald-100 text-emerald-700",
-  "ON LEAVE": "bg-amber-100 text-amber-700",
-}
-
-function initials(name: string) {
-  return name
-    .split(" ")
-    .map((part) => part[0])
-    .filter(Boolean)
-    .slice(0, 2)
-    .join("")
-    .toUpperCase()
-}
-
-const cardCls =
-  "rounded-[14px] border border-[#EEF1F6] bg-white p-5 shadow-[0px_4px_10px_rgba(0,0,0,0.02)]"
 
 export default function Page() {
   const [search, setSearch] = useState("")
+  const router = useRouter()
 
-  // 92% donut geometry
+  const dashboard = usePastorHrDashboard()
+  const summary = dashboard.data?.operationalSummary
+
+  const staff = useEmployees({ limit: 5 })
+  const activity = useAttendanceLogs({ limit: 5 })
+
+  const attendanceRate = summary?.attendanceRate ?? 0
+  const onLeave = summary?.staffOnLeave ?? []
+  const nextTraining = summary?.nextTraining ?? null
+
   const donut = useMemo(() => {
     const radius = 42
     const circumference = 2 * Math.PI * radius
-    const pct = 92
     return {
       radius,
       circumference,
-      offset: circumference * (1 - pct / 100),
+      offset: circumference * (1 - attendanceRate / 100),
     }
-  }, [])
+  }, [attendanceRate])
+
+  const today = new Date()
 
   return (
     <div className="flex min-h-screen bg-[#F2F4F7] font-sans text-[#111827]">
@@ -166,7 +114,10 @@ export default function Page() {
             <button className="text-[#6B7280]">
               <Bell className="h-5 w-5" />
             </button>
-            <button className="flex items-center gap-2 rounded-full bg-[#111827] px-4 py-2 text-[12px] font-semibold text-white">
+            <button
+              onClick={() => router.push("/branchlead-pastor/hr/attendance")}
+              className="flex items-center gap-2 rounded-full bg-[#111827] px-4 py-2 text-[12px] font-semibold text-white"
+            >
               <Clock className="h-4 w-4" />
               Clock-In · Clock-Out
             </button>
@@ -177,17 +128,28 @@ export default function Page() {
           {/* Page header */}
           <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
             <div>
-              <h1 className="text-[26px] font-bold text-[#111827]">Maryland Lagos Dashboard</h1>
+              <h1 className="text-[26px] font-bold text-[#111827]">Branch HR Dashboard</h1>
               <p className="text-[13px] text-[#6B7280] mt-1">
-                Operational home for Branch Administration • Tuesday, Oct 24
+                Operational home for Branch Administration •{" "}
+                {today.toLocaleDateString("en-NG", {
+                  weekday: "long",
+                  month: "short",
+                  day: "numeric",
+                })}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <button className="flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[12px] font-semibold text-[#4B5563] hover:bg-gray-50">
+              <button
+                onClick={() => router.push("/branchlead-pastor/hr/training-management")}
+                className="flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[12px] font-semibold text-[#4B5563] hover:bg-gray-50"
+              >
                 <Calendar className="h-4 w-4" />
-                Schedule Shift
+                Training Schedule
               </button>
-              <button className="flex items-center gap-2 rounded-md bg-[#111827] px-4 py-2 text-[12px] font-semibold text-white">
+              <button
+                onClick={() => router.push("/branchlead-pastor/hr/employee-directory")}
+                className="flex items-center gap-2 rounded-md bg-[#111827] px-4 py-2 text-[12px] font-semibold text-white"
+              >
                 <Plus className="h-4 w-4" />
                 Add Employee
               </button>
@@ -199,11 +161,15 @@ export default function Page() {
             {QUICK_ACTIONS.map((action) => {
               const Icon = action.icon
               return (
-                <button key={action.title} className={cn(cardCls, "text-left")}>
+                <button
+                  key={action.title}
+                  onClick={() => router.push(action.href)}
+                  className={cn(cardCls, "text-left")}
+                >
                   <span
                     className={cn(
                       "flex h-10 w-10 items-center justify-center rounded-xl",
-                      action.tint
+                      action.tint,
                     )}
                   >
                     <Icon className="h-5 w-5" />
@@ -225,86 +191,116 @@ export default function Page() {
                   <h2 className="text-[16px] font-bold text-[#111827]">
                     Today&apos;s Operational Summary
                   </h2>
-                  <span className="rounded-full bg-[#F3F4F6] px-2.5 py-1 text-[10px] font-bold text-[#6B7280]">
-                    Maryland Branch
-                  </span>
+                  {summary && (
+                    <span className="rounded-full bg-[#F3F4F6] px-2.5 py-1 text-[10px] font-bold text-[#6B7280]">
+                      {summary.presentToday} / {summary.totalEmployees} present
+                    </span>
+                  )}
                 </div>
 
-                <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-5">
-                  {/* Attendance Rate donut */}
-                  <div className="rounded-[12px] border border-[#F3F4F6] bg-[#FAFBFF] p-4">
-                    <p className="text-[13px] font-semibold text-[#6B7280]">Attendance Rate</p>
-                    <div className="mt-3 flex items-center justify-center">
-                      <div className="relative h-[110px] w-[110px]">
-                        <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
-                          <circle
-                            cx="50"
-                            cy="50"
-                            r={donut.radius}
-                            fill="none"
-                            stroke="#EEF1F6"
-                            strokeWidth="10"
-                          />
-                          <circle
-                            cx="50"
-                            cy="50"
-                            r={donut.radius}
-                            fill="none"
-                            stroke="#3B5BDB"
-                            strokeWidth="10"
-                            strokeLinecap="round"
-                            strokeDasharray={donut.circumference}
-                            strokeDashoffset={donut.offset}
-                          />
-                        </svg>
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <span className="text-[22px] font-bold text-[#111827]">92%</span>
-                        </div>
-                      </div>
-                    </div>
-                    <p className="mt-3 flex items-center justify-center gap-1 text-[12px] font-semibold text-emerald-600">
-                      <TrendingUp className="h-3.5 w-3.5" />
-                      +4% from yesterday
-                    </p>
-                  </div>
-
-                  {/* Staff on Leave */}
-                  <div className="rounded-[12px] border border-[#F3F4F6] bg-[#FAFBFF] p-4">
-                    <p className="text-[13px] font-semibold text-[#6B7280]">Staff on Leave (3)</p>
-                    <div className="mt-3 flex flex-col gap-3">
-                      {STAFF_ON_LEAVE.map((entry) => (
-                        <div key={entry.name} className="flex items-center gap-3">
-                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EEF2FF] text-[11px] font-bold text-[#3B5BDB]">
-                            {initials(entry.name)}
-                          </span>
-                          <div className="min-w-0">
-                            <p className="text-[13px] font-semibold text-[#111827] truncate">
-                              {entry.name}
-                            </p>
-                            <p className="text-[11px] text-[#9CA3AF]">{entry.type}</p>
+                {dashboard.isLoading || dashboard.error || !summary ? (
+                  <HrPanelState
+                    isLoading={dashboard.isLoading}
+                    error={dashboard.error}
+                    isEmpty={!summary}
+                    emptyTitle="No summary available"
+                    onRetry={() => dashboard.refetch()}
+                    className="mt-5 border-0"
+                  />
+                ) : (
+                  <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-5">
+                    {/* Attendance Rate donut */}
+                    <div className="rounded-[12px] border border-[#F3F4F6] bg-[#FAFBFF] p-4">
+                      <p className="text-[13px] font-semibold text-[#6B7280]">Attendance Rate</p>
+                      <div className="mt-3 flex items-center justify-center">
+                        <div className="relative h-[110px] w-[110px]">
+                          <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
+                            <circle
+                              cx="50"
+                              cy="50"
+                              r={donut.radius}
+                              fill="none"
+                              stroke="#EEF1F6"
+                              strokeWidth="10"
+                            />
+                            <circle
+                              cx="50"
+                              cy="50"
+                              r={donut.radius}
+                              fill="none"
+                              stroke="#3B5BDB"
+                              strokeWidth="10"
+                              strokeLinecap="round"
+                              strokeDasharray={donut.circumference}
+                              strokeDashoffset={donut.offset}
+                            />
+                          </svg>
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <span className="text-[22px] font-bold text-[#111827]">
+                              {attendanceRate}%
+                            </span>
                           </div>
                         </div>
-                      ))}
+                      </div>
+                      <p className="mt-3 text-center text-[12px] text-[#6B7280]">
+                        {summary.presentToday} of {summary.totalEmployees} clocked in today
+                      </p>
                     </div>
-                  </div>
 
-                  {/* Next Training */}
-                  <div className="rounded-[12px] border border-[#F3F4F6] bg-[#FAFBFF] p-4">
-                    <p className="text-[13px] font-semibold text-[#6B7280]">Next Training</p>
-                    <div className="mt-3">
-                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#F3E8FF] text-purple-600">
-                        <GraduationCap className="h-5 w-5" />
-                      </span>
-                      <p className="mt-3 text-[15px] font-bold text-[#111827]">
-                        Security Awareness
+                    {/* Staff on Leave */}
+                    <div className="rounded-[12px] border border-[#F3F4F6] bg-[#FAFBFF] p-4">
+                      <p className="text-[13px] font-semibold text-[#6B7280]">
+                        Staff on Leave ({onLeave.length})
                       </p>
-                      <p className="mt-1 flex items-center gap-1.5 text-[12px] text-[#6B7280]">
-                        <Clock className="h-3.5 w-3.5" />
-                        Starts at 2:00 PM
-                      </p>
+                      {onLeave.length === 0 ? (
+                        <p className="mt-3 text-[12px] text-[#9CA3AF]">Everyone is in today.</p>
+                      ) : (
+                        <div className="mt-3 flex flex-col gap-3">
+                          {onLeave.slice(0, 4).map((entry, index) => {
+                            const name = employeeName(entry.employee)
+                            return (
+                              <div key={`${name}-${index}`} className="flex items-center gap-3">
+                                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EEF2FF] text-[11px] font-bold text-[#3B5BDB]">
+                                  {initials(name)}
+                                </span>
+                                <div className="min-w-0">
+                                  <p className="truncate text-[13px] font-semibold text-[#111827]">
+                                    {name}
+                                  </p>
+                                  <p className="text-[11px] text-[#9CA3AF]">
+                                    Back {formatDate(entry.returnDate, "short")}
+                                  </p>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Next Training */}
+                    <div className="rounded-[12px] border border-[#F3F4F6] bg-[#FAFBFF] p-4">
+                      <p className="text-[13px] font-semibold text-[#6B7280]">Next Training</p>
+                      {nextTraining ? (
+                        <div className="mt-3">
+                          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#F3E8FF] text-purple-600">
+                            <GraduationCap className="h-5 w-5" />
+                          </span>
+                          <p className="mt-3 text-[15px] font-bold text-[#111827]">
+                            {nextTraining.title}
+                          </p>
+                          <p className="mt-1 flex items-center gap-1.5 text-[12px] text-[#6B7280]">
+                            <Clock className="h-3.5 w-3.5" />
+                            {formatDate(nextTraining.startDate, "short")} ·{" "}
+                            {nextTraining.startTime}
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="mt-3 text-[12px] text-[#9CA3AF]">Nothing scheduled.</p>
+                      )}
                     </div>
                   </div>
-                </div>
+                )}
               </div>
 
               {/* Staff Status Overview */}
@@ -316,83 +312,118 @@ export default function Page() {
                   <table className="w-full text-left">
                     <thead className="bg-[#F9FAFB]">
                       <tr>
-                        <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                          Employee
-                        </th>
-                        <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                          Role
-                        </th>
-                        <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                          Dept
-                        </th>
-                        <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                          Status
-                        </th>
+                        {["Employee", "Role", "Dept", "Status"].map((h) => (
+                          <th
+                            key={h}
+                            className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]"
+                          >
+                            {h}
+                          </th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#F3F4F6]">
-                      {STAFF_STATUS.map((row) => (
-                        <tr key={row.name}>
-                          <td className="px-4 py-4 text-[13px]">
-                            <div className="flex items-center gap-3">
-                              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EEF2FF] text-[11px] font-bold text-[#3B5BDB]">
-                                {initials(row.name)}
+                      <HrTableState
+                        colSpan={4}
+                        isLoading={staff.isLoading}
+                        error={staff.error}
+                        isEmpty={(staff.data?.items.length ?? 0) === 0}
+                        emptyTitle="No staff records"
+                        onRetry={() => staff.refetch()}
+                      />
+
+                      {!staff.isLoading &&
+                        !staff.error &&
+                        staff.data?.items.map((employee) => (
+                          <tr key={employee._id}>
+                            <td className="px-4 py-3 text-[13px] font-semibold text-[#111827]">
+                              {userName(employee.userId, employee.employeeId)}
+                            </td>
+                            <td className="px-4 py-3 text-[13px] text-[#4B5563]">
+                              {employee.jobTitle}
+                            </td>
+                            <td className="px-4 py-3 text-[13px] text-[#4B5563]">
+                              {employee.department ?? "—"}
+                            </td>
+                            <td className="px-4 py-3 text-[13px]">
+                              <span
+                                className={cn(
+                                  "inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold",
+                                  badgeFor(EMPLOYMENT_STATUS_BADGES, employee.employmentStatus),
+                                )}
+                              >
+                                {lookup(EMPLOYMENT_STATUS_LABELS, employee.employmentStatus)}
                               </span>
-                              <span className="font-semibold text-[#111827]">{row.name}</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-4 text-[13px] text-[#6B7280]">{row.role}</td>
-                          <td className="px-4 py-4 text-[13px] text-[#6B7280]">{row.dept}</td>
-                          <td className="px-4 py-4 text-[13px]">
-                            <span
-                              className={cn(
-                                "rounded-full px-2.5 py-1 text-[10px] font-bold",
-                                STATUS_BADGE[row.status]
-                              )}
-                            >
-                              {row.status}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
+                            </td>
+                          </tr>
+                        ))}
                     </tbody>
                   </table>
                 </div>
               </div>
             </div>
 
-            {/* RIGHT */}
-            <div className="lg:col-span-1">
-              <div className={cardCls}>
-                <h2 className="text-[16px] font-bold text-[#111827]">Recent Activity</h2>
-                <p className="text-[13px] text-[#6B7280] mt-1">Your actions in the last 24h</p>
+            {/* RIGHT: Recent Activity */}
+            <div className={cardCls}>
+              <h2 className="text-[16px] font-bold text-[#111827]">Recent Activity</h2>
 
-                <div className="mt-5 flex flex-col">
-                  {RECENT_ACTIVITY.map((activity, idx) => {
-                    const Icon = activity.icon
-                    const last = idx === RECENT_ACTIVITY.length - 1
+              {activity.isLoading ||
+              activity.error ||
+              (activity.data?.items.length ?? 0) === 0 ? (
+                <HrPanelState
+                  isLoading={activity.isLoading}
+                  error={activity.error}
+                  isEmpty={(activity.data?.items.length ?? 0) === 0}
+                  emptyTitle="No activity yet"
+                  emptyDescription="Clock-ins will show up here."
+                  onRetry={() => activity.refetch()}
+                  className="mt-4 border-0 p-4"
+                />
+              ) : (
+                <div className="mt-4 flex flex-col gap-5">
+                  {activity.data?.items.map((log, idx, all) => {
+                    const last = idx === all.length - 1
+                    const staffName = employeeName(log.employeeId)
+                    const employee = deref(log.employeeId)
                     return (
-                      <div key={activity.text} className="flex gap-3">
-                        <div className="flex flex-col items-center">
-                          <span
-                            className={cn(
-                              "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-                              activity.tint
-                            )}
-                          >
-                            <Icon className="h-4 w-4" />
-                          </span>
-                          {!last && <span className="w-px flex-1 bg-[#F3F4F6]" />}
-                        </div>
-                        <div className={cn("min-w-0", last ? "pb-0" : "pb-5")}>
-                          <p className="text-[13px] font-medium text-[#111827]">{activity.text}</p>
-                          <p className="mt-0.5 text-[11px] text-[#9CA3AF]">{activity.time}</p>
+                      <div key={log._id} className="relative flex gap-3">
+                        {!last && (
+                          <span className="absolute left-[15px] top-9 bottom-[-20px] w-px bg-[#F3F4F6]" />
+                        )}
+                        <span
+                          className={cn(
+                            "relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-bold",
+                            log.status === "late"
+                              ? "bg-[#FEF3C7] text-amber-600"
+                              : log.status === "absent"
+                                ? "bg-rose-50 text-rose-600"
+                                : "bg-[#ECFDF5] text-emerald-600",
+                          )}
+                        >
+                          {initials(staffName)}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[13px] text-[#111827]">
+                            <span className="font-semibold">{staffName}</span>{" "}
+                            {log.clockIn
+                              ? "clocked in"
+                              : `marked ${lookup(
+                                  ATTENDANCE_STATUS_LABELS,
+                                  log.status,
+                                ).toLowerCase()}`}
+                            {employee?.department ? ` · ${employee.department}` : ""}
+                          </p>
+                          <p className="mt-0.5 text-[11px] text-[#9CA3AF]">
+                            {log.clockIn
+                              ? clockTime(log.clockIn)
+                              : formatDate(log.date, "medium")}
+                          </p>
                         </div>
                       </div>
                     )
                   })}
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </div>

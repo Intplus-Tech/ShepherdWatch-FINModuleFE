@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo } from "react"
 import {
   Search,
   Bell,
@@ -8,128 +8,75 @@ import {
   CalendarDays,
   FileText,
   BarChart3,
-  CheckCircle2,
-  Banknote,
-  DoorOpen,
+  Activity,
   type LucideIcon,
 } from "lucide-react"
 import BranchAccountantSidebar from "@/components/navigation/BranchAccountantSidebar"
+import { HrPanelState, HrStatValue, HrTableState } from "@/components/hr/HrDataState"
+import { useAccountantHrDashboard } from "@/components/hooks/hr/useHrDashboard"
+import { formatCurrency, formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 type Stat = {
   label: string
   value: string
   note?: string
-  noteEmerald?: boolean
   icon: LucideIcon
   iconClass: string
 }
 
-const STATS: Stat[] = [
-  {
-    label: "Total Employees",
-    value: "148",
-    note: "↗ +2.4% vs last month",
-    noteEmerald: true,
-    icon: Building2,
-    iconClass: "text-[#3B5BDB]",
-  },
-  {
-    label: "Payroll (MTD)",
-    value: "₦2.8M",
-    note: "YTD: ₦33.5M",
-    icon: CalendarDays,
-    iconClass: "text-amber-500",
-  },
-  {
-    label: "Active Loans",
-    value: "21",
-    icon: FileText,
-    iconClass: "text-[#6B7280]",
-  },
-  {
-    label: "Loan Balance",
-    value: "₦1,800,000",
-    icon: BarChart3,
-    iconClass: "text-emerald-500",
-  },
-]
-
-type ChartMonth = {
-  month: string
-  greenLabel: string
-  greenHeight: string
-  redLabel: string
-  redHeight: string
+/** Compact naira for the KPI tiles (₦2.8M rather than ₦2,800,000.00). */
+function compactNaira(value: number): string {
+  if (!Number.isFinite(value)) return "—"
+  if (Math.abs(value) >= 1_000_000) return `₦${(value / 1_000_000).toFixed(1)}M`
+  if (Math.abs(value) >= 1_000) return `₦${Math.round(value / 1_000)}K`
+  return formatCurrency(value, { maximumFractionDigits: 0 })
 }
-
-const CHART_MONTHS: ChartMonth[] = [
-  { month: "NOV", greenLabel: "₦2.8M", greenHeight: "h-40", redLabel: "₦500K", redHeight: "h-10" },
-  { month: "DEC", greenLabel: "₦2.8M", greenHeight: "h-40", redLabel: "₦500K", redHeight: "h-10" },
-  { month: "JAN", greenLabel: "₦2.8M", greenHeight: "h-40", redLabel: "₦500K", redHeight: "h-10" },
-  { month: "FEB", greenLabel: "₦2.8M", greenHeight: "h-40", redLabel: "₦500K", redHeight: "h-10" },
-  { month: "MAR", greenLabel: "₦2.8M", greenHeight: "h-40", redLabel: "₦500K", redHeight: "h-10" },
-  { month: "APR", greenLabel: "₦2.8M", greenHeight: "h-40", redLabel: "₦500K", redHeight: "h-10" },
-]
-
-type RepaymentStatus = "ON TRACK" | "DUE SOON" | "OVERDUE"
-
-type LoanCategory = {
-  category: string
-  active: number
-  totalPrincipal: string
-  status: RepaymentStatus
-}
-
-const LOAN_CATEGORIES: LoanCategory[] = [
-  { category: "Personal Loans", active: 12, totalPrincipal: "₦8.5M", status: "ON TRACK" },
-  { category: "Salary Advance", active: 8, totalPrincipal: "₦4.2M", status: "ON TRACK" },
-  { category: "Vehicle Finance", active: 3, totalPrincipal: "₦5.0M", status: "DUE SOON" },
-  { category: "Education Aid", active: 1, totalPrincipal: "₦500k", status: "OVERDUE" },
-]
-
-const STATUS_STYLES: Record<RepaymentStatus, string> = {
-  "ON TRACK": "bg-emerald-100 text-emerald-700",
-  "DUE SOON": "bg-amber-100 text-amber-700",
-  OVERDUE: "bg-rose-100 text-rose-700",
-}
-
-type TimelineItem = {
-  title: string
-  time: string
-  description?: string
-  pill?: string
-  icon: LucideIcon
-  iconClass: string
-}
-
-const TIMELINE: TimelineItem[] = [
-  {
-    title: "Payroll Reconciled (Apr 2024)",
-    time: "TODAY • 09:14 AM",
-    description:
-      "Validated disbursement for 148 branch employees. Total sum: ₦42,840,000.",
-    icon: CheckCircle2,
-    iconClass: "bg-emerald-100 text-emerald-600",
-  },
-  {
-    title: "Loan Approved: A. Okoro",
-    time: "YESTERDAY • 04:30 PM",
-    pill: "₦1,200,000 • Personal",
-    icon: Banknote,
-    iconClass: "bg-[#EEF2FF] text-[#3B5BDB]",
-  },
-  {
-    title: "Exit Clearance Processing",
-    time: "18 APR • 11:20 AM",
-    description: "Final settlement calculation initiated for M. Ibrahim.",
-    icon: DoorOpen,
-    iconClass: "bg-amber-100 text-amber-600",
-  },
-]
 
 export default function Page() {
-  const [chartRange, setChartRange] = useState<"6 Months" | "1 Year">("6 Months")
+  const dashboard = useAccountantHrDashboard()
+  const data = dashboard.data
+
+  const stats: Stat[] = useMemo(
+    () => [
+      {
+        label: "Total Employees",
+        value: data ? String(data.kpis.totalEmployees) : "—",
+        icon: Building2,
+        iconClass: "text-[#3B5BDB]",
+      },
+      {
+        label: "Payroll (MTD)",
+        value: data ? compactNaira(data.kpis.payrollMtd) : "—",
+        icon: CalendarDays,
+        iconClass: "text-amber-500",
+      },
+      {
+        label: "Active Loans",
+        value: data ? String(data.kpis.activeLoans) : "—",
+        icon: FileText,
+        iconClass: "text-[#6B7280]",
+      },
+      {
+        label: "Loan Balance",
+        value: data ? formatCurrency(data.kpis.loanBalance, { maximumFractionDigits: 0 }) : "—",
+        icon: BarChart3,
+        iconClass: "text-emerald-500",
+      },
+    ],
+    [data],
+  )
+
+  const trend = useMemo(() => data?.workforceCostTrend ?? [], [data])
+
+  /** Bars are scaled against the tallest payroll month in the series. */
+  const maxCost = useMemo(
+    () => Math.max(1, ...trend.map((point) => Math.max(point.payroll, point.deductions))),
+    [trend],
+  )
+
+  const portfolio = data?.loanPortfolioHealth ?? []
+  const actions = data?.recentActions ?? []
 
   return (
     <div className="flex min-h-screen flex-col lg:flex-row bg-[#F8FAFC]">
@@ -154,7 +101,7 @@ export default function Page() {
 
         {/* Stat cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          {STATS.map((stat) => {
+          {stats.map((stat) => {
             const Icon = stat.icon
             return (
               <div
@@ -162,25 +109,16 @@ export default function Page() {
                 className="relative rounded-xl border border-[#EEF1F6] bg-white p-5"
               >
                 <Icon
-                  className={cn(
-                    "absolute right-5 top-5 h-8 w-8 opacity-20",
-                    stat.iconClass
-                  )}
+                  className={cn("absolute right-5 top-5 h-8 w-8 opacity-20", stat.iconClass)}
                 />
                 <div className="text-[12px] text-[#6B7280]">{stat.label}</div>
                 <div className="mt-2 text-[24px] font-bold text-[#111827]">
-                  {stat.value}
+                  <HrStatValue
+                    isLoading={dashboard.isLoading}
+                    error={dashboard.error}
+                    value={stat.value}
+                  />
                 </div>
-                {stat.note && (
-                  <div
-                    className={cn(
-                      "mt-1 text-[12px]",
-                      stat.noteEmerald ? "text-emerald-600" : "text-[#6B7280]"
-                    )}
-                  >
-                    {stat.note}
-                  </div>
-                )}
               </div>
             )
           })}
@@ -189,105 +127,110 @@ export default function Page() {
         {/* Workforce Cost Trend */}
         <div className="mt-5 rounded-xl border border-[#EEF1F6] bg-white p-5">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-[16px] font-bold text-[#111827]">
-              Workforce Cost Trend
-            </h2>
-            <div className="flex items-center gap-1 rounded-full bg-[#F3F4F6] p-1">
-              {(["6 Months", "1 Year"] as const).map((range) => (
-                <button
-                  key={range}
-                  type="button"
-                  onClick={() => setChartRange(range)}
-                  className={cn(
-                    "rounded-full px-3 py-1 text-[12px] font-semibold transition-colors",
-                    chartRange === range
-                      ? "bg-[#EEF2FF] text-[#3B5BDB]"
-                      : "text-[#6B7280]"
-                  )}
-                >
-                  {range}
-                </button>
-              ))}
+            <h2 className="text-[16px] font-bold text-[#111827]">Workforce Cost Trend</h2>
+            <div className="flex items-center gap-4 text-[11px] font-semibold">
+              <span className="flex items-center gap-1.5 text-[#6B7280]">
+                <span className="h-2.5 w-2.5 rounded-sm bg-emerald-500" />
+                Net payroll
+              </span>
+              <span className="flex items-center gap-1.5 text-[#6B7280]">
+                <span className="h-2.5 w-2.5 rounded-sm bg-red-500" />
+                Deductions
+              </span>
             </div>
           </div>
 
-          {/* Bar chart */}
-          <div className="mt-8 flex items-end justify-between gap-4 sm:gap-8 overflow-x-auto">
-            {CHART_MONTHS.map((m, i) => (
-              <div key={`${m.month}-${i}`} className="flex flex-1 flex-col items-center gap-2 min-w-[48px]">
-                <div className="flex items-end gap-2">
-                  {/* Green bar */}
-                  <div className="flex flex-col items-center justify-end">
-                    <span className="mb-1 text-[10px] font-bold text-emerald-600">
-                      {m.greenLabel}
-                    </span>
-                    <div className={cn("w-6 rounded-t-md bg-emerald-500", m.greenHeight)} />
+          {dashboard.isLoading || dashboard.error || trend.length === 0 ? (
+            <HrPanelState
+              isLoading={dashboard.isLoading}
+              error={dashboard.error}
+              isEmpty={trend.length === 0}
+              emptyTitle="No payroll history"
+              emptyDescription="Cost trends appear once payroll runs are recorded."
+              onRetry={() => dashboard.refetch()}
+              className="mt-6 border-0"
+            />
+          ) : (
+            <div className="mt-8 flex items-end justify-between gap-4 overflow-x-auto sm:gap-8">
+              {trend.map((point) => (
+                <div
+                  key={point.period}
+                  className="flex min-w-[48px] flex-1 flex-col items-center gap-2"
+                >
+                  <div className="flex items-end gap-2">
+                    <div className="flex flex-col items-center justify-end">
+                      <span className="mb-1 text-[10px] font-bold text-emerald-600">
+                        {compactNaira(point.payroll)}
+                      </span>
+                      <div
+                        className="w-6 rounded-t-md bg-emerald-500"
+                        style={{ height: `${Math.max(4, (point.payroll / maxCost) * 160)}px` }}
+                      />
+                    </div>
+                    <div className="flex flex-col items-center justify-end">
+                      <span className="mb-1 text-[10px] font-bold text-red-500">
+                        {compactNaira(point.deductions)}
+                      </span>
+                      <div
+                        className="w-6 rounded-t-md bg-red-500"
+                        style={{
+                          height: `${Math.max(4, (point.deductions / maxCost) * 160)}px`,
+                        }}
+                      />
+                    </div>
                   </div>
-                  {/* Red bar */}
-                  <div className="flex flex-col items-center justify-end">
-                    <span className="mb-1 text-[10px] font-bold text-red-500">
-                      {m.redLabel}
-                    </span>
-                    <div className={cn("w-6 rounded-t-md bg-red-500", m.redHeight)} />
-                  </div>
+                  <span className="text-[11px] font-semibold uppercase text-[#6B7280]">
+                    {point.month}
+                  </span>
                 </div>
-                <span className="text-[11px] font-semibold text-[#6B7280]">
-                  {m.month}
-                </span>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Loan Portfolio + Recent Actions */}
         <div className="mt-5 grid grid-cols-1 lg:grid-cols-3 gap-5">
           {/* LEFT: Loan Portfolio Health */}
           <div className="lg:col-span-2 rounded-xl border border-[#EEF1F6] bg-white p-5">
-            <h2 className="text-[16px] font-bold text-[#111827]">
-              Loan Portfolio Health
-            </h2>
+            <h2 className="text-[16px] font-bold text-[#111827]">Loan Portfolio Health</h2>
             <div className="mt-4 overflow-x-auto">
               <table className="w-full text-left">
                 <thead className="bg-[#F9FAFB]">
                   <tr>
-                    <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">
-                      Category
-                    </th>
-                    <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">
-                      Active
-                    </th>
-                    <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">
-                      Total Principal
-                    </th>
-                    <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">
-                      Repayment Status
-                    </th>
+                    {["Purpose", "Active", "Total Principal"].map((h) => (
+                      <th
+                        key={h}
+                        className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]"
+                      >
+                        {h}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#F3F4F6]">
-                  {LOAN_CATEGORIES.map((c) => (
-                    <tr key={c.category}>
-                      <td className="px-4 py-4 text-[13px] font-bold text-[#111827]">
-                        {c.category}
-                      </td>
-                      <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                        {c.active}
-                      </td>
-                      <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                        {c.totalPrincipal}
-                      </td>
-                      <td className="px-4 py-4 text-[13px]">
-                        <span
-                          className={cn(
-                            "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold",
-                            STATUS_STYLES[c.status]
-                          )}
-                        >
-                          {c.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  <HrTableState
+                    colSpan={3}
+                    isLoading={dashboard.isLoading}
+                    error={dashboard.error}
+                    isEmpty={portfolio.length === 0}
+                    emptyTitle="No active loans"
+                    emptyDescription="Approved loans are grouped here by purpose."
+                    onRetry={() => dashboard.refetch()}
+                  />
+
+                  {!dashboard.isLoading &&
+                    !dashboard.error &&
+                    portfolio.map((row) => (
+                      <tr key={row.category}>
+                        <td className="px-4 py-4 text-[13px] font-bold text-[#111827]">
+                          {row.category}
+                        </td>
+                        <td className="px-4 py-4 text-[13px] text-[#4B5563]">{row.count}</td>
+                        <td className="px-4 py-4 text-[13px] text-[#4B5563]">
+                          {formatCurrency(row.principal, { maximumFractionDigits: 0 })}
+                        </td>
+                      </tr>
+                    ))}
                 </tbody>
               </table>
             </div>
@@ -295,49 +238,44 @@ export default function Page() {
 
           {/* RIGHT: Recent Financial Actions */}
           <div className="lg:col-span-1 rounded-xl border border-[#EEF1F6] bg-white p-5">
-            <h2 className="text-[16px] font-bold text-[#111827]">
-              Recent Financial Actions
-            </h2>
-            <ol className="mt-5 space-y-6">
-              {TIMELINE.map((item, i) => {
-                const Icon = item.icon
-                const isLast = i === TIMELINE.length - 1
-                return (
-                  <li key={item.title} className="relative flex gap-3">
-                    {/* Connector line */}
-                    {!isLast && (
-                      <span className="absolute left-[15px] top-8 bottom-[-24px] w-px bg-[#F3F4F6]" />
-                    )}
-                    <span
-                      className={cn(
-                        "relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-                        item.iconClass
+            <h2 className="text-[16px] font-bold text-[#111827]">Recent Financial Actions</h2>
+
+            {dashboard.isLoading || dashboard.error || actions.length === 0 ? (
+              <HrPanelState
+                isLoading={dashboard.isLoading}
+                error={dashboard.error}
+                isEmpty={actions.length === 0}
+                emptyTitle="No recent activity"
+                emptyDescription="Audited HR actions appear here."
+                onRetry={() => dashboard.refetch()}
+                className="mt-5 border-0 p-4"
+              />
+            ) : (
+              <ol className="mt-5 space-y-6">
+                {actions.map((item, i) => {
+                  const isLast = i === actions.length - 1
+                  return (
+                    <li key={`${item.action}-${item.timestamp}`} className="relative flex gap-3">
+                      {!isLast && (
+                        <span className="absolute left-[15px] top-8 bottom-[-24px] w-px bg-[#F3F4F6]" />
                       )}
-                    >
-                      <Icon className="h-4 w-4" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[13px] font-bold text-[#111827]">
-                        {item.title}
-                      </div>
-                      <div className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                        {item.time}
-                      </div>
-                      {item.description && (
+                      <span className="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EEF2FF] text-[#3B5BDB]">
+                        <Activity className="h-4 w-4" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[13px] font-bold text-[#111827]">{item.action}</div>
+                        <div className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
+                          {formatDate(item.timestamp, "datetime")}
+                        </div>
                         <p className="mt-1.5 text-[12px] leading-relaxed text-[#6B7280]">
-                          {item.description}
+                          by {item.user}
                         </p>
-                      )}
-                      {item.pill && (
-                        <span className="mt-2 inline-flex items-center rounded-full bg-[#EEF2FF] px-2.5 py-1 text-[10px] font-bold text-[#3B5BDB]">
-                          {item.pill}
-                        </span>
-                      )}
-                    </div>
-                  </li>
-                )
-              })}
-            </ol>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ol>
+            )}
           </div>
         </div>
       </main>

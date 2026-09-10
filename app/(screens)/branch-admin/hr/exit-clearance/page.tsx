@@ -1,61 +1,40 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import {
   Menu,
   Search,
   Bell,
-  User,
   ArrowLeftRight,
   Check,
+  Loader2,
   Wallet,
   Boxes,
   ShieldCheck,
   Eye,
 } from "lucide-react"
 import BranchAdminSidebar from "@/components/navigation/BranchAdminSidebar"
+import { EmployeePicker } from "@/components/hr/EmployeePicker"
+import { HrTableState, hrErrorMessage } from "@/components/hr/HrDataState"
+import { HrPagination } from "@/components/hr/HrPagination"
+import { useBranchId } from "@/components/hooks/hr/useBranchId"
+import {
+  useExitClearances,
+  useInitiateExitClearance,
+} from "@/components/hooks/hr/useHrExitClearance"
+import {
+  CLEARANCE_STATUS_BADGES,
+  CLEARANCE_STATUS_LABELS,
+  badgeFor,
+  deref,
+  employeeName,
+  initials,
+  lookup,
+} from "@/lib/hr/normalize"
+import { formatDate } from "@/lib/format"
+import { withSuspense } from "@/lib/withSuspense"
 import { cn } from "@/lib/utils"
-
-type SeparationStatus = "Awaiting Assets" | "Completed"
-
-type Separation = {
-  id: string
-  name: string
-  staffId: string
-  initials: string
-  department: string
-  exitDate: string
-  status: SeparationStatus
-}
-
-const SEPARATIONS: Separation[] = [
-  {
-    id: "robert-mensah",
-    name: "Robert Mensah",
-    staffId: "SW-8821",
-    initials: "RM",
-    department: "Protocol",
-    exitDate: "Oct 24, 2023",
-    status: "Awaiting Assets",
-  },
-  {
-    id: "anita-lowman",
-    name: "Anita Lowman",
-    staffId: "SW-7239",
-    initials: "AL",
-    department: "Choir Administration",
-    exitDate: "Oct 15, 2023",
-    status: "Completed",
-  },
-]
-
-const EMPLOYEE_OPTIONS = [
-  "Robert Mensah",
-  "Anita Lowman",
-  "Ariel Mwangi",
-  "David Wilson",
-]
 
 const REASON_OPTIONS = [
   "Resignation",
@@ -83,41 +62,67 @@ const WORKFLOW_ITEMS = [
   },
 ]
 
-function StatusPill({ status }: { status: SeparationStatus }) {
-  const isAwaiting = status === "Awaiting Assets"
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider",
-        isAwaiting
-          ? "bg-amber-100 text-amber-700"
-          : "bg-emerald-100 text-emerald-700"
-      )}
-    >
-      <span
-        className={cn(
-          "h-1.5 w-1.5 rounded-full",
-          isAwaiting ? "bg-amber-500" : "bg-emerald-500"
-        )}
-      />
-      {status}
-    </span>
-  )
-}
+const PAGE_SIZE = 10
 
-export default function Page() {
+function Page() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const branchId = useBranchId()
+
   const [mobileOpen, setMobileOpen] = useState(false)
-  const [employee, setEmployee] = useState("")
+  // Pre-selected when arriving from an employee profile.
+  const [employee, setEmployee] = useState(searchParams.get("employeeId") ?? "")
   const [exitDate, setExitDate] = useState("")
   const [reason, setReason] = useState("")
   const [notes, setNotes] = useState("")
-  const router = useRouter()
+  const [formError, setFormError] = useState<string | null>(null)
+  const [page, setPage] = useState(1)
+
+  const clearances = useExitClearances({ page, limit: PAGE_SIZE })
+  const initiate = useInitiateExitClearance()
 
   const resetForm = () => {
     setEmployee("")
     setExitDate("")
     setReason("")
     setNotes("")
+    setFormError(null)
+  }
+
+  async function handleInitiate() {
+    setFormError(null)
+
+    if (!employee) {
+      setFormError("Select the departing employee.")
+      return
+    }
+    if (!exitDate) {
+      setFormError("Set the last working day.")
+      return
+    }
+    if (!reason) {
+      setFormError("Choose a reason for the exit.")
+      return
+    }
+    if (!branchId) {
+      setFormError("Your account has no branch assigned, so this can't be started.")
+      return
+    }
+
+    try {
+      const created = await initiate.mutateAsync({
+        employeeId: employee,
+        branchId,
+        // The backend stores one reason string; the notes refine it.
+        reason: notes.trim() ? `${reason} — ${notes.trim()}` : reason,
+        lastWorkingDate: new Date(exitDate).toISOString(),
+      })
+      resetForm()
+      const id = (created as { _id?: string } | null)?._id
+      if (id) router.push(`/branch-admin/hr/admin-clearance?id=${id}`)
+    } catch (error) {
+      setFormError(hrErrorMessage(error))
+    }
   }
 
   return (
@@ -196,21 +201,12 @@ export default function Page() {
                     <label className="text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
                       Select Employee
                     </label>
-                    <div className="relative">
-                      <User className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
-                      <select
-                        value={employee}
-                        onChange={(e) => setEmployee(e.target.value)}
-                        className="w-full appearance-none rounded-[8px] border border-[#E5E7EB] bg-white pl-10 pr-3.5 py-2.5 text-[13px] text-[#111827]"
-                      >
-                        <option value="">Search from branch directory...</option>
-                        {EMPLOYEE_OPTIONS.map((name) => (
-                          <option key={name} value={name}>
-                            {name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    <EmployeePicker
+                      value={employee}
+                      onChange={setEmployee}
+                      placeholder="Search from branch directory..."
+                      disabled={initiate.isPending}
+                    />
                   </div>
 
                   {/* Exit date + reason */}
@@ -260,12 +256,22 @@ export default function Page() {
                   </div>
 
                   {/* Actions */}
+                  {formError && (
+                    <p className="mt-4 text-[12px] font-medium text-red-600">{formError}</p>
+                  )}
+
                   <div className="mt-6 flex flex-wrap items-center gap-3">
                     <button
                       type="button"
-                      className="inline-flex items-center gap-2 rounded-md bg-[#111827] px-5 py-2.5 text-[13px] font-semibold text-white hover:bg-black"
+                      onClick={handleInitiate}
+                      disabled={initiate.isPending}
+                      className="inline-flex items-center gap-2 rounded-md bg-[#111827] px-5 py-2.5 text-[13px] font-semibold text-white hover:bg-black disabled:opacity-60"
                     >
-                      <ArrowLeftRight className="h-4 w-4" />
+                      {initiate.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <ArrowLeftRight className="h-4 w-4" />
+                      )}
                       Initiate Clearance Process
                     </button>
                     <button
@@ -323,25 +329,13 @@ export default function Page() {
               <h2 className="text-[16px] font-bold text-[#111827]">
                 Recent Separations
               </h2>
-              <button
-                type="button"
-                className="text-[13px] font-semibold text-[#2563EB] hover:underline"
-              >
-                View full history →
-              </button>
             </div>
 
             <div className="overflow-x-auto">
               <table className="w-full text-left">
                 <thead className="bg-[#EEF2FF]">
                   <tr>
-                    {[
-                      "Staff Member",
-                      "Department",
-                      "Exit Date",
-                      "Status",
-                      "Action",
-                    ].map((h) => (
+                    {["Staff Member", "Department", "Exit Date", "Status", "Action"].map((h) => (
                       <th
                         key={h}
                         className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]"
@@ -352,52 +346,85 @@ export default function Page() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#F3F4F6]">
-                  {SEPARATIONS.map((s) => (
-                    <tr key={s.id}>
-                      <td className="px-4 py-4 text-[13px]">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#EEF2FF] text-[12px] font-bold text-[#2563EB]">
-                            {s.initials}
-                          </div>
-                          <div className="flex flex-col">
-                            <span className="font-bold text-[#111827]">
-                              {s.name}
+                  <HrTableState
+                    colSpan={5}
+                    isLoading={clearances.isLoading}
+                    error={clearances.error}
+                    isEmpty={(clearances.data?.items.length ?? 0) === 0}
+                    emptyTitle="No separations on record"
+                    emptyDescription="Clearances you start will be listed here."
+                    onRetry={() => clearances.refetch()}
+                  />
+
+                  {!clearances.isLoading &&
+                    !clearances.error &&
+                    clearances.data?.items.map((clearance) => {
+                      const staff = deref(clearance.employeeId)
+                      const name = employeeName(clearance.employeeId)
+                      return (
+                        <tr key={clearance._id}>
+                          <td className="px-4 py-4 text-[13px]">
+                            <div className="flex items-center gap-3">
+                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#EEF2FF] text-[12px] font-bold text-[#2563EB]">
+                                {initials(name)}
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="font-bold text-[#111827]">{name}</span>
+                                <span className="text-[12px] text-[#9CA3AF]">
+                                  ID: {staff?.employeeId ?? "—"}
+                                </span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-4 text-[13px] text-[#4B5563]">
+                            {staff?.department ?? staff?.jobTitle ?? "—"}
+                          </td>
+                          <td className="px-4 py-4 text-[13px] text-[#4B5563]">
+                            {formatDate(clearance.lastWorkingDate, "medium")}
+                          </td>
+                          <td className="px-4 py-4 text-[13px]">
+                            <span
+                              className={cn(
+                                "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider",
+                                badgeFor(CLEARANCE_STATUS_BADGES, clearance.status),
+                              )}
+                            >
+                              {lookup(CLEARANCE_STATUS_LABELS, clearance.status)}
                             </span>
-                            <span className="text-[12px] text-[#9CA3AF]">
-                              ID: {s.staffId}
-                            </span>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                        {s.department}
-                      </td>
-                      <td className="px-4 py-4 text-[13px] text-[#4B5563]">
-                        {s.exitDate}
-                      </td>
-                      <td className="px-4 py-4 text-[13px]">
-                        <StatusPill status={s.status} />
-                      </td>
-                      <td className="px-4 py-4 text-[13px]">
-                        <button
-                          type="button"
-                          aria-label={`View ${s.name}`}
-                          onClick={() =>
-                            router.push("/branch-admin/hr/admin-clearance")
-                          }
-                          className="flex h-8 w-8 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[#6B7280] hover:bg-[#F8FAFC] hover:text-[#2563EB]"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                          </td>
+                          <td className="px-4 py-4 text-[13px]">
+                            <button
+                              type="button"
+                              aria-label={`View ${name}`}
+                              onClick={() =>
+                                router.push(
+                                  `/branch-admin/hr/admin-clearance?id=${clearance._id}`,
+                                )
+                              }
+                              className="flex h-8 w-8 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[#6B7280] hover:bg-[#F8FAFC] hover:text-[#2563EB]"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    })}
                 </tbody>
               </table>
             </div>
+
+            <HrPagination
+              pagination={clearances.data?.pagination}
+              page={page}
+              onPageChange={setPage}
+              itemCount={clearances.data?.items.length ?? 0}
+              noun="separations"
+            />
           </div>
         </main>
       </div>
     </div>
   )
 }
+
+export default withSuspense(Page)

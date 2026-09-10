@@ -1,7 +1,20 @@
 "use client"
 
-import { X, User } from "lucide-react"
+import { useEffect, useState } from "react"
+import { Loader2, X } from "lucide-react"
 import { ModalShell } from "@/components/ui/modal-shell"
+import { EmployeePicker } from "@/components/hr/EmployeePicker"
+import { hrErrorMessage } from "@/components/hr/HrDataState"
+import { useBranchId } from "@/components/hooks/hr/useBranchId"
+import { useApplyLeaveOnBehalf, useLeaveTypes } from "@/components/hooks/hr/useHrLeave"
+
+const labelCls = "mb-1.5 block text-[13px] font-semibold text-[#374151]"
+const fieldCls =
+  "h-[42px] w-full rounded-[10px] border border-[#E5E7EB] bg-white px-3 text-[13px] text-[#111827] outline-none focus:border-[#2563EB]"
+
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10)
+}
 
 export default function BranchAdminApplyLeaveModal({
   open,
@@ -10,6 +23,67 @@ export default function BranchAdminApplyLeaveModal({
   open: boolean
   onClose: () => void
 }) {
+  const branchId = useBranchId()
+  const leaveTypes = useLeaveTypes({ enabled: open })
+  const applyOnBehalf = useApplyLeaveOnBehalf()
+
+  const [employeeId, setEmployeeId] = useState("")
+  const [leaveTypeId, setLeaveTypeId] = useState("")
+  const [startDate, setStartDate] = useState(todayIso())
+  const [endDate, setEndDate] = useState(todayIso())
+  const [reason, setReason] = useState("")
+  const [formError, setFormError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    setEmployeeId("")
+    setLeaveTypeId("")
+    setStartDate(todayIso())
+    setEndDate(todayIso())
+    setReason("")
+    setFormError(null)
+    applyOnBehalf.reset()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  async function handleSubmit() {
+    setFormError(null)
+
+    if (!employeeId) {
+      setFormError("Select the employee this request is for.")
+      return
+    }
+    if (!leaveTypeId) {
+      setFormError("Choose a leave type.")
+      return
+    }
+    if (new Date(endDate) < new Date(startDate)) {
+      setFormError("The end date can't be before the start date.")
+      return
+    }
+    if (!branchId) {
+      setFormError("Your account has no branch assigned, so this can't be submitted.")
+      return
+    }
+
+    try {
+      await applyOnBehalf.mutateAsync({
+        employeeId,
+        branchId,
+        leaveTypeId,
+        startDate: new Date(startDate).toISOString(),
+        endDate: new Date(endDate).toISOString(),
+        reason: reason.trim() || undefined,
+      })
+      onClose()
+    } catch (error) {
+      setFormError(hrErrorMessage(error))
+    }
+  }
+
+  const types = leaveTypes.data?.items ?? []
+  const error = formError ?? (applyOnBehalf.error ? hrErrorMessage(applyOnBehalf.error) : null)
+
   return (
     <ModalShell open={open} onClose={onClose} className="max-w-lg">
       {/* Header */}
@@ -32,74 +106,80 @@ export default function BranchAdminApplyLeaveModal({
       <div className="space-y-5 px-6 py-5">
         {/* Select Employee */}
         <div>
-          <label className="mb-1.5 block text-[13px] font-semibold text-[#374151]">
-            Select Employee
-          </label>
-          <div className="relative">
-            <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
-            <select
-              defaultValue=""
-              className="h-11 w-full appearance-none rounded-[10px] border border-[#E5E7EB] bg-white pl-10 pr-3 text-[13px] text-[#111827] outline-none focus:border-[#2563EB]"
-            >
-              <option value="" disabled>
-                Search for a branch staff member...
-              </option>
-              <option value="sarah-jenkins">Dr. Sarah Jenkins</option>
-              <option value="james-wilson">James Wilson</option>
-              <option value="eleanor-vance">Eleanor Vance</option>
-            </select>
-          </div>
+          <label className={labelCls}>Select Employee</label>
+          <EmployeePicker
+            value={employeeId}
+            onChange={setEmployeeId}
+            disabled={applyOnBehalf.isPending}
+            className="!mt-0"
+          />
         </div>
 
-        {/* Leave Type */}
+        {/* Leave type */}
         <div>
-          <label className="mb-1.5 block text-[13px] font-semibold text-[#374151]">
-            Leave Type
-          </label>
+          <label className={labelCls}>Leave Type</label>
           <select
-            defaultValue="Vacation"
-            className="h-11 w-full appearance-none rounded-[10px] border border-[#E5E7EB] bg-white px-3 text-[13px] text-[#111827] outline-none focus:border-[#2563EB]"
+            value={leaveTypeId}
+            onChange={(e) => setLeaveTypeId(e.target.value)}
+            disabled={leaveTypes.isLoading || types.length === 0}
+            className={fieldCls}
           >
-            <option value="Vacation">Vacation</option>
-            <option value="Sick Leave">Sick Leave</option>
-            <option value="Maternity">Maternity</option>
-            <option value="Casual">Casual</option>
+            <option value="" disabled>
+              {leaveTypes.isLoading
+                ? "Loading leave types…"
+                : types.length === 0
+                  ? "No leave types configured"
+                  : "Select a leave type"}
+            </option>
+            {types.map((type) => (
+              <option key={type._id} value={type._id}>
+                {type.name} ({type.maxDaysPerYear} days/yr)
+              </option>
+            ))}
           </select>
+          {leaveTypes.error && (
+            <p className="mt-1.5 text-[12px] text-red-600">
+              {hrErrorMessage(leaveTypes.error)}
+            </p>
+          )}
         </div>
 
         {/* Dates */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <label className="mb-1.5 block text-[13px] font-semibold text-[#374151]">
-              Start Date
-            </label>
+            <label className={labelCls}>Start Date</label>
             <input
               type="date"
-              className="h-11 w-full rounded-[10px] border border-[#E5E7EB] bg-white px-3 text-[13px] text-[#111827] outline-none focus:border-[#2563EB]"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className={fieldCls}
             />
           </div>
           <div>
-            <label className="mb-1.5 block text-[13px] font-semibold text-[#374151]">
-              End Date
-            </label>
+            <label className={labelCls}>End Date</label>
             <input
               type="date"
-              className="h-11 w-full rounded-[10px] border border-[#E5E7EB] bg-white px-3 text-[13px] text-[#111827] outline-none focus:border-[#2563EB]"
+              value={endDate}
+              min={startDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className={fieldCls}
             />
           </div>
         </div>
 
-        {/* Note / Reason */}
+        {/* Reason */}
         <div>
-          <label className="mb-1.5 block text-[13px] font-semibold text-[#374151]">
-            Note / Reason
-          </label>
+          <label className={labelCls}>Reason</label>
           <textarea
-            rows={4}
+            rows={3}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
             placeholder="e.g., Staff member called in sick at 8:00 AM. Medical certificate will be provided."
             className="w-full resize-none rounded-[10px] border border-[#E5E7EB] bg-white px-3 py-2.5 text-[13px] text-[#111827] outline-none placeholder:text-[#9CA3AF] focus:border-[#2563EB]"
           />
         </div>
+
+        {error && <p className="text-[12px] font-medium text-red-600">{error}</p>}
       </div>
 
       {/* Footer */}
@@ -107,15 +187,18 @@ export default function BranchAdminApplyLeaveModal({
         <button
           type="button"
           onClick={onClose}
-          className="rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[12px] font-semibold text-[#4B5563] hover:bg-gray-50"
+          disabled={applyOnBehalf.isPending}
+          className="rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[12px] font-semibold text-[#4B5563] hover:bg-gray-50 disabled:opacity-50"
         >
           Cancel
         </button>
         <button
           type="button"
-          onClick={onClose}
-          className="rounded-md bg-[#2563EB] px-4 py-2 text-[12px] font-semibold text-white hover:bg-blue-700"
+          onClick={handleSubmit}
+          disabled={applyOnBehalf.isPending}
+          className="inline-flex items-center gap-2 rounded-md bg-[#2563EB] px-4 py-2 text-[12px] font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
         >
+          {applyOnBehalf.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
           Submit Request for Approval
         </button>
       </div>

@@ -1,204 +1,232 @@
 "use client"
 
-import { X, CheckCircle2, Info } from "lucide-react"
+import { useEffect, useState } from "react"
+import { AlertTriangle, Loader2, X } from "lucide-react"
 import { ModalShell } from "@/components/ui/modal-shell"
-import { cn } from "@/lib/utils"
+import { HrPanelState, hrErrorMessage } from "@/components/hr/HrDataState"
+import {
+  useApproveLeave,
+  useLeaveBalances,
+  useRejectLeave,
+} from "@/components/hooks/hr/useHrLeave"
+import { deref, employeeName, initials } from "@/lib/hr/normalize"
+import type { LeaveRequest } from "@/lib/hr/types"
+import { formatDate } from "@/lib/format"
 
+/**
+ * The pastor's decision on a leave request.
+ *
+ * Approve and decline hit different endpoints but share this dialog; a comment
+ * is mandatory when declining, which is what the backend enforces.
+ */
 export default function BranchLeadLeaveApprovalModal({
   open,
   onClose,
+  request,
+  intent = "approve",
 }: {
   open: boolean
   onClose: () => void
+  request: LeaveRequest | null
+  intent?: "approve" | "reject"
 }) {
+  const approve = useApproveLeave()
+  const reject = useRejectLeave()
+
+  const employee = deref(request?.employeeId)
+  const balances = useLeaveBalances(open ? employee?._id : null)
+
+  const [comment, setComment] = useState("")
+  const [formError, setFormError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    setComment("")
+    setFormError(null)
+    approve.reset()
+    reject.reset()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, request?._id, intent])
+
+  const pending = approve.isPending || reject.isPending
+  const declining = intent === "reject"
+
+  async function handleSubmit() {
+    if (!request) return
+    setFormError(null)
+
+    if (declining && comment.trim().length < 2) {
+      setFormError("A reason is required to decline a request.")
+      return
+    }
+
+    try {
+      const mutation = declining ? reject : approve
+      await mutation.mutateAsync({ id: request._id, comment: comment.trim() || undefined })
+      onClose()
+    } catch (error) {
+      setFormError(hrErrorMessage(error))
+    }
+  }
+
+  const leaveType = deref(request?.leaveTypeId)
+  const balanceRow = balances.data?.balances.find(
+    (row) => row.leaveTypeId === leaveType?._id,
+  )
+
+  const error =
+    formError ??
+    (approve.error || reject.error ? hrErrorMessage(approve.error ?? reject.error) : null)
+
   return (
-    <ModalShell open={open} onClose={onClose} className="max-w-3xl">
-      {/* Header */}
+    <ModalShell open={open} onClose={onClose} className="max-w-lg">
       <div className="flex items-start justify-between gap-4 border-b border-[#EEF1F6] px-6 py-5">
         <div>
           <h2 className="text-[18px] font-bold text-[#111827]">
-            Leave Final Approval
+            {declining ? "Decline Leave Request" : "Approve Leave Request"}
           </h2>
-          <div className="mt-1 text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-            Approval Authorization
-          </div>
+          <p className="mt-1 text-[13px] text-[#6B7280]">
+            {declining
+              ? "Record why this request is being turned down."
+              : "Confirm the time off and any handover conditions."}
+          </p>
         </div>
         <button
           type="button"
-          aria-label="Close"
           onClick={onClose}
-          className="rounded-md p-1 text-[#9CA3AF] hover:bg-[#F1F5F9] hover:text-[#4B5563]"
+          aria-label="Close"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[#9CA3AF] hover:bg-gray-100 hover:text-[#111827]"
         >
-          <X className="h-5 w-5" />
+          <X className="h-[18px] w-[18px]" />
         </button>
       </div>
 
-      {/* Body */}
-      <div className="grid max-h-[70vh] grid-cols-1 gap-5 overflow-y-auto px-6 py-5 lg:grid-cols-5">
-        {/* LEFT — identity */}
-        <div className="lg:col-span-3">
-          <div className="rounded-[14px] border border-[#EEF1F6] bg-white p-5 shadow-[0px_4px_10px_rgba(0,0,0,0.02)]">
-            <div className="flex items-start gap-4">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#2563EB] text-[16px] font-bold text-white">
-                SM
-              </div>
+      <div className="flex max-h-[68vh] flex-col gap-5 overflow-y-auto px-6 py-5">
+        {!request ? (
+          <HrPanelState
+            isLoading={false}
+            error={null}
+            isEmpty
+            emptyTitle="No request selected"
+            className="border-0 p-4"
+          />
+        ) : (
+          <>
+            <div className="flex items-center gap-3">
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#EFF2FF] text-[14px] font-bold text-[#3B5BDB]">
+                {initials(employeeName(request.employeeId))}
+              </span>
               <div className="min-w-0">
-                <div className="text-[16px] font-bold text-[#111827]">
-                  Sarah Musa
-                </div>
-                <div className="text-[13px] text-[#6B7280]">
-                  Children&apos;s Ministry Department
-                </div>
-                <div className="mt-1 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                  Request ID #LR-2023-094
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <span className="rounded-md bg-[#F3F4F6] px-2.5 py-1 text-[11px] font-semibold text-[#4B5563]">
-                    PERMANENT STAFF
+                <p className="text-[15px] font-bold text-[#111827]">
+                  {employeeName(request.employeeId)}
+                </p>
+                <p className="text-[12px] text-[#6B7280]">
+                  {employee?.department ?? employee?.jobTitle ?? "—"}
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-[10px] border border-[#EEF1F6] p-4">
+              <div className="flex items-center justify-between text-[13px]">
+                <span className="text-[#6B7280]">Leave type</span>
+                <span className="font-semibold text-[#111827]">
+                  {leaveType?.name ?? "Leave"}
+                </span>
+              </div>
+              <div className="mt-2 flex items-center justify-between text-[13px]">
+                <span className="text-[#6B7280]">Dates</span>
+                <span className="font-semibold text-[#111827]">
+                  {formatDate(request.startDate, "medium")} –{" "}
+                  {formatDate(request.endDate, "medium")}
+                </span>
+              </div>
+              <div className="mt-2 flex items-center justify-between text-[13px]">
+                <span className="text-[#6B7280]">Duration</span>
+                <span className="font-semibold text-[#111827]">
+                  {request.totalDays} {request.totalDays === 1 ? "day" : "days"}
+                </span>
+              </div>
+              {balanceRow && (
+                <div className="mt-2 flex items-center justify-between text-[13px]">
+                  <span className="text-[#6B7280]">Balance after approval</span>
+                  <span className="font-semibold text-[#111827]">
+                    {Math.max(0, balanceRow.remaining - request.totalDays)} of{" "}
+                    {balanceRow.entitlement} days
                   </span>
-                  <span className="rounded-md bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-600">
-                    ACTIVE STATUS
-                  </span>
                 </div>
-              </div>
+              )}
+              {request.reason && (
+                <p className="mt-3 border-t border-[#F3F4F6] pt-3 text-[12px] leading-relaxed text-[#4B5563]">
+                  {request.reason}
+                </p>
+              )}
+              {request.handoverNote && (
+                <p className="mt-2 text-[12px] leading-relaxed text-[#4B5563]">
+                  <span className="font-semibold">Handover: </span>
+                  {request.handoverNote}
+                </p>
+              )}
             </div>
 
-            {/* Three specs */}
-            <div className="mt-5 grid grid-cols-3 gap-3 border-t border-[#F3F4F6] pt-5">
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                  Leave Type
-                </div>
-                <div className="mt-1 text-[13px] font-semibold text-[#111827]">
-                  Vacation
-                </div>
+            {(request.conflictCount ?? 0) > 0 && (
+              <div className="flex items-start gap-2.5 rounded-lg bg-amber-50 p-3">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                <p className="text-[12px] text-[#4B5563]">
+                  <span className="font-semibold text-amber-700">
+                    {request.conflictCount} overlapping request
+                    {request.conflictCount === 1 ? "" : "s"}
+                  </span>{" "}
+                  in the same period. Check cover before approving.
+                </p>
               </div>
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                  Duration
-                </div>
-                <div className="mt-1 text-[13px] font-semibold text-[#111827]">
-                  Oct 28 - 31, 2023
-                </div>
-              </div>
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                  Total Days
-                </div>
-                <div className="mt-1 text-[13px] font-semibold text-[#111827]">
-                  4 Working Days
-                </div>
-              </div>
-            </div>
+            )}
 
-            {/* Reason */}
-            <div className="mt-5">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                Reason for Leave
-              </div>
-              <div className="mt-2 rounded-[10px] bg-[#F9FAFB] p-4 text-[13px] italic leading-relaxed text-[#4B5563]">
-                &ldquo;I would like to request my annual vacation leave to attend a
-                family reunion and rest before the upcoming Christmas program
-                cycle. I have updated all my curriculum notes for the next four
-                weeks.&rdquo;
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* RIGHT — balances + availability */}
-        <div className="flex flex-col gap-5 lg:col-span-2">
-          {/* Leave Balance */}
-          <div className="rounded-[14px] border border-[#EEF1F6] bg-white p-5 shadow-[0px_4px_10px_rgba(0,0,0,0.02)]">
-            <div className="text-[16px] font-bold text-[#111827]">
-              Leave Balance
-            </div>
-
-            <div className="mt-4 space-y-4">
-              <BalanceBar
-                label="Annual Vacation"
-                value="12 / 20 Days Left"
-                pct={60}
-                barClass="bg-[#2563EB]"
-              />
-              <BalanceBar
-                label="Sick Leave"
-                value="5 / 7 Days Left"
-                pct={71}
-                barClass="bg-amber-500"
+            <div>
+              <label className="text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
+                Comment {declining ? "(required)" : "(optional)"}
+              </label>
+              <textarea
+                rows={3}
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                disabled={pending}
+                placeholder={
+                  declining
+                    ? "Explain the decision for the applicant's record…"
+                    : "Any conditions attached to this approval…"
+                }
+                className="mt-1.5 w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2.5 text-[13px] outline-none focus:border-[#2563EB]"
               />
             </div>
-          </div>
 
-          {/* Dept. Availability */}
-          <div className="rounded-[14px] border border-[#EEF1F6] bg-white p-5 shadow-[0px_4px_10px_rgba(0,0,0,0.02)]">
-            <div className="text-[16px] font-bold text-[#111827]">
-              Dept. Availability
-            </div>
-            <div className="mt-2 text-[12px] text-[#6B7280]">
-              Conflict check for Oct 28 - Oct 31:
-            </div>
-
-            <div className="mt-3 space-y-2">
-              <div className="flex items-center gap-2 rounded-[10px] bg-emerald-50 px-3 py-2.5 text-[12px] font-semibold text-emerald-600">
-                <CheckCircle2 className="h-4 w-4 shrink-0" />
-                No overlapping leave requests
-              </div>
-              <div className="flex items-center gap-2 rounded-[10px] bg-[#EFF6FF] px-3 py-2.5 text-[12px] font-semibold text-[#2563EB]">
-                <Info className="h-4 w-4 shrink-0" />
-                9/10 staff available in Children&apos;s Min.
-              </div>
-            </div>
-          </div>
-        </div>
+            {error && <p className="text-[12px] font-medium text-red-600">{error}</p>}
+          </>
+        )}
       </div>
 
-      {/* Footer */}
       <div className="flex items-center justify-end gap-3 border-t border-[#EEF1F6] px-6 py-4">
         <button
           type="button"
           onClick={onClose}
-          className="rounded-md border border-rose-200 px-4 py-2 text-[12px] font-semibold text-rose-600 hover:bg-rose-50"
+          disabled={pending}
+          className="rounded-md border border-[#E5E7EB] bg-white px-4 py-2.5 text-[12px] font-semibold text-[#4B5563] hover:bg-[#F8FAFC] disabled:opacity-50"
         >
-          Decline Request
+          Cancel
         </button>
         <button
           type="button"
-          onClick={onClose}
-          className="rounded-md bg-[#111827] px-4 py-2 text-[12px] font-semibold text-white hover:bg-black"
+          onClick={handleSubmit}
+          disabled={pending || !request}
+          className={
+            declining
+              ? "inline-flex items-center gap-2 rounded-md bg-rose-600 px-4 py-2.5 text-[12px] font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
+              : "inline-flex items-center gap-2 rounded-md bg-[#111827] px-4 py-2.5 text-[12px] font-semibold text-white hover:bg-black disabled:opacity-60"
+          }
         >
-          Approve Leave Request
+          {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          {declining ? "Decline Request" : "Approve Leave"}
         </button>
       </div>
     </ModalShell>
-  )
-}
-
-function BalanceBar({
-  label,
-  value,
-  pct,
-  barClass,
-}: {
-  label: string
-  value: string
-  pct: number
-  barClass: string
-}) {
-  return (
-    <div>
-      <div className="flex items-center justify-between">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-          {label}
-        </span>
-        <span className="text-[12px] font-semibold text-[#111827]">{value}</span>
-      </div>
-      <div className="mt-2 h-2 rounded-full bg-[#F3F4F6]">
-        <div
-          className={cn("h-2 rounded-full", barClass)}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-    </div>
   )
 }

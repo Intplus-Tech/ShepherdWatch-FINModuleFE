@@ -1,21 +1,85 @@
 "use client"
 
-import { X, UploadCloud, FileText } from "lucide-react"
+import { useEffect, useState } from "react"
+import { Loader2, UploadCloud, X } from "lucide-react"
 import { ModalShell } from "@/components/ui/modal-shell"
-import { SectionLabel, btnOutline, btnDark } from "./shared"
+import { SectionLabel, btnDark, btnOutline } from "./shared"
+import { HrFileDrop, type UploadedFile } from "@/components/hr/HrFileDrop"
+import { hrErrorMessage } from "@/components/hr/HrDataState"
+import { useUploadEmployeeDocument } from "@/components/hooks/hr/useHrDocuments"
+import { titleCase } from "@/lib/hr/normalize"
+import { EMPLOYEE_DOCUMENT_TYPES, type EmployeeDocumentType } from "@/lib/hr/types"
 
-const labelCls =
-  "text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]"
+const labelCls = "text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]"
 const inputCls =
-  "mt-1 w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-[13px] text-[#111827] outline-none focus:border-[#3B5BDB]"
+  "mt-1.5 h-[42px] w-full rounded-md border border-[#E5E7EB] bg-white px-3 text-[13px] text-[#111827] outline-none focus:border-[#3B5BDB]"
 
 export default function UploadDocumentModal({
   open,
   onClose,
+  employeeId,
 }: {
   open: boolean
   onClose: () => void
+  employeeId: string | null
 }) {
+  const upload = useUploadEmployeeDocument()
+
+  const [files, setFiles] = useState<UploadedFile[]>([])
+  const [documentType, setDocumentType] = useState<EmployeeDocumentType>("contract")
+  const [title, setTitle] = useState("")
+  const [effectiveDate, setEffectiveDate] = useState("")
+  const [expiryDate, setExpiryDate] = useState("")
+  const [formError, setFormError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    setFiles([])
+    setDocumentType("contract")
+    setTitle("")
+    setEffectiveDate("")
+    setExpiryDate("")
+    setFormError(null)
+    upload.reset()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  async function handleUpload() {
+    setFormError(null)
+
+    const file = files[0]
+    if (!employeeId) {
+      setFormError("No employee selected.")
+      return
+    }
+    if (!file) {
+      setFormError("Attach a file first.")
+      return
+    }
+    if (title.trim().length < 2) {
+      setFormError("Give the document a title.")
+      return
+    }
+
+    try {
+      await upload.mutateAsync({
+        employeeId,
+        documentType,
+        title: title.trim(),
+        fileUrl: file.url,
+        fileSize: file.size,
+        mimeType: file.mimeType,
+        effectiveDate: effectiveDate ? new Date(effectiveDate).toISOString() : undefined,
+        expiryDate: expiryDate ? new Date(expiryDate).toISOString() : undefined,
+      })
+      onClose()
+    } catch (error) {
+      setFormError(hrErrorMessage(error))
+    }
+  }
+
+  const error = formError ?? (upload.error ? hrErrorMessage(upload.error) : null)
+
   return (
     <ModalShell open={open} onClose={onClose} className="max-w-lg">
       {/* Header */}
@@ -24,9 +88,7 @@ export default function UploadDocumentModal({
           <span className="flex h-8 w-8 items-center justify-center rounded-md bg-[#EEF2FF] text-[#3B5BDB]">
             <UploadCloud className="h-4 w-4" />
           </span>
-          <h2 className="text-[16px] font-bold text-[#111827]">
-            Upload New Document
-          </h2>
+          <h2 className="text-[16px] font-bold text-[#111827]">Upload New Document</h2>
         </div>
         <button
           aria-label="Close"
@@ -39,20 +101,13 @@ export default function UploadDocumentModal({
 
       {/* Body */}
       <div className="flex max-h-[70vh] flex-col gap-5 overflow-y-auto px-6 py-5">
-        {/* Dropzone */}
-        <div className="flex flex-col items-center rounded-xl border-2 border-dashed border-[#D1D5DB] bg-[#F9FAFB] px-6 py-8 text-center">
-          <FileText className="h-9 w-9 text-[#9CA3AF]" />
-          <div className="mt-3 text-[14px] font-semibold text-[#111827]">
-            Drag and drop your file here
-          </div>
-          <div className="text-[12px] text-[#6B7280]">
-            or click to browse from your computer
-          </div>
-          <button className={`${btnDark} mt-4`}>Browse Files</button>
-          <div className="mt-3 text-[11px] text-[#9CA3AF]">
-            PDF, JPG, PNG · Up to 10MB
-          </div>
-        </div>
+        <HrFileDrop
+          files={files}
+          onChange={(next) => setFiles(next.slice(-1))}
+          folder="hr/documents"
+          hint="PDF, JPG or PNG · Up to 5MB"
+          disabled={upload.isPending}
+        />
 
         {/* Details */}
         <div>
@@ -60,39 +115,65 @@ export default function UploadDocumentModal({
           <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className={labelCls}>Document Type</label>
-              <select className={inputCls}>
-                <option>Employment Contract</option>
-                <option>Educational Certificate</option>
-                <option>Identification & KYC</option>
-                <option>Professional Certification</option>
-                <option>Miscellaneous</option>
+              <select
+                className={inputCls}
+                value={documentType}
+                onChange={(e) => setDocumentType(e.target.value as EmployeeDocumentType)}
+                disabled={upload.isPending}
+              >
+                {EMPLOYEE_DOCUMENT_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {titleCase(type)}
+                  </option>
+                ))}
               </select>
             </div>
             <div>
               <label className={labelCls}>Document Title</label>
               <input
                 className={inputCls}
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
                 placeholder="e.g. Contract_Amendment_2024"
+                disabled={upload.isPending}
               />
             </div>
             <div>
               <label className={labelCls}>Effective Date</label>
-              <input type="date" className={inputCls} />
+              <input
+                type="date"
+                className={inputCls}
+                value={effectiveDate}
+                onChange={(e) => setEffectiveDate(e.target.value)}
+                disabled={upload.isPending}
+              />
             </div>
             <div>
               <label className={labelCls}>Expiry Date (Optional)</label>
-              <input type="date" className={inputCls} />
+              <input
+                type="date"
+                className={inputCls}
+                value={expiryDate}
+                min={effectiveDate || undefined}
+                onChange={(e) => setExpiryDate(e.target.value)}
+                disabled={upload.isPending}
+              />
             </div>
           </div>
         </div>
+
+        {error && <p className="text-[12px] font-medium text-red-600">{error}</p>}
       </div>
 
       {/* Footer */}
       <div className="flex items-center justify-end gap-3 border-t border-[#EEF1F6] px-6 py-4">
-        <button className={btnOutline} onClick={onClose}>
+        <button className={btnOutline} onClick={onClose} disabled={upload.isPending}>
           Cancel
         </button>
-        <button className={btnDark}>Upload Document</button>
+        <button className={btnDark} onClick={handleUpload} disabled={upload.isPending}>
+          {upload.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          Upload Document
+        </button>
       </div>
     </ModalShell>
   )

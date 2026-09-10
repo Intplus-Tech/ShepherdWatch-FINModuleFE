@@ -1,136 +1,137 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Bell, Search, SlidersHorizontal, Plus } from "lucide-react"
+import { Search, Bell, Plus } from "lucide-react"
 import BranchLeadPastorSidebar from "@/components/navigation/BranchLeadPastorSidebar"
 import BranchLeadNewRoleRequisitionModal from "@/components/hr/BranchLeadNewRoleRequisitionModal"
+import { HrStatValue, HrTableState } from "@/components/hr/HrDataState"
+import { HrPagination } from "@/components/hr/HrPagination"
+import {
+  useJobRequisitionMetrics,
+  useJobRequisitions,
+} from "@/components/hooks/hr/useHrJobRequisitions"
+import {
+  JOB_REQUISITION_PRIORITY_BADGES,
+  JOB_REQUISITION_PRIORITY_LABELS,
+  JOB_REQUISITION_STATUS_LABELS,
+  badgeFor,
+  lookup,
+} from "@/lib/hr/normalize"
+import {
+  JOB_REQUISITION_PRIORITIES,
+  type JobRequisitionPriority,
+  type JobRequisitionStatus,
+} from "@/lib/hr/types"
+import { formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
-type Urgency = "High Priority" | "Normal" | "Medium"
+const PAGE_SIZE = 10
 
-type Requisition = {
-  id: string
-  role: string
-  ref: string
-  department: string
-  dateRequested: string
-  urgency: Urgency
-}
+type Tab = "awaiting" | "past"
 
-const AWAITING_REQUISITIONS: Requisition[] = [
-  {
-    id: "req-001",
-    role: "Senior Youth Pastor",
-    ref: "#REQ-2024-001",
-    department: "Youth Ministry",
-    dateRequested: "Oct 12, 2023",
-    urgency: "High Priority",
-  },
-  {
-    id: "req-004",
-    role: "Financial Comptroller",
-    ref: "#REQ-2024-004",
-    department: "Operations & Finance",
-    dateRequested: "Oct 14, 2023",
-    urgency: "Normal",
-  },
-  {
-    id: "req-007",
-    role: "Head of Hospitality",
-    ref: "#REQ-2024-007",
-    department: "Facility Management",
-    dateRequested: "Oct 15, 2023",
-    urgency: "Medium",
-  },
-]
-
-const URGENCY_PILL: Record<Urgency, string> = {
-  "High Priority": "bg-rose-100 text-rose-700",
-  Normal: "bg-slate-100 text-slate-600",
-  Medium: "bg-amber-100 text-amber-700",
-}
-
-const cardCls =
-  "rounded-[14px] border border-[#EEF1F6] bg-white p-5 shadow-[0px_4px_10px_rgba(0,0,0,0.02)]"
-
-type TabKey = "awaiting" | "past"
+/** Awaiting is the single open status; past covers every settled one. */
+const PAST_STATUSES: JobRequisitionStatus[] = ["approved", "rejected", "cancelled"]
 
 export default function Page() {
   const [modalOpen, setModalOpen] = useState(false)
-  const [activeTab, setActiveTab] = useState<TabKey>("awaiting")
-  const [roleFilter, setRoleFilter] = useState("All Roles")
-  const [priorityFilter, setPriorityFilter] = useState("All Priorities")
+  const [tab, setTab] = useState<Tab>("awaiting")
+  const [role, setRole] = useState("All Roles")
+  const [priority, setPriority] = useState<"all" | JobRequisitionPriority>("all")
+  const [page, setPage] = useState(1)
 
-  const roleOptions = useMemo(
-    () => Array.from(new Set(AWAITING_REQUISITIONS.map((r) => r.role))),
-    []
+  const metrics = useJobRequisitionMetrics()
+
+  const requisitions = useJobRequisitions({
+    page,
+    limit: PAGE_SIZE,
+    priority,
+    // The list endpoint takes one status, so the "past" tab is filtered locally.
+    status: tab === "awaiting" ? "awaiting_director" : "all",
+  })
+
+  const items = useMemo(() => {
+    const all = requisitions.data?.items ?? []
+    const byTab = tab === "past" ? all.filter((r) => PAST_STATUSES.includes(r.status)) : all
+    return role === "All Roles" ? byTab : byTab.filter((r) => r.roleTitle === role)
+  }, [requisitions.data, tab, role])
+
+  /** Role options come from the loaded page — there is no roles endpoint. */
+  const roles = useMemo(
+    () => [
+      "All Roles",
+      ...Array.from(new Set((requisitions.data?.items ?? []).map((r) => r.roleTitle))),
+    ],
+    [requisitions.data],
   )
 
-  const filtered = useMemo(() => {
-    return AWAITING_REQUISITIONS.filter((row) => {
-      const matchesRole = roleFilter === "All Roles" || row.role === roleFilter
-      const matchesPriority =
-        priorityFilter === "All Priorities" || row.urgency === priorityFilter
-      return matchesRole && matchesPriority
-    })
-  }, [roleFilter, priorityFilter])
-
-  const resetAll = () => {
-    setRoleFilter("All Roles")
-    setPriorityFilter("All Priorities")
+  const resetFilters = () => {
+    setRole("All Roles")
+    setPriority("all")
+    setPage(1)
   }
 
   return (
     <div className="flex min-h-screen bg-[#F2F4F7] font-sans text-[#111827]">
       <BranchLeadPastorSidebar />
-      <main className="flex-1 px-8 pt-3 pb-6">
-        {/* Top bar */}
-        <div className="flex items-center justify-between border-b border-[#EEF1F6] h-[42.67px]">
-          <span className="text-[13px] font-bold text-[#111827]">
-            Job Requisition
-          </span>
+
+      <div className="flex-1 flex flex-col w-full relative min-h-[100dvh]">
+        <header className="flex h-[64px] shrink-0 items-center justify-between border-b border-[#EEF1F6] bg-white px-4 sm:px-6 lg:px-8">
+          <span className="text-[15px] font-bold text-[#111827]">Job Requisition</span>
           <div className="flex items-center gap-3">
-            <div className="relative">
+            <div className="relative hidden sm:block">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
               <input
+                type="text"
                 placeholder="Search requisitions..."
-                className="h-[34px] w-[220px] rounded-full border border-[#E5E7EB] bg-white pl-9 pr-3.5 text-[12px] text-[#111827] outline-none focus:border-[#2563EB]"
+                className="h-[38px] w-[240px] rounded-full border border-[#E5E7EB] bg-white pl-9 pr-3 text-[13px]"
               />
             </div>
             <button
               type="button"
               aria-label="Notifications"
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-[#E5E7EB] bg-white text-[#6B7280] hover:bg-gray-50"
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-[#EEF1F6] bg-white text-[#6B7280] hover:bg-gray-50"
             >
               <Bell className="h-4 w-4" />
             </button>
           </div>
-        </div>
+        </header>
 
-        <div className="pt-6">
-          {/* Stat cards + New Requisition (button right-aligned, matching design) */}
-          <div className="mb-6 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-            <div className="grid flex-1 grid-cols-1 gap-5 sm:grid-cols-2 max-w-2xl">
-              <div className={cardCls}>
-                <div className="text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
-                  Active Requests
-                </div>
-                <div className="mt-2 text-[32px] font-bold text-[#111827]">12</div>
-                <div className="mt-1 text-[13px] text-[#6B7280]">
-                  Currently awaiting approval
-                </div>
-              </div>
-              <div className={cardCls}>
-                <div className="text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
-                  Approved This Month
-                </div>
-                <div className="mt-2 text-[32px] font-bold text-[#111827]">08</div>
-              </div>
+        <main className="flex-1 p-6 lg:p-8 min-w-0">
+          {/* Stat cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 max-w-3xl">
+            <div className="rounded-xl border border-[#EEF1F6] bg-white p-5">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
+                Active Requests
+              </p>
+              <p className="mt-2 text-[32px] font-bold text-[#111827]">
+                <HrStatValue
+                  isLoading={metrics.isLoading}
+                  error={metrics.error}
+                  value={metrics.data?.activeRequests ?? 0}
+                />
+              </p>
+              <p className="mt-1 text-[13px] text-[#6B7280]">Currently awaiting approval</p>
             </div>
+            <div className="rounded-xl border border-[#EEF1F6] bg-white p-5">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
+                Approved This Month
+              </p>
+              <p className="mt-2 text-[32px] font-bold text-[#111827]">
+                <HrStatValue
+                  isLoading={metrics.isLoading}
+                  error={metrics.error}
+                  value={metrics.data?.approvedThisMonth ?? 0}
+                />
+              </p>
+            </div>
+          </div>
+
+          {/* New requisition button */}
+          <div className="mt-5 flex justify-end">
             <button
               type="button"
               onClick={() => setModalOpen(true)}
-              className="inline-flex shrink-0 items-center gap-2 self-end rounded-md bg-[#111827] px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-black"
+              className="inline-flex items-center gap-2 rounded-md bg-[#111827] px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-black"
             >
               <Plus className="h-4 w-4" />
               New Requisition
@@ -138,183 +139,185 @@ export default function Page() {
           </div>
 
           {/* Filters card */}
-          <div className={cn(cardCls, "mb-6")}>
-            <div className="flex flex-col gap-4 md:flex-row md:items-end md:gap-6">
-              <div className="flex items-center gap-2 text-[#6B7280] md:mb-3">
-                <SlidersHorizontal className="h-4 w-4" />
-                <span className="text-[11px] font-bold uppercase tracking-wider">
-                  Filters
-                </span>
-              </div>
-
+          <div className="mt-5 rounded-xl border border-[#EEF1F6] bg-white p-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
               <div className="flex flex-col gap-1.5">
-                <label className="text-[11px] font-bold uppercase text-[#6B7280]">
-                  Role
-                </label>
+                <label className="text-[12px] font-semibold text-[#6B7280]">Role</label>
                 <select
-                  value={roleFilter}
-                  onChange={(e) => setRoleFilter(e.target.value)}
-                  className="h-[42px] rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[13px] text-[#111827] outline-none focus:border-[#2563EB] md:w-[220px]"
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  className="h-[42px] rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[13px]"
                 >
-                  <option>All Roles</option>
-                  {roleOptions.map((role) => (
-                    <option key={role} value={role}>
-                      {role}
+                  {roles.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
                     </option>
                   ))}
                 </select>
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-[11px] font-bold uppercase text-[#6B7280]">
-                  Priority
-                </label>
+                <label className="text-[12px] font-semibold text-[#6B7280]">Priority</label>
                 <select
-                  value={priorityFilter}
-                  onChange={(e) => setPriorityFilter(e.target.value)}
-                  className="h-[42px] rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[13px] text-[#111827] outline-none focus:border-[#2563EB] md:w-[220px]"
+                  value={priority}
+                  onChange={(e) => {
+                    setPriority(e.target.value as "all" | JobRequisitionPriority)
+                    setPage(1)
+                  }}
+                  className="h-[42px] rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[13px]"
                 >
-                  <option>All Priorities</option>
-                  <option>High Priority</option>
-                  <option>Normal</option>
-                  <option>Medium</option>
+                  <option value="all">All Priorities</option>
+                  {JOB_REQUISITION_PRIORITIES.map((p) => (
+                    <option key={p} value={p}>
+                      {JOB_REQUISITION_PRIORITY_LABELS[p]}
+                    </option>
+                  ))}
                 </select>
               </div>
 
               <button
                 type="button"
-                className="rounded-md bg-[#2563EB] px-4 py-2 text-[12px] font-semibold text-white hover:bg-blue-700 md:mb-0.5"
+                onClick={resetFilters}
+                className="h-[42px] rounded-[8px] border border-[#E5E7EB] bg-white px-4 text-[13px] font-semibold text-[#4B5563] hover:bg-[#F8FAFC]"
               >
-                Search
-              </button>
-              <button
-                type="button"
-                onClick={resetAll}
-                className="text-[13px] font-semibold text-[#2563EB] md:mb-3"
-              >
-                Reset All
+                Reset Filters
               </button>
             </div>
           </div>
 
-          {/* Tabs + table card */}
-          <div className={cardCls}>
-            <div className="mb-2 flex items-center gap-6 border-b border-[#F3F4F6]">
+          {/* Tabs + table */}
+          <div className="mt-5 overflow-hidden rounded-xl border border-[#EEF1F6] bg-white">
+            <div className="flex items-center gap-6 border-b border-[#EEF1F6] px-5">
               <button
                 type="button"
-                onClick={() => setActiveTab("awaiting")}
+                onClick={() => {
+                  setTab("awaiting")
+                  setPage(1)
+                }}
                 className={cn(
-                  "-mb-px pb-3 text-[13px]",
-                  activeTab === "awaiting"
-                    ? "border-b-2 border-[#2563EB] text-[#111827] font-bold"
-                    : "text-[#6B7280]"
+                  "-mb-px border-b-2 py-4 text-[13px]",
+                  tab === "awaiting"
+                    ? "border-[#2563EB] text-[#111827] font-bold"
+                    : "border-transparent text-[#6B7280]",
                 )}
               >
                 Awaiting Approval
               </button>
               <button
                 type="button"
-                onClick={() => setActiveTab("past")}
+                onClick={() => {
+                  setTab("past")
+                  setPage(1)
+                }}
                 className={cn(
-                  "-mb-px pb-3 text-[13px]",
-                  activeTab === "past"
-                    ? "border-b-2 border-[#2563EB] text-[#111827] font-bold"
-                    : "text-[#6B7280]"
+                  "-mb-px border-b-2 py-4 text-[13px]",
+                  tab === "past"
+                    ? "border-[#2563EB] text-[#111827] font-bold"
+                    : "border-transparent text-[#6B7280]",
                 )}
               >
                 Past Requests
               </button>
             </div>
 
-            {activeTab === "awaiting" ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead className="bg-transparent">
-                    <tr>
-                      <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                        Role Title
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr>
+                    {[
+                      "Role Title",
+                      "Department",
+                      "Date Requested",
+                      "Urgency",
+                      tab === "awaiting" ? "Clearance Status" : "Status",
+                    ].map((h) => (
+                      <th
+                        key={h}
+                        className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]"
+                      >
+                        {h}
                       </th>
-                      <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                        Department
-                      </th>
-                      <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                        Date Requested
-                      </th>
-                      <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                        Urgency
-                      </th>
-                      <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                        Clearance Status
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#F3F4F6]">
-                    {filtered.length === 0 ? (
-                      <tr>
-                        <td
-                          colSpan={5}
-                          className="px-4 py-8 text-center text-[13px] text-[#9CA3AF]"
-                        >
-                          No requisitions match your filters.
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#F3F4F6]">
+                  <HrTableState
+                    colSpan={5}
+                    isLoading={requisitions.isLoading}
+                    error={requisitions.error}
+                    isEmpty={items.length === 0}
+                    emptyTitle={
+                      tab === "awaiting" ? "Nothing awaiting approval" : "No past requests"
+                    }
+                    emptyDescription="Raise a requisition to start the hiring approval flow."
+                    onRetry={() => requisitions.refetch()}
+                  />
+
+                  {!requisitions.isLoading &&
+                    !requisitions.error &&
+                    items.map((row) => (
+                      <tr key={row._id}>
+                        <td className="px-4 py-4 text-[13px]">
+                          <div className="flex flex-col">
+                            <span className="font-bold text-[#111827]">{row.roleTitle}</span>
+                            <span className="text-[12px] text-[#6B7280]">
+                              Ref: #{row.refNumber}
+                            </span>
+                          </div>
                         </td>
-                      </tr>
-                    ) : (
-                      filtered.map((row) => (
-                        <tr key={row.id}>
-                          <td className="px-4 py-4 text-[13px]">
-                            <div className="font-semibold text-[#111827]">
-                              {row.role}
-                            </div>
-                            <div className="text-[11px] text-[#9CA3AF]">
-                              Ref: {row.ref}
-                            </div>
-                          </td>
-                          <td className="px-4 py-4 text-[13px] text-[#6B7280]">
-                            {row.department}
-                          </td>
-                          <td className="px-4 py-4 text-[13px] text-[#6B7280]">
-                            {row.dateRequested}
-                          </td>
-                          <td className="px-4 py-4 text-[13px]">
+                        <td className="px-4 py-4 text-[13px] text-[#4B5563]">
+                          {row.department}
+                        </td>
+                        <td className="px-4 py-4 text-[13px] text-[#4B5563]">
+                          {formatDate(row.createdAt, "medium")}
+                        </td>
+                        <td className="px-4 py-4 text-[13px]">
+                          <span
+                            className={cn(
+                              "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold",
+                              badgeFor(JOB_REQUISITION_PRIORITY_BADGES, row.priority),
+                            )}
+                          >
+                            {lookup(JOB_REQUISITION_PRIORITY_LABELS, row.priority)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 text-[13px]">
+                          {row.status === "awaiting_director" ? (
+                            <span className="inline-flex items-center gap-2 text-[#6B7280]">
+                              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                              Awaiting Director Sign-off
+                            </span>
+                          ) : (
                             <span
                               className={cn(
-                                "rounded-full px-2.5 py-1 text-[10px] font-bold",
-                                URGENCY_PILL[row.urgency]
+                                "font-semibold",
+                                row.status === "approved"
+                                  ? "text-emerald-600"
+                                  : "text-rose-600",
                               )}
                             >
-                              {row.urgency}
+                              {lookup(JOB_REQUISITION_STATUS_LABELS, row.status)}
                             </span>
-                          </td>
-                          <td className="px-4 py-4 text-[13px]">
-                            <div className="flex items-center gap-2 text-[#6B7280]">
-                              <span className="h-2 w-2 rounded-full bg-amber-400" />
-                              Awaiting Director Sign-off
-                            </div>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="px-4 py-12 text-center">
-                <p className="text-[13px] font-semibold text-[#111827]">
-                  No past requests yet
-                </p>
-                <p className="mt-1 text-[13px] text-[#6B7280]">
-                  Completed requisitions will appear here.
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      </main>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
 
-      <BranchLeadNewRoleRequisitionModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-      />
+            <HrPagination
+              pagination={requisitions.data?.pagination}
+              page={page}
+              onPageChange={setPage}
+              itemCount={requisitions.data?.items.length ?? 0}
+              noun="requisitions"
+            />
+          </div>
+        </main>
+      </div>
+
+      <BranchLeadNewRoleRequisitionModal open={modalOpen} onClose={() => setModalOpen(false)} />
     </div>
   )
 }
