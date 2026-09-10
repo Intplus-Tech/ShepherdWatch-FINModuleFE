@@ -1707,7 +1707,7 @@ function ManageAccountsModal({ open, onClose }: { open: boolean; onClose: () => 
 
 function RecordExpenseModal({ open, onClose, onSaved }: { open: boolean; onClose: () => void; onSaved?: () => void }) {
   const { branchId, branches, selectBranch } = useBranchContext()
-  const { options: coaOptions, loading: coaLoading } = useCoaOptions(open, "expense", branchId)
+  const { options: coaOptions, loading: coaLoading, error: coaError } = useCoaOptions(open, "expense", branchId)
   const bankAccounts = useBankAccountOptions(open, branchId)
 
   const [date, setDate] = useState("")
@@ -1749,7 +1749,13 @@ function RecordExpenseModal({ open, onClose, onSaved }: { open: boolean; onClose
       return
     }
     if (!coaId) {
-      setSaveError("Choose the expense account to post against.")
+      setSaveError(
+        coaError
+          ? `The chart of accounts could not be loaded, so this expense cannot be posted yet. ${coaError}`
+          : coaOptions.length === 0
+            ? "No expense heads exist in the chart of accounts. Add one under Settings before recording an expense."
+            : "Choose the expense account to post against."
+      )
       return
     }
     const description = notes.trim() || payee.trim()
@@ -1833,9 +1839,11 @@ function RecordExpenseModal({ open, onClose, onSaved }: { open: boolean; onClose
               <option value="">
                 {coaLoading
                   ? "Loading accounts…"
-                  : coaOptions.length === 0
-                    ? "No expense heads in the chart of accounts yet"
-                    : "Select an account…"}
+                  : coaError
+                    ? `Couldn't load accounts — ${coaError}`
+                    : coaOptions.length === 0
+                      ? "No expense heads in the chart of accounts yet"
+                      : "Select an account…"}
               </option>
               {coaOptions.map((option) => (
                 <option key={option.id} value={option.id}>
@@ -1914,7 +1922,7 @@ const CURRENCY_RATES: Record<string, { label: string; rate: number }> = {
 
 function RecordIncomeModal({ open, onClose, onSaved }: { open: boolean; onClose: () => void; onSaved?: () => void }) {
   const { branchId, branches, selectBranch } = useBranchContext()
-  const { options: coaOptions, loading: coaLoading } = useCoaOptions(open, "income", branchId)
+  const { options: coaOptions, loading: coaLoading, error: coaError } = useCoaOptions(open, "income", branchId)
   const bankAccounts = useBankAccountOptions(open, branchId)
 
   const [date, setDate] = useState("")
@@ -1958,7 +1966,13 @@ function RecordIncomeModal({ open, onClose, onSaved }: { open: boolean; onClose:
       return
     }
     if (!coaId) {
-      setSaveError("Choose the income account to post against.")
+      setSaveError(
+        coaError
+          ? `The chart of accounts could not be loaded, so this income cannot be posted yet. ${coaError}`
+          : coaOptions.length === 0
+            ? "No income heads exist in the chart of accounts. Add one under Settings before recording an income."
+            : "Choose the income account to post against."
+      )
       return
     }
     const selectedCoa = coaOptions.find((option) => option.id === coaId)
@@ -2059,9 +2073,11 @@ function RecordIncomeModal({ open, onClose, onSaved }: { open: boolean; onClose:
               <option value="">
                 {coaLoading
                   ? "Loading accounts…"
-                  : coaOptions.length === 0
-                    ? "No income heads in the chart of accounts yet"
-                    : "Select an account…"}
+                  : coaError
+                    ? `Couldn't load accounts — ${coaError}`
+                    : coaOptions.length === 0
+                      ? "No income heads in the chart of accounts yet"
+                      : "Select an account…"}
               </option>
               {coaOptions.map((option) => (
                 <option key={option.id} value={option.id}>
@@ -2273,16 +2289,17 @@ type SplitLine = { amount: string; description: string; chartOfAccountId: string
 function useCoaOptions(enabled: boolean, kind?: "income" | "expense", branchId?: string) {
   const [options, setOptions] = useState<Array<{ id: string; label: string }>>([])
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!enabled) return
     let active = true
     setLoading(true)
+    setError(null)
 
+    // The backend's account types are asset | liability | equity | revenue |
+    // expense — income heads are `revenue`.
     const accountType = kind === "income" ? "revenue" : kind
-    const params = new URLSearchParams({ page: "1", limit: "100" })
-    if (accountType) params.set("accountType", accountType)
-    if (branchId) params.set("branchId", branchId)
 
     const read = (data: any) => {
       const raw = Array.isArray(data?.data?.content)
@@ -2295,6 +2312,13 @@ function useCoaOptions(enabled: boolean, kind?: "income" | "expense", branchId?:
               ? data
               : []
       return raw
+        .filter((item: any) => {
+          if (!accountType) return true
+          const type = String(item?.accountType ?? item?.type ?? "").toLowerCase()
+          // Tolerate a backend that labels income heads either way.
+          if (accountType === "revenue") return type === "revenue" || type === "income"
+          return type === accountType
+        })
         .map((item: any) => {
           const code = String(item?.code ?? item?.accountCode ?? "")
           const name = String(item?.name ?? item?.accountName ?? item?.title ?? "Untitled")
@@ -2306,40 +2330,65 @@ function useCoaOptions(enabled: boolean, kind?: "income" | "expense", branchId?:
         .filter((option: { id: string }) => option.id)
     }
 
-    fetch(`${API_V1}/financial/coa?${params.toString()}`, { credentials: "include" })
-      .then((response) => (response.ok ? response.json() : null))
-      .then(async (data) => {
-        if (!active) return
-        let list = data ? read(data) : []
+    // Progressively drop the filters the backend refuses. It answers a bare
+    // "Validation failed" for the whole request rather than naming the offending
+    // parameter, so rather than leaving the picker empty — which blocks the
+    // entry entirely — narrow client-side and carry on.
+    const attempts: Array<{ params: URLSearchParams; note: string }> = []
+    const build = (withType: boolean, withBranch: boolean, limit: string) => {
+      const params = new URLSearchParams({ page: "1", limit })
+      if (withType && accountType) params.set("accountType", accountType)
+      if (withBranch && branchId) params.set("branchId", branchId)
+      return params
+    }
+    attempts.push({ params: build(true, true, "100"), note: "" })
+    if (branchId) attempts.push({ params: build(true, false, "100"), note: "without branchId" })
+    if (accountType) attempts.push({ params: build(false, true, "100"), note: "without accountType" })
+    attempts.push({ params: build(false, false, "50"), note: "unfiltered" })
 
-        // A branch with no chart of its own still needs the org-wide heads,
-        // otherwise the picker is empty and the entry can never be saved.
-        if (list.length === 0 && branchId) {
-          const fallbackParams = new URLSearchParams({ page: "1", limit: "100" })
-          if (accountType) fallbackParams.set("accountType", accountType)
-          const retry = await fetch(`${API_V1}/financial/coa?${fallbackParams.toString()}`, {
+    const run = async () => {
+      let lastMessage = ""
+      for (const attempt of attempts) {
+        try {
+          const response = await fetch(`${API_V1}/financial/coa?${attempt.params.toString()}`, {
             credentials: "include",
           })
-            .then((response) => (response.ok ? response.json() : null))
-            .catch(() => null)
-          if (active && retry) list = read(retry)
+          const data = await response.json().catch(() => null)
+          if (!response.ok) {
+            lastMessage = String(data?.message ?? "") || lastMessage
+            if (attempt.note) {
+              console.warn(
+                `COA query rejected (${attempt.params.toString()}); retrying ${attempt.note}.`,
+                data
+              )
+            }
+            continue
+          }
+          const list = read(data)
+          if (!active) return
+          setOptions(list)
+          setError(list.length === 0 ? null : null)
+          return
+        } catch {
+          /* try the next, narrower query */
         }
+      }
+      if (active) {
+        setOptions([])
+        setError(lastMessage || "Unable to load the chart of accounts.")
+      }
+    }
 
-        if (active) setOptions(list)
-      })
-      .catch(() => {
-        /* leave the picker empty when the chart of accounts is unavailable */
-      })
-      .finally(() => {
-        if (active) setLoading(false)
-      })
+    run().finally(() => {
+      if (active) setLoading(false)
+    })
 
     return () => {
       active = false
     }
   }, [enabled, kind, branchId])
 
-  return { options, loading }
+  return { options, loading, error }
 }
 
 /** Bank accounts a manual entry can be posted against. */
