@@ -17,12 +17,8 @@ import {
   ChevronDown,
   Download,
   Upload,
-  EyeOff,
-  Mail,
-  Split,
   Power,
   PowerOff,
-  RefreshCw,
   X,
   Plus,
   Landmark,
@@ -41,9 +37,6 @@ import {
   TrendingUp,
   Hourglass,
   Save,
-  ShieldCheck,
-  Flag,
-  Sparkles,
   UploadCloud,
   CheckSquare,
 } from "lucide-react"
@@ -53,10 +46,7 @@ import { AmountInput, parseAmount } from "@/components/ui/amount-input"
 import { API_V1 } from "@/lib/api"
 import { getCsrfTokenFromCookie } from "@/lib/csrf"
 import { useTransactions, type TransactionItem } from "@/components/hooks/useTransactions"
-import {
-  useTransactionSummaries,
-  useTransactionActions,
-} from "@/components/hooks/useTransactionSummaries"
+import { useTransactionSummaries } from "@/components/hooks/useTransactionSummaries"
 import { useToast } from "@/components/ui/toast"
 import { useAuth } from "@/components/auth/AuthProvider"
 import { useBranchContext } from "@/components/hooks/useBranchContext"
@@ -216,7 +206,6 @@ export function BankTransactions({
   const { summary, refresh: refreshSummary } = useTransactionSummaries({
     branchId: selectedBranchId || undefined,
   })
-  const { syncFeed, ignoreTransaction } = useTransactionActions()
   // The transaction summaries carry balances but not how many accounts they
   // came from, so the account count is read from the bank-balances endpoint.
   const [accountCount, setAccountCount] = useState(0)
@@ -238,36 +227,6 @@ export function BankTransactions({
     }
   }, [selectedBranchId])
 
-  const [syncing, setSyncing] = useState(false)
-  const [ignoringId, setIgnoringId] = useState<string | null>(null)
-
-  const handleSync = async () => {
-    setSyncing(true)
-    try {
-      await syncFeed()
-      pushToast("Bank feed synced", "success")
-      refresh()
-      refreshSummary()
-    } catch (err) {
-      pushToast(err instanceof Error ? err.message : "Unable to sync the bank feed", "error")
-    } finally {
-      setSyncing(false)
-    }
-  }
-
-  const handleIgnore = async (transactionId: string) => {
-    setIgnoringId(transactionId)
-    try {
-      await ignoreTransaction(transactionId, "Ignored from the reconciliation list")
-      pushToast("Transaction ignored", "success")
-      refresh()
-      refreshSummary()
-    } catch (err) {
-      pushToast(err instanceof Error ? err.message : "Unable to ignore this transaction", "error")
-    } finally {
-      setIgnoringId(null)
-    }
-  }
 
   // Local copy of the mapped rows so category edits can be applied optimistically.
   const [rows, setRows] = useState<DemoRow[]>([])
@@ -289,79 +248,8 @@ export function BankTransactions({
   const [accountsOpen, setAccountsOpen] = useState(false)
   const [reconcileOpen, setReconcileOpen] = useState(false)
   const [groupDetailsOpen, setGroupDetailsOpen] = useState(false)
-  const [parseEmailOpen, setParseEmailOpen] = useState(false)
-  const [splitTarget, setSplitTarget] = useState<DemoRow | null>(null)
 
-  // Per-row action state (verify/flag in flight, and AI category suggestions).
-  const [actionRowId, setActionRowId] = useState<string | null>(null)
-  const [suggestRowId, setSuggestRowId] = useState<string | null>(null)
-  const [suggestions, setSuggestions] = useState<Record<string, string[]>>({})
 
-  // PATCH verify/flag a transaction, then refetch the list. Defensive: a failed
-  // request just clears the in-flight flag and leaves the row unchanged.
-  const verifyTransaction = async (id: string, status: "verified" | "flagged") => {
-    setActionRowId(id)
-    try {
-      const response = await fetch(`${API_V1}/financial/transactions/${id}/verify`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          "x-csrf-token": getCsrfTokenFromCookie(),
-        },
-        credentials: "include",
-        body: JSON.stringify({ status }),
-      })
-      if (!response.ok) throw new Error("verify failed")
-      refresh()
-    } catch {
-      // Swallow; UI stays as-is.
-    } finally {
-      setActionRowId(null)
-    }
-  }
-
-  // POST for ranked chart-of-account suggestions, then expose them as extra
-  // options in this row's category dropdown. Defensive on shape and failure.
-  const suggestCategories = async (id: string) => {
-    setSuggestRowId(id)
-    try {
-      const response = await fetch(
-        `${API_V1}/financial/transactions/${id}/categorize-suggestions`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-csrf-token": getCsrfTokenFromCookie(),
-          },
-          credentials: "include",
-          body: JSON.stringify({}),
-        },
-      )
-      const data = await response.json().catch(() => null)
-      if (!response.ok) throw new Error("suggest failed")
-      const raw = Array.isArray(data?.data)
-        ? data.data
-        : Array.isArray(data?.suggestions)
-          ? data.suggestions
-          : Array.isArray(data)
-            ? data
-            : []
-      const names = raw
-        .map((s: any) =>
-          typeof s === "string"
-            ? s
-            : String(s?.coaName ?? s?.name ?? s?.category ?? s?.label ?? ""),
-        )
-        .filter((s: string) => s.length > 0)
-      setSuggestions((prev) => ({ ...prev, [id]: names }))
-    } catch {
-      setSuggestions((prev) => ({ ...prev, [id]: [] }))
-    } finally {
-      setSuggestRowId(null)
-    }
-  }
-
-  // PATCH category, optimistically update, then refetch from the server.
   const updateCategory = async (id: string, category: string) => {
     const previous = rows
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, category } : r)))
@@ -449,28 +337,11 @@ export function BankTransactions({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3 mt-2 md:mt-0">
-          {!hideBranchSelector && (
-            <BranchesDropdown value={selectedBranchId} onChange={(id) => setSelectedBranchId(id)} />
-          )}
-          <button
-            onClick={handleSync}
-            disabled={syncing}
-            className="flex w-full sm:w-auto items-center justify-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 py-2.5 text-[12px] font-bold text-[#4B5563] shadow-sm hover:bg-gray-50 transition-colors disabled:opacity-60"
-          >
-            <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} strokeWidth={2.5} />
-            {syncing ? "Syncing…" : "Sync Feed"}
-          </button>
           <button
             onClick={() => setUploadOpen(true)}
             className="flex w-full sm:w-auto items-center justify-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 py-2.5 text-[12px] font-bold text-[#4B5563] shadow-sm hover:bg-gray-50 transition-colors"
           >
             <Upload className="h-4 w-4" strokeWidth={2.5} /> Upload Statements
-          </button>
-          <button
-            onClick={() => setParseEmailOpen(true)}
-            className="flex w-full sm:w-auto items-center justify-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 py-2.5 text-[12px] font-bold text-[#4B5563] shadow-sm hover:bg-gray-50 transition-colors"
-          >
-            <Mail className="h-4 w-4" strokeWidth={2.5} /> Bank Alert
           </button>
           <button
             onClick={() => setIncomeOpen(true)}
@@ -549,6 +420,9 @@ export function BankTransactions({
           </div>
 
           <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full lg:w-auto">
+            {!hideBranchSelector && (
+              <BranchesDropdown value={selectedBranchId} onChange={(id) => setSelectedBranchId(id)} />
+            )}
             <div className="relative w-full sm:w-auto">
               <select
                 value={accountFilter}
@@ -654,7 +528,7 @@ export function BankTransactions({
                         <div className="relative flex-1">
                           {(() => {
                             const baseOptions = categoriesForRow(row)
-                            const suggested = (suggestions[row.id] ?? []).filter(
+                            const suggested = ([] as string[]).filter(
                               (s) => !baseOptions.includes(s),
                             )
                             const options = [...baseOptions, ...suggested]
@@ -683,59 +557,11 @@ export function BankTransactions({
                           })()}
                           <ChevronDown className="absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9CA3AF] pointer-events-none" />
                         </div>
-                        <button
-                          onClick={() => suggestCategories(row.id)}
-                          disabled={suggestRowId === row.id}
-                          title="Suggest categories"
-                          aria-label="Suggest categories"
-                          className="inline-flex h-[34px] w-8 shrink-0 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[#3B5BDB] hover:bg-[#EEF2FF] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <Sparkles className={`h-3.5 w-3.5 ${suggestRowId === row.id ? "animate-pulse" : ""}`} />
-                        </button>
-                        <button
-                          onClick={() => handleIgnore(row.id)}
-                          disabled={ignoringId === row.id}
-                          title="Ignore this transaction"
-                          aria-label="Ignore transaction"
-                          className="inline-flex h-[34px] w-8 shrink-0 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[#9CA3AF] transition-colors hover:bg-gray-50 hover:text-rose-600 disabled:opacity-50"
-                        >
-                          <EyeOff className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          onClick={() => setSplitTarget(row)}
-                          title="Split this transaction"
-                          aria-label="Split transaction"
-                          className="inline-flex h-[34px] w-8 shrink-0 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[#9CA3AF] transition-colors hover:bg-gray-50 hover:text-[#3B5BDB]"
-                        >
-                          <Split className="h-3.5 w-3.5" />
-                        </button>
                       </div>
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">
                         <StatusPill status={row.status} />
-                        {row.status !== "cleared" && (
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => verifyTransaction(row.id, "verified")}
-                              disabled={actionRowId === row.id}
-                              title="Verify"
-                              aria-label="Verify transaction"
-                              className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              <ShieldCheck className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={() => verifyTransaction(row.id, "flagged")}
-                              disabled={actionRowId === row.id}
-                              title="Flag"
-                              aria-label="Flag transaction"
-                              className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              <Flag className="h-4 w-4" />
-                            </button>
-                          </div>
-                        )}
                       </div>
                     </td>
                     <td className="px-4 py-4 text-center">
@@ -795,28 +621,27 @@ export function BankTransactions({
         }}
         summary={uploadSummary}
       />
-      <RecordIncomeModal open={incomeOpen} onClose={() => setIncomeOpen(false)} onSaved={refresh} />
-      <RecordExpenseModal open={expenseOpen} onClose={() => setExpenseOpen(false)} onSaved={refresh} />
+      <RecordIncomeModal
+        open={incomeOpen}
+        onClose={() => setIncomeOpen(false)}
+        onSaved={() => {
+          refresh()
+          refreshSummary()
+          pushToast("Income recorded", "success")
+        }}
+      />
+      <RecordExpenseModal
+        open={expenseOpen}
+        onClose={() => setExpenseOpen(false)}
+        onSaved={() => {
+          refresh()
+          refreshSummary()
+          pushToast("Expense recorded", "success")
+        }}
+      />
       <ManageAccountsModal open={accountsOpen} onClose={() => setAccountsOpen(false)} />
       <ReconcileBankDepositModal open={reconcileOpen} onClose={() => setReconcileOpen(false)} />
       <ReconciledGroupDetailsModal open={groupDetailsOpen} onClose={() => setGroupDetailsOpen(false)} />
-      <SplitTransactionModal
-        transaction={splitTarget}
-        onClose={() => setSplitTarget(null)}
-        onSplit={() => {
-          pushToast("Transaction split", "success")
-          refresh()
-          refreshSummary()
-        }}
-      />
-      <ParseEmailModal
-        open={parseEmailOpen}
-        onClose={() => setParseEmailOpen(false)}
-        onParsed={() => {
-          refresh()
-          refreshSummary()
-        }}
-      />
     </>
   )
 }
@@ -1706,40 +1531,31 @@ function ManageAccountsModal({ open, onClose }: { open: boolean; onClose: () => 
 // ---------------------------------------------------------------------------
 
 function RecordExpenseModal({ open, onClose, onSaved }: { open: boolean; onClose: () => void; onSaved?: () => void }) {
-  const { branchId, branches, selectBranch } = useBranchContext()
+  const { branchId } = useBranchContext()
   const { options: coaOptions, loading: coaLoading, error: coaError } = useCoaOptions(open, "expense", branchId)
-  const bankAccounts = useBankAccountOptions(open, branchId)
 
   const [date, setDate] = useState("")
   const [amount, setAmount] = useState("")
+  const [method, setMethod] = useState("Transfer")
   const [payee, setPayee] = useState("")
   const [coaId, setCoaId] = useState("")
-  const [bankAccountId, setBankAccountId] = useState("")
-  const [reference, setReference] = useState("")
   const [notes, setNotes] = useState("")
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open) return
-    setDate(new Date().toISOString().slice(0, 10))
+    setDate("")
     setAmount("")
+    setMethod("Transfer")
     setPayee("")
     setCoaId("")
-    setBankAccountId("")
-    setReference("")
     setNotes("")
     setSaving(false)
     setSaveError(null)
   }, [open])
 
   const handleSave = async () => {
-    // Every one of these is required by POST /transactions; sending the entry
-    // without them is what produced the old "Validation failed" response.
-    if (!branchId) {
-      setSaveError("Choose the branch this expense belongs to.")
-      return
-    }
     if (!date) {
       setSaveError("Pick the transaction date.")
       return
@@ -1753,14 +1569,20 @@ function RecordExpenseModal({ open, onClose, onSaved }: { open: boolean; onClose
         coaError
           ? `The chart of accounts could not be loaded, so this expense cannot be posted yet. ${coaError}`
           : coaOptions.length === 0
-            ? "No expense heads exist in the chart of accounts. Add one under Settings before recording an expense."
-            : "Choose the expense account to post against."
+            ? "No expense heads exist in the chart of accounts. Add one under Settings first."
+            : "Choose a category to post against."
       )
+      return
+    }
+    // Required by the API but not drawn on the form: taken from the branch the
+    // screen is scoped to rather than asking for it twice.
+    if (!branchId) {
+      setSaveError("No branch is available for your account. Ask an administrator to assign you to one.")
       return
     }
     const description = notes.trim() || payee.trim()
     if (!description) {
-      setSaveError("Add a description or a payee.")
+      setSaveError("Add a note or a payee.")
       return
     }
 
@@ -1769,10 +1591,7 @@ function RecordExpenseModal({ open, onClose, onSaved }: { open: boolean; onClose
     try {
       const response = await fetch(`${API_V1}/financial/transactions`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-csrf-token": getCsrfTokenFromCookie(),
-        },
+        headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfTokenFromCookie() },
         credentials: "include",
         body: JSON.stringify({
           type: "expense",
@@ -1781,10 +1600,9 @@ function RecordExpenseModal({ open, onClose, onSaved }: { open: boolean; onClose
           branchId,
           chartOfAccountId: coaId,
           transactionDate: date,
-          ...(bankAccountId ? { bankAccountId } : {}),
-          ...(reference.trim() ? { reference: reference.trim() } : {}),
           source: "manual",
           currency: "NGN",
+          meta: { paymentMethod: method, payee: payee.trim() || undefined },
         }),
       })
       const data = await response.json().catch(() => null)
@@ -1805,90 +1623,70 @@ function RecordExpenseModal({ open, onClose, onSaved }: { open: boolean; onClose
       <div className="px-6 py-5 space-y-4">
         <p className="text-[12px] text-[#9CA3AF] -mt-1">Enter the manual transaction details for the ledger.</p>
 
-        {branches.length > 1 && (
-          <Field label="Branch">
-            <SelectField value={branchId} onChange={selectBranch}>
-              <option value="">Select a branch…</option>
-              {branches.map((branch) => (
-                <option key={branch.id} value={branch.id}>
-                  {branch.name}
-                </option>
-              ))}
-            </SelectField>
-          </Field>
-        )}
+        <Field label="Transaction Date">
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            onClick={(e) => e.currentTarget.showPicker?.()}
+            className={inputClass}
+          />
+        </Field>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field label="Transaction Date">
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              onClick={(e) => e.currentTarget.showPicker?.()}
-              className={inputClass}
-            />
+          <Field label="Amount">
+            <AmountInput value={amount} onValueChange={setAmount} placeholder="₦ 0.00" className={inputClass} />
           </Field>
-          <Field label="Amount (₦)">
-            <AmountInput value={amount} onValueChange={setAmount} placeholder="0.00" className={inputClass} />
+          <Field label="Transaction Type">
+            <SelectField value={method} onChange={setMethod}>
+              <option value="Transfer">Transfer</option>
+              <option value="Cash">Cash</option>
+              <option value="Cheque">Cheque</option>
+              <option value="Card">Card</option>
+            </SelectField>
           </Field>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field label="Expense Account">
-            <SelectField value={coaId} onChange={setCoaId}>
-              <option value="">
-                {coaLoading
-                  ? "Loading accounts…"
-                  : coaError
-                    ? `Couldn't load accounts — ${coaError}`
-                    : coaOptions.length === 0
-                      ? "No expense heads in the chart of accounts yet"
-                      : "Select an account…"}
+        <Field label="Payee/Vendor">
+          <input
+            value={payee}
+            onChange={(e) => setPayee(e.target.value)}
+            placeholder="e.g. City Water Dept, Amazon, Mission Fund"
+            className={inputClass}
+          />
+        </Field>
+
+        <Field label="Category">
+          <SelectField value={coaId} onChange={setCoaId}>
+            <option value="">
+              {coaLoading
+                ? "Loading categories…"
+                : coaError
+                  ? `Couldn't load categories — ${coaError}`
+                  : coaOptions.length === 0
+                    ? "No expense heads in the chart of accounts yet"
+                    : "Select a category…"}
+            </option>
+            {coaOptions.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
               </option>
-              {coaOptions.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
-            </SelectField>
-          </Field>
-          <Field label="Payee / Vendor">
-            <input value={payee} onChange={(e) => setPayee(e.target.value)} placeholder="e.g. City Power Ltd" className={inputClass} />
-          </Field>
-        </div>
+            ))}
+          </SelectField>
+        </Field>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field label="Paid From (optional)">
-            <SelectField value={bankAccountId} onChange={setBankAccountId}>
-              <option value="">
-                {bankAccounts.length === 0 ? "No bank accounts yet" : "Not linked to an account"}
-              </option>
-              {bankAccounts.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
-            </SelectField>
-          </Field>
-          <Field label="Reference (optional)">
-            <input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="e.g. EXP-2026-014" className={inputClass} />
-          </Field>
-        </div>
-
-        <Field label="Notes / Description">
+        <Field label="Notes/Description">
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={3}
-            placeholder="Add a note..."
+            placeholder="Enter specific details about this expense..."
             className="w-full rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 py-2.5 text-[13px] font-medium text-[#111827] focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]/20"
           />
         </Field>
       </div>
 
-      {saveError && (
-        <p className="px-6 -mt-2 pb-1 text-[12px] font-medium text-rose-600">{saveError}</p>
-      )}
+      {saveError && <p className="px-6 -mt-2 pb-1 text-[12px] font-medium text-rose-600">{saveError}</p>}
 
       <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[#EEF1F6]">
         <button
@@ -1900,8 +1698,9 @@ function RecordExpenseModal({ open, onClose, onSaved }: { open: boolean; onClose
         <button
           onClick={handleSave}
           disabled={saving}
-          className="rounded-md bg-[#3B5BDB] px-4 py-2.5 text-[12px] font-bold text-white shadow-sm hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex items-center gap-2 rounded-md bg-[#3B5BDB] px-4 py-2.5 text-[12px] font-bold text-white shadow-sm hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
+          <Save className="h-4 w-4" />
           {saving ? "Saving…" : "Save Expense"}
         </button>
       </div>
@@ -1921,28 +1720,23 @@ const CURRENCY_RATES: Record<string, { label: string; rate: number }> = {
 }
 
 function RecordIncomeModal({ open, onClose, onSaved }: { open: boolean; onClose: () => void; onSaved?: () => void }) {
-  const { branchId, branches, selectBranch } = useBranchContext()
+  const { branchId } = useBranchContext()
   const { options: coaOptions, loading: coaLoading, error: coaError } = useCoaOptions(open, "income", branchId)
-  const bankAccounts = useBankAccountOptions(open, branchId)
 
   const [date, setDate] = useState("")
   const [currency, setCurrency] = useState("NGN")
   const [amount, setAmount] = useState("")
   const [coaId, setCoaId] = useState("")
-  const [bankAccountId, setBankAccountId] = useState("")
-  const [reference, setReference] = useState("")
   const [notes, setNotes] = useState("")
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open) return
-    setDate(new Date().toISOString().slice(0, 10))
+    setDate("")
     setCurrency("NGN")
     setAmount("")
     setCoaId("")
-    setBankAccountId("")
-    setReference("")
     setNotes("")
     setSaving(false)
     setSaveError(null)
@@ -1953,10 +1747,6 @@ function RecordIncomeModal({ open, onClose, onSaved }: { open: boolean; onClose:
   const localValue = numericAmount * (CURRENCY_RATES[currency]?.rate ?? 1)
 
   const handleSave = async () => {
-    if (!branchId) {
-      setSaveError("Choose the branch this income belongs to.")
-      return
-    }
     if (!date) {
       setSaveError("Pick the transaction date.")
       return
@@ -1970,23 +1760,27 @@ function RecordIncomeModal({ open, onClose, onSaved }: { open: boolean; onClose:
         coaError
           ? `The chart of accounts could not be loaded, so this income cannot be posted yet. ${coaError}`
           : coaOptions.length === 0
-            ? "No income heads exist in the chart of accounts. Add one under Settings before recording an income."
-            : "Choose the income account to post against."
+            ? "No income heads exist in the chart of accounts. Add one under Settings first."
+            : "Choose an income type to post against."
       )
       return
     }
-    const selectedCoa = coaOptions.find((option) => option.id === coaId)
-    const description = notes.trim() || selectedCoa?.label || "Income entry"
+    // Required by the API but not drawn on the form: taken from the branch the
+    // screen is scoped to rather than asking for it twice.
+    if (!branchId) {
+      setSaveError("No branch is available for your account. Ask an administrator to assign you to one.")
+      return
+    }
+
+    const selected = coaOptions.find((option) => option.id === coaId)
+    const description = notes.trim() || selected?.label || "Income entry"
 
     setSaving(true)
     setSaveError(null)
     try {
       const response = await fetch(`${API_V1}/financial/transactions`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-csrf-token": getCsrfTokenFromCookie(),
-        },
+        headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfTokenFromCookie() },
         credentials: "include",
         body: JSON.stringify({
           type: "income",
@@ -1996,8 +1790,6 @@ function RecordIncomeModal({ open, onClose, onSaved }: { open: boolean; onClose:
           chartOfAccountId: coaId,
           transactionDate: date,
           currency,
-          ...(bankAccountId ? { bankAccountId } : {}),
-          ...(reference.trim() ? { reference: reference.trim() } : {}),
           source: "manual",
         }),
       })
@@ -2018,19 +1810,6 @@ function RecordIncomeModal({ open, onClose, onSaved }: { open: boolean; onClose:
 
       <div className="px-6 py-5 space-y-4">
         <p className="-mt-2 text-[12.5px] text-[#6B7280]">Enter the manual transaction details for the ledger.</p>
-
-        {branches.length > 1 && (
-          <Field label="Branch">
-            <SelectField value={branchId} onChange={selectBranch}>
-              <option value="">Select a branch…</option>
-              {branches.map((branch) => (
-                <option key={branch.id} value={branch.id}>
-                  {branch.name}
-                </option>
-              ))}
-            </SelectField>
-          </Field>
-        )}
 
         <Field label="Transaction Date">
           <input
@@ -2067,41 +1846,23 @@ function RecordIncomeModal({ open, onClose, onSaved }: { open: boolean; onClose:
           </Field>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field label="Income Account">
-            <SelectField value={coaId} onChange={setCoaId}>
-              <option value="">
-                {coaLoading
-                  ? "Loading accounts…"
-                  : coaError
-                    ? `Couldn't load accounts — ${coaError}`
-                    : coaOptions.length === 0
-                      ? "No income heads in the chart of accounts yet"
-                      : "Select an account…"}
+        <Field label={isNaira ? "Income Type" : "Category"}>
+          <SelectField value={coaId} onChange={setCoaId}>
+            <option value="">
+              {coaLoading
+                ? "Loading income types…"
+                : coaError
+                  ? `Couldn't load income types — ${coaError}`
+                  : coaOptions.length === 0
+                    ? "No income heads in the chart of accounts yet"
+                    : "Select an income type…"}
+            </option>
+            {coaOptions.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
               </option>
-              {coaOptions.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
-            </SelectField>
-          </Field>
-          <Field label="Paid Into (optional)">
-            <SelectField value={bankAccountId} onChange={setBankAccountId}>
-              <option value="">
-                {bankAccounts.length === 0 ? "No bank accounts yet" : "Not linked to an account"}
-              </option>
-              {bankAccounts.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
-            </SelectField>
-          </Field>
-        </div>
-
-        <Field label="Reference (optional)">
-          <input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="e.g. OFF-2026-001" className={inputClass} />
+            ))}
+          </SelectField>
         </Field>
 
         <Field label="Notes/Description">
@@ -2115,9 +1876,7 @@ function RecordIncomeModal({ open, onClose, onSaved }: { open: boolean; onClose:
         </Field>
       </div>
 
-      {saveError && (
-        <p className="px-6 -mt-2 pb-1 text-[12px] font-medium text-rose-600">{saveError}</p>
-      )}
+      {saveError && <p className="px-6 -mt-2 pb-1 text-[12px] font-medium text-rose-600">{saveError}</p>}
 
       <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[#EEF1F6]">
         <button
@@ -2275,8 +2034,6 @@ function formatFileSize(bytes: number) {
 // Split a transaction across several chart-of-account lines
 // ---------------------------------------------------------------------------
 
-type SplitLine = { amount: string; description: string; chartOfAccountId: string }
-
 /**
  * Chart-of-account heads for the entry pickers.
  *
@@ -2391,297 +2148,9 @@ function useCoaOptions(enabled: boolean, kind?: "income" | "expense", branchId?:
   return { options, loading, error }
 }
 
-/** Bank accounts a manual entry can be posted against. */
-function useBankAccountOptions(enabled: boolean, branchId: string) {
-  const [options, setOptions] = useState<Array<{ id: string; label: string }>>([])
-
-  useEffect(() => {
-    if (!enabled) return
-    let active = true
-    const params = new URLSearchParams({ page: "1", limit: "100" })
-    if (branchId) params.set("branchId", branchId)
-    fetch(`${API_V1}/financial/bank-accounts?${params.toString()}`, { credentials: "include" })
-      .then((response) => (response.ok ? response.json() : null))
-      .then((data) => {
-        if (!active || !data) return
-        const raw = Array.isArray(data?.data?.content)
-          ? data.data.content
-          : Array.isArray(data?.data)
-            ? data.data
-            : Array.isArray(data?.items)
-              ? data.items
-              : Array.isArray(data)
-                ? data
-                : []
-        setOptions(
-          raw
-            .map((item: any) => {
-              const name = String(item?.accountName ?? item?.name ?? "Untitled")
-              const number = String(item?.accountNumber ?? "")
-              const bank = String(item?.bankName ?? "")
-              return {
-                id: String(item?.id ?? item?._id ?? ""),
-                label: [bank, name, number].filter(Boolean).join(" · "),
-              }
-            })
-            .filter((option: { id: string }) => option.id)
-        )
-      })
-      .catch(() => {
-        /* leave the picker empty when bank accounts are unavailable */
-      })
-    return () => {
-      active = false
-    }
-  }, [enabled, branchId])
-
-  return options
-}
-
-function SplitTransactionModal({
-  transaction,
-  onClose,
-  onSplit,
-}: {
-  transaction: DemoRow | null
-  onClose: () => void
-  onSplit: () => void
-}) {
-  const open = Boolean(transaction)
-  const { options: coaOptions } = useCoaOptions(open)
-  const [lines, setLines] = useState<SplitLine[]>([])
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!open) return
-    setLines([
-      { amount: "", description: "", chartOfAccountId: "" },
-      { amount: "", description: "", chartOfAccountId: "" },
-    ])
-    setError(null)
-    setSaving(false)
-  }, [open])
-
-  const updateLine = (index: number, patch: Partial<SplitLine>) =>
-    setLines((prev) => prev.map((line, i) => (i === index ? { ...line, ...patch } : line)))
-
-  const submit = async () => {
-    if (!transaction) return
-    const splits = lines
-      .filter((line) => line.chartOfAccountId && Number(line.amount) > 0)
-      .map((line) => ({
-        amount: Number(line.amount),
-        description: line.description.trim() || transaction.description,
-        chartOfAccountId: line.chartOfAccountId,
-      }))
-
-    if (splits.length < 2) {
-      setError("A split needs at least two lines with an account and an amount.")
-      return
-    }
-
-    setSaving(true)
-    setError(null)
-    try {
-      const response = await fetch(`${API_V1}/financial/transactions/${transaction.id}/split`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfTokenFromCookie() },
-        credentials: "include",
-        body: JSON.stringify({ splits }),
-      })
-      const payload = await response.json().catch(() => null)
-      if (!response.ok) throw new Error(payload?.message ?? "Unable to split this transaction.")
-      onSplit()
-      onClose()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to split this transaction.")
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  if (!transaction) return null
-
-  return (
-    <ModalShell open={open} onClose={onClose} className="max-w-2xl">
-      <ModalHeader title="Split Transaction" onClose={onClose} />
-
-      <div className="px-6 py-5 space-y-4">
-        <p className="text-[12px] font-semibold text-[#6B7280]">
-          {transaction.description} — {formatMoneyWhole(transaction.income ?? transaction.expense ?? 0)}
-        </p>
-
-        {lines.map((line, index) => (
-          <div key={index} className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_120px]">
-            <select
-              value={line.chartOfAccountId}
-              onChange={(event) => updateLine(index, { chartOfAccountId: event.target.value })}
-              className="h-[38px] rounded-md border border-[#E5E7EB] px-3 text-[12px] font-semibold text-[#111827] outline-none focus:border-[#3B5BDB]"
-            >
-              <option value="">Select account…</option>
-              {coaOptions.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            <input
-              value={line.description}
-              onChange={(event) => updateLine(index, { description: event.target.value })}
-              placeholder="Description"
-              className="h-[38px] rounded-md border border-[#E5E7EB] px-3 text-[12px] font-medium text-[#111827] outline-none focus:border-[#3B5BDB]"
-            />
-            <input
-              type="number"
-              min="0"
-              value={line.amount}
-              onChange={(event) => updateLine(index, { amount: event.target.value })}
-              placeholder="Amount"
-              className="h-[38px] rounded-md border border-[#E5E7EB] px-3 text-[12px] font-semibold text-[#111827] outline-none focus:border-[#3B5BDB]"
-            />
-          </div>
-        ))}
-
-        <button
-          type="button"
-          onClick={() => setLines((prev) => [...prev, { amount: "", description: "", chartOfAccountId: "" }])}
-          className="text-[12px] font-bold text-[#3B5BDB] hover:text-[#1D4ED8] transition-colors"
-        >
-          + Add line
-        </button>
-
-        {error && <p className="text-[12px] font-semibold text-rose-600">{error}</p>}
-      </div>
-
-      <div className="flex items-center justify-end gap-3 border-t border-[#EEF1F6] px-6 py-4">
-        <button
-          onClick={onClose}
-          className="rounded-md border border-[#E5E7EB] bg-white px-4 py-2.5 text-[12px] font-bold text-[#4B5563] hover:bg-gray-50 transition-colors"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={submit}
-          disabled={saving}
-          className="rounded-md bg-[#3B5BDB] px-5 py-2.5 text-[12px] font-bold text-white shadow-sm hover:bg-blue-700 transition-colors disabled:opacity-60"
-        >
-          {saving ? "Splitting…" : "Save Split"}
-        </button>
-      </div>
-    </ModalShell>
-  )
-}
-
 // ---------------------------------------------------------------------------
 // Turn a pasted bank alert email into a transaction draft
 // ---------------------------------------------------------------------------
-
-function ParseEmailModal({
-  open,
-  onClose,
-  onParsed,
-}: {
-  open: boolean
-  onClose: () => void
-  onParsed: () => void
-}) {
-  const [subject, setSubject] = useState("")
-  const [from, setFrom] = useState("")
-  const [body, setBody] = useState("")
-  const [parsing, setParsing] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [result, setResult] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!open) return
-    setSubject("")
-    setFrom("")
-    setBody("")
-    setError(null)
-    setResult(null)
-    setParsing(false)
-  }, [open])
-
-  const submit = async () => {
-    if (!subject.trim() || !body.trim()) {
-      setError("Both the subject and the email body are required.")
-      return
-    }
-    setParsing(true)
-    setError(null)
-    try {
-      const response = await fetch(`${API_V1}/financial/bank-statement/parse-email`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfTokenFromCookie() },
-        credentials: "include",
-        body: JSON.stringify({
-          subject: subject.trim(),
-          body: body.trim(),
-          ...(from.trim() ? { from: from.trim() } : {}),
-          receivedAt: new Date().toISOString(),
-        }),
-      })
-      const payload = await response.json().catch(() => null)
-      if (!response.ok) throw new Error(payload?.message ?? "Unable to read that alert.")
-      setResult(payload?.message ?? "Draft transaction created from the alert.")
-      onParsed()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to read that alert.")
-    } finally {
-      setParsing(false)
-    }
-  }
-
-  return (
-    <ModalShell open={open} onClose={onClose} className="max-w-xl">
-      <ModalHeader title="Import from Bank Alert" onClose={onClose} />
-
-      <div className="space-y-4 px-6 py-5">
-        <p className="text-[12px] font-medium text-[#6B7280]">
-          Paste a credit or debit alert email and it will be read into a draft transaction.
-        </p>
-        <input
-          value={subject}
-          onChange={(event) => setSubject(event.target.value)}
-          placeholder="Subject — e.g. Credit Alert: NGN 250,000.00 received"
-          className="h-[38px] w-full rounded-md border border-[#E5E7EB] px-3 text-[12px] font-medium text-[#111827] outline-none focus:border-[#3B5BDB]"
-        />
-        <input
-          value={from}
-          onChange={(event) => setFrom(event.target.value)}
-          placeholder="From (optional) — e.g. noreply@firstbank.ng"
-          className="h-[38px] w-full rounded-md border border-[#E5E7EB] px-3 text-[12px] font-medium text-[#111827] outline-none focus:border-[#3B5BDB]"
-        />
-        <textarea
-          value={body}
-          onChange={(event) => setBody(event.target.value)}
-          rows={7}
-          placeholder="Paste the full email body here…"
-          className="w-full rounded-md border border-[#E5E7EB] px-3 py-2.5 text-[12px] font-medium text-[#111827] outline-none focus:border-[#3B5BDB]"
-        />
-        {error && <p className="text-[12px] font-semibold text-rose-600">{error}</p>}
-        {result && <p className="text-[12px] font-semibold text-emerald-600">{result}</p>}
-      </div>
-
-      <div className="flex items-center justify-end gap-3 border-t border-[#EEF1F6] px-6 py-4">
-        <button
-          onClick={onClose}
-          className="rounded-md border border-[#E5E7EB] bg-white px-4 py-2.5 text-[12px] font-bold text-[#4B5563] hover:bg-gray-50 transition-colors"
-        >
-          Close
-        </button>
-        <button
-          onClick={submit}
-          disabled={parsing}
-          className="rounded-md bg-[#3B5BDB] px-5 py-2.5 text-[12px] font-bold text-white shadow-sm hover:bg-blue-700 transition-colors disabled:opacity-60"
-        >
-          {parsing ? "Reading…" : "Parse Alert"}
-        </button>
-      </div>
-    </ModalShell>
-  )
-}
 
 export function UploadTransactionsModal({
   open,
