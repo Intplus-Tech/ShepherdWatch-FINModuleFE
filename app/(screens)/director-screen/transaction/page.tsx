@@ -45,6 +45,7 @@ import { AmountInput, parseAmount } from "@/components/ui/amount-input"
 import { API_V1 } from "@/lib/api"
 import { getCsrfTokenFromCookie } from "@/lib/csrf"
 import { statementFileProblem, toImportableStatement } from "@/lib/statement-file"
+import { describeApiError } from "@/lib/api-error"
 import { useTransactions, type TransactionItem } from "@/components/hooks/useTransactions"
 import { useTransactionSummaries } from "@/components/hooks/useTransactionSummaries"
 import { useToast } from "@/components/ui/toast"
@@ -2258,7 +2259,7 @@ export function UploadTransactionsModal({
           body: formData,
         })
         const data = await response.json().catch(() => null)
-        if (!response.ok) throw new Error(data?.message ?? "Unable to upload statement.")
+        if (!response.ok) throw new Error(describeApiError(data, "Unable to upload statement."))
         lastPayload = data?.data ?? data ?? null
       }
       const selected = accountOptions.find((a) => a.id === account)
