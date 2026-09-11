@@ -2248,7 +2248,8 @@ export function UploadTransactionsModal({
       let lastPayload: any = null
       for (const f of files) {
         const formData = new FormData()
-        formData.append("file", await toImportableStatement(f.file))
+        const prepared = await toImportableStatement(f.file)
+        formData.append("file", prepared.file)
         if (account) formData.append("bankAccountId", account)
         const response = await fetch(`${API_V1}/financial/transactions/upload-csv`, {
           method: "POST",

@@ -4,6 +4,8 @@
  * can hand over whatever their bank exported without a backend change.
  */
 
+import { normalizeStatementCsv } from "./statement-csv"
+
 const CSV_TYPES = new Set(["text/csv", "application/csv"])
 const XLSX_TYPES = new Set([
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -79,7 +81,17 @@ export async function excelToCsvFile(file: File): Promise<File> {
   return new File([lines.join("\r\n")], csvName, { type: "text/csv", lastModified: file.lastModified })
 }
 
-/** The file to send: CSV as-is, Excel converted. */
-export async function toImportableStatement(file: File): Promise<File> {
-  return classifyStatementFile(file) === "xlsx" ? excelToCsvFile(file) : file
+/**
+ * The file to send. Excel is converted to CSV first; then every file is
+ * rewritten into the columns the import endpoint expects, because no bank
+ * exports them that way.
+ */
+export async function toImportableStatement(file: File): Promise<{ file: File; rows: number; skipped: number }> {
+  const csvFile = classifyStatementFile(file) === "xlsx" ? await excelToCsvFile(file) : file
+  const { csv, rows, skipped } = normalizeStatementCsv(await csvFile.text())
+  return {
+    file: new File([csv], csvFile.name, { type: "text/csv", lastModified: file.lastModified }),
+    rows,
+    skipped,
+  }
 }
