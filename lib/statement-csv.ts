@@ -1,6 +1,7 @@
 /**
  * Rewrite a bank's CSV export into the shape `POST /transactions/upload-csv`
- * parses: `date,description,amount,type` with `type` of income | expense.
+ * parses: `date,description,amount,type` with `type` of income | expense
+ * (plus a `transactionType` of credit | debit, the name the list API uses).
  *
  * Every bank names its columns differently ("Trans Date", "Narration",
  * "Debit"/"Credit", …), often puts account details in a few rows above the
@@ -231,7 +232,10 @@ export function normalizeStatementCsv(text: string): NormalizedStatement {
     if (index !== undefined) mapping[role] = header[index]
   }
 
-  const out: string[] = ["date,description,amount,type"]
+  // The API creates transactions with type=income|expense but lists them with
+  // transactionType=credit|debit; emit both so the importer finds whichever
+  // name it reads. Extra columns are ignored.
+  const out: string[] = ["date,description,amount,type,transactionType"]
   let skipped = 0
 
   for (const row of table.slice(headerIndex + 1)) {
@@ -274,7 +278,7 @@ export function normalizeStatementCsv(text: string): NormalizedStatement {
     const description =
       [cell("description"), cell("reference")].map((s) => s.trim()).filter(Boolean).join(" · ") || "Bank statement entry"
 
-    out.push([date, csvCell(description), amount.toFixed(2), type].join(","))
+    out.push([date, csvCell(description), amount.toFixed(2), type, type === "income" ? "credit" : "debit"].join(","))
   }
 
   const rows = out.length - 1
