@@ -1,6 +1,5 @@
 "use client"
 
-
 import Image from "next/image"
 import Link from "next/link"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -45,6 +44,7 @@ import { ModalShell } from "@/components/ui/modal-shell"
 import { AmountInput, parseAmount } from "@/components/ui/amount-input"
 import { API_V1 } from "@/lib/api"
 import { getCsrfTokenFromCookie } from "@/lib/csrf"
+import { statementFileProblem, toImportableStatement } from "@/lib/statement-file"
 import { useTransactions, type TransactionItem } from "@/components/hooks/useTransactions"
 import { useTransactionSummaries } from "@/components/hooks/useTransactionSummaries"
 import { useToast } from "@/components/ui/toast"
@@ -2207,7 +2207,10 @@ export function UploadTransactionsModal({
 
   const addFiles = (list: FileList | null) => {
     if (!list) return
-    const next = Array.from(list).map((file) => ({
+    const picked = Array.from(list)
+    const rejected = picked.map(statementFileProblem).find(Boolean)
+    setUploadError(rejected ?? null)
+    const next = picked.filter((file) => !statementFileProblem(file)).map((file) => ({
       id: `${file.name}-${file.lastModified}-${file.size}`,
       name: file.name,
       size: formatFileSize(file.size),
@@ -2236,7 +2239,7 @@ export function UploadTransactionsModal({
 
   const handleProcess = async () => {
     if (files.length === 0) {
-      setUploadError("Please select a CSV file to upload.")
+      setUploadError("Please select a CSV or Excel file to upload.")
       return
     }
     setUploading(true)
@@ -2245,7 +2248,7 @@ export function UploadTransactionsModal({
       let lastPayload: any = null
       for (const f of files) {
         const formData = new FormData()
-        formData.append("file", f.file)
+        formData.append("file", await toImportableStatement(f.file))
         if (account) formData.append("bankAccountId", account)
         const response = await fetch(`${API_V1}/financial/transactions/upload-csv`, {
           method: "POST",
@@ -2314,7 +2317,7 @@ export function UploadTransactionsModal({
           <input
             ref={fileInputRef}
             type="file"
-            accept=".csv,text/csv"
+            accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             multiple
             className="hidden"
             onChange={(e) => {
@@ -2327,7 +2330,7 @@ export function UploadTransactionsModal({
           </div>
           <div>
             <p className="text-[14px] font-bold text-[#111827]">Drag &amp; drop statement of account here</p>
-            <p className="text-[12px] text-[#9CA3AF] mt-0.5">Upload CSV only</p>
+            <p className="text-[12px] text-[#9CA3AF] mt-0.5">Upload CSV or Excel (.xlsx)</p>
           </div>
           <button
             onClick={() => fileInputRef.current?.click()}
