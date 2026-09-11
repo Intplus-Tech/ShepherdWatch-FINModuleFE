@@ -98,6 +98,7 @@ type DemoRow = {
   payee: string
   description: string
   account: string
+  bankAccountId: string
   expense: number | null
   income: number | null
   category: string
@@ -163,16 +164,19 @@ function statusFromApi(status?: string): RowStatus {
 }
 
 // Map the live API transaction shape to the existing DemoRow shape the table renders.
-function mapTransactionToRow(tx: TransactionItem): DemoRow {
+function mapTransactionToRow(tx: TransactionItem, accounts: AccountRow[] = []): DemoRow {
   const credit = isCreditFlow(tx.flowType)
   const amount = Number(tx.amount ?? 0)
+  const bankAccountId = tx.bankAccountId ?? ""
+  const bankAccount = accounts.find((a) => a.id === bankAccountId)
   return {
     id: tx.id,
     date: formatRowDate(tx.date),
     txId: tx.id,
     payee: tx.description || "—",
     description: "",
-    account: tx.coaName ?? "",
+    account: bankAccount ? `${bankAccount.name} (${bankAccount.number})` : "",
+    bankAccountId,
     expense: credit ? null : amount,
     income: credit ? amount : null,
     category: tx.category || "-",
@@ -184,7 +188,8 @@ function mapTransactionToRow(tx: TransactionItem): DemoRow {
 export function BankTransactions() {
   const [tab, setTab] = useState<"ALL" | "CREDIT" | "DEBIT">("ALL")
   const [search, setSearch] = useState("")
-  const [accountFilter, setAccountFilter] = useState("All Accounts")
+  // Holds a bank account id, or "" for all.
+  const [accountFilter, setAccountFilter] = useState("")
   const [month, setMonth] = useState("Oct 2023")
   const [page, setPage] = useState(0)
 
@@ -224,13 +229,9 @@ export function BankTransactions() {
   // Local copy of the mapped rows so category edits can be applied optimistically.
   const [rows, setRows] = useState<DemoRow[]>([])
   useEffect(() => {
-    setRows(transactions.map(mapTransactionToRow))
-  }, [transactions])
+    setRows(transactions.map((tx) => mapTransactionToRow(tx, bankAccounts)))
+  }, [transactions, bankAccounts])
 
-  const accountNames = useMemo(
-    () => Array.from(new Set(bankAccounts.map((a) => a.name).filter(Boolean))),
-    [bankAccounts],
-  )
 
   // Modal open state
   const [uploadOpen, setUploadOpen] = useState(false)
@@ -268,7 +269,7 @@ export function BankTransactions() {
     return rows.filter((row) => {
       if (tab === "CREDIT" && row.income == null) return false
       if (tab === "DEBIT" && row.expense == null) return false
-      if (accountFilter !== "All Accounts" && !row.account.startsWith(accountFilter)) return false
+      if (accountFilter && row.bankAccountId !== accountFilter) return false
       if (!search.trim()) return true
       const q = search.toLowerCase()
       const amount = String(row.income ?? row.expense ?? "")
@@ -419,10 +420,10 @@ export function BankTransactions() {
                 onChange={(e) => setAccountFilter(e.target.value)}
                 className="h-[36px] w-full sm:w-auto appearance-none rounded-md border border-[#E5E7EB] bg-white pl-3.5 pr-9 text-[12px] font-bold text-[#4B5563] shadow-sm hover:bg-gray-50 focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]/20"
               >
-                <option value="All Accounts">All Accounts</option>
-                {accountNames.map((acc) => (
-                  <option key={acc} value={acc}>
-                    {acc}
+                <option value="">All Accounts</option>
+                {bankAccounts.map((acc) => (
+                  <option key={acc.id} value={acc.id}>
+                    {acc.name} · {acc.number}
                   </option>
                 ))}
               </select>
