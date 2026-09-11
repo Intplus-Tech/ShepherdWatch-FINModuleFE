@@ -11,6 +11,7 @@ export type TransactionItem = {
   status?: string
   description?: string
   coaName?: string
+  chartOfAccountId?: string
   category?: string
   bankAccountId?: string
 }
@@ -170,7 +171,20 @@ export function useTransactions(options: UseTransactionsOptions = {}) {
               item?.description ??
               item?.remarks ??
               "",
-            coaName: item?.coaName ?? item?.coa?.name ?? item?.coa?.accountName,
+            coaName:
+              item?.coaName ??
+              item?.coa?.name ??
+              item?.coa?.accountName ??
+              item?.chartOfAccount?.name ??
+              item?.chartOfAccountId?.name,
+            // Populated or bare id, under either name the API has used.
+            chartOfAccountId: String(
+              (typeof item?.chartOfAccountId === "string" ? item.chartOfAccountId : item?.chartOfAccountId?._id) ||
+                item?.chartOfAccount?._id ||
+                item?.coa?._id ||
+                item?.coaId ||
+                ""
+            ),
             category: item?.category ?? item?.tag ?? item?.budgetCategory ?? item?.meta?.category,
             bankAccountId: String(item?.bankAccountId ?? item?.bankAccount?._id ?? item?.bankAccount?.id ?? ""),
           };
