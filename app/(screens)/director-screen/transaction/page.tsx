@@ -99,19 +99,13 @@ type DemoRow = {
   description: string
   account: string
   bankAccountId: string
+  chartOfAccountId: string
   expense: number | null
   income: number | null
   category: string
   status: RowStatus
   linkedGroup: "G1" | null
   reconcilable?: boolean
-}
-
-const INCOME_CATEGORIES = ["General Offering", "Thanksgiving", "Tithe", "Capital Project"]
-const EXPENSE_CATEGORIES = ["Program Project", "Operational Expense", "Capital Project"]
-
-function categoriesForRow(row: DemoRow) {
-  return [...(row.expense != null ? EXPENSE_CATEGORIES : INCOME_CATEGORIES), "-"]
 }
 
 function formatNumber(value: number) {
@@ -179,7 +173,8 @@ function mapTransactionToRow(tx: TransactionItem, accounts: AccountRow[] = []): 
     bankAccountId,
     expense: credit ? null : amount,
     income: credit ? amount : null,
-    category: tx.category || "-",
+    category: tx.coaName || tx.category || "-",
+    chartOfAccountId: tx.chartOfAccountId ?? "",
     status: statusFromApi(tx.status),
     linkedGroup: null,
   }
@@ -199,6 +194,11 @@ export function BankTransactions() {
   const { transactions, loading, error, refresh } = useTransactions({ limit: 100 })
   const { pushToast } = useToast()
   const { summary, refresh: refreshSummary } = useTransactionSummaries()
+  // Every chart-of-account head for the branch: the CATEGORY dropdown on each
+  // row is this list, and choosing one categorises the transaction.
+  const { branchId: contextBranchId } = useBranchContext()
+  const { options: coaHeads } = useCoaOptions(true, undefined, contextBranchId)
+
   const [bankAccounts, setBankAccounts] = useState<AccountRow[]>([])
   const [accountsVersion, setAccountsVersion] = useState(0)
   const reloadAccounts = useCallback(() => setAccountsVersion((v) => v + 1), [])
@@ -241,12 +241,16 @@ export function BankTransactions() {
   const [expenseOpen, setExpenseOpen] = useState(false)
   const [accountsOpen, setAccountsOpen] = useState(false)
   const [reconcileOpen, setReconcileOpen] = useState(false)
+  const [reconcileSource, setReconcileSource] = useState<DemoRow | null>(null)
   const [groupDetailsOpen, setGroupDetailsOpen] = useState(false)
 
 
-  const updateCategory = async (id: string, category: string) => {
+  const updateCategory = async (id: string, chartOfAccountId: string) => {
     const previous = rows
-    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, category } : r)))
+    const head = coaHeads.find((h) => h.id === chartOfAccountId)
+    setRows((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, chartOfAccountId, category: head?.label ?? "-" } : r))
+    )
     try {
       const response = await fetch(`${API_V1}/financial/transactions/${id}`, {
         method: "PATCH",
@@ -255,13 +259,16 @@ export function BankTransactions() {
           "x-csrf-token": getCsrfTokenFromCookie(),
         },
         credentials: "include",
-        body: JSON.stringify({ category }),
+        // null clears the category, per the API.
+        body: JSON.stringify({ chartOfAccountId: chartOfAccountId || null }),
       })
-      if (!response.ok) throw new Error("patch failed")
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(describeApiError(data, "Unable to update the category."))
+      pushToast(head ? `Categorised under ${head.label}` : "Category cleared", "success")
       refresh()
-    } catch {
-      // Roll back the optimistic update on failure.
+    } catch (err) {
       setRows(previous)
+      pushToast(err instanceof Error ? err.message : "Unable to update the category.", "error")
     }
   }
 
@@ -518,27 +525,28 @@ export function BankTransactions() {
                       <div className="flex items-center gap-1.5">
                         <div className="relative flex-1">
                           {(() => {
-                            const baseOptions = categoriesForRow(row)
-                            const suggested = ([] as string[]).filter(
-                              (s) => !baseOptions.includes(s),
+                            const isExpense = row.expense != null
+                            const matching = coaHeads.filter((h) =>
+                              isExpense ? h.type === "expense" : h.type === "revenue" || h.type === "income"
                             )
-                            const options = [...baseOptions, ...suggested]
+                            const others = coaHeads.filter((h) => !matching.includes(h))
                             return (
                               <select
-                                value={options.includes(row.category) ? row.category : "-"}
+                                value={row.chartOfAccountId}
                                 onChange={(e) => updateCategory(row.id, e.target.value)}
                                 className="h-[34px] w-full min-w-[150px] appearance-none rounded-md border border-[#E5E7EB] bg-white pl-3 pr-8 text-[12px] font-semibold text-[#4B5563] focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]/20"
                               >
-                                {baseOptions.map((c) => (
-                                  <option key={c} value={c}>
-                                    {c}
+                                <option value="">-</option>
+                                {matching.map((h) => (
+                                  <option key={h.id} value={h.id}>
+                                    {h.label}
                                   </option>
                                 ))}
-                                {suggested.length > 0 && (
-                                  <optgroup label="Suggested">
-                                    {suggested.map((c) => (
-                                      <option key={c} value={c}>
-                                        {c}
+                                {others.length > 0 && (
+                                  <optgroup label="Other heads">
+                                    {others.map((h) => (
+                                      <option key={h.id} value={h.id}>
+                                        {h.label}
                                       </option>
                                     ))}
                                   </optgroup>
@@ -558,7 +566,10 @@ export function BankTransactions() {
                     <td className="px-4 py-4 text-center">
                       <LinkCell
                         row={row}
-                        onReconcile={() => setReconcileOpen(true)}
+                        onReconcile={() => {
+                          setReconcileSource(row)
+                          setReconcileOpen(true)
+                        }}
                         onGroupDetails={() => setGroupDetailsOpen(true)}
                       />
                     </td>
@@ -637,7 +648,23 @@ export function BankTransactions() {
           reloadAccounts()
         }}
       />
-      <ReconcileBankDepositModal open={reconcileOpen} onClose={() => setReconcileOpen(false)} />
+      <ReconcileBankDepositModal
+        open={reconcileOpen}
+        onClose={() => setReconcileOpen(false)}
+        source={reconcileSource}
+        // Entries that could make up this deposit: same direction, not yet cleared.
+        candidates={rows.filter(
+          (r) =>
+            reconcileSource !== null &&
+            r.id !== reconcileSource.id &&
+            r.status !== "cleared" &&
+            (r.income != null) === (reconcileSource.income != null)
+        )}
+        onReconciled={() => {
+          refresh()
+          refreshSummary()
+        }}
+      />
       <ReconciledGroupDetailsModal open={groupDetailsOpen} onClose={() => setGroupDetailsOpen(false)} />
     </>
   )
@@ -813,43 +840,86 @@ function SelectField({
 // 1. Reconcile Bank Deposit modal
 // ---------------------------------------------------------------------------
 
-type ReconcileEntry = {
-  id: string
-  date: string
-  txId: string
-  description: string
-  subLabel: string
-  amount: number
-  selected: boolean
-}
-
-const RECONCILE_ENTRIES: ReconcileEntry[] = [
-  { id: "r1", date: "Oct 22, 2024", txId: "TXN-89021", description: "Sunday Tithe", subLabel: "TITHES", amount: 100, selected: true },
-  { id: "r2", date: "Oct 22, 2024", txId: "TXN-89022", description: "Sunday Offering", subLabel: "OFFERINGS", amount: 50, selected: true },
-  { id: "r3", date: "Oct 22, 2024", txId: "TXN-89023", description: "Seed Offering", subLabel: "OFFERINGS", amount: 25, selected: false },
-]
-
-const BANK_DEPOSIT_TOTAL = 150
-
-function ReconcileBankDepositModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [entries, setEntries] = useState<ReconcileEntry[]>(RECONCILE_ENTRIES)
+function ReconcileBankDepositModal({
+  open,
+  onClose,
+  source,
+  candidates,
+  onReconciled,
+}: {
+  open: boolean
+  onClose: () => void
+  source: DemoRow | null
+  candidates: DemoRow[]
+  onReconciled?: () => void
+}) {
+  const { pushToast } = useToast()
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (open) setEntries(RECONCILE_ENTRIES)
+    if (!open) return
+    setSelectedIds(new Set())
+    setSaving(false)
+    setError(null)
   }, [open])
 
   const toggle = (id: string) =>
-    setEntries((prev) => prev.map((e) => (e.id === id ? { ...e, selected: !e.selected } : e)))
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
 
-  const selected = entries.filter((e) => e.selected)
-  const selectedTotal = selected.reduce((sum, e) => sum + e.amount, 0)
-  const difference = BANK_DEPOSIT_TOTAL - selectedTotal
-  const isMatch = difference === 0
-  const unselected = entries.filter((e) => !e.selected)
+  const amountOf = (row: DemoRow) => row.income ?? row.expense ?? 0
+  const depositTotal = source ? amountOf(source) : 0
+  const selected = candidates.filter((e) => selectedIds.has(e.id))
+  const unselected = candidates.filter((e) => !selectedIds.has(e.id))
+  const selectedTotal = selected.reduce((sum, e) => sum + amountOf(e), 0)
+  const difference = Math.round((depositTotal - selectedTotal) * 100) / 100
+  const isMatch = difference === 0 && selected.length > 0
+  const shortId = (id: string) => `#${id.slice(-6).toUpperCase()}`
+
+  // There is no link/group endpoint yet, so "reconcile" is what the copy below
+  // promises: the selected entries and the bank line are verified (cleared).
+  const handleReconcile = async () => {
+    if (!source || selected.length === 0) return
+    setSaving(true)
+    setError(null)
+    try {
+      const targets = [source, ...selected]
+      for (const row of targets) {
+        const response = await fetch(`${API_V1}/financial/transactions/${row.id}/verify`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfTokenFromCookie() },
+          credentials: "include",
+          body: JSON.stringify({
+            status: "verified",
+            notes: `Reconciled against bank line ${shortId(source.id)}`,
+          }),
+        })
+        const data = await response.json().catch(() => null)
+        if (!response.ok) throw new Error(describeApiError(data, "Unable to reconcile."))
+      }
+      pushToast(`${selected.length} ${selected.length === 1 ? "entry" : "entries"} cleared against ${shortId(source.id)}`, "success")
+      onReconciled?.()
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to reconcile.")
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <ModalShell open={open} onClose={onClose} className="max-w-3xl">
-      <ModalHeader title="RECONCILE BANK DEPOSIT - GROUP #G1" onClose={onClose} titleClassName="text-[#3B5BDB]" />
+      <ModalHeader
+        title={`RECONCILE BANK DEPOSIT - ${source ? shortId(source.id) : ""}`}
+        onClose={onClose}
+        titleClassName="text-[#3B5BDB]"
+      />
 
       <div className="px-6 py-5 space-y-5">
         {/* Source card */}
@@ -858,23 +928,26 @@ function ReconcileBankDepositModal({ open, onClose }: { open: boolean; onClose: 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div>
               <p className="text-[10px] font-bold uppercase text-[#9CA3AF]">Transaction ID</p>
-              <p className="text-[13px] font-bold text-[#3B5BDB] mt-0.5">#BNK-001</p>
+              <p className="text-[13px] font-bold text-[#3B5BDB] mt-0.5">{source ? shortId(source.id) : "—"}</p>
             </div>
             <div>
               <p className="text-[10px] font-bold uppercase text-[#9CA3AF]">Date</p>
-              <p className="text-[13px] font-bold text-[#111827] mt-0.5">Oct 22, 2024</p>
+              <p className="text-[13px] font-bold text-[#111827] mt-0.5">{source?.date ?? "—"}</p>
             </div>
             <div className="col-span-2">
               <p className="text-[10px] font-bold uppercase text-[#9CA3AF]">Description</p>
-              <p className="text-[13px] font-bold text-[#111827] mt-0.5">Bank Deposit - Cash &amp; Cheques</p>
+              <p className="text-[13px] font-bold text-[#111827] mt-0.5">{source?.payee ?? "—"}</p>
             </div>
             <div>
               <p className="text-[10px] font-bold uppercase text-[#9CA3AF]">Amount</p>
-              <p className="text-[13px] font-bold text-[#3B5BDB] mt-0.5">{formatUSD(150)} <span className="text-[10px] font-semibold text-[#9CA3AF]">(CREDIT)</span></p>
+              <p className="text-[13px] font-bold text-[#3B5BDB] mt-0.5">
+                {formatMoney(depositTotal)}{" "}
+                <span className="text-[10px] font-semibold text-[#9CA3AF]">({source?.income != null ? "CREDIT" : "DEBIT"})</span>
+              </p>
             </div>
             <div className="col-span-3">
-              <p className="text-[10px] font-bold uppercase text-[#9CA3AF]">Uploaded By</p>
-              <p className="text-[13px] font-bold text-[#111827] mt-0.5">Accountant (Maryland Branch)</p>
+              <p className="text-[10px] font-bold uppercase text-[#9CA3AF]">Account</p>
+              <p className="text-[13px] font-bold text-[#111827] mt-0.5">{source?.account || "—"}</p>
             </div>
           </div>
         </div>
@@ -895,25 +968,35 @@ function ReconcileBankDepositModal({ open, onClose }: { open: boolean; onClose: 
               </tr>
             </thead>
             <tbody className="divide-y divide-[#EEF1F6]">
-              {entries.map((e) => (
-                <tr key={e.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3">
-                    <input
-                      type="checkbox"
-                      checked={e.selected}
-                      onChange={() => toggle(e.id)}
-                      className="h-4 w-4 rounded border-[#D1D5DB] text-[#3B5BDB] focus:ring-[#3B5BDB]/20"
-                    />
+              {candidates.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-4 py-6 text-center text-[12px] text-[#6B7280]">
+                    No uncleared {source?.income != null ? "income" : "expense"} entries to match against this deposit.
                   </td>
-                  <td className="px-4 py-3 text-[12px] font-semibold text-[#6B7280] whitespace-nowrap">{e.date}</td>
-                  <td className="px-4 py-3 text-[12px] font-semibold text-[#3B5BDB] whitespace-nowrap">{e.txId}</td>
-                  <td className="px-4 py-3">
-                    <div className="text-[12px] font-bold text-[#111827]">{e.description}</div>
-                    <div className="text-[10px] font-bold uppercase text-[#9CA3AF]">{e.subLabel}</div>
-                  </td>
-                  <td className="px-4 py-3 text-[12px] font-bold text-right text-[#111827] whitespace-nowrap">{formatUSD(e.amount)}</td>
                 </tr>
-              ))}
+              ) : (
+                candidates.map((e) => (
+                  <tr key={e.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(e.id)}
+                        onChange={() => toggle(e.id)}
+                        className="h-4 w-4 rounded border-[#D1D5DB] text-[#3B5BDB] focus:ring-[#3B5BDB]/20"
+                      />
+                    </td>
+                    <td className="px-4 py-3 text-[12px] font-semibold text-[#6B7280] whitespace-nowrap">{e.date}</td>
+                    <td className="px-4 py-3 text-[12px] font-semibold text-[#3B5BDB] whitespace-nowrap">{shortId(e.id)}</td>
+                    <td className="px-4 py-3">
+                      <div className="text-[12px] font-bold text-[#111827]">{e.payee}</div>
+                      <div className="text-[10px] font-bold uppercase text-[#9CA3AF]">
+                        {e.category !== "-" ? e.category : "Uncategorised"}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-[12px] font-bold text-right text-[#111827] whitespace-nowrap">{formatMoney(amountOf(e))}</td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -922,15 +1005,15 @@ function ReconcileBankDepositModal({ open, onClose }: { open: boolean; onClose: 
         <div className="flex flex-col sm:flex-row sm:items-center gap-4 rounded-[10px] border border-[#EEF1F6] bg-[#F8FAFC] p-4">
           <div className="flex-1">
             <p className="text-[10px] font-bold uppercase text-[#9CA3AF]">Bank Deposit</p>
-            <p className="text-[15px] font-bold text-[#111827] mt-0.5">{formatUSD(BANK_DEPOSIT_TOTAL)}</p>
+            <p className="text-[15px] font-bold text-[#111827] mt-0.5">{formatMoney(depositTotal)}</p>
           </div>
           <div className="flex-1">
-            <p className="text-[10px] font-bold uppercase text-[#9CA3AF]">Selected ({selected.length} of {entries.length})</p>
-            <p className="text-[15px] font-bold text-[#3B5BDB] mt-0.5">{formatUSD(selectedTotal)}</p>
+            <p className="text-[10px] font-bold uppercase text-[#9CA3AF]">Selected ({selected.length} of {candidates.length})</p>
+            <p className="text-[15px] font-bold text-[#3B5BDB] mt-0.5">{formatMoney(selectedTotal)}</p>
           </div>
           <div className="flex-1">
             <p className="text-[10px] font-bold uppercase text-[#9CA3AF]">Difference</p>
-            <p className={`text-[15px] font-bold mt-0.5 ${isMatch ? "text-emerald-600" : "text-rose-600"}`}>{formatUSD(difference)}</p>
+            <p className={`text-[15px] font-bold mt-0.5 ${isMatch ? "text-emerald-600" : "text-rose-600"}`}>{formatMoney(difference)}</p>
           </div>
           {isMatch && (
             <span className="inline-flex items-center gap-1.5 self-start sm:self-center rounded-full bg-emerald-100 px-3 py-1.5 text-[11px] font-bold text-emerald-700">
@@ -946,7 +1029,7 @@ function ReconcileBankDepositModal({ open, onClose }: { open: boolean; onClose: 
             <p>
               All selected entries will be marked as{" "}
               <span className="font-bold text-[#111827]">&apos;Cleared&apos;</span> and linked to{" "}
-              <span className="font-bold text-[#3B5BDB]">#BNK-001</span>.
+              <span className="font-bold text-[#3B5BDB]">{source ? shortId(source.id) : "this deposit"}</span>.
             </p>
           </div>
           {unselected.length > 0 && (
@@ -956,7 +1039,7 @@ function ReconcileBankDepositModal({ open, onClose }: { open: boolean; onClose: 
                 <AlertCircle className="h-4 w-4 shrink-0 text-[#9CA3AF] mt-0.5" />
                 <p>
                   Unselected {unselected.length === 1 ? "entry" : "entries"} (
-                  {unselected.map((u) => `${formatUSD(u.amount)} ${u.description}`).join(", ")}) will
+                  {unselected.map((u) => `${formatMoney(amountOf(u))} ${u.payee}`).join(", ")}) will
                   remain as <span className="font-bold text-[#111827]">&apos;Pending&apos;</span> in the
                   Undeposited Funds account for next week&apos;s bank run.
                 </p>
@@ -964,6 +1047,8 @@ function ReconcileBankDepositModal({ open, onClose }: { open: boolean; onClose: 
             </>
           )}
         </div>
+
+        {error && <p className="text-[12px] font-medium text-rose-600">{error}</p>}
       </div>
 
       <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[#EEF1F6]">
@@ -974,11 +1059,12 @@ function ReconcileBankDepositModal({ open, onClose }: { open: boolean; onClose: 
           Cancel
         </button>
         <button
-          onClick={onClose}
-          className="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-4 py-2.5 text-[12px] font-bold text-white shadow-sm hover:bg-emerald-700 transition-colors"
+          onClick={handleReconcile}
+          disabled={saving || selected.length === 0}
+          className="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-4 py-2.5 text-[12px] font-bold text-white shadow-sm hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Link2 className="h-4 w-4" />
-          Link &amp; Reconcile Group
+          {saving ? "Reconciling…" : "Link & Reconcile Group"}
         </button>
       </div>
     </ModalShell>
@@ -2041,7 +2127,7 @@ function formatFileSize(bytes: number) {
  * matches beyond the first 100 rows.
  */
 function useCoaOptions(enabled: boolean, kind?: "income" | "expense", branchId?: string) {
-  const [options, setOptions] = useState<Array<{ id: string; label: string }>>([])
+  const [options, setOptions] = useState<Array<{ id: string; label: string; type: string }>>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -2079,6 +2165,7 @@ function useCoaOptions(enabled: boolean, kind?: "income" | "expense", branchId?:
           return {
             id: String(item?.id ?? item?._id ?? item?.coaId ?? ""),
             label: code ? `${code} — ${name}` : name,
+            type: String(item?.accountType ?? item?.type ?? "").toLowerCase(),
           }
         })
         .filter((option: { id: string }) => option.id)
