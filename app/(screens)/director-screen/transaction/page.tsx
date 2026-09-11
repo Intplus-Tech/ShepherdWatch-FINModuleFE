@@ -1144,12 +1144,12 @@ type AccountRow = {
 function mapBankAccountToRow(item: any, index: number): AccountRow {
   const bankName = item?.bankName ?? item?.bank?.name ?? ""
   return {
-    id: String(item?.id ?? item?.bankAccountId ?? `acc-${index}`),
+    id: String(item?._id ?? item?.id ?? item?.bankAccountId ?? `acc-${index}`),
     number: String(item?.accountNumber ?? item?.number ?? "—"),
     name: String(item?.accountName ?? item?.name ?? "Untitled"),
     description: String(item?.description ?? ""),
     bankName,
-    branchId: item?.branchId ?? item?.branch?.id,
+    branchId: item?.branchId?._id ?? item?.branchId ?? item?.branch?._id ?? item?.branch?.id,
     currency: item?.currency ?? "NGN",
     isActive: item?.isActive ?? item?.active ?? String(item?.status ?? "ACTIVE").toUpperCase() !== "INACTIVE",
   }
@@ -2158,7 +2158,8 @@ export function UploadTransactionsModal({
   onProcess?: (summary: UploadSummary | null) => void
 }) {
   const { user } = useAuth()
-  const branchId = user?.branchId ?? user?.branch?.id ?? ""
+  const { branchId: contextBranchId } = useBranchContext()
+  const branchId = contextBranchId || user?.branchId || user?.branch?.id || ""
 
   const [files, setFiles] = useState<UploadFile[]>([])
   const [account, setAccount] = useState("")
@@ -2252,6 +2253,10 @@ export function UploadTransactionsModal({
         const prepared = await toImportableStatement(f.file)
         formData.append("file", prepared.file)
         if (account) formData.append("bankAccountId", account)
+        // The import needs the branch; the bank account itself knows which one it belongs to.
+        const selectedAccount = accountOptions.find((a) => a.id === account)
+        const importBranchId = selectedAccount?.branchId || branchId
+        if (importBranchId) formData.append("branchId", importBranchId)
         const response = await fetch(`${API_V1}/financial/transactions/upload-csv`, {
           method: "POST",
           headers: { "x-csrf-token": getCsrfTokenFromCookie() },
