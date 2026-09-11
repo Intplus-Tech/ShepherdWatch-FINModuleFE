@@ -3,7 +3,7 @@
 
 import Image from "next/image"
 import Link from "next/link"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   LayoutDashboard,
   ArrowLeftRight,
@@ -50,7 +50,6 @@ import { useTransactionSummaries } from "@/components/hooks/useTransactionSummar
 import { useToast } from "@/components/ui/toast"
 import { useAuth } from "@/components/auth/AuthProvider"
 import { useBranchContext } from "@/components/hooks/useBranchContext"
-import BranchesDropdown from "@/components/navigation/BranchesDropdown"
 
 const navItems = [
   { label: "Dashboard", href: "/director-screen/dashboard", icon: LayoutDashboard },
@@ -181,14 +180,7 @@ function mapTransactionToRow(tx: TransactionItem): DemoRow {
   }
 }
 
-export function BankTransactions({
-  defaultBranchId,
-  hideBranchSelector = false,
-}: {
-  defaultBranchId?: string
-  hideBranchSelector?: boolean
-} = {}) {
-  const [selectedBranchId, setSelectedBranchId] = useState<string>(defaultBranchId ?? "")
+export function BankTransactions() {
   const [tab, setTab] = useState<"ALL" | "CREDIT" | "DEBIT">("ALL")
   const [search, setSearch] = useState("")
   const [accountFilter, setAccountFilter] = useState("All Accounts")
@@ -198,35 +190,35 @@ export function BankTransactions({
   const PAGE_SIZE = 5
 
   // Live data
-  const { transactions, loading, error, refresh } = useTransactions({
-    branchId: selectedBranchId || undefined,
-    limit: 100,
-  })
+  const { transactions, loading, error, refresh } = useTransactions({ limit: 100 })
   const { pushToast } = useToast()
-  const { summary, refresh: refreshSummary } = useTransactionSummaries({
-    branchId: selectedBranchId || undefined,
-  })
-  // The transaction summaries carry balances but not how many accounts they
-  // came from, so the account count is read from the bank-balances endpoint.
-  const [accountCount, setAccountCount] = useState(0)
+  const { summary, refresh: refreshSummary } = useTransactionSummaries()
+  const [bankAccounts, setBankAccounts] = useState<AccountRow[]>([])
+  const [accountsVersion, setAccountsVersion] = useState(0)
+  const reloadAccounts = useCallback(() => setAccountsVersion((v) => v + 1), [])
   useEffect(() => {
     let active = true
-    const query = selectedBranchId ? `?branchId=${encodeURIComponent(selectedBranchId)}` : ""
-    fetch(`${API_V1}/dashboard/bank-balances${query}`, { credentials: "include" })
+    fetch(`${API_V1}/financial/bank-accounts?limit=100`, { credentials: "include" })
       .then((response) => (response.ok ? response.json() : null))
       .then((data) => {
         if (!active || !data) return
-        const payload = data?.data ?? data
-        setAccountCount(Number(payload?.accountCount ?? payload?.accounts?.length ?? 0))
+        const raw = Array.isArray(data?.data?.content)
+          ? data.data.content
+          : Array.isArray(data?.data)
+            ? data.data
+            : Array.isArray(data?.items)
+              ? data.items
+              : []
+        setBankAccounts(raw.map(mapBankAccountToRow))
       })
       .catch(() => {
-        /* the count simply stays at zero when the endpoint is unavailable */
+        /* the card and filter simply stay empty when the endpoint is unavailable */
       })
     return () => {
       active = false
     }
-  }, [selectedBranchId])
-
+  }, [accountsVersion])
+  const accountCount = bankAccounts.length
 
   // Local copy of the mapped rows so category edits can be applied optimistically.
   const [rows, setRows] = useState<DemoRow[]>([])
@@ -235,8 +227,8 @@ export function BankTransactions({
   }, [transactions])
 
   const accountNames = useMemo(
-    () => Array.from(new Set(rows.map((r) => r.account).filter(Boolean))),
-    [rows],
+    () => Array.from(new Set(bankAccounts.map((a) => a.name).filter(Boolean))),
+    [bankAccounts],
   )
 
   // Modal open state
@@ -275,7 +267,7 @@ export function BankTransactions({
     return rows.filter((row) => {
       if (tab === "CREDIT" && row.income == null) return false
       if (tab === "DEBIT" && row.expense == null) return false
-      if (accountFilter !== "All Accounts" && row.account !== accountFilter) return false
+      if (accountFilter !== "All Accounts" && !row.account.startsWith(accountFilter)) return false
       if (!search.trim()) return true
       const q = search.toLowerCase()
       const amount = String(row.income ?? row.expense ?? "")
@@ -420,9 +412,6 @@ export function BankTransactions({
           </div>
 
           <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full lg:w-auto">
-            {!hideBranchSelector && (
-              <BranchesDropdown value={selectedBranchId} onChange={(id) => setSelectedBranchId(id)} />
-            )}
             <div className="relative w-full sm:w-auto">
               <select
                 value={accountFilter}
@@ -639,7 +628,13 @@ export function BankTransactions({
           pushToast("Expense recorded", "success")
         }}
       />
-      <ManageAccountsModal open={accountsOpen} onClose={() => setAccountsOpen(false)} />
+      <ManageAccountsModal
+        open={accountsOpen}
+        onClose={() => {
+          setAccountsOpen(false)
+          reloadAccounts()
+        }}
+      />
       <ReconcileBankDepositModal open={reconcileOpen} onClose={() => setReconcileOpen(false)} />
       <ReconciledGroupDetailsModal open={groupDetailsOpen} onClose={() => setGroupDetailsOpen(false)} />
     </>
@@ -2183,8 +2178,7 @@ export function UploadTransactionsModal({
     let active = true
     const loadAccounts = async () => {
       try {
-        const params = new URLSearchParams({ limit: "200" })
-        if (branchId) params.set("branchId", branchId)
+        const params = new URLSearchParams({ limit: "100" })
         const response = await fetch(`${API_V1}/financial/bank-accounts?${params.toString()}`, {
           method: "GET",
           credentials: "include",
