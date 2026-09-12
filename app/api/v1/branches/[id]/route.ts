@@ -204,6 +204,42 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
   }
 }
 
+// The backend exposes DELETE /branches/:id (it answers 401 unauthenticated,
+// not 404) even though the published swagger omits it.
+export async function DELETE(req: NextRequest, context: { params: Promise<{ id: string }> }) {
+  try {
+    if (!isOriginAllowed(req)) {
+      return applyCors(NextResponse.json({ success: false, message: "Invalid request origin" }, { status: 403 }), req);
+    }
+    if (!isCsrfValid(req)) {
+      return applyCors(NextResponse.json({ success: false, message: "CSRF token invalid" }, { status: 403 }), req);
+    }
+    const branchId = (await context.params).id;
+    const backendUrl = getBackendTenantUrl(branchId);
+    const { res: backendResponse } = await executeWithRefreshRetry(req, (backendToken) =>
+      fetch(backendUrl, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${backendToken}`, Accept: "application/json" },
+        cache: "no-store",
+      })
+    );
+    const payload = await backendResponse.json().catch(() => null);
+    if (!backendResponse.ok) {
+      return applyCors(
+        NextResponse.json(
+          { success: false, message: payload?.message ?? "Unable to delete branch", ...(payload ?? {}) },
+          { status: backendResponse.status || 502 }
+        ),
+        req
+      );
+    }
+    return applyCors(NextResponse.json(payload ?? { success: true }, { status: 200 }), req);
+  } catch (error) {
+    console.error("Delete branch proxy error:", error);
+    return applyCors(NextResponse.json({ success: false, message: "Internal server error" }, { status: 500 }), req);
+  }
+}
+
 export async function OPTIONS(req: NextRequest) {
   const headers = getCorsHeaders(req);
   return new NextResponse(null, { status: 204, headers: headers ?? undefined });
