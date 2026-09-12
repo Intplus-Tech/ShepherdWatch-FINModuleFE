@@ -293,6 +293,8 @@ export default function Page() {
   const [viewTab, setViewTab] = useState<"details" | "personnel">("details")
   const [viewEditMode, setViewEditMode] = useState(false)
   const [deactivateConfirmOpen, setDeactivateConfirmOpen] = useState(false)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [deletingBranchId, setDeletingBranchId] = useState<string | null>(null)
 
   const handleViewBranchOpen = (tenant: TenantCard) => {
     setViewBranch(tenant)
@@ -456,6 +458,27 @@ export default function Page() {
       pushToast(error instanceof Error ? error.message : "Unable to delete region", "error")
     } finally {
       setDeletingRegionId(null)
+    }
+  }
+
+  const handleDeleteBranch = async (tenant: TenantCard) => {
+    if (deletingBranchId) return
+    setDeletingBranchId(tenant.id)
+    try {
+      const res = await fetch(`${API_V1}/branches/${tenant.id}`, {
+        method: "DELETE",
+        headers: { "X-CSRF-Token": getCsrfToken() },
+        credentials: "include",
+      })
+      const payload = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(payload?.message ?? "Unable to delete branch")
+      setTenants((prev) => prev.filter((item) => item.id !== tenant.id))
+      setViewBranch(null)
+      pushToast(`Branch "${tenant.name}" deleted.`, "success")
+    } catch (error) {
+      pushToast(error instanceof Error ? error.message : "Unable to delete branch", "error")
+    } finally {
+      setDeletingBranchId(null)
     }
   }
 
@@ -2169,6 +2192,14 @@ export default function Page() {
                 <Ban className="h-4 w-4" />
                 Deactivate Branch
               </button>
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmOpen(true)}
+                className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-rose-600 hover:text-rose-700"
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete Branch
+              </button>
               {viewEditMode ? (
                 <Button
                   className="h-9 rounded-md bg-[#3B5BDB] text-[12px] font-medium text-white shadow hover:bg-blue-700"
@@ -2238,6 +2269,38 @@ export default function Page() {
             }}
           >
             <Ban className="h-4 w-4" /> DEACTIVATE BRANCH
+          </Button>
+        </div>
+      </ModalShell>
+
+      <ModalShell open={deleteConfirmOpen} onClose={() => setDeleteConfirmOpen(false)} className="max-w-md">
+        <div className="px-6 py-5">
+          <h2 className="text-[15px] font-bold text-[#111827]">DELETE BRANCH</h2>
+          <p className="mt-2 text-[13px] text-[#4B5563]">
+            Permanently delete <span className="font-semibold text-[#111827]">{viewBranch?.name}</span>? Its users, accounts and
+            records will no longer be reachable from this portal.
+          </p>
+          <div className="mt-3 rounded-md bg-rose-50 px-3 py-2 text-[12px] font-medium text-rose-700">
+            This cannot be undone. To keep the records but stop activity, use Deactivate instead.
+          </div>
+        </div>
+        <div className="flex items-center justify-end gap-2 border-t border-[#EEF1F6] px-6 py-3">
+          <button
+            type="button"
+            onClick={() => setDeleteConfirmOpen(false)}
+            className="rounded-md border border-[#E5E7EB] bg-white px-4 py-2 text-[13px] font-semibold text-[#4B5563] hover:bg-gray-50"
+          >
+            CANCEL
+          </button>
+          <Button
+            className="h-9 rounded-md bg-rose-600 text-[12px] font-medium text-white shadow hover:bg-rose-700"
+            disabled={deletingBranchId !== null}
+            onClick={() => {
+              if (viewBranch) void handleDeleteBranch(viewBranch)
+              setDeleteConfirmOpen(false)
+            }}
+          >
+            <Trash2 className="h-4 w-4" /> {deletingBranchId ? "DELETING…" : "DELETE BRANCH"}
           </Button>
         </div>
       </ModalShell>
