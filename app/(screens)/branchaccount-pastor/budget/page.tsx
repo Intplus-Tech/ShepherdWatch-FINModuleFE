@@ -279,11 +279,12 @@ export default function Page() {
 
   const totalProposed = useMemo(() => mergedGroups.reduce((sum, g) => sum + g.total, 0), [mergedGroups])
 
+  // Variance is budget minus actual, as a share of budget: positive = under.
   const totals = useMemo(() => {
-    const income = totalProposed
-    const expense = spent
-    const deduction = income * 0.1
-    return { income, expense, deduction, surplus: income - expense - deduction }
+    const budget = totalProposed
+    const actual = spent
+    const variancePct = budget > 0 ? ((budget - actual) / budget) * 100 : 0
+    return { budget, actual, variancePct }
   }, [totalProposed, spent])
 
   // What the period's budget is, for the heading. One status per group; the
@@ -618,114 +619,44 @@ export default function Page() {
 
 
               {/* Top Summary Cards */}
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 mb-6 sm:mb-8">
-
-
-
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5 mb-6 sm:mb-8">
                 <div className="rounded-[16px] border border-[#EEF1F6] bg-white p-5 sm:p-6 shadow-[0_1px_3px_0_rgba(0,0,0,0.02)] flex flex-col justify-between h-[125px] sm:h-[135px]">
-
                   <div className="flex justify-between items-start">
-
-                    <div className="text-[12px] sm:text-[13px] font-medium text-[#6B7280]">Total Projected Income</div>
-
-                    <div className="h-6 w-6 sm:h-7 sm:w-7 rounded-[6px] bg-[#ECFDF5] text-[#10B981] flex items-center justify-center shrink-0">
-
-                      <TrendingUp className="h-3.5 w-3.5 sm:h-4 sm:w-4" strokeWidth={2.5} />
-
-                    </div>
-
-                  </div>
-
-                  <div className="mt-3 sm:mt-4">
-
-                    <div className="text-[15px] xs:text-[16px] xl:text-[20px] font-bold text-[#111827] tracking-tight leading-tight mb-1 truncate">{formatCurrency(totals.income)}</div>
-                    <div className="text-[10px] sm:text-[11px] font-medium text-[#6B7280] tracking-wide truncate">{allocations.length} line item{allocations.length === 1 ? "" : "s"}</div>
-
-                  </div>
-
-                </div>
-
-
-
-                <div className="rounded-[16px] border border-[#EEF1F6] bg-white p-5 sm:p-6 shadow-[0_1px_3px_0_rgba(0,0,0,0.02)] flex flex-col justify-between h-[125px] sm:h-[135px]">
-
-                  <div className="flex justify-between items-start">
-
-                    <div className="text-[12px] sm:text-[13px] font-medium text-[#6B7280]">Total Expenditure</div>
-
+                    <div className="text-[12px] sm:text-[13px] font-medium text-[#6B7280]">Total Budget Expense</div>
                     <div className="h-6 w-6 sm:h-7 sm:w-7 rounded-[6px] bg-[#EEF2FF] text-[#3B5BDB] flex items-center justify-center shrink-0">
-
                       <Wallet className="h-3.5 w-3.5 sm:h-4 sm:w-4" strokeWidth={2.5} />
-
                     </div>
-
                   </div>
-
                   <div className="mt-3 sm:mt-4">
-
-                    <div className="text-[15px] xs:text-[16px] xl:text-[20px] font-bold text-[#111827] tracking-tight leading-tight mb-1 truncate">{formatCurrency(totals.expense)}</div>
-                    <div className="text-[10px] sm:text-[11px] font-medium text-[#6B7280] tracking-wide truncate">{totals.income > 0 ? `${Math.round((totals.expense / totals.income) * 100)}% of Income` : "No income recorded"}</div>
-
+                    <div className="text-[15px] xs:text-[16px] xl:text-[20px] font-bold text-[#111827] tracking-tight leading-tight mb-1 truncate">{formatCurrency(totals.budget)}</div>
+                    <div className="text-[10px] sm:text-[11px] font-medium text-[#6B7280] tracking-wide truncate">{allocations.length} line item{allocations.length === 1 ? "" : "s"} · {periodLabel}</div>
                   </div>
-
                 </div>
-
-
-
                 <div className="rounded-[16px] border border-[#EEF1F6] bg-white p-5 sm:p-6 shadow-[0_1px_3px_0_rgba(0,0,0,0.02)] flex flex-col justify-between h-[125px] sm:h-[135px]">
-
                   <div className="flex justify-between items-start">
-
-                    <div className="text-[12px] sm:text-[13px] font-bold text-[#9333EA]">HQ Deductions</div>
-
+                    <div className="text-[12px] sm:text-[13px] font-medium text-[#6B7280]">Total Actual to Date</div>
+                    <div className="h-6 w-6 sm:h-7 sm:w-7 rounded-[6px] bg-[#ECFDF5] text-[#10B981] flex items-center justify-center shrink-0">
+                      <TrendingUp className="h-3.5 w-3.5 sm:h-4 sm:w-4" strokeWidth={2.5} />
+                    </div>
+                  </div>
+                  <div className="mt-3 sm:mt-4">
+                    <div className="text-[15px] xs:text-[16px] xl:text-[20px] font-bold text-[#111827] tracking-tight leading-tight mb-1 truncate">{formatCurrency(totals.actual)}</div>
+                    <div className="text-[10px] sm:text-[11px] font-medium text-[#6B7280] tracking-wide truncate">{totals.budget > 0 ? `${Math.round((totals.actual / totals.budget) * 100)}% of budget spent` : "No budget set"}</div>
+                  </div>
+                </div>
+                <div className="rounded-[16px] border border-[#EEF1F6] bg-white p-5 sm:p-6 shadow-[0_1px_3px_0_rgba(0,0,0,0.02)] flex flex-col justify-between h-[125px] sm:h-[135px]">
+                  <div className="flex justify-between items-start">
+                    <div className="text-[12px] sm:text-[13px] font-medium text-[#6B7280]">Variance (%)</div>
                     <div className="h-6 w-6 sm:h-7 sm:w-7 rounded-[6px] bg-[#FAF5FF] text-[#9333EA] flex items-center justify-center shrink-0">
-
                       <Landmark className="h-3.5 w-3.5 sm:h-4 sm:w-4" strokeWidth={2.5} />
-
                     </div>
-
                   </div>
-
                   <div className="mt-3 sm:mt-4">
-
-                    <div className="text-[15px] xs:text-[16px] xl:text-[20px] font-bold text-[#111827] tracking-tight leading-tight mb-1 truncate">{formatCurrency(totals.deduction)}</div>
-                    <div className="text-[10px] sm:text-[11px] font-medium text-[#6B7280] tracking-wide truncate">Fixed 10% Tithe</div>
-
+                    <div className="text-[15px] xs:text-[16px] xl:text-[20px] font-bold text-[#111827] tracking-tight leading-tight mb-1 truncate">{totals.budget > 0 ? `${totals.variancePct >= 0 ? "+" : ""}${totals.variancePct.toFixed(1)}%` : "—"}</div>
+                    <div className={`text-[10px] sm:text-[11px] font-bold tracking-wide truncate ${totals.variancePct >= 0 ? "text-[#10B981]" : "text-rose-600"}`}>{totals.budget > 0 ? (totals.variancePct >= 0 ? `${formatCurrency(totals.budget - totals.actual)} under budget` : `${formatCurrency(totals.actual - totals.budget)} over budget`) : "Add line items to compare"}</div>
                   </div>
-
                 </div>
-
-
-
-                <div className="rounded-[16px] border border-[#EEF1F6] bg-white p-5 sm:p-6 shadow-[0_1px_3px_0_rgba(0,0,0,0.02)] flex flex-col justify-between h-[125px] sm:h-[135px]">
-
-                  <div className="flex justify-between items-start">
-
-                    <div className="text-[12px] sm:text-[13px] font-medium text-[#6B7280]">Net Surplus</div>
-
-                    <div className="h-6 w-6 sm:h-7 sm:w-7 rounded-[6px] bg-gray-100 text-[#111827] flex items-center justify-center border border-[#E5E7EB] shrink-0">
-
-                      <PiggyBank className="h-3.5 w-3.5 sm:h-4 sm:w-4" strokeWidth={2.5} />
-
-                    </div>
-
-                  </div>
-
-                  <div className="mt-3 sm:mt-4">
-
-                    <div className="text-[15px] xs:text-[16px] xl:text-[20px] font-bold text-[#111827] tracking-tight leading-tight mb-1 truncate">{formatCurrency(totals.surplus)}</div>
-                    <div className={`text-[10px] sm:text-[11px] font-bold tracking-wide truncate ${totals.surplus >= 0 ? "text-[#10B981]" : "text-rose-600"}`}>{totals.surplus >= 0 ? "Positive surplus" : "Deficit"}</div>
-
-                  </div>
-
-                </div>
-
-
-
               </div>
-
-
 
               {/* Backend-driven budget summary for the selected fiscal year */}
               <div className="mb-6 rounded-[14px] bg-white border border-[#EEF1F6] shadow-[0_1px_3px_0_rgba(0,0,0,0.02)]">
@@ -891,7 +822,7 @@ export default function Page() {
                         mergedGroups.filter((g) => g.items.length > 0 || g.custom.length > 0).map((group, gIdx) => (
                           <React.Fragment key={gIdx}>
                             <tr className="border-t border-[#EEF1F6] bg-gray-50/50">
-                              <td colSpan={5} className="py-3 sm:py-4 pl-4 sm:pl-6 lg:pl-8 pr-4 sm:pr-6 lg:pr-8">
+                              <td colSpan={2} className="py-3 sm:py-4 pl-4 sm:pl-6 lg:pl-8 pr-4">
                                 <div className="flex items-center text-[12px] sm:text-[13px] font-bold text-[#111827]">
                                   <ChevronDown className="mr-2 sm:mr-3 h-3.5 w-3.5 sm:h-4 sm:w-4 text-[#111827] shrink-0" strokeWidth={2.5} />
                                   {group.category}
@@ -901,6 +832,12 @@ export default function Page() {
                                     </span>
                                   )}
                                 </div>
+                              </td>
+                              <td className="py-3 sm:py-4 text-center text-[12px] sm:text-[13px] font-bold text-[#111827] tracking-tight whitespace-nowrap">
+                                {formatCurrency(group.total)}
+                              </td>
+                              <td colSpan={2} className="py-3 sm:py-4 pr-4 sm:pr-6 lg:pr-8 text-right text-[10px] sm:text-[11px] font-semibold uppercase tracking-wide text-[#9CA3AF]">
+                                Subtotal
                               </td>
                             </tr>
 
