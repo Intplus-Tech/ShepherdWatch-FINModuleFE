@@ -4,6 +4,10 @@ import { useCallback, useState } from "react"
 import { useAuth } from "@/components/auth/AuthProvider"
 
 export interface BudgetPayload {
+  /** The API stores name/annualAmount; title/totalAmount are the swagger's
+   * names and are rejected on their own, so both are sent. */
+  name?: string
+  annualAmount?: number
   title?: string
   totalAmount?: number
   category?: "operational" | "capital" | "project"

@@ -163,7 +163,7 @@ export default function Page() {
 
         const found: Partial<Record<GroupKey, PeriodBudget>> = {}
         for (const item of readList(listJson)) {
-          const title = String(item.title ?? "")
+          const title = String(item.name ?? item.title ?? "")
           if (!title.startsWith(periodLabel)) continue
           const category = String(item.category ?? "operational") as GroupKey
           if (!GROUPS.some((g) => g.key === category) || found[category]) continue
@@ -171,7 +171,7 @@ export default function Page() {
             id: String(item._id ?? item.id ?? ""),
             category,
             status: String(item.status ?? "draft").toLowerCase(),
-            totalAmount: Number(item.totalAmount ?? 0),
+            totalAmount: Number(item.annualAmount ?? item.totalAmount ?? 0),
             title,
           }
         }
@@ -370,9 +370,13 @@ export default function Page() {
             headers: csrf(),
             credentials: "include",
             body: JSON.stringify({
+              // The API requires name and annualAmount; the swagger documents
+              // title and totalAmount, which it rejects. Send both.
+              name: `${periodLabel} · ${group.label}`,
               title: `${periodLabel} · ${group.label}`,
               branchId: tenantId,
               fiscalYear: selectedYear,
+              annualAmount: group.total,
               totalAmount: group.total,
               category: group.key,
               notes: `${group.label} budget for ${periodLabel}.`,
@@ -387,7 +391,7 @@ export default function Page() {
             method: "PATCH",
             headers: csrf(),
             credentials: "include",
-            body: JSON.stringify({ totalAmount: group.total }),
+            body: JSON.stringify({ annualAmount: group.total, totalAmount: group.total }),
           })
           if (!res.ok) throw new Error(describeApiError(await res.json().catch(() => null), "Unable to update the budget total."))
         }

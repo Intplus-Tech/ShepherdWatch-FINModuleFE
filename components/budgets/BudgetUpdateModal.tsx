@@ -47,7 +47,9 @@ export function BudgetUpdateModal({
     }
 
     const payload: BudgetPayload = {
+      name: title,
       title,
+      annualAmount: amt,
       totalAmount: amt,
       category,
       notes
