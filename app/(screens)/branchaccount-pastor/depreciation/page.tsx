@@ -82,13 +82,11 @@ export default function Page() {
     const categoriesRaw = Array.isArray((payload as Record<string, unknown> | null)?.categories)
       ? ((payload as Record<string, unknown>).categories as unknown[])
       : []
-    let accumulated = 0
     const rows: CategoryRow[] = categoriesRaw.map((c) => {
       const cost = pickNumber(c, "totalCost", "cost")
       const opening = pickNumber(c, "openingNBV", "openingNbv", "opening")
       const annual = pickNumber(c, "annualDepreciation", "currentDepreciation", "annual")
       const closing = pickNumber(c, "closingNBV", "closingNbv", "closing")
-      accumulated += cost - closing
       const method = pickString(c, "depreciationMethod", "method") || "Straight-line"
       const isReducing = /reducing/i.test(method)
       return {
@@ -124,7 +122,10 @@ export default function Page() {
       kpis: {
         annual: totalAnnual,
         monthly: monthlyAvg,
-        accumulated,
+        accumulated: categoriesRaw.reduce<number>(
+          (sum, c) => sum + (pickNumber(c, "totalCost", "cost") - pickNumber(c, "closingNBV", "closingNbv", "closing")),
+          0
+        ),
       },
       categoryRows: rows,
       monthItems: months,
@@ -204,7 +205,7 @@ export default function Page() {
           <div className="mx-auto w-full max-w-[1440px]">
 
             {/* Back Button */}
-            <button onClick={() => router.back()} className="flex items-center gap-1.5 text-[#6B7280] hover:text-[#111827] transition-colors mb-4 text-[13px] font-semibold tracking-wide">
+            <button onClick={() => router.push("/branchaccount-pastor/asset")} className="flex items-center gap-1.5 text-[#6B7280] hover:text-[#111827] transition-colors mb-4 text-[13px] font-semibold tracking-wide">
               <ArrowLeft className="h-4 w-4" />
               Back
             </button>

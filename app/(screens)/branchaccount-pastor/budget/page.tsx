@@ -119,7 +119,8 @@ export default function Page() {
   type PeriodBudget = { id: string; category: GroupKey; status: string; totalAmount: number; title: string }
   type Allocation = { id: string; budgetId: string; chartOfAccountId: string; name: string; code: string; amount: number; notes: string }
 
-  const { branchId, loading: branchLoading, error: branchError } = useBranchContext()
+  const { branchId, branches, needsSelection, loading: branchLoading, error: branchError, hint: branchHint, selectBranch } =
+    useBranchContext()
   const tenantId = branchId
 
   const [budgets, setBudgets] = useState<Partial<Record<GroupKey, PeriodBudget>>>({})
@@ -331,7 +332,10 @@ export default function Page() {
     setSubmitError(null)
     setSubmitSuccess(null)
     if (!tenantId) {
-      setSubmitError(branchError ?? "No branch is available for your account. Ask an administrator to assign you to one.")
+      setSubmitError(
+        branchError ??
+          (needsSelection ? "Choose your branch above before saving." : branchHint ?? "No branch is available for your account.")
+      )
       return
     }
     const work = mergedGroups.filter(
@@ -423,7 +427,7 @@ export default function Page() {
 
       setSubmitSuccess(
         submit
-          ? `${periodLabel} budget submitted — ${submitted} ${submitted === 1 ? "group is" : "groups are"} now with the Director for approval.`
+          ? `${periodLabel} budget submitted — ${submitted} ${submitted === 1 ? "group is" : "groups are"} now with the Lead Pastor for approval.`
           : `${periodLabel} budget saved as draft.`
       )
       setAmountEdits({})
@@ -591,6 +595,23 @@ export default function Page() {
                     </select>
                   </label>
 
+                  {needsSelection && (
+                    <label className="flex items-center gap-2 h-[38px] md:h-[34px] px-2 sm:px-3 rounded-[6px] border border-amber-300 bg-amber-50 text-[11px] sm:text-[12px] text-[#111827] font-bold shadow-sm">
+                      <span className="text-amber-700 font-medium">Branch</span>
+                      <select
+                        value={branchId}
+                        onChange={(e) => selectBranch(e.target.value)}
+                        className="bg-transparent outline-none text-[12px] font-bold text-[#111827] cursor-pointer pr-1"
+                        aria-label="Your branch"
+                      >
+                        <option value="">Select…</option>
+                        {branches.map((b) => (
+                          <option key={b.id} value={b.id}>{b.name}</option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+
                   <button
                     onClick={handleExport}
                     disabled={exporting}
@@ -606,11 +627,11 @@ export default function Page() {
                     {periodStatus.label}
                   </span>
 
-                  <button onClick={handleSubmitProposal} disabled={submittingProposal} className="flex flex-2 justify-center md:flex-none whitespace-nowrap items-center h-[38px] md:h-[34px] px-3 sm:px-4 rounded-[6px] bg-[#3B5BDB] text-[12px] text-white font-bold shadow-[0_4px_14px_rgba(59,91,219,0.25)] hover:bg-[#3451b2] transition-all tracking-wide disabled:opacity-60 disabled:cursor-not-allowed">
+                  <button disabled title="Available once the Lead Pastor has approved the budget" className="flex flex-2 justify-center md:flex-none whitespace-nowrap items-center h-[38px] md:h-[34px] px-3 sm:px-4 rounded-[6px] bg-[#3B5BDB] text-[12px] text-white font-bold shadow-[0_4px_14px_rgba(59,91,219,0.25)] hover:bg-[#3451b2] transition-all tracking-wide disabled:opacity-60 disabled:cursor-not-allowed">
 
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" className="mr-2 outline-none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" /></svg>
 
-                    {submittingProposal ? "Submitting..." : "Submit for Director Approval"}
+                    Submit for Director Approval
 
                   </button>
 
@@ -945,7 +966,7 @@ export default function Page() {
                   )}
                   <button onClick={handleSaveDraft} disabled={submittingProposal} className="text-[12px] sm:text-[13px] font-semibold text-[#6B7280] hover:text-[#111827] transition-colors shrink-0 whitespace-nowrap bg-white sm:bg-transparent border border-[#E5E7EB] sm:border-transparent px-4 py-2 sm:px-0 sm:py-0 rounded-[6px] sm:rounded-none disabled:opacity-60">Save as Draft</button>
                   <button onClick={handleSubmitProposal} disabled={submittingProposal} className="h-[38px] sm:h-[40px] flex-1 sm:flex-none justify-center shrink-0 whitespace-nowrap px-4 sm:px-6 rounded-[8px] bg-[#3B5BDB] text-white text-[12px] sm:text-[13px] font-bold shadow-[0_4px_14px_rgba(59,91,219,0.35)] hover:bg-[#3451b2] transition-colors tracking-wide outline-none disabled:opacity-60 disabled:cursor-not-allowed">
-                    {submittingProposal ? "Submitting..." : "Submit for Director Approval"}
+                    {submittingProposal ? "Submitting..." : "Submit for Pastor's Approval"}
                   </button>
                 </div>
               </div>
