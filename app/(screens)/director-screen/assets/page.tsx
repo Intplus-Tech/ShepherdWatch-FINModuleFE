@@ -12,7 +12,9 @@ import {
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import SidebarNav from "@/components/navigation/SidebarNav"
-import { useAssetClasses } from "@/components/hooks/useAssetClasses"
+import { useAssetClasses, useUpdateAssetClass } from "@/components/hooks/useAssetClasses"
+import { useToast } from "@/components/ui/toast"
+import { describeApiError } from "@/lib/api-error"
 import { SkeletonTable } from "@/components/ui/skeleton"
 import { useModalParam } from "@/components/hooks/useModalParam"
 import NewAssetCategoryModal from "@/components/modals/NewAssetCategoryModal"
@@ -91,13 +93,54 @@ function PageInner() {
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null)
 
   const { assetClasses, isLoading: loading, error } = useAssetClasses()
+  const { updateAssetClass } = useUpdateAssetClass()
+  const { pushToast } = useToast()
 
-  const methodOptions = [
-    "Straight Line",
-    "Reducing Balance",
-    "Sum of Years' Digits",
-    "Units of Production"
+  // The backend accepts these two methods; labels are what the Director sees.
+  const METHODS: { value: string; label: string }[] = [
+    { value: "straight_line", label: "Straight Line" },
+    { value: "declining_balance", label: "Declining Balance" },
   ]
+  const methodOptions = METHODS.map((m) => m.label)
+  const methodLabel = (value?: string) => METHODS.find((m) => m.value === value)?.label ?? METHODS[0].label
+  const methodValue = (label: string) => METHODS.find((m) => m.label === label)?.value ?? "straight_line"
+
+  // Edits per class, saved together by "Save Policies".
+  type PolicyEdit = { method?: string; usefulLife?: string; residual?: string }
+  const [edits, setEdits] = useState<Record<string, PolicyEdit>>({})
+  const [saving, setSaving] = useState(false)
+  const editFor = (id: string) => edits[id] ?? {}
+  const setEdit = (id: string, patch: PolicyEdit) => setEdits((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }))
+  const dirtyIds = Object.keys(edits).filter((id) => Object.keys(edits[id]).length > 0)
+
+  const handleSavePolicies = async () => {
+    if (dirtyIds.length === 0) {
+      pushToast("No policy changes to save.", "info")
+      return
+    }
+    setSaving(true)
+    let saved = 0
+    try {
+      for (const id of dirtyIds) {
+        const edit = edits[id]
+        const result = (await updateAssetClass({
+          id,
+          ...(edit.method !== undefined ? { defaultDepreciationMethod: edit.method } : {}),
+          ...(edit.usefulLife !== undefined && edit.usefulLife !== "" ? { defaultUsefulLifeYears: Number(edit.usefulLife) } : {}),
+          ...(edit.residual !== undefined && edit.residual !== "" ? { defaultResidualValuePercent: Number(edit.residual) } : {}),
+        })) as { message?: string } | undefined
+        saved++
+        if (dirtyIds.length === 1) pushToast(result?.message ?? "Policy saved.", "success")
+      }
+      if (dirtyIds.length > 1) pushToast(`${saved} policies saved.`, "success")
+      setEdits({})
+    } catch (err) {
+      const data = (err as { response?: { data?: unknown } })?.response?.data
+      pushToast(data ? describeApiError(data, "Unable to save policies.") : err instanceof Error ? err.message : "Unable to save policies.", "error")
+    } finally {
+      setSaving(false)
+    }
+  }
 
 
   return (
@@ -195,24 +238,53 @@ function PageInner() {
                       </td>
                     </tr>
                   ) : (
-                    assetClasses.map((row) => (
-                      <tr key={row._id || row.name}>
+                    assetClasses.map((row) => {
+                      const id = String(row._id ?? row.id ?? row.name ?? "")
+                      const edit = editFor(id)
+                      const method = edit.method ?? row.depreciationMethod ?? "straight_line"
+                      const usefulLife = edit.usefulLife ?? (row.usefulLifeYears !== undefined ? String(row.usefulLifeYears) : "")
+                      const residual = edit.residual ?? (row.salvageValuePercent !== undefined ? String(row.salvageValuePercent) : "")
+                      return (
+                      <tr key={id} className={Object.keys(edit).length ? "bg-[#F8FAFF]" : ""}>
                         <td className="px-6 py-4 font-medium text-[#111827]">{row.name}</td>
                         <td className="px-6 py-3">
-                          <Dropdown 
-                            value={row.defaultDepreciationMethod || "straight_line"} 
-                            options={methodOptions} 
-                            onChange={() => {}} 
-                            isOpen={openDropdownId === (row._id || row.name)}
-                            setIsOpen={(open) => setOpenDropdownId(open ? (row._id || row.name || null) : null)}
+                          <Dropdown
+                            value={methodLabel(method)}
+                            options={methodOptions}
+                            onChange={(label) => setEdit(id, { method: methodValue(label) })}
+                            isOpen={openDropdownId === id}
+                            setIsOpen={(open) => setOpenDropdownId(open ? id : null)}
                           />
                         </td>
-                        <td className="px-6 py-4 font-medium text-[#4B5563]">{row.defaultUsefulLifeYears || "N/A"}</td>
-                        <td className="px-6 py-4 font-medium text-[#4B5563]">
-                          {(row.residualValuePercent ?? row.defaultResidualValuePercent ?? 0)}%
+                        <td className="px-6 py-3">
+                          <input
+                            type="number"
+                            min={1}
+                            value={usefulLife}
+                            placeholder="—"
+                            onChange={(e) => setEdit(id, { usefulLife: e.target.value })}
+                            aria-label={`Useful life for ${row.name}`}
+                            className="w-24 rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-[13px] font-medium text-[#4B5563] focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]/20"
+                          />
+                        </td>
+                        <td className="px-6 py-3">
+                          <div className="inline-flex items-center gap-1">
+                            <input
+                              type="number"
+                              min={0}
+                              max={100}
+                              value={residual}
+                              placeholder="—"
+                              onChange={(e) => setEdit(id, { residual: e.target.value })}
+                              aria-label={`Residual value for ${row.name}`}
+                              className="w-20 rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-[13px] font-medium text-[#4B5563] focus:border-[#3B5BDB] focus:outline-none focus:ring-1 focus:ring-[#3B5BDB]/20"
+                            />
+                            <span className="text-[13px] font-medium text-[#4B5563]">%</span>
+                          </div>
                         </td>
                       </tr>
-                    ))
+                      )
+                    })
                   )}
                 </tbody>
               </table>
@@ -226,8 +298,12 @@ function PageInner() {
                 <Plus className="h-3.5 w-3.5" />
                 Add New Depreciation Policy
               </button>
-              <button className="rounded-[6px] bg-[#3B5BDB] px-4 py-2 text-[12px] font-[600] text-white shadow hover:bg-blue-700 transition-colors">
-                Save Policies
+              <button
+                onClick={handleSavePolicies}
+                disabled={saving}
+                className="rounded-[6px] bg-[#3B5BDB] px-4 py-2 text-[12px] font-[600] text-white shadow hover:bg-blue-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {saving ? "Saving…" : dirtyIds.length > 0 ? `Save Policies (${dirtyIds.length})` : "Save Policies"}
               </button>
             </div>
           </div>

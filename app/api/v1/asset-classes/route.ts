@@ -26,7 +26,7 @@ type AssetClassCreateLegacyBody = {
   description?: string;
   depreciationMethod?: "straight_line" | "declining_balance";
   usefulLifeYears?: number;
-  residualValuePercent?: number;
+  salvageValuePercent?: number;
 };
 
 function getBackendUrl(): string | null {
@@ -273,7 +273,7 @@ function toLegacyCreatePayload(payload: AssetClassCreateBody): AssetClassCreateL
       ? { usefulLifeYears: payload.defaultUsefulLifeYears }
       : {}),
     ...(payload.defaultResidualValuePercent !== undefined
-      ? { residualValuePercent: payload.defaultResidualValuePercent }
+      ? { salvageValuePercent: payload.defaultResidualValuePercent }
       : {}),
   };
 }
@@ -337,8 +337,11 @@ export async function POST(req: NextRequest) {
     };
 
     const payloadCandidates: Array<AssetClassCreateBody | AssetClassCreateLegacyBody> =
+      // The backend stores depreciationMethod / usefulLifeYears /
+      // salvageValuePercent (seen in its create response), so that shape goes
+      // first; the swagger's default* names and a bare name are fallbacks.
       hasExtendedAssetClassFields(body)
-        ? [body, toLegacyCreatePayload(body), minimalBody]
+        ? [toLegacyCreatePayload(body), body, minimalBody]
         : [body];
 
     let res: Response = new Response(

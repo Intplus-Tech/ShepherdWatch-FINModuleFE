@@ -8,11 +8,43 @@ type AssetClass = {
   id?: string;
   name?: string;
   description?: string;
+  /** What the backend actually stores (see a create response). */
+  depreciationMethod?: string;
+  usefulLifeYears?: number;
+  salvageValuePercent?: number;
+  autoDepreciation?: boolean;
+  /** The names the swagger documents; filled as aliases of the above. */
   defaultDepreciationMethod?: string;
   defaultUsefulLifeYears?: number;
   defaultResidualValuePercent?: number;
   residualValuePercent?: number;
 };
+
+/**
+ * The API returns `depreciationMethod`, `usefulLifeYears` and
+ * `salvageValuePercent`; its swagger documents `default*` names instead.
+ * Read whichever is present and expose both, so no screen sees N/A.
+ */
+function normalizeAssetClass(raw: AssetClass): AssetClass {
+  const num = (value: unknown) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : undefined;
+  };
+  const depreciationMethod = raw.depreciationMethod ?? raw.defaultDepreciationMethod;
+  const usefulLifeYears = num(raw.usefulLifeYears) ?? num(raw.defaultUsefulLifeYears);
+  const salvageValuePercent =
+    num(raw.salvageValuePercent) ?? num(raw.defaultResidualValuePercent) ?? num(raw.residualValuePercent);
+  return {
+    ...raw,
+    depreciationMethod,
+    usefulLifeYears,
+    salvageValuePercent,
+    defaultDepreciationMethod: depreciationMethod,
+    defaultUsefulLifeYears: usefulLifeYears,
+    defaultResidualValuePercent: salvageValuePercent,
+    residualValuePercent: salvageValuePercent,
+  };
+}
 
 type AssetClassPagination = {
   total: number;
@@ -50,9 +82,9 @@ type UpdateAssetClassInput = {
 type UpdateAssetClassPayload = {
   name?: string;
   description?: string;
-  defaultDepreciationMethod?: DepreciationMethod;
-  defaultUsefulLifeYears?: number;
-  defaultResidualValuePercent?: number;
+  depreciationMethod?: string;
+  usefulLifeYears?: number;
+  salvageValuePercent?: number;
 };
 
 async function tryRefreshSession(): Promise<boolean> {
@@ -282,13 +314,13 @@ function extractAssetClassList(payload: unknown): AssetClass[] {
   if (!record) return [];
 
   const directData = record.data;
-  if (Array.isArray(directData)) return directData as AssetClass[];
+  if (Array.isArray(directData)) return (directData as AssetClass[]).map(normalizeAssetClass);
 
   const nestedData = asRecord(directData);
   if (!nestedData) return [];
 
-  if (Array.isArray(nestedData.data)) return nestedData.data as AssetClass[];
-  if (Array.isArray(nestedData.items)) return nestedData.items as AssetClass[];
+  if (Array.isArray(nestedData.data)) return (nestedData.data as AssetClass[]).map(normalizeAssetClass);
+  if (Array.isArray(nestedData.items)) return (nestedData.items as AssetClass[]).map(normalizeAssetClass);
 
   return [];
 }
@@ -326,7 +358,7 @@ function extractCreatedAssetClass(payload: unknown): AssetClass | null {
     const candidateRecord = asRecord(candidate);
     if (!candidateRecord) continue;
     if (typeof candidateRecord.name === "string" && candidateRecord.name.trim()) {
-      return candidateRecord as AssetClass;
+      return normalizeAssetClass(candidateRecord as AssetClass);
     }
     if (candidateRecord._id || candidateRecord.id) {
       return candidateRecord as AssetClass;
@@ -371,14 +403,14 @@ function normalizeUpdateAssetClassPayload(input: UpdateAssetClassInput): UpdateA
   if (description) payload.description = description;
 
   const method = normalizeDepreciationMethod(input.defaultDepreciationMethod);
-  if (method) payload.defaultDepreciationMethod = method;
+  if (method) payload.depreciationMethod = method;
 
   const usefulLife = normalizeOptionalNumber(input.defaultUsefulLifeYears);
   if (usefulLife !== undefined) {
     if (usefulLife < 1) {
       throw new Error("Useful life years must be at least 1.");
     }
-    payload.defaultUsefulLifeYears = usefulLife;
+    payload.usefulLifeYears = usefulLife;
   }
 
   const residual = normalizeOptionalNumber(input.defaultResidualValuePercent);
@@ -386,7 +418,7 @@ function normalizeUpdateAssetClassPayload(input: UpdateAssetClassInput): UpdateA
     if (residual < 0 || residual > 100) {
       throw new Error("Residual value percent must be between 0 and 100.");
     }
-    payload.defaultResidualValuePercent = residual;
+    payload.salvageValuePercent = residual;
   }
 
   return payload;

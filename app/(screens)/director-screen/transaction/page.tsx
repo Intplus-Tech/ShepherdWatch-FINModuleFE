@@ -48,6 +48,7 @@ import { statementFileProblem, toImportableStatement } from "@/lib/statement-fil
 import { describeApiError } from "@/lib/api-error"
 import { useTransactions, type TransactionItem } from "@/components/hooks/useTransactions"
 import { useTransactionSummaries } from "@/components/hooks/useTransactionSummaries"
+import BranchesDropdown from "@/components/navigation/BranchesDropdown"
 import { useToast } from "@/components/ui/toast"
 import { useAuth } from "@/components/auth/AuthProvider"
 import { useBranchContext } from "@/components/hooks/useBranchContext"
@@ -81,7 +82,7 @@ export default function Page() {
             </button>
           </div>
 
-          <BankTransactions />
+          <BankTransactions showBranchFilter />
         </div>
       </main>
     </div>
@@ -180,7 +181,9 @@ function mapTransactionToRow(tx: TransactionItem, accounts: AccountRow[] = []): 
   }
 }
 
-export function BankTransactions() {
+export function BankTransactions({ showBranchFilter = false }: { showBranchFilter?: boolean } = {}) {
+  // "" means all branches (consolidated); the list, totals and accounts follow it.
+  const [branchFilter, setBranchFilter] = useState("")
   const [tab, setTab] = useState<"ALL" | "CREDIT" | "DEBIT">("ALL")
   const [search, setSearch] = useState("")
   // Holds a bank account id, or "" for all.
@@ -191,9 +194,9 @@ export function BankTransactions() {
   const PAGE_SIZE = 5
 
   // Live data
-  const { transactions, loading, error, refresh } = useTransactions({ limit: 100 })
+  const { transactions, loading, error, refresh } = useTransactions({ limit: 100, branchId: branchFilter || undefined })
   const { pushToast } = useToast()
-  const { summary, refresh: refreshSummary } = useTransactionSummaries()
+  const { summary, refresh: refreshSummary } = useTransactionSummaries({ branchId: branchFilter || undefined })
   // Every chart-of-account head for the branch: the CATEGORY dropdown on each
   // row is this list, and choosing one categorises the transaction.
   const { branchId: contextBranchId } = useBranchContext()
@@ -204,7 +207,8 @@ export function BankTransactions() {
   const reloadAccounts = useCallback(() => setAccountsVersion((v) => v + 1), [])
   useEffect(() => {
     let active = true
-    fetch(`${API_V1}/financial/bank-accounts?limit=100`, { credentials: "include" })
+    const accountsQuery = branchFilter ? `?limit=100&branchId=${encodeURIComponent(branchFilter)}` : "?limit=100"
+    fetch(`${API_V1}/financial/bank-accounts${accountsQuery}`, { credentials: "include" })
       .then((response) => (response.ok ? response.json() : null))
       .then((data) => {
         if (!active || !data) return
@@ -223,7 +227,7 @@ export function BankTransactions() {
     return () => {
       active = false
     }
-  }, [accountsVersion])
+  }, [accountsVersion, branchFilter])
   const accountCount = bankAccounts.length
 
   // Local copy of the mapped rows so category edits can be applied optimistically.
@@ -421,6 +425,16 @@ export function BankTransactions() {
           </div>
 
           <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full lg:w-auto">
+            {showBranchFilter && (
+              <BranchesDropdown
+                value={branchFilter}
+                onChange={(id) => {
+                  setBranchFilter(id)
+                  setAccountFilter("")
+                  setPage(0)
+                }}
+              />
+            )}
             <div className="relative w-full sm:w-auto">
               <select
                 value={accountFilter}

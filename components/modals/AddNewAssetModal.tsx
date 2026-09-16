@@ -6,13 +6,118 @@ import React, { useState, useRef } from "react"
 import { X, CloudUpload, Loader2, FileCheck, Trash2 } from "lucide-react"
 import { useMutation } from "@tanstack/react-query"
 import axios from "axios"
+import { useAssetClasses } from "@/components/hooks/useAssetClasses"
+import { useBranchContext } from "@/components/hooks/useBranchContext"
+import { useToast } from "@/components/ui/toast"
+import { describeApiError } from "@/lib/api-error"
+import { getCsrfTokenFromCookie } from "@/lib/csrf"
 
 type AddNewAssetModalProps = {
-  isOpen: boolean;
-  onClose: () => void;
+  isOpen: boolean
+  onClose: () => void
+  /** Called after a successful save so the list behind the modal can refresh. */
+  onCreated?: () => void
 }
 
-export default function AddNewAssetModal({ isOpen, onClose }: AddNewAssetModalProps) {
+// The form's Asset Type labels against the API's assetType enum.
+const ASSET_TYPES = [
+  { value: "fixed", label: "Fixed Asset" },
+  { value: "stock", label: "Current Asset: Stock/Supplies" },
+  { value: "cash_box", label: "Cash Box" },
+] as const
+
+// The form's condition labels against the API's condition enum.
+const CONDITIONS = [
+  { value: "excellent", label: "Brand New" },
+  { value: "good", label: "Good" },
+  { value: "fair", label: "Fair" },
+  { value: "poor", label: "Poor" },
+] as const
+
+export default function AddNewAssetModal({ isOpen, onClose, onCreated }: AddNewAssetModalProps) {
+  const { pushToast } = useToast()
+  const { assetClasses, isLoading: classesLoading } = useAssetClasses({ limit: 100 })
+  const { branches, branchId: contextBranchId } = useBranchContext()
+
+  const [assetType, setAssetType] = useState<(typeof ASSET_TYPES)[number]["value"]>("fixed")
+  const [assetClassId, setAssetClassId] = useState("")
+  const [branchId, setBranchId] = useState("")
+  const [name, setName] = useState("")
+  const [serialNumber, setSerialNumber] = useState("")
+  const [specs, setSpecs] = useState("")
+  const [responsible, setResponsible] = useState("")
+  const [acquisitionDate, setAcquisitionDate] = useState("")
+  const [cost, setCost] = useState("")
+  const [condition, setCondition] = useState<(typeof CONDITIONS)[number]["value"]>("excellent")
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  const effectiveBranchId = branchId || (branches.length === 1 ? branches[0].id : contextBranchId)
+
+  const resetForm = () => {
+    setAssetType("fixed")
+    setAssetClassId("")
+    setBranchId("")
+    setName("")
+    setSerialNumber("")
+    setSpecs("")
+    setResponsible("")
+    setAcquisitionDate("")
+    setCost("")
+    setCondition("excellent")
+    setSaveError(null)
+    setUploadedFile(null)
+  }
+
+  const handleSave = async () => {
+    setSaveError(null)
+    const amount = Number(String(cost).replace(/[^\d.]/g, ""))
+    if (!name.trim()) return setSaveError("Enter the asset name.")
+    if (!effectiveBranchId) return setSaveError("Choose the branch this asset belongs to.")
+    if (!acquisitionDate) return setSaveError("Pick the acquisition date.")
+    if (!Number.isFinite(amount) || amount <= 0) return setSaveError("Enter a cost greater than zero.")
+
+    // The chosen class carries the Director's depreciation defaults.
+    const cls = (assetClasses ?? []).find((c) => String(c._id ?? c.id ?? "") === assetClassId)
+    const residualPct = Number(cls?.salvageValuePercent)
+    const description = [specs.trim(), serialNumber.trim() ? `Serial: ${serialNumber.trim()}` : "", responsible.trim() ? `Responsible: ${responsible.trim()}` : ""]
+      .filter(Boolean)
+      .join(" · ")
+
+    setSaving(true)
+    try {
+      const response = await fetch(`${API_V1}/assets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfTokenFromCookie() },
+        credentials: "include",
+        body: JSON.stringify({
+          name: name.trim(),
+          branchId: effectiveBranchId,
+          cost: amount,
+          acquisitionDate,
+          assetType,
+          condition,
+          ...(assetClassId ? { assetClassId } : {}),
+          ...(cls?.depreciationMethod ? { depreciationMethod: cls.depreciationMethod } : {}),
+          ...(cls?.usefulLifeYears ? { usefulLifeYears: cls.usefulLifeYears } : {}),
+          ...(Number.isFinite(residualPct) ? { residualValue: Math.round((amount * residualPct) / 100) } : {}),
+          ...(description ? { description } : {}),
+          ...(uploadedFile?.url ? { photo: String(uploadedFile.url) } : {}),
+        }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(describeApiError(data, "Unable to save the asset."))
+      pushToast(data?.message ?? `"${name.trim()}" saved.`, "success")
+      onCreated?.()
+      resetForm()
+      onClose()
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Unable to save the asset.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const [dragActive, setDragActive] = useState(false)
 
 
@@ -98,45 +203,53 @@ export default function AddNewAssetModal({ isOpen, onClose }: AddNewAssetModalPr
 
         {/* Form Body - Scrollable */}
         <div className="px-6 py-1 overflow-y-auto flex-1">
-          <form className="flex flex-col gap-3">
+          <form className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); void handleSave() }}>
             {/* Row 1 */}
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
                 <label className="text-[12px] font-bold text-[#111827]">Asset Type</label>
                 <div className="relative">
-                  <select className="h-9 w-full appearance-none rounded-[8px] border border-[#E5E7EB] bg-[#F9FAFB] px-3 text-[12px] font-medium text-[#111827] outline-none focus:border-[#3B5BDB] focus:bg-white focus:ring-1 focus:ring-[#3B5BDB] cursor-pointer">
-                    <option>Current Asset: Cash/Supplies</option>
-                    <option>Non-Current Asset</option>
+                  <select value={assetType} onChange={(e) => setAssetType(e.target.value as typeof assetType)} className="h-9 w-full appearance-none rounded-[8px] border border-[#E5E7EB] bg-[#F9FAFB] px-3 text-[12px] font-medium text-[#111827] outline-none focus:border-[#3B5BDB] focus:bg-white focus:ring-1 focus:ring-[#3B5BDB] cursor-pointer">
+                    {ASSET_TYPES.map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
                   </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-500">
-                    <svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </div>
                 </div>
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className="text-[12px] font-bold text-[#111827]">Category</label>
                 <div className="relative">
-                  <select className="h-9 w-full appearance-none rounded-[8px] border border-[#E5E7EB] bg-[#F9FAFB] px-3 text-[12px] font-medium text-[#6B7280] outline-none focus:border-[#3B5BDB] focus:bg-white focus:ring-1 focus:ring-[#3B5BDB] cursor-pointer">
-                    <option>Select Category...</option>
-                    <option>Motor Vehicle</option>
-                    <option>IT Equipment</option>
-                    <option>Furniture</option>
+                  <select value={assetClassId} onChange={(e) => setAssetClassId(e.target.value)} className="h-9 w-full appearance-none rounded-[8px] border border-[#E5E7EB] bg-[#F9FAFB] px-3 text-[12px] font-medium text-[#111827] outline-none focus:border-[#3B5BDB] focus:bg-white focus:ring-1 focus:ring-[#3B5BDB] cursor-pointer">
+                    <option value="">{classesLoading ? "Loading categories…" : (assetClasses ?? []).length === 0 ? "No categories yet" : "Select Category..."}</option>
+                    {(assetClasses ?? []).map((c) => {
+                      const id = String(c._id ?? c.id ?? "")
+                      return (
+                        <option key={id} value={id}>{c.name}</option>
+                      )
+                    })}
                   </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-500">
-                    <svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </div>
                 </div>
               </div>
             </div>
 
+            {branches.length > 1 && (
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[12px] font-bold text-[#111827]">Branch</label>
+                <div className="relative">
+                  <select value={effectiveBranchId} onChange={(e) => setBranchId(e.target.value)} className="h-9 w-full appearance-none rounded-[8px] border border-[#E5E7EB] bg-[#F9FAFB] px-3 text-[12px] font-medium text-[#111827] outline-none focus:border-[#3B5BDB] focus:bg-white focus:ring-1 focus:ring-[#3B5BDB] cursor-pointer">
+                    <option value="">Select branch...</option>
+                    {branches.map((b) => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
             {/* Row 2 */}
             <div className="flex flex-col gap-1.5">
               <label className="text-[12px] font-bold text-[#111827]">Asset Name / Description</label>
-              <input 
+              <input value={name} onChange={(e) => setName(e.target.value)} 
                 type="text" 
                 placeholder="e.g. MacBook Pro 16-inch M2" 
                 className="h-9 w-full rounded-[8px] border border-[#E5E7EB] bg-[#F9FAFB] px-3 text-[12px] font-medium text-[#111827] placeholder:text-[#9CA3AF] outline-none focus:border-[#3B5BDB] focus:bg-white focus:ring-1 focus:ring-[#3B5BDB]"
@@ -146,7 +259,7 @@ export default function AddNewAssetModal({ isOpen, onClose }: AddNewAssetModalPr
             {/* Row 3 */}
             <div className="flex flex-col gap-1.5">
               <label className="text-[12px] font-bold text-[#111827]">Serial Number</label>
-              <input 
+              <input value={serialNumber} onChange={(e) => setSerialNumber(e.target.value)} 
                 type="text" 
                 className="h-9 w-full rounded-[8px] border border-[#E5E7EB] bg-[#F9FAFB] px-3 text-[12px] font-medium text-[#111827] outline-none focus:border-[#3B5BDB] focus:bg-white focus:ring-1 focus:ring-[#3B5BDB]"
               />
@@ -155,7 +268,7 @@ export default function AddNewAssetModal({ isOpen, onClose }: AddNewAssetModalPr
             {/* Row 4 */}
             <div className="flex flex-col gap-1.5">
               <label className="text-[12px] font-bold text-[#111827]">Technical Specifications</label>
-              <textarea 
+              <textarea value={specs} onChange={(e) => setSpecs(e.target.value)} 
                 rows={2}
                 className="w-full rounded-[8px] border border-[#E5E7EB] bg-[#F9FAFB] p-3 text-[12px] font-medium text-[#111827] outline-none focus:border-[#3B5BDB] focus:bg-white focus:ring-1 focus:ring-[#3B5BDB] resize-none"
               ></textarea>
@@ -164,7 +277,7 @@ export default function AddNewAssetModal({ isOpen, onClose }: AddNewAssetModalPr
             {/* Row 5 */}
             <div className="flex flex-col gap-1.5">
               <label className="text-[12px] font-bold text-[#111827]">Responsible</label>
-              <input 
+              <input value={responsible} onChange={(e) => setResponsible(e.target.value)} 
                 type="text" 
                 placeholder="who is responsible for this asset?" 
                 className="h-9 w-full rounded-[8px] border border-[#E5E7EB] bg-[#F9FAFB] px-3 text-[12px] font-medium text-[#111827] placeholder:text-[#9CA3AF] outline-none focus:border-[#3B5BDB] focus:bg-white focus:ring-1 focus:ring-[#3B5BDB]"
@@ -176,7 +289,7 @@ export default function AddNewAssetModal({ isOpen, onClose }: AddNewAssetModalPr
               <div className="flex flex-col gap-1.5">
                 <label className="text-[12px] font-bold text-[#111827]">Acquisition Date</label>
                 <div className="relative">
-                  <input 
+                  <input value={acquisitionDate} onChange={(e) => setAcquisitionDate(e.target.value)} 
                     type="date" 
                     className="h-9 w-full rounded-[8px] border border-[#E5E7EB] bg-[#F9FAFB] px-3 pr-8 text-[12px] font-medium text-[#6B7280] outline-none focus:border-[#3B5BDB] focus:bg-white focus:ring-1 focus:ring-[#3B5BDB]"
                   />
@@ -184,7 +297,7 @@ export default function AddNewAssetModal({ isOpen, onClose }: AddNewAssetModalPr
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className="text-[12px] font-bold text-[#111827]">Cost (₦)</label>
-                <input 
+                <input value={cost} onChange={(e) => setCost(e.target.value)} 
                   type="text" 
                   className="h-9 w-full rounded-[8px] border border-[#E5E7EB] bg-[#F9FAFB] px-3 text-[12px] font-medium text-[#111827] outline-none focus:border-[#3B5BDB] focus:bg-white focus:ring-1 focus:ring-[#3B5BDB]"
                 />
@@ -192,11 +305,10 @@ export default function AddNewAssetModal({ isOpen, onClose }: AddNewAssetModalPr
               <div className="flex flex-col gap-1.5">
                 <label className="text-[12px] font-bold text-[#111827]">Initial Condition</label>
                 <div className="relative">
-                  <select className="h-9 w-full appearance-none rounded-[8px] border border-[#E5E7EB] bg-[#F9FAFB] px-3 text-[12px] font-bold text-[#111827] outline-none focus:border-[#3B5BDB] focus:bg-white focus:ring-1 focus:ring-[#3B5BDB] cursor-pointer">
-                    <option>Brand New</option>
-                    <option>Good</option>
-                    <option>Fair</option>
-                    <option>Poor</option>
+                  <select value={condition} onChange={(e) => setCondition(e.target.value as typeof condition)} className="h-9 w-full appearance-none rounded-[8px] border border-[#E5E7EB] bg-[#F9FAFB] px-3 text-[12px] font-bold text-[#111827] outline-none focus:border-[#3B5BDB] focus:bg-white focus:ring-1 focus:ring-[#3B5BDB] cursor-pointer">
+                    {CONDITIONS.map((c) => (
+                      <option key={c.value} value={c.value}>{c.label}</option>
+                    ))}
                   </select>
                   <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-500">
                     <svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -276,6 +388,7 @@ export default function AddNewAssetModal({ isOpen, onClose }: AddNewAssetModalPr
         </div>
 
         {/* Footer */}
+        {saveError && <p className="px-6 pb-1 text-[12px] font-medium text-rose-600">{saveError}</p>}
         <div className="flex items-center justify-end gap-3 px-6 py-3 mt-1 border-t border-[#EEF1F6]">
           <button 
             onClick={onClose}
@@ -283,8 +396,13 @@ export default function AddNewAssetModal({ isOpen, onClose }: AddNewAssetModalPr
           >
             Cancel
           </button>
-          <button className="rounded-[8px] bg-[#2563EB] px-5 py-2 text-[12px] font-bold text-white shadow-sm hover:bg-[#1D4ED8] transition-colors">
-            Save Asset
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving || uploadMutation.isPending}
+            className="rounded-[8px] bg-[#2563EB] px-5 py-2 text-[12px] font-bold text-white shadow-sm hover:bg-[#1D4ED8] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {saving ? "Saving…" : "Save Asset"}
           </button>
         </div>
       </div>
