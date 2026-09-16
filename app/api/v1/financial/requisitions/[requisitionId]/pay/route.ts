@@ -52,7 +52,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ requi
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to mark requisition as paid" },
+          { success: false, message: payload?.message ?? "Unable to mark requisition as paid", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req

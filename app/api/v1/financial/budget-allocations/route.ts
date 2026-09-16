@@ -72,26 +72,52 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Retries once with a refreshed access token when the cookie has expired,
-    // and stages the renewed cookies for `applyCors` to write back.
-    const { res: backendResponse } = await executeWithRefreshRetry(req, (backendToken) =>
-      fetch(buildBackendUrl(), {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${backendToken}`,
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payloadToSend),
-        cache: "no-store",
-      })
-    )
+    // The published swagger has repeatedly disagreed with what this API
+    // validates — budgets reject `totalAmount` and require `annualAmount`, for
+    // one — so if the documented shape is refused, try the same values under
+    // the names the budget endpoints actually use before giving up. Only a 400
+    // triggers a retry, and the first response is what gets reported.
+    const amount = payloadToSend.amount
+    const candidates: Record<string, unknown>[] = [
+      payloadToSend,
+      { ...payloadToSend, annualAmount: amount },
+      { ...payloadToSend, allocatedAmount: amount },
+    ]
 
-    const payload = await backendResponse.json().catch(() => null)
+    let backendResponse!: Response
+    let payload: { message?: string } | null = null
+    let firstFailure: { res: Response; payload: { message?: string } | null } | null = null
+
+    for (const candidate of candidates) {
+      // Retries once with a refreshed access token when the cookie has expired,
+      // and stages the renewed cookies for `applyCors` to write back.
+      const attempt = await executeWithRefreshRetry(req, (backendToken) =>
+        fetch(buildBackendUrl(), {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${backendToken}`,
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(candidate),
+          cache: "no-store",
+        })
+      )
+      backendResponse = attempt.res
+      payload = await backendResponse.json().catch(() => null)
+      if (backendResponse.ok) break
+      if (!firstFailure) firstFailure = { res: backendResponse, payload }
+      if (backendResponse.status !== 400) break
+    }
+
+    if (!backendResponse.ok && firstFailure) {
+      backendResponse = firstFailure.res
+      payload = firstFailure.payload
+    }
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to create budget allocation." },
+          { success: false, message: payload?.message ?? "Unable to create budget allocation.", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req
@@ -145,7 +171,7 @@ export async function GET(req: NextRequest) {
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to fetch budget allocations." },
+          { success: false, message: payload?.message ?? "Unable to fetch budget allocations.", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req

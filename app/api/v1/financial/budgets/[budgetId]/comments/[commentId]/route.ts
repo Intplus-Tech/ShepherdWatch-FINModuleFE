@@ -55,7 +55,7 @@ export async function DELETE(
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to delete budget comment." },
+          { success: false, message: payload?.message ?? "Unable to delete budget comment.", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req

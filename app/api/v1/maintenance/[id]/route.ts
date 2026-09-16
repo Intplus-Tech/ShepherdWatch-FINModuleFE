@@ -81,6 +81,9 @@ export async function PATCH(
           {
             success: false,
             message: payload?.message ?? "Unable to update maintenance record",
+            // Keep the backend's field-level detail; the bare message alone says
+            // only "Validation failed".
+            ...(payload && typeof payload === "object" ? payload : {}),
           },
           { status: backendResponse.status || 502 }
         ),
@@ -168,6 +171,9 @@ export async function DELETE(
           {
             success: false,
             message: payload?.message ?? "Unable to cancel maintenance record",
+            // Keep the backend's field-level detail; the bare message alone says
+            // only "Validation failed".
+            ...(payload && typeof payload === "object" ? payload : {}),
           },
           { status: backendResponse.status || 502 }
         ),

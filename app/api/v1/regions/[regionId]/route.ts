@@ -80,6 +80,9 @@ export async function GET(req: NextRequest, context: { params: Promise<{ regionI
           {
             success: false,
             message: payload?.message ?? "Unable to fetch region",
+            // Keep the backend's field-level detail; the bare message alone says
+            // only "Validation failed".
+            ...(payload && typeof payload === "object" ? payload : {}),
           },
           { status: backendResponse.status || 502 }
         ),
@@ -159,6 +162,9 @@ export async function PUT(req: NextRequest, context: { params: Promise<{ regionI
           {
             success: false,
             message: payload?.message ?? "Unable to update region",
+            // Keep the backend's field-level detail; the bare message alone says
+            // only "Validation failed".
+            ...(payload && typeof payload === "object" ? payload : {}),
           },
           { status: backendResponse.status || 502 }
         ),
@@ -228,6 +234,9 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ regio
           {
             success: false,
             message: payload?.message ?? "Unable to update region status",
+            // Keep the backend's field-level detail; the bare message alone says
+            // only "Validation failed".
+            ...(payload && typeof payload === "object" ? payload : {}),
           },
           { status: backendResponse.status || 502 }
         ),

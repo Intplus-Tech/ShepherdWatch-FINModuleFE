@@ -81,7 +81,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ budgetI
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to fetch budget." },
+          { success: false, message: payload?.message ?? "Unable to fetch budget.", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req
@@ -153,7 +153,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ budge
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to update budget." },
+          { success: false, message: payload?.message ?? "Unable to update budget.", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req

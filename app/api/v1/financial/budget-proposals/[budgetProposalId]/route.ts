@@ -52,7 +52,7 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ budg
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to delete budget proposal" },
+          { success: false, message: payload?.message ?? "Unable to delete budget proposal", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req

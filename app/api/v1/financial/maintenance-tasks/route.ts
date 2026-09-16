@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to fetch maintenance tasks" },
+          { success: false, message: payload?.message ?? "Unable to fetch maintenance tasks", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req
@@ -108,7 +108,7 @@ export async function POST(req: NextRequest) {
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to create maintenance task" },
+          { success: false, message: payload?.message ?? "Unable to create maintenance task", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req

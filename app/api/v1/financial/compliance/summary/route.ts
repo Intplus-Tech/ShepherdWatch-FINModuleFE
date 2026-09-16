@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to fetch compliance summary" },
+          { success: false, message: payload?.message ?? "Unable to fetch compliance summary", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req

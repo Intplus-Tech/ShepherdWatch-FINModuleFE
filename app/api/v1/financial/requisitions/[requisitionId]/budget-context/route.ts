@@ -44,7 +44,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ requisi
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to fetch requisition budget context" },
+          { success: false, message: payload?.message ?? "Unable to fetch requisition budget context", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req

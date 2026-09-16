@@ -52,7 +52,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ budget
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to submit budget proposal" },
+          { success: false, message: payload?.message ?? "Unable to submit budget proposal", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req

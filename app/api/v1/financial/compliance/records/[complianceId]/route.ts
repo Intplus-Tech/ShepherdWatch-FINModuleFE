@@ -55,7 +55,7 @@ export async function PUT(req: NextRequest, context: { params: Promise<{ complia
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to update compliance record" },
+          { success: false, message: payload?.message ?? "Unable to update compliance record", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req
@@ -113,7 +113,7 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ comp
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to delete compliance record" },
+          { success: false, message: payload?.message ?? "Unable to delete compliance record", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req

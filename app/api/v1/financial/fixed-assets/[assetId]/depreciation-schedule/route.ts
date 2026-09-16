@@ -57,6 +57,9 @@ export async function GET(req: NextRequest, context: { params: Promise<{ assetId
           {
             success: false,
             message: payload?.message ?? "Unable to fetch depreciation schedule",
+            // Keep the backend's field-level detail; the bare message alone says
+            // only "Validation failed".
+            ...(payload && typeof payload === "object" ? payload : {}),
           },
           { status: backendResponse.status || 502 }
         ),

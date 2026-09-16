@@ -52,7 +52,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ budge
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to submit budget." },
+          { success: false, message: payload?.message ?? "Unable to submit budget.", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req

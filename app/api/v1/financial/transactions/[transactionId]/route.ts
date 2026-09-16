@@ -54,7 +54,7 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ tran
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to delete transaction" },
+          { success: false, message: payload?.message ?? "Unable to delete transaction", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req
@@ -116,7 +116,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ trans
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to update transaction" },
+          { success: false, message: payload?.message ?? "Unable to update transaction", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req

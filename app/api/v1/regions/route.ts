@@ -76,6 +76,9 @@ export async function GET(req: NextRequest) {
           {
             success: false,
             message: payload?.message ?? "Unable to fetch regions",
+            // Keep the backend's field-level detail; the bare message alone says
+            // only "Validation failed".
+            ...(payload && typeof payload === "object" ? payload : {}),
           },
           { status: backendResponse.status || 502 }
         ),
@@ -155,6 +158,9 @@ export async function POST(req: NextRequest) {
           {
             success: false,
             message: payload?.message ?? "Unable to create region",
+            // Keep the backend's field-level detail; the bare message alone says
+            // only "Validation failed".
+            ...(payload && typeof payload === "object" ? payload : {}),
           },
           { status: backendResponse.status || 502 }
         ),

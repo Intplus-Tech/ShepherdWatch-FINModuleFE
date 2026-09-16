@@ -44,7 +44,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ budgetI
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to fetch budget performance." },
+          { success: false, message: payload?.message ?? "Unable to fetch budget performance.", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req
