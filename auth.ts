@@ -36,7 +36,22 @@ function pickString(source: unknown, keys: string[]): string | undefined {
   for (const key of keys) {
     const val = rec[key];
     if (typeof val === "string" && val.trim()) return val;
-    // Mongoose populates references into objects; take the id back out.
+  }
+  return undefined;
+}
+
+/**
+ * Like pickString, but for reference fields the backend may populate into an
+ * object (`branchId: { _id, name }`). Only for ids: a populated `role` must
+ * NOT be reduced to its ObjectId, or the role-based redirect breaks.
+ */
+function pickId(source: unknown, keys: string[]): string | undefined {
+  const direct = pickString(source, keys);
+  if (direct) return direct;
+  if (!source || typeof source !== "object") return undefined;
+  const rec = source as Record<string, unknown>;
+  for (const key of keys) {
+    const val = rec[key];
     if (val && typeof val === "object") {
       const nested = val as Record<string, unknown>;
       const id = nested._id ?? nested.id;
@@ -186,10 +201,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           "";
         const firstName = pickString(userSrc, ["firstName"]);
         const lastName = pickString(userSrc, ["lastName"]);
-        const tenantId = pickString(userSrc, ["tenantId", "branchId", "branch_id"]) ?? pickString(data, ["tenantId", "branchId", "branch_id"]);
+        const tenantId = pickId(userSrc, ["tenantId", "branchId", "branch_id"]) ?? pickId(data, ["tenantId", "branchId", "branch_id"]);
         const branchId =
-          pickString(userSrc, ["branchId", "branch_id"]) ??
-          pickString(data, ["branchId", "branch_id"]) ??
+          pickId(userSrc, ["branchId", "branch_id"]) ??
+          pickId(data, ["branchId", "branch_id"]) ??
           (accessToken ? extractIdsFromJwt(accessToken).branchId || undefined : undefined);
         const fullName =
           pickString(userSrc, ["fullName", "name"]) ??
