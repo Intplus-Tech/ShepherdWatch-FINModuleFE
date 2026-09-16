@@ -34,7 +34,16 @@ export function useBranchContext() {
   const userId = String(user?.id ?? "")
 
   const [branches, setBranches] = useState<BranchOption[]>([])
-  const [chosenBranchId, setChosenBranchId] = useState("")
+  // A branch the user picked is kept per user so every screen shares it.
+  const storageKey = userId ? `sw.branch.${userId}` : ""
+  const [chosenBranchId, setChosenBranchId] = useState(() => {
+    try {
+      return storageKey ? window.localStorage.getItem(storageKey) ?? "" : ""
+    } catch {
+      return ""
+    }
+  })
+  const [hint, setHint] = useState<string | null>(null)
   const [loading, setLoading] = useState(!sessionBranchId)
   const [error, setError] = useState<string | null>(null)
 
@@ -86,6 +95,19 @@ export function useBranchContext() {
         const options = assigned.length > 0 ? assigned : all
         setBranches(options)
         setChosenBranchId((prev) => prev || sessionBranchId || (options.length === 1 ? options[0].id : ""))
+
+        // Explain the outcome so a stuck screen can say what is actually missing.
+        const carriesAssignments = list.some(
+          (item: Record<string, unknown>) => item?.assignedAccountantId !== undefined || item?.leadPastorId !== undefined
+        )
+        if (all.length === 0) setHint("No branches were returned for your account.")
+        else if (assigned.length === 0 && all.length > 1 && !sessionBranchId)
+          setHint(
+            carriesAssignments
+              ? `None of the ${all.length} branches lists you as its accountant or lead pastor. Pick your branch below, or ask a Director to assign you on the branch record.`
+              : `The branch list doesn't say who each branch's accountant is, so your branch can't be detected. Pick it below.`
+          )
+        else setHint(null)
       } catch (err) {
         if (active) setError(err instanceof Error ? err.message : "Unable to load branches.")
       } finally {
@@ -100,7 +122,20 @@ export function useBranchContext() {
   }, [sessionBranchId, userId])
 
   const branchId = chosenBranchId || sessionBranchId
-  const selectBranch = useCallback((id: string) => setChosenBranchId(id), [])
+  const selectBranch = useCallback(
+    (id: string) => {
+      setChosenBranchId(id)
+      try {
+        if (storageKey) {
+          if (id) window.localStorage.setItem(storageKey, id)
+          else window.localStorage.removeItem(storageKey)
+        }
+      } catch {
+        /* storage may be unavailable; the choice still applies for this page */
+      }
+    },
+    [storageKey]
+  )
 
   return {
     branchId,
@@ -109,6 +144,8 @@ export function useBranchContext() {
     needsSelection: !branchId && branches.length > 1,
     loading,
     error,
+    /** Why no branch could be chosen automatically, when that is the case. */
+    hint,
     selectBranch,
   }
 }
