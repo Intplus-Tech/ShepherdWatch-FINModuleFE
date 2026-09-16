@@ -26,7 +26,15 @@ export function getBackendApiUrl(path: string = ""): string {
   if (process.env.NODE_ENV === "production" && raw.startsWith("http://")) {
     throw new Error("BACKEND_API_URL must use https in production")
   }
-  const origin = raw.replace(/\/+$/, "").replace(/\/api\/v1$/i, "")
+  // Same clean-up as `getBackendBaseUrl` in backend-auth-url.ts: the env value
+  // is sometimes the swagger URL (…/api-docs) or already versioned (…/api/v1).
+  // Routes built here and routes built there must land on the same origin, or
+  // half the API answers the backend's "resource was not found".
+  const origin = raw
+    .trim()
+    .replace(/\/+$/, "")
+    .replace(/\/api-docs(?:\/.*)?$/i, "")
+    .replace(/\/api(?:\/v1)?$/i, "")
   const base = `${origin}${API_V1}`
   const clean = String(path).replace(/^\/+/, "")
   return clean ? `${base}/${clean}` : base
