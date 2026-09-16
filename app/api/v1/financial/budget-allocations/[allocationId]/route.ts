@@ -75,7 +75,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ allocat
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to fetch budget allocation." },
+          { success: false, message: payload?.message ?? "Unable to fetch budget allocation.", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req
@@ -147,7 +147,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ alloc
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to update budget allocation." },
+          { success: false, message: payload?.message ?? "Unable to update budget allocation.", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req

@@ -65,6 +65,9 @@ export async function PUT(req: NextRequest, context: { params: Promise<{ id: str
           {
             success: false,
             message: payload?.message ?? "Unable to update asset class",
+            // Keep the backend's field-level detail; the bare message alone says
+            // only "Validation failed".
+            ...(payload && typeof payload === "object" ? payload : {}),
           },
           { status: backendResponse.status || 502 }
         ),
@@ -132,6 +135,9 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ id: 
           {
             success: false,
             message: payload?.message ?? "Unable to delete asset class",
+            // Keep the backend's field-level detail; the bare message alone says
+            // only "Validation failed".
+            ...(payload && typeof payload === "object" ? payload : {}),
           },
           { status: backendResponse.status || 502 }
         ),

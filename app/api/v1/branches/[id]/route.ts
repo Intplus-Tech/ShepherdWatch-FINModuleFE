@@ -103,6 +103,9 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
           {
             success: false,
             message: payload?.message ?? "Unable to fetch branch details",
+            // Keep the backend's field-level detail; the bare message alone says
+            // only "Validation failed".
+            ...(payload && typeof payload === "object" ? payload : {}),
           },
           { status: backendResponse.status || 502 }
         ),
@@ -187,6 +190,9 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
           {
             success: false,
             message: payload?.message ?? "Unable to update branch",
+            // Keep the backend's field-level detail; the bare message alone says
+            // only "Validation failed".
+            ...(payload && typeof payload === "object" ? payload : {}),
           },
           { status: backendResponse.status || 502 }
         ),

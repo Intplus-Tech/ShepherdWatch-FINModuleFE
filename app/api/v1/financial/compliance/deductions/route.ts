@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Failed to fetch statutory deductions" },
+          { success: false, message: payload?.message ?? "Failed to fetch statutory deductions", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req
@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Failed to create statutory deduction" },
+          { success: false, message: payload?.message ?? "Failed to create statutory deduction", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req

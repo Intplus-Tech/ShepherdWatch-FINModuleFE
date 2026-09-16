@@ -59,7 +59,7 @@ export async function PATCH(
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to update asset attachments" },
+          { success: false, message: payload?.message ?? "Unable to update asset attachments", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req

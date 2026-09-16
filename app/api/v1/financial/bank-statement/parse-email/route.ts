@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to parse email alert" },
+          { success: false, message: payload?.message ?? "Unable to parse email alert", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req

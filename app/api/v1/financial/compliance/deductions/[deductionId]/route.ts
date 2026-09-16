@@ -44,7 +44,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ deducti
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to fetch statutory deduction" },
+          { success: false, message: payload?.message ?? "Unable to fetch statutory deduction", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req
@@ -105,7 +105,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ deduc
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to update statutory deduction" },
+          { success: false, message: payload?.message ?? "Unable to update statutory deduction", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req

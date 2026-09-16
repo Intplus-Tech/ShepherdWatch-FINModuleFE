@@ -60,6 +60,9 @@ export async function POST(
           {
             success: false,
             message: payload?.message ?? "Unable to top up cash box",
+            // Keep the backend's field-level detail; the bare message alone says
+            // only "Validation failed".
+            ...(payload && typeof payload === "object" ? payload : {}),
           },
           { status: backendResponse.status || 502 }
         ),

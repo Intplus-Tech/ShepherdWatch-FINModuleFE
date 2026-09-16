@@ -45,7 +45,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ assetId
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to fetch fixed asset" },
+          { success: false, message: payload?.message ?? "Unable to fetch fixed asset", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req
@@ -107,7 +107,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ asset
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to update fixed asset" },
+          { success: false, message: payload?.message ?? "Unable to update fixed asset", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req
@@ -165,7 +165,7 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ asse
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to delete fixed asset" },
+          { success: false, message: payload?.message ?? "Unable to delete fixed asset", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req

@@ -51,7 +51,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ budgetI
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to fetch budget comments." },
+          { success: false, message: payload?.message ?? "Unable to fetch budget comments.", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req
@@ -132,7 +132,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ budget
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to add budget comment." },
+          { success: false, message: payload?.message ?? "Unable to add budget comment.", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req

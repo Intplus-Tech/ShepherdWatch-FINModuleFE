@@ -93,7 +93,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ templat
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to fetch budget template." },
+          { success: false, message: payload?.message ?? "Unable to fetch budget template.", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req
@@ -165,7 +165,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ templ
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to update budget template." },
+          { success: false, message: payload?.message ?? "Unable to update budget template.", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req
@@ -223,7 +223,7 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ temp
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to delete budget template." },
+          { success: false, message: payload?.message ?? "Unable to delete budget template.", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req

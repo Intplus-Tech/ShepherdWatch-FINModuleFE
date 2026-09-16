@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Failed to fetch financial calendar" },
+          { success: false, message: payload?.message ?? "Failed to fetch financial calendar", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req

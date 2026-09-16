@@ -57,6 +57,9 @@ export async function POST(req: NextRequest) {
           {
             success: false,
             message: payload?.message ?? "Unable to add asset class",
+            // Keep the backend's field-level detail; the bare message alone says
+            // only "Validation failed".
+            ...(payload && typeof payload === "object" ? payload : {}),
           },
           { status: backendResponse.status || 502 }
         ),
@@ -122,6 +125,9 @@ export async function GET(req: NextRequest) {
           {
             success: false,
             message: payload?.message ?? "Unable to fetch asset classes",
+            // Keep the backend's field-level detail; the bare message alone says
+            // only "Validation failed".
+            ...(payload && typeof payload === "object" ? payload : {}),
           },
           { status: backendResponse.status || 502 }
         ),

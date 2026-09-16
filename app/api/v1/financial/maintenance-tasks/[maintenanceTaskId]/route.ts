@@ -56,7 +56,7 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ main
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to delete maintenance task" },
+          { success: false, message: payload?.message ?? "Unable to delete maintenance task", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req

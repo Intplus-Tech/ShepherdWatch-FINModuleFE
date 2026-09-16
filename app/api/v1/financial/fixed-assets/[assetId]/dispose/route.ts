@@ -57,7 +57,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ assetI
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to record asset disposal" },
+          { success: false, message: payload?.message ?? "Unable to record asset disposal", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req

@@ -45,7 +45,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ coaId: 
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to fetch chart of account entry" },
+          { success: false, message: payload?.message ?? "Unable to fetch chart of account entry", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req
@@ -133,7 +133,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ coaId
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to update chart of account entry" },
+          { success: false, message: payload?.message ?? "Unable to update chart of account entry", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req
@@ -191,7 +191,7 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ coaI
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to delete chart of accounts entry" },
+          { success: false, message: payload?.message ?? "Unable to delete chart of accounts entry", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req

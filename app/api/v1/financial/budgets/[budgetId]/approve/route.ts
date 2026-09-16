@@ -66,7 +66,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ budge
     if (!backendResponse.ok) {
       return applyCors(
         NextResponse.json(
-          { success: false, message: payload?.message ?? "Unable to update budget approval status." },
+          { success: false, message: payload?.message ?? "Unable to update budget approval status.", ...(payload && typeof payload === "object" ? payload : {}) },
           { status: backendResponse.status || 502 }
         ),
         req
