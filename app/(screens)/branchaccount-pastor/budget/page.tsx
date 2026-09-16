@@ -939,21 +939,6 @@ export default function Page() {
                 </div>
               </div>
 
-              {/* Deadline Alert Notice */}
-
-              <div className="mt-6 mb-4 rounded-[12px] bg-[#EEF2FF] border border-[#E0E7FF] p-4 sm:p-5 flex items-start gap-3 shadow-[0_1px_2px_rgba(0,0,0,0.01)]">
-
-                <Info className="h-4 w-4 sm:h-[18px] sm:w-[18px] text-[#3B5BDB] shrink-0 mt-[2px]" strokeWidth={2.5} />
-
-                <div>
-
-                  <h4 className="text-[12px] sm:text-[13px] font-bold text-[#3B5BDB] tracking-wide mb-0.5">Approval Deadline approaching</h4>
-
-                  <p className="text-[12px] sm:text-[13px] font-medium text-[#4f67c2] mt-1 leading-[18px] sm:leading-[20px] opacity-90 max-w-[850px]">Please ensure all department heads have reviewed their respective allocations before submitting for the final board meeting on November 15th.</p>
-
-                </div>
-
-              </div>
 
 
 

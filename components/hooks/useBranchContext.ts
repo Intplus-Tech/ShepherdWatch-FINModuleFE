@@ -6,6 +6,16 @@ import { useAuth } from "@/components/auth/AuthProvider"
 
 export type BranchOption = { id: string; name: string }
 
+/** A reference field as the API sends it: a bare id or a populated object. */
+function idOf(value: unknown): string {
+  if (typeof value === "string") return value
+  if (value && typeof value === "object") {
+    const rec = value as Record<string, unknown>
+    return String(rec._id ?? rec.id ?? "")
+  }
+  return ""
+}
+
 /**
  * The branch a screen should act on.
  *
@@ -18,9 +28,10 @@ export type BranchOption = { id: string; name: string }
 export function useBranchContext() {
   const { user } = useAuth()
   const sessionBranchId = useMemo(
-    () => String(user?.branchId ?? user?.branch?.id ?? user?.tenantId ?? user?.tenant?.id ?? "").trim(),
+    () => idOf(user?.branchId ?? user?.branch?.id ?? user?.tenantId ?? user?.tenant?.id ?? "").trim(),
     [user]
   )
+  const userId = String(user?.id ?? "")
 
   const [branches, setBranches] = useState<BranchOption[]>([])
   const [chosenBranchId, setChosenBranchId] = useState("")
@@ -52,14 +63,27 @@ export function useBranchContext() {
                     ? payload.items
                     : []
 
-        const options: BranchOption[] = list
-          .map((item: Record<string, unknown>) => ({
-            id: String(item?.id ?? item?._id ?? ""),
-            name: String(item?.name ?? item?.branchName ?? item?.title ?? "Untitled branch"),
-          }))
-          .filter((option: BranchOption) => option.id)
+        const toOption = (item: Record<string, unknown>): BranchOption => ({
+          id: String(item?.id ?? item?._id ?? ""),
+          name: String(item?.name ?? item?.branchName ?? item?.title ?? "Untitled branch"),
+        })
+        const all: BranchOption[] = list.map(toOption).filter((option: BranchOption) => option.id)
+
+        // The branch record says who its accountant and lead pastor are. When
+        // the session carries no branch, that is how this user's branch is found.
+        const assigned: BranchOption[] = userId
+          ? list
+              .filter((item: Record<string, unknown>) =>
+                [item?.assignedAccountantId, item?.leadPastorId, item?.accountantId, item?.pastorId, item?.adminId]
+                  .map(idOf)
+                  .includes(userId)
+              )
+              .map(toOption)
+              .filter((option: BranchOption) => option.id)
+          : []
 
         if (!active) return
+        const options = assigned.length > 0 ? assigned : all
         setBranches(options)
         setChosenBranchId((prev) => prev || sessionBranchId || (options.length === 1 ? options[0].id : ""))
       } catch (err) {
@@ -73,7 +97,7 @@ export function useBranchContext() {
     return () => {
       active = false
     }
-  }, [sessionBranchId])
+  }, [sessionBranchId, userId])
 
   const branchId = chosenBranchId || sessionBranchId
   const selectBranch = useCallback((id: string) => setChosenBranchId(id), [])

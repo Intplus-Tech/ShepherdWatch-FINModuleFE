@@ -1,6 +1,7 @@
 import { API_V1 } from "@/lib/api";
 import { keepPreviousData, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import axios, { AxiosError } from "axios";
+import { describeApiError } from "@/lib/api-error";
 
 type AssetClass = {
   _id?: string;
@@ -241,28 +242,9 @@ export function useUpdateAssetClass() {
 
 function createAssetClassMutationErrorMessage(error: unknown): string | null {
   if (!error) return null;
-  const axiosError = error as AxiosError<{
-    message?: string;
-    error?: string;
-    detail?: string;
-    errors?: Array<{ message?: string } | string>;
-  }>;
-
-  const data = axiosError.response?.data;
-  if (data) {
-    if (typeof data.message === "string" && data.message.trim()) return data.message;
-    if (typeof data.error === "string" && data.error.trim()) return data.error;
-    if (typeof data.detail === "string" && data.detail.trim()) return data.detail;
-    if (Array.isArray(data.errors) && data.errors.length > 0) {
-      const first = data.errors[0];
-      if (typeof first === "string" && first.trim()) return first;
-      if (first && typeof first === "object" && typeof first.message === "string" && first.message.trim()) {
-        return first.message;
-      }
-    }
-  }
-
-  return (error as Error).message;
+  const data = (error as AxiosError)?.response?.data;
+  if (data) return describeApiError(data, "Unable to save the asset class.");
+  return error instanceof Error ? error.message : "Unable to save the asset class.";
 }
 
 function extractAssetClassListResponse(

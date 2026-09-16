@@ -36,6 +36,12 @@ function pickString(source: unknown, keys: string[]): string | undefined {
   for (const key of keys) {
     const val = rec[key];
     if (typeof val === "string" && val.trim()) return val;
+    // Mongoose populates references into objects; take the id back out.
+    if (val && typeof val === "object") {
+      const nested = val as Record<string, unknown>;
+      const id = nested._id ?? nested.id;
+      if (typeof id === "string" && id.trim()) return id;
+    }
   }
   return undefined;
 }

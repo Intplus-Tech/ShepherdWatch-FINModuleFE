@@ -23,6 +23,8 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/components/auth/AuthProvider"
 import BranchAccountantSidebar from "@/components/navigation/BranchAccountantSidebar"
 import { useAssetOverview, type AssetOverviewItem } from "@/components/hooks/useAssetOverview"
+import { useAssetMovements, type AssetMovement } from "@/components/hooks/useAssetMovements"
+import { useBranchContext } from "@/components/hooks/useBranchContext"
 import { formatCurrency, formatDate } from "@/lib/format"
 const inter = Inter({ subsets: ["latin"] })
 
@@ -76,7 +78,17 @@ export default function Page() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const router = useRouter()
   const { user } = useAuth()
-  const branchId = user?.tenantId ?? user?.tenant?.id ?? ""
+  const { branchId: contextBranchId } = useBranchContext()
+  const branchId = contextBranchId || user?.branchId || user?.tenantId || user?.tenant?.id || ""
+  // Real activity for the queue card: movements recorded against this
+  // branch's assets, newest first.
+  const { items: movements } = useAssetMovements({ enabled: Boolean(branchId) })
+  const recentActivity = useMemo(() => {
+    const list = (movements ?? []) as AssetMovement[]
+    return [...list]
+      .sort((a, b) => new Date(b.movedAt ?? b.createdAt ?? 0).getTime() - new Date(a.movedAt ?? a.createdAt ?? 0).getTime())
+      .slice(0, 5)
+  }, [movements])
   const { items, totals, isLoading } = useAssetOverview({ branchId })
 
   const {
@@ -236,9 +248,6 @@ export default function Page() {
               <div className="rounded-[16px] bg-white border border-[#E5E7EB] p-7 shadow-sm flex flex-col h-[420px] relative">
                 <div className="flex justify-between items-start mb-6">
                   <h3 className="text-[13px] font-bold text-[#6B7280] uppercase tracking-wider">ASSET VALUATION</h3>
-                  <div className="inline-flex items-center justify-center px-2 py-0.5 rounded-[6px] bg-[#ECFDF5] text-[#10B981] text-[11px] font-bold tracking-wide">
-                    +4.2%
-                  </div>
                 </div>
 
                 <div className="flex justify-between items-start gap-4 mb-auto z-10">
@@ -252,20 +261,6 @@ export default function Page() {
                   </div>
                 </div>
                 
-                {/* Mock Chart Area */}
-                <div className="h-[90px] w-full mt-4 flex items-end relative z-0">
-                  <svg className="w-full h-full" viewBox="0 0 100 50" preserveAspectRatio="none">
-                    <path d="M0 45 C 10 45, 15 42, 25 40 C 35 38, 40 45, 50 45 C 60 45, 65 30, 75 15 C 80 5, 85 5, 90 20 L 100 20 L 100 50 L 0 50 Z" fill="url(#gradientVal)" opacity="0.3" />
-                    <path d="M0 45 C 10 45, 15 42, 25 40 C 35 38, 40 45, 50 45 C 60 45, 65 30, 75 15 C 80 5, 85 5, 90 20 L 100 20" fill="none" stroke="#2563EB" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                    <defs>
-                      <linearGradient id="gradientVal" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#2563EB" stopOpacity="0.4" />
-                        <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
-                      </linearGradient>
-                    </defs>
-                  </svg>
-                </div>
-
                 {/* Category Breakdown */}
                 <div className="mt-5 pt-5 border-t border-[#EEF1F6]">
                   <div className="text-[12px] font-semibold text-[#6B7280] mb-2 tracking-tight">Category Breakdown</div>
@@ -338,75 +333,66 @@ export default function Page() {
                   </div>
                 </div>
 
-                <div className="mt-8 bg-[#FFFBEB] border border-[#FEF3C7] rounded-[10px] p-4 flex gap-3 shadow-[0_1px_2px_rgba(0,0,0,0.01)]">
-                  <AlertTriangle className="h-[22px] w-[22px] text-[#F59E0B] shrink-0" strokeWidth={2} />
-                  <div>
-                    <h4 className="text-[13px] font-bold text-[#D97706] mb-0.5">Critical Alerts</h4>
-                    <p className="text-[12px] font-medium text-[#D97706]/80 leading-snug tracking-wide">3 overdue servicing, 2 insurance expiring.</p>
+                {statusCounts.maintenance + statusCounts.offline > 0 && (
+                  <div className="mt-8 bg-[#FFFBEB] border border-[#FEF3C7] rounded-[10px] p-4 flex gap-3 shadow-[0_1px_2px_rgba(0,0,0,0.01)]">
+                    <AlertTriangle className="h-[22px] w-[22px] text-[#F59E0B] shrink-0" strokeWidth={2} />
+                    <div>
+                      <h4 className="text-[13px] font-bold text-[#D97706] mb-0.5">Attention needed</h4>
+                      <p className="text-[12px] font-medium text-[#D97706]/80 leading-snug tracking-wide">
+                        {[
+                          statusCounts.maintenance > 0 ? `${statusCounts.maintenance} in maintenance` : null,
+                          statusCounts.offline > 0 ? `${statusCounts.offline} offline or faulty` : null,
+                        ]
+                          .filter(Boolean)
+                          .join(", ")}
+                        .
+                      </p>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               {/* Card 3: Queue & Activity */}
               <div className="rounded-[16px] bg-white border border-[#E5E7EB] p-7 shadow-sm flex flex-col h-[420px]">
                 <div className="flex items-center justify-between mb-5">
                   <h3 className="text-[13px] font-bold text-[#6B7280] uppercase tracking-wider">QUEUE & ACTIVITY</h3>
-                  <div className="inline-flex items-center justify-center px-2 py-0.5 rounded-[6px] bg-[#2563EB] text-white text-[10px] font-bold tracking-wide leading-tight">
-                    3 NEW
-                  </div>
-                </div>
-                
-                <div className="flex-1 flex flex-col justify-between">
-                  {/* Pending Approvals */}
-                  <div>
-                    <div className="text-[12px] font-semibold text-[#9CA3AF] tracking-tight mb-3">Pending Approvals</div>
-                    <div className="space-y-0 text-[13px]">
-                      <div className="flex items-center justify-between border-b border-[#EEF1F6] pb-3 mb-3">
-                        <div>
-                          <div className="font-bold text-[#111827] mb-0.5 tracking-tight">Disposal: Old Generator</div>
-                          <div className="text-[11px] font-medium text-[#9CA3AF] italic">Initiated by Bro. Segun</div>
-                        </div>
-                        <button className="text-[13px] font-bold text-[#2563EB] hover:text-[#1D4ED8] transition-colors">Review</button>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="font-bold text-[#111827] mb-0.5 tracking-tight">Transfer: 50 Chairs</div>
-                          <div className="text-[11px] font-medium text-[#9CA3AF] italic">To Youth Hall</div>
-                        </div>
-                        <button className="text-[13px] font-bold text-[#2563EB] hover:text-[#1D4ED8] transition-colors">Review</button>
-                      </div>
+                  {recentActivity.length > 0 && (
+                    <div className="inline-flex items-center justify-center px-2 py-0.5 rounded-[6px] bg-[#3B5BDB] text-white text-[10px] font-bold tracking-wide">
+                      {recentActivity.length} RECENT
                     </div>
-                  </div>
-
-                  {/* Activity List */}
-                  <div className="mt-4 pt-4 border-t border-[#EEF1F6]">
-                    <div className="text-[12px] font-semibold text-[#9CA3AF] tracking-tight mb-3">Activity Jan 12 - 22</div>
-                    <div className="space-y-3.5 relative before:absolute before:inset-0 before:ml-[5px] before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-200 before:to-transparent">
-                      <div className="relative flex items-start gap-3">
-                        <div className="h-[10px] w-[10px] rounded-full bg-[#10B981] shadow-[0_0_0_2px_#fff] mt-1 shrink-0 z-10" />
-                        <div>
-                          <div className="text-[12px] font-bold text-[#111827] tracking-tight leading-tight">New Asset Added</div>
-                          <div className="text-[10px] font-medium text-[#9CA3AF]">Yamaha Digital Mixer • Jan 22</div>
-                        </div>
-                      </div>
-                      <div className="relative flex items-start gap-3">
-                        <div className="h-[10px] w-[10px] rounded-full bg-[#F59E0B] shadow-[0_0_0_2px_#fff] mt-1 shrink-0 z-10" />
-                        <div>
-                          <div className="text-[12px] font-bold text-[#111827] tracking-tight leading-tight">Maintenance Logged</div>
-                          <div className="text-[10px] font-medium text-[#9CA3AF]">HVAC Servicing (Main Sanctuary) • Jan 18</div>
-                        </div>
-                      </div>
-                      <div className="relative flex items-start gap-3">
-                        <div className="h-[10px] w-[10px] rounded-full bg-[#38BDF8] shadow-[0_0_0_2px_#fff] mt-1 shrink-0 z-10" />
-                        <div>
-                          <div className="text-[12px] font-bold text-[#111827] tracking-tight leading-tight">Insurance Renewed</div>
-                          <div className="text-[10px] font-medium text-[#9CA3AF]">Church Bus (AG 342 LKJ) • Jan 14</div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  )}
                 </div>
 
+                <div className="flex-1 overflow-y-auto pr-1">
+                  {recentActivity.length === 0 ? (
+                    <div className="h-full flex items-center justify-center text-[12px] text-[#9CA3AF] text-center px-4">
+                      Movements, transfers and disposals for this branch will appear here.
+                    </div>
+                  ) : (
+                    <div className="space-y-3.5 relative before:absolute before:inset-0 before:ml-[5px] before:-translate-x-px before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-200 before:to-transparent">
+                      {recentActivity.map((m, index) => {
+                        const kind = String(m.movementType ?? "movement").replace(/_/g, " ")
+                        const when = m.movedAt ?? m.createdAt
+                        const date = when ? new Date(when) : null
+                        const stamp = date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : ""
+                        const route = [m.fromLocation, m.toLocation].filter(Boolean).join(" → ")
+                        return (
+                          <div key={String(m._id ?? m.id ?? index)} className="relative flex items-start gap-3.5 pl-1">
+                            <div className={`relative z-10 mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${index === 0 ? "bg-[#10B981]" : index === 1 ? "bg-[#F59E0B]" : "bg-[#0EA5E9]"}`} />
+                            <div className="min-w-0">
+                              <div className="text-[12px] font-bold text-[#111827] tracking-tight leading-tight capitalize">{kind}</div>
+                              <div className="text-[11px] text-[#6B7280] truncate">
+                                {m.assetName ?? "Asset"}
+                                {route ? ` · ${route}` : ""}
+                                {stamp ? ` • ${stamp}` : ""}
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
