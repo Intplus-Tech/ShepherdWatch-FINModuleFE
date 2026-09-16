@@ -231,6 +231,8 @@ export default function Page() {
   // a group and become chart-of-account heads + allocations on save.
   // ---------------------------------------------------------------------------
   const [breakdownOpen, setBreakdownOpen] = useState(true)
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({})
+  const toggleGroup = (key: string) => setCollapsedGroups((prev) => ({ ...prev, [key]: !prev[key] }))
   const [amountEdits, setAmountEdits] = useState<Record<string, string>>({})
   const [addCatOpen, setAddCatOpen] = useState(false)
   const [customLines, setCustomLines] = useState<Record<string, { id: string; name: string; proposed: string }[]>>({})
@@ -821,10 +823,17 @@ export default function Page() {
                       ) : (
                         mergedGroups.filter((g) => g.items.length > 0 || g.custom.length > 0).map((group, gIdx) => (
                           <React.Fragment key={gIdx}>
-                            <tr className="border-t border-[#EEF1F6] bg-gray-50/50">
+                            <tr
+                              className="border-t border-[#EEF1F6] bg-gray-50/50 cursor-pointer select-none hover:bg-gray-100/60 transition-colors"
+                              onClick={() => toggleGroup(group.key)}
+                              aria-expanded={!collapsedGroups[group.key]}
+                            >
                               <td colSpan={2} className="py-3 sm:py-4 pl-4 sm:pl-6 lg:pl-8 pr-4">
                                 <div className="flex items-center text-[12px] sm:text-[13px] font-bold text-[#111827]">
-                                  <ChevronDown className="mr-2 sm:mr-3 h-3.5 w-3.5 sm:h-4 sm:w-4 text-[#111827] shrink-0" strokeWidth={2.5} />
+                                  <ChevronDown
+                                    className={`mr-2 sm:mr-3 h-3.5 w-3.5 sm:h-4 sm:w-4 text-[#111827] shrink-0 transition-transform ${collapsedGroups[group.key] ? "-rotate-90" : ""}`}
+                                    strokeWidth={2.5}
+                                  />
                                   {group.category}
                                   {group.budget && (
                                     <span className={`ml-3 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold ${(STATUS_LABELS[group.budget.status] ?? STATUS_LABELS.draft).tone}`}>
@@ -837,11 +846,13 @@ export default function Page() {
                                 {formatCurrency(group.total)}
                               </td>
                               <td colSpan={2} className="py-3 sm:py-4 pr-4 sm:pr-6 lg:pr-8 text-right text-[10px] sm:text-[11px] font-semibold uppercase tracking-wide text-[#9CA3AF]">
-                                Subtotal
+                                {collapsedGroups[group.key]
+                                  ? `${group.items.length + group.custom.length} ${group.items.length + group.custom.length === 1 ? "item" : "items"} · Subtotal`
+                                  : "Subtotal"}
                               </td>
                             </tr>
 
-                            {group.items.map((item) => (
+                            {!collapsedGroups[group.key] && group.items.map((item) => (
                               <tr key={item.id} className="hover:bg-gray-50/20 transition-colors bg-white group border-b border-[#EEF1F6]/50 last:border-0">
                                 <td className="py-3 pl-[32px] sm:pl-[44px] lg:pl-[52px] pr-4 font-medium text-[#374151] border-0 text-[12px] sm:text-[13px]">
                                   {item.name}
@@ -873,7 +884,7 @@ export default function Page() {
                                 </td>
                               </tr>
                             ))}
-                            {group.custom.map((line) => (
+                            {!collapsedGroups[group.key] && group.custom.map((line) => (
                               <tr key={line.id} className="bg-[#F8FAFF] border-b border-[#EEF1F6]/50 last:border-0">
                                 <td className="py-3 pl-[32px] sm:pl-[44px] lg:pl-[52px] pr-4 border-0">
                                   <input
