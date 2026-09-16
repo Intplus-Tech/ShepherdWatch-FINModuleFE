@@ -16,11 +16,56 @@ import RecordAssetSaleModal, { AssetSaleDetails } from "@/components/modals/Reco
 import AddNewAssetModal from "@/components/modals/AddNewAssetModal"
 import { useAssetOverview } from "@/components/hooks/useAssetOverview"
 import { useModalParam } from "@/components/hooks/useModalParam"
+import { useToast } from "@/components/ui/toast"
+import { describeApiError } from "@/lib/api-error"
+import { getCsrfTokenFromCookie } from "@/lib/csrf"
+import { API_V1 } from "@/lib/api"
 
 type RawAsset = Record<string, unknown> & { id?: string; _id?: string }
 
-function ModalContainer({ rawAssets = [] }: { rawAssets?: RawAsset[] }) {
+function ModalContainer({ rawAssets = [], onChanged }: { rawAssets?: RawAsset[]; onChanged?: () => void }) {
   const searchParams = useSearchParams()
+  const { pushToast } = useToast()
+  const [saleSubmitting, setSaleSubmitting] = useState(false)
+  const [saleError, setSaleError] = useState<string | null>(null)
+
+  // Every asset on the page is offered in the sale modal's picker.
+  const assetOptions = rawAssets
+    .map((a) => ({
+      id: String(a.id ?? a._id ?? ""),
+      name: String(a.name ?? a.assetName ?? a.description ?? "Asset"),
+    }))
+    .filter((a) => a.id)
+
+  // A sale is a disposal on the backend: date and amount against the asset.
+  const handleRecordSale = async (values: { assetId?: string; saleDate: string; saleAmount: string }) => {
+    setSaleError(null)
+    if (!values.assetId) {
+      setSaleError("Please select an asset for this sale.")
+      return
+    }
+    setSaleSubmitting(true)
+    try {
+      const response = await fetch(`${API_V1}/assets/${encodeURIComponent(values.assetId)}/dispose`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfTokenFromCookie() },
+        credentials: "include",
+        body: JSON.stringify({
+          disposalDate: values.saleDate,
+          disposalAmount: Number(String(values.saleAmount).replace(/[,\s]/g, "")),
+        }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(describeApiError(data, "Unable to record the sale."))
+      pushToast(data?.message ?? "Sale recorded.", "success")
+      onChanged?.()
+      closeRecordSale()
+    } catch (err) {
+      setSaleError(err instanceof Error ? err.message : "Unable to record the sale.")
+    } finally {
+      setSaleSubmitting(false)
+    }
+  }
   const { isOpen: isDetailsModalOpen, close: closeDetails } = useModalParam('asset-details')
   const { isOpen: isRecordSaleModalOpen, close: closeRecordSale } = useModalParam('record-sale')
   const { isOpen: isAddAssetModalOpen, close: closeAddAsset } = useModalParam('add-asset')
@@ -77,38 +122,43 @@ function ModalContainer({ rawAssets = [] }: { rawAssets?: RawAsset[] }) {
     ]
   }
 
-  const mockSale: AssetSaleDetails = {
-    branchName: "Agodi, Ibadan",
-    location: "Maryland, Lagos",
-    assetName: "Projector (Epson) - IT Equipment",
-    saleDate: "10 Apr 2025",
-    saleAmount: "Projector (Epson) - IT Equipment",
-    buyerName: "Light City School",
-    buyerContact: "08012345678",
-    reasonForSale: "Upgraded to new model",
-    proceedsToAccount: "Domiciliary / Naira",
-    history: [
-      { yearNumber: "Year 1", year: "2022", amount: "₦2,700,000" },
-      { yearNumber: "Year 2", year: "2023", amount: "₦2,700,000" },
-      { yearNumber: "Year 3", year: "2024", amount: "₦500,000", isYTD: true }
-    ]
-  }
 
   return (
     <>
-      <AssetDetailsModal 
-        isOpen={isDetailsModalOpen} 
+      <AssetDetailsModal
+        isOpen={isDetailsModalOpen}
         onClose={closeDetails}
         asset={selectedAsset ?? mockAsset}
       />
-      <RecordAssetSaleModal 
-        isOpen={isRecordSaleModalOpen} 
-        onClose={closeRecordSale}
-        saleDetails={mockSale}
+      <RecordAssetSaleModal
+        isOpen={isRecordSaleModalOpen}
+        onClose={() => {
+          setSaleError(null)
+          closeRecordSale()
+        }}
+        mode="create"
+        assetOptions={assetOptions}
+        saleDetails={{
+          assetId: selectedAssetId || undefined,
+          assetName: selectedAsset?.name ?? "",
+          branchName: selectedAsset?.location ?? "",
+          location: selectedAsset?.location ?? "",
+          saleDate: "",
+          saleAmount: "",
+          buyerName: "",
+          buyerContact: "",
+          reasonForSale: "",
+          proceedsToAccount: "",
+          history: selectedAsset?.history ?? [],
+        }}
+        onSubmit={handleRecordSale}
+        submitting={saleSubmitting}
+        errorMessage={saleError}
       />
       <AddNewAssetModal
         isOpen={isAddAssetModalOpen}
         onClose={closeAddAsset}
+        onCreated={onChanged}
       />
     </>
   )
@@ -130,6 +180,7 @@ function PageInner() {
     items: overviewItems,
     isLoading: overviewLoading,
     error: overviewError,
+    refetch: refetchAssets,
   } = useAssetOverview()
 
   useEffect(() => {
@@ -196,14 +247,14 @@ function PageInner() {
       <main className="flex-1 xl:ml-[260px] flex flex-col min-w-0 text-[#111827]">
 
         <div className="mx-auto w-full px-6 pt-6 pb-8 lg:px-8 lg:pt-8 max-w-7xl">
-          
+
           {/* Header */}
           <div className="mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-start border-b border-[#EEF1F6] pb-6">
             <div className="pt-1">
               <h1 className="text-[24px] leading-none font-bold text-[#111827]">Financial Overview</h1>
               <p className="text-[13px] text-[#3B5BDB] font-medium mt-2">Global financial health monitoring</p>
             </div>
-            
+
             <div className="flex flex-wrap items-center gap-3">
               <button className="flex items-center justify-center sm:justify-start gap-2 rounded-md bg-[#3B5BDB] px-4 py-2 text-[12px] font-medium text-white shadow hover:bg-blue-700 w-full sm:w-auto sm:ml-2">
                 <Download className="h-4 w-4" />
@@ -238,7 +289,7 @@ function PageInner() {
                 BRANCH ASSETS REGISTER
               </h3>
             </div>
-            
+
             <div className="flex flex-wrap items-center gap-3">
               <input
                 type="text"
@@ -357,14 +408,14 @@ function PageInner() {
                 </tbody>
               </table>
             </div>
-            
+
             <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 px-6 border-t border-[#EEF1F6] gap-4">
               <div className="flex items-center gap-3">
                 <button className="flex items-center gap-2 text-[12px] font-[600] text-[#4B5563] border border-[#E5E7EB] bg-white rounded-[6px] px-3.5 py-2 hover:bg-gray-50 transition-colors shadow-sm">
                   <Download className="h-3.5 w-3.5" />
                   Export Log
                 </button>
-                <button 
+                <button
                   onClick={() => router.push('/director-screen/assets/branch-assets?modal=asset-details')}
                   className="flex items-center gap-2 text-[12px] font-[600] text-[#4B5563] border border-[#E5E7EB] bg-white rounded-[6px] px-3.5 py-2 hover:bg-gray-50 transition-colors shadow-sm"
                 >
@@ -372,9 +423,9 @@ function PageInner() {
                   View Details
                 </button>
               </div>
-              
+
               <div className="flex items-center gap-3">
-                <button 
+                <button
                   onClick={() => router.push('/director-screen/assets/branch-assets?modal=record-sale')}
                   className="flex items-center gap-2 text-[12px] font-[600] text-[#4B5563] border border-[#E5E7EB] bg-white rounded-[6px] px-3.5 py-2 hover:bg-gray-50 transition-colors shadow-sm"
                 >
@@ -393,9 +444,9 @@ function PageInner() {
 
         </div>
       </main>
-      
+
       <Suspense fallback={null}>
-        <ModalContainer rawAssets={rawAssets} />
+        <ModalContainer rawAssets={rawAssets} onChanged={() => void refetchAssets()} />
       </Suspense>
     </div>
   )

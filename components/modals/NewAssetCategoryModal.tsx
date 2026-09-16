@@ -1,4 +1,5 @@
 "use client"
+import { useToast } from "@/components/ui/toast"
 
 import React, { useState } from "react"
 import { X, ChevronDown } from "lucide-react"
@@ -10,6 +11,7 @@ type NewAssetCategoryModalProps = {
 }
 
 export default function NewAssetCategoryModal({ isOpen, onClose }: NewAssetCategoryModalProps) {
+  const { pushToast } = useToast()
   const [name, setName] = useState("")
   const [method, setMethod] = useState<"straight_line" | "declining_balance">("straight_line")
   const [usefulLife, setUsefulLife] = useState("")
@@ -57,7 +59,8 @@ export default function NewAssetCategoryModal({ isOpen, onClose }: NewAssetCateg
 
     try {
       setValidationError(null)
-      await createAssetClass(payload)
+      const created = (await createAssetClass(payload)) as { message?: string } | undefined
+      pushToast(created?.message ?? `"${trimmedName}" saved.`, "success")
 
       // Clear form and close modal (which routes back to the page without the query param)
       setName("")
