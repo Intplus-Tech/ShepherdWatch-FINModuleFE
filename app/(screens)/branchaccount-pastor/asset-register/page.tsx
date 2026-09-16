@@ -28,6 +28,7 @@ import {
 } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
 import { useBranchContext } from "@/components/hooks/useBranchContext"
+import { describeApiError } from "@/lib/api-error"
 import BranchAccountantSidebar from "@/components/navigation/BranchAccountantSidebar"
 import { useAssetClasses } from "@/components/hooks/useAssetClasses"
 import { useDebouncedValue } from "@/components/hooks/useDebouncedValue"
@@ -445,18 +446,24 @@ export default function Page() {
       const csrfToken = getCsrfToken()
       const usefulLife = Number(form.usefulLifeYears)
       const residual = Number(form.residualValue)
+      // The API takes cost and acquisitionDate; the form's purchase* names
+      // were rejected wholesale as "Validation failed". Serial number has no
+      // field of its own, so it rides along in the description.
+      const notes = [form.description.trim(), form.serialNumber.trim() ? `Serial: ${form.serialNumber.trim()}` : ""]
+        .filter(Boolean)
+        .join(" · ")
       const body: Record<string, unknown> = {
         name: form.name.trim(),
-        assetClassId: form.assetClassId,
         branchId: tenantId,
-        purchaseCost,
-        purchaseDate: form.purchaseDate,
+        cost: purchaseCost,
+        acquisitionDate: form.purchaseDate,
+        assetType: "fixed",
         depreciationMethod: form.depreciationMethod,
       }
+      if (form.assetClassId) body.assetClassId = form.assetClassId
       if (Number.isFinite(usefulLife) && usefulLife > 0) body.usefulLifeYears = usefulLife
       if (Number.isFinite(residual) && residual >= 0) body.residualValue = residual
-      if (form.serialNumber.trim()) body.serialNumber = form.serialNumber.trim()
-      if (form.description.trim()) body.description = form.description.trim()
+      if (notes) body.description = notes
 
       const response = await fetch(`${API_V1}/assets`, {
         method: "POST",
@@ -469,7 +476,7 @@ export default function Page() {
       })
       const payload = await response.json().catch(() => null)
       if (!response.ok) {
-        throw new Error(payload?.message ?? "Unable to create fixed asset.")
+        throw new Error(describeApiError(payload, "Unable to create fixed asset."))
       }
 
       const createdName = payload?.data?.name ?? form.name.trim()
