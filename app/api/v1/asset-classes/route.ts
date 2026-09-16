@@ -262,10 +262,6 @@ function hasExtendedAssetClassFields(payload: AssetClassCreateBody): boolean {
   );
 }
 
-function hasExplicitMethod(payload: AssetClassCreateBody): boolean {
-  return payload.defaultDepreciationMethod !== undefined;
-}
-
 function toLegacyCreatePayload(payload: AssetClassCreateBody): AssetClassCreateLegacyBody {
   return {
     name: payload.name,
@@ -342,9 +338,7 @@ export async function POST(req: NextRequest) {
 
     const payloadCandidates: Array<AssetClassCreateBody | AssetClassCreateLegacyBody> =
       hasExtendedAssetClassFields(body)
-        ? hasExplicitMethod(body)
-          ? [body, toLegacyCreatePayload(body)]
-          : [body, toLegacyCreatePayload(body), minimalBody]
+        ? [body, toLegacyCreatePayload(body), minimalBody]
         : [body];
 
     let res: Response = new Response(

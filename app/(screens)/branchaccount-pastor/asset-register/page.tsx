@@ -27,6 +27,7 @@ import {
   Image as ImageIcon
 } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
+import { useBranchContext } from "@/components/hooks/useBranchContext"
 import BranchAccountantSidebar from "@/components/navigation/BranchAccountantSidebar"
 import { useAssetClasses } from "@/components/hooks/useAssetClasses"
 import { useDebouncedValue } from "@/components/hooks/useDebouncedValue"
@@ -118,9 +119,12 @@ export default function Page() {
   const [disposeError, setDisposeError] = useState<string | null>(null)
   const { assetClasses, isLoading: assetClassesLoading } = useAssetClasses({ limit: 100 })
 
+  // The branch this accountant is assigned to; the session alone doesn't
+  // always carry it, so the context resolves it from the branch records.
+  const { branchId: contextBranchId, error: branchError } = useBranchContext()
   const tenantId = useMemo(
-    () => user?.tenantId ?? user?.tenant?.id ?? "",
-    [user]
+    () => contextBranchId || user?.branchId || user?.tenantId || user?.tenant?.id || "",
+    [contextBranchId, user]
   )
 
   const getCsrfToken = getCsrfTokenFromCookie
@@ -220,7 +224,7 @@ export default function Page() {
     const fetchAssets = async () => {
       if (!tenantId) {
         setAssets([])
-        setAssetsError("Tenant is required to load assets.")
+        setAssetsError(branchError ?? "No branch is assigned to your account yet.")
         return
       }
 
@@ -373,10 +377,44 @@ export default function Page() {
     setForm((prev) => ({ ...prev, [key]: value }))
   }
 
+  const residualFromClass = (cls: (typeof assetClasses)[number] | undefined, cost: string) => {
+    const pct = Number(cls?.defaultResidualValuePercent ?? cls?.residualValuePercent)
+    const amount = Number(String(cost).replace(/[^\d.]/g, ""))
+    if (!Number.isFinite(pct) || !Number.isFinite(amount) || amount <= 0) return ""
+    return String(Math.round((amount * pct) / 100))
+  }
+
+  // The class carries the defaults the Director set up; selecting one fills
+  // the depreciation fields so the accountant only confirms them.
+  const applyAssetClass = (assetClassId: string) => {
+    const cls = (assetClasses ?? []).find((c) => String(c._id ?? c.id ?? "") === assetClassId)
+    setForm((prev) => {
+      const method = String(cls?.defaultDepreciationMethod ?? "").toLowerCase().replace(/[\s-]+/g, "_")
+      return {
+        ...prev,
+        assetClassId,
+        depreciationMethod:
+          method === "declining_balance" || method === "straight_line" ? method : prev.depreciationMethod,
+        usefulLifeYears: cls?.defaultUsefulLifeYears ? String(cls.defaultUsefulLifeYears) : prev.usefulLifeYears,
+        residualValue: residualFromClass(cls, prev.purchaseCost) || prev.residualValue,
+      }
+    })
+  }
+
+  // A cost typed after the class re-derives the residual from the class's percentage.
+  const applyPurchaseCost = (purchaseCost: string) => {
+    const cls = (assetClasses ?? []).find((c) => String(c._id ?? c.id ?? "") === form.assetClassId)
+    setForm((prev) => ({
+      ...prev,
+      purchaseCost,
+      residualValue: residualFromClass(cls, purchaseCost) || prev.residualValue,
+    }))
+  }
+
   const handleCreateAsset = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!tenantId) {
-      setCreateError("Tenant is required to create a fixed asset.")
+      setCreateError(branchError ?? "No branch is assigned to your account yet. Ask a Director to assign you to one.")
       return
     }
 
@@ -908,7 +946,7 @@ export default function Page() {
                 </label>
                 <select
                   value={form.assetClassId}
-                  onChange={(e) => updateForm("assetClassId", e.target.value)}
+                  onChange={(e) => applyAssetClass(e.target.value)}
                   required
                   disabled={assetClassesLoading}
                   className="w-full rounded-md border border-[#E5E7EB] px-3 py-2 text-[13px] bg-white focus:border-[#2563EB] focus:outline-none focus:ring-1 focus:ring-[#2563EB] disabled:bg-gray-50"
@@ -936,7 +974,7 @@ export default function Page() {
                   min="0"
                   step="0.01"
                   value={form.purchaseCost}
-                  onChange={(e) => updateForm("purchaseCost", e.target.value)}
+                  onChange={(e) => applyPurchaseCost(e.target.value)}
                   required
                   className="w-full rounded-md border border-[#E5E7EB] px-3 py-2 text-[13px] focus:border-[#2563EB] focus:outline-none focus:ring-1 focus:ring-[#2563EB]"
                   placeholder="0.00"
