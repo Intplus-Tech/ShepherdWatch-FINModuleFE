@@ -513,10 +513,7 @@ export default function AssetsHubPage() {
                   >
                     ₦ 45,200,000
                   </div>
-                  <div className="text-[12px] font-[700] text-[#10B981] flex items-center gap-1 mt-auto">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
-                    +2.5% from last month
-                  </div>
+                  
                 </div>
 
                 {/* Card 2 */}

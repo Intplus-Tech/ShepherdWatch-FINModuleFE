@@ -3,7 +3,7 @@
 import { API_V1 } from "@/lib/api";
 
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react"
-import { useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { BudgetReviewContent } from "../budget-review/page"
 import { Info, X, FileText, Send, Paperclip } from "lucide-react"
 import { useBudgetComments } from "@/components/hooks/useBudgetComments"
@@ -32,8 +32,10 @@ function initialsOf(name: string): string {
 
 function BudgetCommunicationInner() {
   const searchParams = useSearchParams()
+  const router = useRouter()
   const budgetId = searchParams.get("budgetId") ?? ""
   const lineItemRef = searchParams.get("lineItemRef") ?? ""
+  const lineName = searchParams.get("lineName") ?? ""
   const { user } = useAuth()
 
   const { comments, loading, error, setComments, loadComments } = useBudgetComments(budgetId)
@@ -102,7 +104,7 @@ function BudgetCommunicationInner() {
           userName: currentUserName,
           message,
           createdAt: new Date().toISOString(),
-          lineItemRefName: lineItemRef,
+          lineItemRefName: lineName,
           lineItemRefCode: "",
         },
       ])
@@ -124,14 +126,14 @@ function BudgetCommunicationInner() {
           <div>
             <div className="text-[10px] font-bold text-[#2563EB] tracking-wider uppercase">Active Thread</div>
             <div className="text-[14px] font-bold text-[#111827] leading-tight mt-1">
-              {lineItemRef || "Budget Discussion"}
+              {lineName || "Budget Discussion"}
             </div>
             <div className="text-[11.5px] text-[#6B7280] font-medium mt-0.5">
               {budgetId ? `Budget: ${budgetId}` : "Open from a budget to start a thread"}
             </div>
           </div>
         </div>
-        <button aria-label="Close thread" className="text-[#9CA3AF] hover:text-[#4B5563] transition-colors p-1">
+        <button onClick={() => router.push("/branchlead-pastor/budget-review")} aria-label="Close thread" className="text-[#9CA3AF] hover:text-[#4B5563] transition-colors p-1">
           <X className="h-4 w-4" />
         </button>
       </div>
@@ -233,7 +235,7 @@ function BudgetCommunicationInner() {
     </aside>
   )
 
-  return <BudgetReviewContent rightSidebar={rightSidebar} activeRowId={lineItemRef || "maintenance"} />
+  return <BudgetReviewContent rightSidebar={rightSidebar} />
 }
 
 export default function BudgetCommunicationPage() {

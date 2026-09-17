@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { X, Truck, Box, Monitor, Trash2 } from "lucide-react";
 import AssetsHubPage from "../asset/page";
 import { useAsset, type AssetDetail } from "@/components/hooks/useAsset";
+import { useAssetMovements, type AssetMovement } from "@/components/hooks/useAssetMovements";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -24,6 +25,23 @@ function MaintenanceLogModalPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const assetId = searchParams.get("id");
+  // The asset's movement history, newest first.
+  const { items: movementItems, isLoading: movementsLoading } = useAssetMovements({ assetId: assetId ?? undefined, enabled: Boolean(assetId) });
+  const journey = [...movementItems]
+    .sort((a, b) => new Date(b.movedAt ?? b.createdAt ?? 0).getTime() - new Date(a.movedAt ?? a.createdAt ?? 0).getTime())
+    .map((m: AssetMovement) => {
+      const when = new Date(String(m.movedAt ?? m.createdAt ?? ""));
+      const valid = !Number.isNaN(when.getTime());
+      return {
+        id: String(m._id ?? m.id ?? ""),
+        date: valid ? when.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—",
+        time: valid ? when.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "",
+        from: String(m.fromLocation ?? "—"),
+        to: String(m.toLocation ?? "—"),
+        handler: String(m.handledBy ?? m.movedBy ?? "—"),
+        reason: String(m.reason ?? m.movementType ?? "").replace(/_/g, " "),
+      };
+    });
   const { asset } = useAsset(assetId);
 
   const headerName = getString(asset, "name", "assetName") || "—";
@@ -122,130 +140,44 @@ function MaintenanceLogModalPageInner() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#EEF1F6]">
-                    
-                    {/* Row 1 */}
-                    <tr className="hover:bg-[#F8FAFC] transition-colors">
-                      <td className="py-4 px-5 align-top">
-                        <div className="flex flex-col gap-0.5 pt-0.5">
-                          <span className="text-[#111827] text-[14px] font-[800]">Oct 12, 2023</span>
-                          <span className="text-[#64748B] text-[12.5px] font-[500]">09:15 AM</span>
-                        </div>
-                      </td>
-                      <td className="py-4 px-5 align-top">
-                        <div className="flex items-center gap-2.5 pt-0.5">
-                          <Box className="w-[15px] h-[15px] text-[#94A3B8] stroke-[2px] shrink-0" />
-                          <span className="text-[#334155] text-[13.5px] font-[500] leading-snug">Storage A</span>
-                        </div>
-                      </td>
-                      <td className="py-4 px-5 align-top">
-                        <div className="flex items-center gap-2.5 pt-0.5">
-                          <Monitor className="w-[15px] h-[15px] text-[#3B82F6] stroke-[2px] shrink-0" />
-                          <span className="text-[#2563EB] text-[13.5px] font-[600] leading-snug cursor-pointer hover:underline">Main Office - Desk 4</span>
-                        </div>
-                      </td>
-                      <td className="py-4 px-5 align-top">
-                        <div className="flex items-center gap-2.5 pt-0.5">
-                          <div className="w-5 h-5 rounded-full bg-[#8B5A2B] shrink-0"></div>
-                          <span className="text-[#334155] text-[13.5px] font-[500] leading-snug">Admin (S. Adebayo)</span>
-                        </div>
-                      </td>
-                      <td className="py-4 px-5 pr-6 align-top">
-                        <p className="text-[#64748B] text-[13.5px] font-[400] italic pt-0.5 leading-snug">
-                          Deployment to new staff
-                        </p>
-                      </td>
-                    </tr>
-
-                    {/* Row 2 */}
-                    <tr className="hover:bg-[#F8FAFC] transition-colors">
-                      <td className="py-4 px-5 align-top">
-                        <div className="flex flex-col gap-0.5 pt-0.5">
-                          <span className="text-[#111827] text-[14px] font-[800]">Sep 28, 2023</span>
-                          <span className="text-[#64748B] text-[12.5px] font-[500]">02:30 PM</span>
-                        </div>
-                      </td>
-                      <td className="py-4 px-5 align-top">
-                        <div className="flex items-center gap-2.5 pt-0.5">
-                          <span className="text-[#334155] text-[13.5px] font-[500] leading-snug">Repair Center</span>
-                        </div>
-                      </td>
-                      <td className="py-4 px-5 align-top">
-                        <div className="flex items-center gap-2.5 pt-0.5">
-                          <span className="text-[#334155] text-[13.5px] font-[500] leading-snug">Storage A</span>
-                        </div>
-                      </td>
-                      <td className="py-4 px-5 align-top">
-                        <div className="flex items-center gap-2.5 pt-0.5">
-                          <span className="text-[#334155] text-[13.5px] font-[500] leading-snug">M. Smith</span>
-                        </div>
-                      </td>
-                      <td className="py-4 px-5 pr-6 align-top">
-                        <p className="text-[#64748B] text-[13.5px] font-[400] italic pt-0.5 leading-snug">
-                          Returned from maintenance
-                        </p>
-                      </td>
-                    </tr>
-
-                    {/* Row 3 */}
-                    <tr className="hover:bg-[#F8FAFC] transition-colors">
-                      <td className="py-4 px-5 align-top">
-                        <div className="flex flex-col gap-0.5 pt-0.5">
-                          <span className="text-[#111827] text-[14px] font-[800]">Sep 20, 2023</span>
-                          <span className="text-[#64748B] text-[12.5px] font-[500]">11:00 AM</span>
-                        </div>
-                      </td>
-                      <td className="py-4 px-5 align-top">
-                        <div className="flex items-center gap-2.5 pt-0.5">
-                          <span className="text-[#334155] text-[13.5px] font-[500] leading-snug">Main Office</span>
-                        </div>
-                      </td>
-                      <td className="py-4 px-5 align-top">
-                        <div className="flex items-center gap-2.5 pt-0.5">
-                          <span className="text-[#334155] text-[13.5px] font-[500] leading-snug">Repair Center</span>
-                        </div>
-                      </td>
-                      <td className="py-4 px-5 align-top">
-                        <div className="flex items-center gap-2.5 pt-0.5">
-                          <span className="text-[#334155] text-[13.5px] font-[500] leading-snug">T. Williams</span>
-                        </div>
-                      </td>
-                      <td className="py-4 px-5 pr-6 align-top">
-                        <p className="text-[#64748B] text-[13.5px] font-[400] italic pt-0.5 leading-snug">
-                          Fan replacement scheduled
-                        </p>
-                      </td>
-                    </tr>
-
-                    {/* Row 4 */}
-                    <tr className="hover:bg-[#F8FAFC] transition-colors">
-                      <td className="py-4 px-5 align-top">
-                        <div className="flex flex-col gap-0.5 pt-0.5">
-                          <span className="text-[#111827] text-[14px] font-[800]">Aug 15, 2021</span>
-                          <span className="text-[#64748B] text-[12.5px] font-[500]">08:00 AM</span>
-                        </div>
-                      </td>
-                      <td className="py-4 px-5 align-top">
-                        <div className="flex items-center gap-2.5 pt-0.5">
-                          <span className="text-[#334155] text-[13.5px] font-[500] leading-snug">N/A (New)</span>
-                        </div>
-                      </td>
-                      <td className="py-4 px-5 align-top">
-                        <div className="flex items-center gap-2.5 pt-0.5">
-                          <span className="text-[#334155] text-[13.5px] font-[500] leading-snug">Central Store</span>
-                        </div>
-                      </td>
-                      <td className="py-4 px-5 align-top">
-                        <div className="flex items-center gap-2.5 pt-0.5">
-                          <span className="text-[#334155] text-[13.5px] font-[500] leading-snug">Admin</span>
-                        </div>
-                      </td>
-                      <td className="py-4 px-5 pr-6 align-top">
-                        <p className="text-[#64748B] text-[13.5px] font-[400] italic pt-0.5 leading-snug">
-                          Initial intake/procurement
-                        </p>
-                      </td>
-                    </tr>
-
+                    {journey.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="py-8 px-5 text-center text-[13px] text-[#94A3B8]">
+                          {movementsLoading ? "Loading movements…" : "No movements recorded for this asset yet."}
+                        </td>
+                      </tr>
+                    )}
+                    {journey.map((row, index) => (
+                      <tr key={row.id || index} className="hover:bg-[#F8FAFC] transition-colors">
+                        <td className="py-4 px-5 align-top">
+                          <div className="flex flex-col gap-0.5 pt-0.5">
+                            <span className="text-[#111827] text-[14px] font-[800]">{row.date}</span>
+                            <span className="text-[#64748B] text-[12.5px] font-[500]">{row.time}</span>
+                          </div>
+                        </td>
+                        <td className="py-4 px-5 align-top">
+                          <div className="flex items-center gap-2.5 pt-0.5">
+                            <Box className="w-[15px] h-[15px] text-[#94A3B8] stroke-[2px] shrink-0" />
+                            <span className="text-[#334155] text-[13.5px] font-[500] leading-snug">{row.from}</span>
+                          </div>
+                        </td>
+                        <td className="py-4 px-5 align-top">
+                          <div className="flex items-center gap-2.5 pt-0.5">
+                            <Monitor className="w-[15px] h-[15px] text-[#3B82F6] stroke-[2px] shrink-0" />
+                            <span className="text-[#2563EB] text-[13.5px] font-[600] leading-snug">{row.to}</span>
+                          </div>
+                        </td>
+                        <td className="py-4 px-5 align-top">
+                          <div className="flex items-center gap-2.5 pt-0.5">
+                            <div className="w-5 h-5 rounded-full bg-[#CBD5E1] shrink-0"></div>
+                            <span className="text-[#334155] text-[13.5px] font-[500] leading-snug">{row.handler}</span>
+                          </div>
+                        </td>
+                        <td className="py-4 px-5 pr-6 align-top">
+                          <p className="text-[#64748B] text-[13.5px] font-[400] italic pt-0.5 leading-snug capitalize">{row.reason || "—"}</p>
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -258,12 +190,12 @@ function MaintenanceLogModalPageInner() {
               <div className="flex flex-col gap-3.5">
                 <div className="flex items-center justify-between pb-3.5 border-b border-[#F1F5F9]">
                   <span className="text-[#64748B] text-[13.5px] font-[500]">Last Verified On</span>
-                  <span className="text-[#111827] text-[14px] font-[700] tracking-tight">Oct 12, 2023</span>
+                  <span className="text-[#111827] text-[14px] font-[700] tracking-tight">{journey[0]?.date ?? "—"}</span>
                 </div>
                 
                 <div className="flex items-center justify-between pb-3.5 border-b border-[#F1F5F9]">
                   <span className="text-[#64748B] text-[13.5px] font-[500]">Verified By</span>
-                  <span className="text-[#111827] text-[14px] font-[700] tracking-tight">Sarah Admin</span>
+                  <span className="text-[#111827] text-[14px] font-[700] tracking-tight">{journey[0]?.handler ?? "—"}</span>
                 </div>
                 
                 <div className="flex items-center justify-between">

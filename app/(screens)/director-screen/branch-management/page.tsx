@@ -67,6 +67,22 @@ type TenantApiItem = {
   leadPastorName?: string
   email?: string
   contactEmail?: string
+  createdAt?: string
+  address?: string
+  region?: string
+  leadPastorId?: string | { _id?: string; id?: string; firstName?: string; lastName?: string; email?: string }
+  assignedAccountantId?: string | { _id?: string; id?: string; firstName?: string; lastName?: string; email?: string }
+}
+
+/** A user reference as the API sends it — an id or a populated person. */
+function personName(ref: TenantApiItem["leadPastorId"]): string {
+  if (!ref || typeof ref === "string") return ""
+  const name = `${ref.firstName ?? ""} ${ref.lastName ?? ""}`.trim()
+  return name || ref.email || ""
+}
+function personId(ref: TenantApiItem["leadPastorId"]): string {
+  if (!ref) return ""
+  return typeof ref === "string" ? ref : String(ref._id ?? ref.id ?? "")
 }
 
 type TenantCard = {
@@ -80,6 +96,13 @@ type TenantCard = {
   averageIncome: string
   residentPastor: string
   email: string
+  createdAt: string
+  address: string
+  region: string
+  leadPastorId: string
+  leadPastorName: string
+  accountantId: string
+  accountantName: string
 }
 
 type UserApiItem = {
@@ -128,6 +151,13 @@ const normalizeTenant = (tenant: TenantApiItem, index: number): TenantCard => {
     averageIncome,
     residentPastor: tenant.residentPastor?.trim() || tenant.leadPastorName?.trim() || "—",
     email: tenant.email?.trim() || tenant.contactEmail?.trim() || "—",
+    createdAt: tenant.createdAt ?? "",
+    address: tenant.address?.trim() ?? "",
+    region: tenant.region?.trim() ?? "",
+    leadPastorId: personId(tenant.leadPastorId),
+    leadPastorName: personName(tenant.leadPastorId),
+    accountantId: personId(tenant.assignedAccountantId),
+    accountantName: personName(tenant.assignedAccountantId),
   }
 }
 const statusStyles: Record<string, { tone: string; dot: string }> = {
@@ -278,6 +308,8 @@ export default function Page() {
   const [regionOptionsLoaded, setRegionOptionsLoaded] = useState(false)
   const [regionOptionsLoading, setRegionOptionsLoading] = useState(false)
   const [leadPastorOptions, setLeadPastorOptions] = useState<UserOption[]>([])
+  // Every active user, for resolving the ids a branch record carries into names.
+  const [allUserOptions, setAllUserOptions] = useState<UserOption[]>([])
   const [leadPastorOptionsLoaded, setLeadPastorOptionsLoaded] = useState(false)
   const [leadPastorOptionsLoading, setLeadPastorOptionsLoading] = useState(false)
   const [branchTouched, setBranchTouched] = useState({
@@ -298,6 +330,7 @@ export default function Page() {
 
   const handleViewBranchOpen = (tenant: TenantCard) => {
     setViewBranch(tenant)
+    void loadLeadPastorOptions()
     setViewTab("details")
     setViewEditMode(false)
     setViewBranchOpen(true)
@@ -755,10 +788,11 @@ export default function Page() {
       const res = await fetch(`${API_V1}/users?${params.toString()}`, { credentials: "include" })
       if (!res.ok) return
       const payload = await res.json()
-      const options = extractApiList(payload)
+      const everyone = extractApiList(payload)
         .map((item, index) => normalizeUserOption(item as UserApiItem, index))
         .filter((item): item is UserOption => Boolean(item))
-        .filter(isLeadPastorOption)
+      setAllUserOptions(everyone)
+      const options = everyone.filter(isLeadPastorOption)
 
       setLeadPastorOptions(options)
       setLeadPastorOptionsLoaded(true)
@@ -1997,14 +2031,26 @@ export default function Page() {
                   <div className="text-[10px] font-semibold uppercase tracking-wide text-[#9CA3AF]">
                     Branch Established
                   </div>
-                  <div className="mt-1 text-[13px] font-semibold text-[#111827]">Oct 20, 2024</div>
+                  <div className="mt-1 text-[13px] font-semibold text-[#111827]">
+                    {viewBranch?.createdAt && !Number.isNaN(new Date(viewBranch.createdAt).getTime())
+                      ? new Date(viewBranch.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
+                      : "—"}
+                  </div>
                 </div>
                 <div>
                   <div className="text-[10px] font-semibold uppercase tracking-wide text-[#9CA3AF]">
                     Age
                   </div>
                   <div className="mt-1 text-[13px] font-semibold text-[#3B5BDB]">
-                    12 Years, 4 Months
+                    {(() => {
+                      const start = viewBranch?.createdAt ? new Date(viewBranch.createdAt) : null
+                      if (!start || Number.isNaN(start.getTime())) return "—"
+                      const months = Math.max(0, (Date.now() - start.getTime()) / (1000 * 60 * 60 * 24 * 30.44))
+                      const years = Math.floor(months / 12)
+                      const rem = Math.floor(months % 12)
+                      if (years === 0 && rem === 0) return "New this month"
+                      return [years ? `${years} ${years === 1 ? "Year" : "Years"}` : "", rem ? `${rem} ${rem === 1 ? "Month" : "Months"}` : ""].filter(Boolean).join(", ")
+                    })()}
                   </div>
                 </div>
               </div>
@@ -2076,20 +2122,20 @@ export default function Page() {
                             className={fieldClass}
                             readOnly={!viewEditMode}
                             defaultValue={
-                              viewBranch.email !== "—" ? viewBranch.email : "branch@shepherdwatch.org"
+                              viewBranch.email !== "—" ? viewBranch.email : ""
                             }
                           />
                         </div>
                         <div>
                           <label className="text-[12px] font-medium text-[#374151]">Phone</label>
-                          <Input className={fieldClass} readOnly={!viewEditMode} defaultValue="+234 801 234 5678" />
+                          <Input className={fieldClass} readOnly={!viewEditMode} defaultValue="" placeholder="Not recorded" />
                         </div>
                         <div className="md:col-span-2">
                           <label className="text-[12px] font-medium text-[#374151]">Address</label>
                           <Input
                             className={fieldClass}
                             readOnly={!viewEditMode}
-                            defaultValue="12 Adeyemi Crescent, Ikeja, Lagos, Nigeria"
+                            defaultValue={viewBranch?.address ?? ""} placeholder="Not recorded"
                           />
                         </div>
                       </>
@@ -2113,9 +2159,22 @@ export default function Page() {
 
                   <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
                     {[
-                      { icon: User, role: "Pastor", name: "Rev. Victor Adeyemi", started: "Jan 2020" },
-                      { icon: Calculator, role: "Accountant", name: "John Adeyemi", started: "Mar 2022" },
-                      { icon: Shield, role: "Admin", name: "Sarah Musa", started: "June 2021" },
+                      {
+                        icon: User,
+                        role: "Lead Pastor",
+                        name:
+                          viewBranch?.leadPastorName ||
+                          allUserOptions.find((o) => o.id === viewBranch?.leadPastorId)?.name ||
+                          (viewBranch?.residentPastor !== "—" ? viewBranch?.residentPastor : "") ||
+                          "Not assigned",
+                        started: "",
+                      },
+                      {
+                        icon: Calculator,
+                        role: "Accountant",
+                        name: viewBranch?.accountantName || allUserOptions.find((o) => o.id === viewBranch?.accountantId)?.name || "Not assigned",
+                        started: "",
+                      },
                     ].map((person) => {
                       const Icon = person.icon
                       return (
@@ -2132,7 +2191,7 @@ export default function Page() {
                             </span>
                           </div>
                           <div className="mt-3 text-[13px] font-bold text-[#111827]">{person.name}</div>
-                          <div className="mt-0.5 text-[11px] text-[#9CA3AF]">Started: {person.started}</div>
+                          {person.started && <div className="mt-0.5 text-[11px] text-[#9CA3AF]">Started: {person.started}</div>}
                         </div>
                       )
                     })}

@@ -1,359 +1,487 @@
 "use client"
 
-import { API_V1 } from "@/lib/api";
-
-import { useRouter } from "next/navigation"
-import { useEffect, useMemo, useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import React, { useMemo, useState } from "react"
+import Image from "next/image"
 import {
-  Bell,
+  LayoutDashboard,
+  ArrowRightLeft,
+  Wallet,
+  Database,
+  ShieldCheck,
+  Settings,
+  HelpCircle,
+  Menu,
+  X,
   Search,
+  Bell,
   AlertTriangle,
-  TrendingUp,
-  ArrowRight,
-  Menu
+  MoreHorizontal,
 } from "lucide-react"
+
+import { Inter } from "next/font/google"
+import { useRouter } from "next/navigation"
+import { useAuth } from "@/components/auth/AuthProvider"
 import BranchLeadPastorSidebar from "@/components/navigation/BranchLeadPastorSidebar"
+import { useAssetOverview, type AssetOverviewItem } from "@/components/hooks/useAssetOverview"
+import { useAssetMovements, type AssetMovement } from "@/components/hooks/useAssetMovements"
+import { useBranchContext } from "@/components/hooks/useBranchContext"
+import { formatCurrency, formatDate } from "@/lib/format"
+const inter = Inter({ subsets: ["latin"] })
+
+type DisplayAsset = {
+  id: string
+  name: string
+  category: string
+  date: string
+  value: string
+  status: string
+  statusColor: string
+}
+
+const STATUS_STYLES: Record<string, { label: string; classes: string; bucket: "operational" | "maintenance" | "offline" }> = {
+  EXCELLENT: { label: "EXCELLENT", classes: "text-[#10B981] bg-[#ECFDF5]", bucket: "operational" },
+  GOOD: { label: "GOOD", classes: "text-[#10B981] bg-[#ECFDF5]", bucket: "operational" },
+  OPERATIONAL: { label: "OPERATIONAL", classes: "text-[#10B981] bg-[#ECFDF5]", bucket: "operational" },
+  ACTIVE: { label: "ACTIVE", classes: "text-[#10B981] bg-[#ECFDF5]", bucket: "operational" },
+  MAINTENANCE: { label: "MAINTENANCE", classes: "text-[#F59E0B] bg-[#FEF3C7]", bucket: "maintenance" },
+  SERVICING: { label: "SERVICING REQ.", classes: "text-[#F59E0B] bg-[#FEF3C7]", bucket: "maintenance" },
+  FAIR: { label: "FAIR", classes: "text-[#F59E0B] bg-[#FEF3C7]", bucket: "maintenance" },
+  OFFLINE: { label: "OFFLINE", classes: "text-[#EF4444] bg-[#FEE2E2]", bucket: "offline" },
+  FAULTY: { label: "FAULTY", classes: "text-[#EF4444] bg-[#FEE2E2]", bucket: "offline" },
+  DISPOSED: { label: "DISPOSED", classes: "text-[#6B7280] bg-[#F3F4F6]", bucket: "offline" },
+}
+
+function classifyStatus(raw?: string) {
+  const key = (raw ?? "").toUpperCase().replace(/[^A-Z]/g, "")
+  for (const k of Object.keys(STATUS_STYLES)) {
+    if (key.includes(k)) return STATUS_STYLES[k]
+  }
+  return { label: raw ?? "—", classes: "text-[#6B7280] bg-[#F3F4F6]", bucket: "operational" as const }
+}
+
+function pickNumber(...vals: Array<unknown>): number {
+  for (const v of vals) {
+    if (typeof v === "number" && Number.isFinite(v)) return v
+    if (typeof v === "string" && v.trim() !== "" && !Number.isNaN(Number(v))) return Number(v)
+  }
+  return 0
+}
+
+function pickString(...vals: Array<unknown>): string {
+  for (const v of vals) {
+    if (typeof v === "string" && v.trim() !== "") return v
+  }
+  return ""
+}
 
 export default function Page() {
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const router = useRouter()
-  const [assetRows, setAssetRows] = useState<
-    { name: string; category: string; date: string; value: string; condition: string; statusColor: string }[]
-  >([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { user } = useAuth()
+  const { branchId: contextBranchId } = useBranchContext()
+  const branchId = contextBranchId || user?.branchId || user?.tenantId || user?.tenant?.id || ""
+  // Real activity for the queue card: movements recorded against this
+  // branch's assets, newest first.
+  const { items: movements } = useAssetMovements({ enabled: Boolean(branchId) })
+  const recentActivity = useMemo(() => {
+    const list = (movements ?? []) as AssetMovement[]
+    return [...list]
+      .sort((a, b) => new Date(b.movedAt ?? b.createdAt ?? 0).getTime() - new Date(a.movedAt ?? a.createdAt ?? 0).getTime())
+      .slice(0, 5)
+  }, [movements])
+  const { items, totals, isLoading } = useAssetOverview({ branchId })
 
-  const formatCurrency = (amount: number) =>
-    new Intl.NumberFormat("en-NG", {
-      style: "currency",
-      currency: "NGN",
-      maximumFractionDigits: 0,
-    }).format(amount)
-
-  useEffect(() => {
-    let mounted = true
-    const run = async () => {
-      try {
-        setLoading(true)
-        setError(null)
-        const res = await fetch(`${API_V1}/financial/fixed-assets`, { credentials: "include" })
-        const payload = await res.json().catch(() => null)
-        if (!res.ok) throw new Error(payload?.message ?? "Unable to load assets.")
-        const list = payload?.data?.content ?? payload?.data ?? payload?.content ?? []
-        const rows = (Array.isArray(list) ? list : []).map((asset: any) => ({
-          name: asset?.name ?? asset?.description ?? "Unnamed Asset",
-          category: asset?.category ?? "General",
-          date: asset?.purchaseDate
-            ? new Date(asset.purchaseDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
-            : "—",
-          value: formatCurrency(Number(asset?.purchaseValue ?? asset?.value ?? 0)),
-          condition: String(asset?.status ?? "ACTIVE").toUpperCase(),
-          statusColor:
-            String(asset?.status ?? "").toLowerCase() === "active"
-              ? "text-emerald-600 bg-emerald-50"
-              : "text-amber-600 bg-amber-50",
-        }))
-        if (mounted) setAssetRows(rows)
-      } catch (e) {
-        if (mounted) {
-          setAssetRows([])
-          setError(e instanceof Error ? e.message : "Unable to load assets.")
-        }
-      } finally {
-        if (mounted) setLoading(false)
-      }
+  const {
+    bookValue,
+    nbv,
+    breakdown,
+    statusCounts,
+    healthPercent,
+    displayAssets,
+    totalAssets,
+  } = useMemo(() => {
+    const list = (items ?? []) as AssetOverviewItem[]
+    let book = 0
+    let net = 0
+    const catCounts: Record<string, number> = {}
+    const status = { operational: 0, maintenance: 0, offline: 0 }
+    const display: DisplayAsset[] = []
+    for (const a of list) {
+      const cost = pickNumber(a.cost, a.purchaseValue, a.value)
+      const currentValue = pickNumber(a.nbv, a.currentValue, cost)
+      book += cost
+      net += currentValue
+      const cat = pickString(a.category, "Uncategorized")
+      catCounts[cat] = (catCounts[cat] ?? 0) + 1
+      const s = classifyStatus(a.status)
+      status[s.bucket] += 1
+      const id = pickString(a.id, a._id, `${cat}-${display.length}`)
+      const purchaseDateRaw = pickString(a.purchaseDate as string, a.createdAt as string)
+      display.push({
+        id,
+        name: pickString(a.name, a.assetName, a.description, "Asset"),
+        category: cat,
+        date: purchaseDateRaw ? formatDate(purchaseDateRaw, "medium") : "—",
+        value: formatCurrency(cost),
+        status: s.label,
+        statusColor: s.classes,
+      })
     }
-    run()
-    return () => {
-      mounted = false
-    }
-  }, [])
+    const totalForBreakdown = list.length || 1
+    const breakdownEntries = Object.entries(catCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([label, count]) => ({ label, pct: Math.round((count / totalForBreakdown) * 100) }))
+    const operational = status.operational
+    const total = operational + status.maintenance + status.offline
+    const health = total === 0 ? 0 : Math.round((operational / total) * 100)
 
-  const valuation = useMemo(() => {
-    const totalBook = assetRows.reduce((sum, item) => {
-      const numeric = Number(item.value.replace(/[^\d.-]/g, "")) || 0
-      return sum + numeric
-    }, 0)
+    // Allow API to override aggregates via totals
+    const overrideBook = totals && typeof (totals as Record<string, unknown>).bookValue === "number"
+      ? ((totals as Record<string, unknown>).bookValue as number)
+      : undefined
+    const overrideNbv = totals && typeof (totals as Record<string, unknown>).nbv === "number"
+      ? ((totals as Record<string, unknown>).nbv as number)
+      : undefined
+
     return {
-      book: formatCurrency(totalBook),
-      nbv: formatCurrency(totalBook),
+      bookValue: overrideBook ?? book,
+      nbv: overrideNbv ?? net,
+      breakdown: breakdownEntries,
+      statusCounts: status,
+      healthPercent: health,
+      displayAssets: display,
+      totalAssets: list.length,
     }
-  }, [assetRows])
+  }, [items, totals])
+
+  // Circular progress math
+  const size = 110
+  const stroke = 8
+  const radius = size / 2
+  const normalizedRadius = radius - stroke / 2
+  const circumference = normalizedRadius * 2 * Math.PI
+  const progress = healthPercent
+  const strokeDashoffset = circumference - (progress / 100) * circumference
+  const healthLabel = progress >= 85 ? "HEALTHY" : progress >= 60 ? "FAIR" : progress > 0 ? "AT RISK" : "NO DATA"
+  const breakdownColors = ["#2563EB", "#38BDF8", "#FBBF24"]
 
   return (
-    <div 
-      className="min-h-screen bg-[#F7F9FC] text-sm"
-      style={{ fontFamily: '"Public Sans", sans-serif' }}
-    >
-      <div className="flex h-screen overflow-hidden">
-        <BranchLeadPastorSidebar />
+    <div className={`flex flex-col lg:flex-row min-h-screen bg-[#F8FAFC] relative w-full ${inter.className} antialiased`}>
+      {/* Mobile Drawer Overlay */}
+      {isMobileMenuOpen && (
+        <div
+          className="lg:hidden fixed inset-0 z-40 bg-gray-900/40 backdrop-blur-sm transition-opacity"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
 
-        {/* Main Content */}
-        <main className="flex-1 overflow-y-auto w-full relative max-w-[100vw]">
-          {/* Top Header */}
-          <header className="sticky top-0 z-10 bg-[#F7F9FC]/90 backdrop-blur-md px-4 sm:px-8 py-4 sm:py-5 flex items-center justify-between gap-4">
-            <div className="text-[16px] font-extrabold text-[#111827] flex items-center gap-3 shrink-0">
-              <button className="lg:hidden p-1.5 -ml-1.5 hover:bg-gray-100 rounded-md">
-                <Menu className="h-5 w-5 text-gray-600" />
-              </button>
-              <span className="hidden sm:inline-block">Dashboard</span>
-            </div>
-            <div className="flex items-center gap-2 sm:gap-4 flex-1 justify-end">
-              <div className="relative flex-1 sm:flex-none sm:w-[300px] max-w-[300px]">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <Input 
-                  placeholder="Search algorithms..." 
-                  className="pl-9 h-10 w-full bg-white border-transparent focus:border-gray-200 rounded-[10px] text-[13px] shadow-sm focus-visible:ring-[#3B5BDB]"
-                />
-              </div>
-              <div className="h-10 w-10 shrink-0 rounded-[10px] bg-white border border-transparent flex items-center justify-center text-gray-500 shadow-sm cursor-pointer hover:bg-gray-50">
-                <Bell className="h-5 w-5" />
-              </div>
-            </div>
-          </header>
+      <BranchLeadPastorSidebar
+        activeHref="/branchlead-pastor/asset-register"
+        mobileOpen={isMobileMenuOpen}
+        onMobileClose={() => setIsMobileMenuOpen(false)}
+      />
 
-          <div className="px-4 sm:px-8 pb-10 max-w-350 mx-auto space-y-6">
-            {/* Page Title & Actions */}
-            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mt-2 mb-6 sm:mb-8">
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col w-full relative h-[100dvh] overflow-hidden">
+
+        {/* Top Header */}
+        <header className="flex h-[64px] sm:h-[72px] shrink-0 items-center justify-between border-b border-[#EEF1F6] bg-white px-4 sm:px-6 xl:px-8 w-full gap-3 sm:gap-6 sticky top-0 z-40">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="lg:hidden -ml-1 h-9 w-9 flex items-center justify-center rounded-[8px] text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#111827] transition-colors"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+            <div className="hidden sm:block text-[15px] font-bold text-[#111827] tracking-tight">
+              Dashboard
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 sm:gap-5 flex-1 justify-end max-w-[320px] sm:max-w-none">
+            <div className="relative flex-1 w-full sm:max-w-[300px]">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
+              <input
+                type="search"
+                placeholder="Search requisitions..."
+                className="h-[38px] w-full rounded-[10px] border border-transparent bg-[#F9FAFB] pl-9 pr-3 text-[13px] text-[#111827] placeholder:text-[#9CA3AF] focus-visible:bg-white focus-visible:border-[#E5E7EB] focus-visible:ring-1 focus-visible:ring-[#E5E7EB] outline-none transition-all shadow-sm"
+              />
+            </div>
+            <button className="relative flex h-9 w-9 sm:h-[38px] sm:w-[38px] shrink-0 items-center justify-center rounded-[8px] text-[#6B7280] bg-white border border-[#E5E7EB] hover:bg-gray-50 transition-colors shadow-sm">
+              <Bell className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
+            </button>
+          </div>
+        </header>
+
+        {/* Scrollable Main Area */}
+        <main className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-8">
+          
+          <div className="mx-auto w-full max-w-[1400px]">
+            {/* Header Section */}
+            <header className="flex flex-col md:flex-row md:items-start justify-between gap-5 mb-8">
               <div>
-                <h1 className="text-[28px] sm:text-[32px] font-extrabold text-[#111827] tracking-tight leading-none uppercase">ASSET MANAGEMENT</h1>
-                <p className="text-[14px] text-gray-500 mt-2 font-medium">Here&apos;s your branch asset overview 2024</p>
+                <h1 className="text-[28px] sm:text-[32px] lg:text-[36px] font-[900] text-[#111827] tracking-[-1px] leading-none mb-2 uppercase">ASSET MANAGEMENT</h1>
+                <p className="text-[15px] text-[#6B7280] font-medium tracking-tight">Here&apos;s your branch asset overview. <span className="font-bold text-[#111827]">2024</span></p>
               </div>
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                <Button
+
+              <div className="flex items-center gap-3 w-full md:w-auto overflow-x-auto no-scrollbar pb-1 md:pb-0">
+                <button
                   onClick={() => router.push("/branchlead-pastor/asset-register")}
-                  className="w-full sm:w-auto bg-[#3B5BDB] hover:bg-[#2e4ac0] text-white px-6 h-11 rounded-[10px] font-bold shadow-sm text-[13px]"
+                  className="flex-1 md:flex-none flex items-center justify-center h-[42px] px-5 sm:px-6 rounded-[8px] bg-[#2563EB] text-[14px] font-bold text-white shadow-[0_4px_14px_rgba(37,99,235,0.2)] hover:bg-[#1D4ED8] transition-colors whitespace-nowrap tracking-wide"
                 >
                   Asset Register
-                </Button>
-                <Button
+                </button>
+                <button
                   onClick={() => router.push("/branchlead-pastor/maintenance")}
-                  className="w-full sm:w-auto bg-[#FF4646] hover:bg-[#e63e3e] text-white px-6 h-11 rounded-[10px] font-bold shadow-sm text-[13px]"
+                  className="flex-1 md:flex-none flex items-center justify-center h-[42px] px-5 sm:px-6 rounded-[8px] bg-[#EF4444] text-[14px] font-bold text-white shadow-[0_4px_14px_rgba(239,68,68,0.2)] hover:bg-[#DC2626] transition-colors whitespace-nowrap tracking-wide"
                 >
                   Maintenance Schedule
-                </Button>
+                </button>
               </div>
-            </div>
+            </header>
 
-            {/* Top Cards Row */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-[1.2fr_0.9fr_1fr] gap-6">
-              {/* Asset Valuation Card */}
-              <div className="bg-white rounded-[24px] p-5 sm:p-6 shadow-sm border border-[#EEF1F6] flex flex-col justify-between">
+            {/* Top Cards Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+              
+              {/* Card 1: Asset Valuation */}
+              <div className="rounded-[16px] bg-white border border-[#E5E7EB] p-7 shadow-sm flex flex-col h-[420px] relative">
                 <div className="flex justify-between items-start mb-6">
-                  <h3 className="text-[12px] font-bold text-gray-400 tracking-wider">ASSET VALUATION</h3>
-                  <div className="text-emerald-500 text-[12px] font-bold flex items-center gap-1">
-                    <TrendingUp className="h-3.5 w-[14px]" />
-                    +4.8%
+                  <h3 className="text-[13px] font-bold text-[#6B7280] uppercase tracking-wider">ASSET VALUATION</h3>
+                </div>
+
+                <div className="flex justify-between items-start gap-4 mb-auto z-10">
+                  <div>
+                    <div className="text-[13px] font-semibold text-[#6B7280] tracking-tight mb-1">Book Value</div>
+                    <div className="text-[26px] xl:text-[28px] font-bold text-[#111827] tracking-tight leading-none">{isLoading ? "—" : formatCurrency(bookValue)}</div>
+                  </div>
+                  <div>
+                    <div className="text-[13px] font-semibold text-[#6B7280] tracking-tight mb-1">Net Book Value (NBV)</div>
+                    <div className="text-[26px] xl:text-[28px] font-bold text-[#3B5BDB] tracking-tight leading-none">{isLoading ? "—" : formatCurrency(nbv)}</div>
                   </div>
                 </div>
                 
-                <div className="flex justify-between items-end mb-4">
-                  <div>
-                    <div className="text-[12px] text-gray-400 font-semibold mb-1">Book Value</div>
-                    <div className="text-[24px] sm:text-[26px] font-extrabold text-[#111827]">{valuation.book}</div>
+                {/* Category Breakdown */}
+                <div className="mt-5 pt-5 border-t border-[#EEF1F6]">
+                  <div className="text-[12px] font-semibold text-[#6B7280] mb-2 tracking-tight">Category Breakdown</div>
+                  <div className="w-full h-[6px] rounded-full overflow-hidden flex mb-2 bg-[#F3F4F6]">
+                    {breakdown.map((b, idx) => (
+                      <div key={b.label} className="h-full" style={{ width: `${b.pct}%`, backgroundColor: breakdownColors[idx] }} />
+                    ))}
                   </div>
-                  <div className="text-left">
-                    <div className="text-[12px] text-gray-400 font-semibold mb-1">Net Book Value (NBV)</div>
-                    <div className="text-[24px] sm:text-[26px] font-extrabold text-[#3B5BDB]">{valuation.nbv}</div>
-                  </div>
-                </div>
-
-                {/* Simulated Wave Line Chart */}
-                <div className="h-[90px] w-full mt-2 mb-8 relative px-2">
-                  <svg viewBox="0 0 400 100" className="w-full h-full preserve-aspect-ratio-none">
-                    <defs>
-                      <linearGradient id="chartGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                        <stop offset="0%" stopColor="#3B5BDB" stopOpacity="0.25" />
-                        <stop offset="100%" stopColor="#EEF2FF" stopOpacity="0" />
-                      </linearGradient>
-                    </defs>
-                    <path d="M0 70 C 50 70, 70 30, 120 40 S 170 70, 220 50 S 270 20, 320 20 S 370 60, 400 50 L 400 100 L 0 100 Z" fill="url(#chartGradient)" />
-                    <path d="M0 70 C 50 70, 70 30, 120 40 S 170 70, 220 50 S 270 20, 320 20 S 370 60, 400 50" fill="none" stroke="#3B5BDB" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </div>
-
-                <div className="text-center mt-6 mb-auto">
-                  <div className="text-[12px] text-gray-400 font-semibold mb-3">Category Breakdown</div>
-                  <div className="h-2 w-[85%] mx-auto rounded-full flex overflow-hidden">
-                    <div className="bg-[#3B5BDB] w-[50%]" />
-                    <div className="bg-[#60A5FA] w-[35%]" />
-                    <div className="bg-[#FCD34D] w-[15%]" />
-                  </div>
-                  <div className="flex flex-wrap justify-center items-center mt-3 text-[11px] text-gray-500 font-bold gap-3 sm:gap-5">
-                    <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-[#3B5BDB]"/> Land/Bldgs</div>
-                    <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-[#60A5FA]"/> Machinery</div>
-                    <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-[#FCD34D]"/> Furniture</div>
+                  <div className="flex items-center justify-between text-[11px] font-bold text-[#6B7280] gap-2">
+                    {breakdown.length === 0 ? (
+                      <span className="italic text-[#9CA3AF]">No category data</span>
+                    ) : (
+                      breakdown.map((b, idx) => (
+                        <div key={b.label} className="flex items-center gap-1.5 truncate">
+                          <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: breakdownColors[idx] }} />
+                          <span className="truncate">{b.label}</span>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
               </div>
 
-              {/* Health & Status Card */}
-              <div className="bg-white rounded-[24px] p-5 sm:p-6 shadow-sm border border-[#EEF1F6] flex flex-col justify-between">
-                <h3 className="text-[12px] font-bold text-gray-400 tracking-wider mb-6">HEALTH & STATUS</h3>
+              {/* Card 2: Health & Status */}
+              <div className="rounded-[16px] bg-white border border-[#E5E7EB] p-7 shadow-sm flex flex-col h-[420px]">
+                <h3 className="text-[13px] font-bold text-[#6B7280] uppercase tracking-wider mb-6">HEALTH & STATUS</h3>
                 
-                <div className="flex flex-col sm:flex-row items-center sm:items-stretch gap-6 mb-6">
-                  {/* Donut Chart */}
-                  <div className="relative w-27.5 h-27.5 shrink-0">
-                    <svg viewBox="0 0 100 100" className="transform -rotate-90 w-full h-full">
-                      <circle cx="50" cy="50" r="40" fill="transparent" stroke="#F1F5F9" strokeWidth="10" />
-                      <circle cx="50" cy="50" r="40" fill="transparent" stroke="#3B5BDB" strokeWidth="10" strokeDasharray="251.2" strokeDashoffset="47.7" strokeLinecap="round" />
+                <div className="flex items-center gap-6 xl:gap-8 mb-auto">
+                  <div className="relative h-[110px] w-[110px] shrink-0">
+                    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="transform -rotate-90">
+                      <circle
+                        stroke="#EEF2FF"
+                        fill="transparent"
+                        strokeWidth={stroke}
+                        r={normalizedRadius}
+                        cx={radius}
+                        cy={radius}
+                      />
+                      <circle
+                        stroke="#2563EB"
+                        fill="transparent"
+                        strokeWidth={stroke}
+                        strokeDasharray={`${circumference} ${circumference}`}
+                        style={{ strokeDashoffset }}
+                        strokeLinecap="round"
+                        r={normalizedRadius}
+                        cx={radius}
+                        cy={radius}
+                        className="transition-all duration-1000 ease-in-out"
+                      />
                     </svg>
-                    <div className="absolute inset-0 flex flex-col items-center justify-center">
-                      <span className="text-[22px] font-extrabold text-[#111827]">81%</span>
-                      <span className="text-[9px] font-bold text-gray-400 tracking-wider mt-0.5">HEALTHY</span>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center pt-1">
+                      <span className="text-[26px] font-[900] text-[#111827] leading-none mb-0.5 tracking-tight">{progress}%</span>
+                      <span className="text-[10px] font-bold text-[#6B7280] uppercase tracking-wide">{healthLabel}</span>
                     </div>
                   </div>
-
-                  {/* Stats */}
-                  <div className="flex-1 space-y-4 w-full">
-                    <div className="flex justify-between items-center text-[13px]">
-                      <span className="font-bold text-gray-500">Operational</span>
-                      <span className="font-extrabold text-[#111827]">412</span>
+                  <div className="space-y-3.5 flex-1 pl-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[13px] font-medium text-[#6B7280]">Operational</span>
+                      <span className="text-[14px] font-bold text-[#111827]">{statusCounts.operational}</span>
                     </div>
-                    <div className="flex justify-between items-center text-[13px]">
-                      <span className="font-bold text-[#F59E0B]">Maintenance</span>
-                      <span className="font-extrabold text-[#F59E0B]">14</span>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[13px] font-medium text-[#6B7280]">Maintenance</span>
+                      <span className="text-[14px] font-bold text-[#F59E0B]">{statusCounts.maintenance}</span>
                     </div>
-                    <div className="flex justify-between items-center text-[13px]">
-                      <span className="font-bold text-[#EF4444]">Offline/Faulty</span>
-                      <span className="font-extrabold text-[#EF4444]">5</span>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[13px] font-medium text-[#6B7280]">Offline/Faulty</span>
+                      <span className="text-[14px] font-bold text-[#EF4444]">{statusCounts.offline}</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="mt-6 mb-auto bg-[#FFFBEB] rounded-[16px] p-4 flex flex-col items-center justify-center text-center gap-2 border border-[#FEF3C7]">
-                  <AlertTriangle className="h-[20px] w-5 text-[#F59E0B] shrink-0" />
-                  <div>
-                    <div className="text-[13px] font-bold text-[#B45309] mb-1">Critical alerts</div>
-                    <div className="text-[11px] text-[#D97706] font-medium leading-tight">3 pending servicing, 2 insurances expiring.</div>
+                {statusCounts.maintenance + statusCounts.offline > 0 && (
+                  <div className="mt-8 bg-[#FFFBEB] border border-[#FEF3C7] rounded-[10px] p-4 flex gap-3 shadow-[0_1px_2px_rgba(0,0,0,0.01)]">
+                    <AlertTriangle className="h-[22px] w-[22px] text-[#F59E0B] shrink-0" strokeWidth={2} />
+                    <div>
+                      <h4 className="text-[13px] font-bold text-[#D97706] mb-0.5">Attention needed</h4>
+                      <p className="text-[12px] font-medium text-[#D97706]/80 leading-snug tracking-wide">
+                        {[
+                          statusCounts.maintenance > 0 ? `${statusCounts.maintenance} in maintenance` : null,
+                          statusCounts.offline > 0 ? `${statusCounts.offline} offline or faulty` : null,
+                        ]
+                          .filter(Boolean)
+                          .join(", ")}
+                        .
+                      </p>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
-              {/* Queue & Activity Card */}
-              <div className="bg-white rounded-[24px] p-5 sm:p-6 shadow-sm border border-[#EEF1F6] flex flex-col justify-between md:col-span-2 lg:col-span-1">
-                <div className="flex justify-between items-center mb-6">
-                  <h3 className="text-[12px] font-bold text-gray-400 tracking-wider">QUEUE & ACTIVITY</h3>
-                  <div className="bg-[#EEF2FF] text-[#3B5BDB] text-[10px] font-bold px-3 py-1.5 rounded-lg tracking-widest leading-none">2 NEW</div>
+              {/* Card 3: Queue & Activity */}
+              <div className="rounded-[16px] bg-white border border-[#E5E7EB] p-7 shadow-sm flex flex-col h-[420px]">
+                <div className="flex items-center justify-between mb-5">
+                  <h3 className="text-[13px] font-bold text-[#6B7280] uppercase tracking-wider">QUEUE & ACTIVITY</h3>
+                  {recentActivity.length > 0 && (
+                    <div className="inline-flex items-center justify-center px-2 py-0.5 rounded-[6px] bg-[#3B5BDB] text-white text-[10px] font-bold tracking-wide">
+                      {recentActivity.length} RECENT
+                    </div>
+                  )}
                 </div>
 
-                <div className="mb-6">
-                  <div className="text-[13px] text-gray-500 font-semibold mb-3">Pending Approvals</div>
-                  <div className="space-y-3">
-                    <div className="bg-[#F8FAFC] rounded-[14px] p-3.5 flex justify-between items-center border border-[#F1F5F9]">
-                      <div>
-                        <div className="text-[13px] font-bold text-[#111827]">Geyersell Old Generator</div>
-                        <div className="text-[11px] text-gray-500 font-medium mt-0.5">submitted by Alice Morgan</div>
-                      </div>
-                      <button className="text-[12px] font-bold text-[#3B5BDB] hover:underline">Review</button>
+                <div className="flex-1 overflow-y-auto pr-1">
+                  {recentActivity.length === 0 ? (
+                    <div className="h-full flex items-center justify-center text-[12px] text-[#9CA3AF] text-center px-4">
+                      Movements, transfers and disposals for this branch will appear here.
                     </div>
-                    <div className="bg-[#F8FAFC] rounded-[14px] p-3.5 flex justify-between items-center border border-[#F1F5F9]">
-                      <div>
-                        <div className="text-[13px] font-bold text-[#111827]">Yamaha SG Chairs</div>
-                        <div className="text-[11px] text-gray-500 font-medium mt-0.5">Ps. Sarah, Ikeja</div>
-                      </div>
-                      <button className="text-[12px] font-bold text-[#3B5BDB] hover:underline">Review</button>
+                  ) : (
+                    <div className="space-y-3.5 relative before:absolute before:inset-0 before:ml-[5px] before:-translate-x-px before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-200 before:to-transparent">
+                      {recentActivity.map((m, index) => {
+                        const kind = String(m.movementType ?? "movement").replace(/_/g, " ")
+                        const when = m.movedAt ?? m.createdAt
+                        const date = when ? new Date(when) : null
+                        const stamp = date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : ""
+                        const route = [m.fromLocation, m.toLocation].filter(Boolean).join(" → ")
+                        return (
+                          <div key={String(m._id ?? m.id ?? index)} className="relative flex items-start gap-3.5 pl-1">
+                            <div className={`relative z-10 mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${index === 0 ? "bg-[#10B981]" : index === 1 ? "bg-[#F59E0B]" : "bg-[#0EA5E9]"}`} />
+                            <div className="min-w-0">
+                              <div className="text-[12px] font-bold text-[#111827] tracking-tight leading-tight capitalize">{kind}</div>
+                              <div className="text-[11px] text-[#6B7280] truncate">
+                                {m.assetName ?? "Asset"}
+                                {route ? ` · ${route}` : ""}
+                                {stamp ? ` • ${stamp}` : ""}
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
                     </div>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="text-[13px] text-gray-500 font-semibold mb-4">Activity log 22 - 23</div>
-                  <div className="space-y-4 pl-1">
-                    <div className="relative pl-6">
-                      <div className="absolute left-0 top-1.5 w-2 h-2 rounded-full bg-emerald-500 ring-[3px] ring-emerald-50" />
-                      <div className="absolute left-[3px] top-4 -bottom-5 w-0.5 bg-gray-100" />
-                      <div className="text-[13px] font-bold text-[#111827]">New Asset Added</div>
-                      <div className="text-[11px] text-gray-500 font-medium mt-0.5">Yamaha SG Chairs • Sun 23</div>
-                    </div>
-                    <div className="relative pl-6">
-                      <div className="absolute left-0 top-1.5 w-2 h-2 rounded-full bg-amber-500 ring-[3px] ring-amber-50" />
-                      <div className="absolute left-0.75 top-4 bottom-[-20px] w-0.5 bg-gray-100" />
-                      <div className="text-[13px] font-bold text-[#111827]">Maintenance Logged</div>
-                      <div className="text-[11px] text-gray-500 font-medium mt-0.5">Lawn Mowing Machine (HQ) • Sat 22</div>
-                    </div>
-                    <div className="relative pl-6">
-                      <div className="absolute left-0 top-1.5 w-2 h-2 rounded-full bg-[#3B5BDB] ring-[3px] ring-[#EEF2FF]" />
-                      <div className="text-[13px] font-bold text-[#111827]">Insurance Renewed</div>
-                      <div className="text-[11px] text-gray-500 font-medium mt-0.5">Church Bus (IKEJA) • Sat 14</div>
-                    </div>
-                  </div>
+                  )}
                 </div>
               </div>
             </div>
 
             {/* Active Assets Inventory Table */}
-            <div className="bg-white rounded-[24px] shadow-sm border border-[#EEF1F6] overflow-hidden">
-              <div className="p-5 sm:p-6 border-b border-[#EEF1F6] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <h2 className="text-[18px] font-extrabold text-[#111827]">Active Assets Inventory</h2>
-                <div className="flex items-center gap-4 w-full sm:w-auto overflow-hidden">
-                  <div className="relative flex-1 sm:max-w-none">
-                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <Input 
+            <div className="rounded-[16px] bg-white border border-[#E5E7EB] shadow-[0_4px_24px_rgba(0,0,0,0.02)] flex flex-col flex-1 overflow-hidden min-h-[400px]">
+              
+              {/* Header */}
+              <div className="p-5 sm:p-7 border-b border-[#EEF1F6] flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <h2 className="text-[18px] font-[900] text-[#111827] tracking-tight">Active Assets Inventory</h2>
+                
+                <div className="flex items-center gap-4">
+                  <div className="relative w-full sm:w-[280px]">
+                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9CA3AF]" />
+                    <input 
+                      type="text" 
                       placeholder="Search assets..." 
-                      className="pl-10 h-10 w-full sm:w-60 bg-[#F9FAFB] border-gray-100 rounded-[10px] text-[13px] focus-visible:ring-[#3B5BDB]"
+                      className="w-full h-[40px] pl-10 pr-4 rounded-[10px] border border-[#E5E7EB] bg-[#F9FAFB] text-[13px] text-[#111827] placeholder-[#9CA3AF] focus:outline-none focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB] transition-all"
                     />
                   </div>
-                  <button className="text-[14px] font-bold text-[#3B5BDB] hover:underline whitespace-nowrap shrink-0 sm:block">View All</button>
+                  
+                  <button className="flex items-center justify-center text-[14px] font-bold text-[#2563EB] hover:text-[#1D4ED8] transition-colors whitespace-nowrap">
+                    View All
+                  </button>
                 </div>
               </div>
 
-              <div className="overflow-x-auto w-full -mx-4 sm:mx-0 px-4 sm:px-0">
-                <table className="w-full text-[13px] min-w-175">
+              {/* Table Content */}
+              <div className="w-full overflow-x-auto">
+                <table className="w-full min-w-[950px] text-left">
                   <thead>
-                    <tr className="bg-white border-b border-[#EEF1F6]">
-                      <th className="py-5 px-4 sm:px-6 text-left text-[11px] font-bold text-gray-400 tracking-wider">ASSET DESCRIPTION</th>
-                      <th className="py-5 px-4 sm:px-6 text-left text-[11px] font-bold text-gray-400 tracking-wider">CATEGORY</th>
-                      <th className="py-5 px-4 sm:px-6 text-left text-[11px] font-bold text-gray-400 tracking-wider">PURCHASE DATE</th>
-                      <th className="py-5 px-4 sm:px-6 text-left text-[11px] font-bold text-gray-400 tracking-wider">BOOK VALUE</th>
-                      <th className="py-5 px-4 sm:px-6 text-left text-[11px] font-bold text-gray-400 tracking-wider">CONDITION</th>
-                      <th className="py-5 px-4 sm:px-6 text-right text-[11px] font-bold text-gray-400 tracking-wider">ACTION</th>
+                    <tr className="border-b border-[#EEF1F6]">
+                      <th className="py-4 px-7 text-[10px] font-[900] text-[#9CA3AF] uppercase tracking-widest leading-none">ASSET DESCRIPTION</th>
+                      <th className="py-4 px-7 text-[10px] font-[900] text-[#9CA3AF] uppercase tracking-widest leading-none">CATEGORY</th>
+                      <th className="py-4 px-7 text-[10px] font-[900] text-[#9CA3AF] uppercase tracking-widest leading-none">PURCHASE DATE</th>
+                      <th className="py-4 px-7 text-[10px] font-[900] text-[#9CA3AF] uppercase tracking-widest leading-none">BOOK VALUE</th>
+                      <th className="py-4 px-7 text-[10px] font-[900] text-[#9CA3AF] uppercase tracking-widest leading-none text-center">CONDITION</th>
+                      <th className="py-4 px-7 text-[10px] font-[900] text-[#9CA3AF] uppercase tracking-widest leading-none text-right">ACTION</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {assetRows.map((asset, i) => (
-                      <tr key={i} className="border-b border-[#EEF1F6] hover:bg-gray-50/50 transition-colors last:border-0">
-                        <td className="py-5 px-4 sm:px-6 font-bold text-[#111827]">{asset.name}</td>
-                        <td className="py-5 px-4 sm:px-6 text-gray-500 font-medium">{asset.category}</td>
-                        <td className="py-5 px-4 sm:px-6 text-gray-500 font-medium">{asset.date}</td>
-                        <td className="py-5 px-4 sm:px-6 font-extrabold text-[#111827]">{asset.value}</td>
-                        <td className="py-5 px-4 sm:px-6">
-                          <span className={`${asset.statusColor} text-[10px] font-bold px-3 py-1.5 rounded-[6px] tracking-wide inline-block leading-none break-keep whitespace-nowrap`}>
-                            {asset.condition}
+                    {isLoading && displayAssets.length === 0 ? (
+                      <tr><td colSpan={6} className="py-10 px-7 text-center text-[13px] font-semibold text-[#9CA3AF]">Loading assets…</td></tr>
+                    ) : displayAssets.length === 0 ? (
+                      <tr><td colSpan={6} className="py-10 px-7 text-center text-[13px] font-semibold text-[#9CA3AF]">No assets found for this branch.</td></tr>
+                    ) : displayAssets.map((asset) => (
+                      <tr key={asset.id} className="border-b border-[#EEF1F6]/70 last:border-0 hover:bg-[#F8FAFC] transition-colors">
+                        <td className="py-5 px-7">
+                          <div className="text-[14px] font-[800] text-[#111827] tracking-tight">{asset.name}</div>
+                        </td>
+                        <td className="py-5 px-7">
+                          <div className="text-[14px] font-semibold text-[#6B7280]">{asset.category}</div>
+                        </td>
+                        <td className="py-5 px-7">
+                          <div className="text-[14px] font-semibold text-[#6B7280]">{asset.date}</div>
+                        </td>
+                        <td className="py-5 px-7">
+                          <div className="text-[15px] font-[900] text-[#111827] tracking-tight">{asset.value}</div>
+                        </td>
+                        <td className="py-5 px-7 text-center">
+                          <span className={`inline-flex items-center justify-center px-2.5 py-1 rounded-[6px] text-[10px] font-[900] uppercase tracking-widest ${asset.statusColor}`}>
+                            {asset.status}
                           </span>
                         </td>
-                        <td className="py-5 px-4 sm:px-6 text-right text-gray-400">
-                          <button className="hover:text-[#111827] transition-colors p-2 flex items-center justify-end w-full">
-                            <ArrowRight className="h-4 w-4 stroke-[1.5]" />
-                          </button>
+                        <td className="py-5 px-7 text-right">
+                          <button className="text-[#9CA3AF] hover:text-[#111827] transition-colors"><MoreHorizontal className="h-5 w-5" /></button>
                         </td>
                       </tr>
                     ))}
-                    {!loading && assetRows.length === 0 && (
-                      <tr>
-                        <td className="py-6 px-6 text-[#6B7280]" colSpan={6}>
-                          {error ?? "No assets found."}
-                        </td>
-                      </tr>
-                    )}
                   </tbody>
                 </table>
               </div>
-
-              <div className="p-4 px-5 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-[#EEF1F6] bg-white text-center sm:text-left">
-                <div className="text-[13px] text-gray-500 font-medium">Showing 1-10 of 474 results</div>
+              
+              {/* Pagination / Footer */}
+              <div className="p-5 sm:p-7 border-t border-[#EEF1F6] flex items-center justify-between">
+                <div className="text-[13px] font-semibold text-[#6B7280]">
+                  Showing {displayAssets.length === 0 ? 0 : 1}-{displayAssets.length} of {totalAssets} assets
+                </div>
                 <div className="flex items-center gap-2">
-                  <Button variant="outline" className="h-9 px-4 text-[13px] font-bold text-gray-500 border-gray-200 rounded-[8px] hover:bg-gray-50 hover:text-gray-900">
+                  <button className="h-[34px] px-4 rounded-[6px] border border-[#E5E7EB] bg-white text-[12px] font-bold text-[#6B7280] flex items-center gap-1 hover:bg-gray-50 transition-all shadow-sm">
                     Previous
-                  </Button>
-                  <Button variant="outline" className="h-9 px-4 text-[13px] font-bold text-gray-500 border-gray-200 rounded-[8px] hover:bg-gray-50 hover:text-gray-900">
+                  </button>
+                  <button className="h-[34px] px-4 rounded-[6px] border border-[#E5E7EB] bg-white text-[12px] font-bold text-[#111827] flex items-center gap-1 hover:bg-gray-50 transition-all shadow-sm">
                     Next
-                  </Button>
+                  </button>
                 </div>
               </div>
+
             </div>
-            
+
           </div>
         </main>
       </div>

@@ -104,31 +104,15 @@ function ModalContainer({ rawAssets = [], onChanged }: { rawAssets?: RawAsset[];
     : null
 
   // Placeholder mock data fallback used when no asset is selected
-  const mockAsset: AssetDetails = {
-    name: "Toyota Hiace Bus",
-    location: "Maryland, Lagos",
-    category: "Motor Vehicle",
-    cost: "₦15,000,000",
-    purchaseDate: "10 Jan 2022",
-    depreciationMethod: "Straight Line (Director Policy)",
-    usefulLife: "5 years",
-    residualValue: "10% (₦1,500,000)",
-    accumulatedDepreciation: "₦6,000,000",
-    currentNBV: "₦9,000,000",
-    history: [
-      { yearNumber: "Year 1", year: "2022", amount: "₦2,700,000" },
-      { yearNumber: "Year 2", year: "2023", amount: "₦2,700,000" },
-      { yearNumber: "Year 3", year: "2024", amount: "₦600,000", isYTD: true }
-    ]
-  }
+
 
 
   return (
     <>
       <AssetDetailsModal
-        isOpen={isDetailsModalOpen}
+        isOpen={isDetailsModalOpen && Boolean(selectedAsset)}
         onClose={closeDetails}
-        asset={selectedAsset ?? mockAsset}
+        asset={selectedAsset ?? undefined}
       />
       <RecordAssetSaleModal
         isOpen={isRecordSaleModalOpen}

@@ -246,7 +246,6 @@ export function BankTransactions({ showBranchFilter = false }: { showBranchFilte
   const [accountsOpen, setAccountsOpen] = useState(false)
   const [reconcileOpen, setReconcileOpen] = useState(false)
   const [reconcileSource, setReconcileSource] = useState<DemoRow | null>(null)
-  const [groupDetailsOpen, setGroupDetailsOpen] = useState(false)
 
 
   const updateCategory = async (id: string, chartOfAccountId: string) => {
@@ -584,7 +583,7 @@ export function BankTransactions({ showBranchFilter = false }: { showBranchFilte
                           setReconcileSource(row)
                           setReconcileOpen(true)
                         }}
-                        onGroupDetails={() => setGroupDetailsOpen(true)}
+                        onGroupDetails={() => {}}
                       />
                     </td>
                   </tr>
@@ -679,7 +678,6 @@ export function BankTransactions({ showBranchFilter = false }: { showBranchFilte
           refreshSummary()
         }}
       />
-      <ReconciledGroupDetailsModal open={groupDetailsOpen} onClose={() => setGroupDetailsOpen(false)} />
     </>
   )
 }
@@ -1989,121 +1987,6 @@ function RecordIncomeModal({ open, onClose, onSaved }: { open: boolean; onClose:
         >
           <Save className="h-4 w-4" />
           {saving ? "Saving…" : "Save Income"}
-        </button>
-      </div>
-    </ModalShell>
-  )
-}
-
-// ---------------------------------------------------------------------------
-
-function ReconciledGroupDetailsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const ledgerEntries = [
-    { id: "le1", txId: "TXN-89021", name: "Sunday Tithe", fund: "Tithes & Offerings Fund", amount: 100 },
-    { id: "le2", txId: "TXN-89022", name: "Sunday Offering", fund: "General Missions Fund", amount: 50 },
-  ]
-  const journal = [
-    { account: "Bank Account (Asset)", debit: 150, credit: null as number | null },
-    { account: "Undeposited Funds (Asset)", debit: null as number | null, credit: 150 },
-  ]
-
-  return (
-    <ModalShell open={open} onClose={onClose} className="max-w-3xl">
-      {/* Header */}
-      <div className="flex items-start justify-between px-6 py-5 border-b border-[#EEF1F6] gap-4">
-        <div className="space-y-2">
-          <h2 className="text-[16px] font-bold text-[#111827]">RECONCILED GROUP #G1 – DETAILS</h2>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-bold text-emerald-700">
-            <CheckCircle2 className="h-3.5 w-3.5" /> GROUP STATUS: FULLY RECONCILED
-          </span>
-        </div>
-        <button onClick={onClose} className="text-[#9CA3AF] hover:text-[#4B5563] transition-colors shrink-0" aria-label="Close">
-          <X className="h-5 w-5" />
-        </button>
-      </div>
-
-      <div className="px-6 py-5 space-y-5">
-        {/* Meta */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 rounded-[10px] border border-[#EEF1F6] bg-[#F8FAFC] p-4">
-          <div>
-            <p className="text-[10px] font-bold uppercase text-[#9CA3AF]">Reconciled By</p>
-            <p className="text-[13px] font-bold text-[#111827] mt-0.5">Accountant (Maryland)</p>
-          </div>
-          <div>
-            <p className="text-[10px] font-bold uppercase text-[#9CA3AF]">Date</p>
-            <p className="text-[13px] font-bold text-[#111827] mt-0.5">Oct 22, 2024</p>
-          </div>
-          <div>
-            <p className="text-[10px] font-bold uppercase text-[#9CA3AF]">Time</p>
-            <p className="text-[13px] font-bold text-[#111827] mt-0.5">10:32 AM</p>
-          </div>
-        </div>
-
-        {/* Source of truth */}
-        <div className="rounded-[10px] border border-[#EEF1F6] p-4">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF] mb-3">Bank Transaction (Source of Truth)</p>
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-[13px] font-bold text-[#3B5BDB]">#BNK-001</p>
-              <p className="text-[12px] font-medium text-[#6B7280]">Bank Deposit</p>
-            </div>
-            <p className="text-[15px] font-bold text-emerald-600">{formatUSD(150)}</p>
-          </div>
-        </div>
-
-        {/* Manual ledger entries */}
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF] mb-3">Manual Ledger Entries (Income Sources)</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {ledgerEntries.map((le) => (
-              <div key={le.id} className="rounded-[10px] border border-[#EEF1F6] p-4">
-                <p className="text-[12px] font-bold text-[#3B5BDB]">#{le.txId}</p>
-                <p className="text-[13px] font-bold text-[#111827] mt-1">{le.name}</p>
-                <p className="text-[11px] font-medium text-[#6B7280]">{le.fund}</p>
-                <p className="text-[13px] font-bold text-emerald-600 mt-2">{formatUSD(le.amount)} <span className="text-[10px] text-emerald-500">CREDIT</span></p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Clearing journal entry */}
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF] mb-3">Clearing Journal Entry</p>
-          <div className="overflow-x-auto rounded-[10px] border border-[#EEF1F6]">
-            <table className="w-full text-left text-[13px]">
-              <thead>
-                <tr className="bg-[#F8FAFC]">
-                  <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">Account Name</th>
-                  <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF] text-right">Debit</th>
-                  <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF] text-right">Credit</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#EEF1F6]">
-                {journal.map((j) => (
-                  <tr key={j.account}>
-                    <td className="px-4 py-3 text-[12px] font-bold text-[#111827]">{j.account}</td>
-                    <td className="px-4 py-3 text-[12px] font-bold text-right text-[#4B5563]">{j.debit != null ? formatUSD(j.debit) : "-"}</td>
-                    <td className="px-4 py-3 text-[12px] font-bold text-right text-[#4B5563]">{j.credit != null ? formatUSD(j.credit) : "-"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center sm:justify-end gap-3 px-6 py-4 border-t border-[#EEF1F6]">
-        <button
-          onClick={onClose}
-          className="rounded-md border border-[#E5E7EB] bg-white px-4 py-2.5 text-[12px] font-bold text-[#4B5563] hover:bg-gray-50 transition-colors"
-        >
-          Back to Ledger
-        </button>
-        <button className="flex items-center justify-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 py-2.5 text-[12px] font-bold text-[#4B5563] hover:bg-gray-50 transition-colors">
-          <FileText className="h-4 w-4" /> Audit Log
-        </button>
-        <button className="flex items-center justify-center gap-2 rounded-md bg-[#3B5BDB] px-4 py-2.5 text-[12px] font-bold text-white shadow-sm hover:bg-blue-700 transition-colors">
-          <Printer className="h-4 w-4" /> Print / Export
         </button>
       </div>
     </ModalShell>
