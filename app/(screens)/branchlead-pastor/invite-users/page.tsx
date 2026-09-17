@@ -28,6 +28,7 @@ export default function Page() {
   const { mutateAsync: inviteUser, isPending: loading } = useInviteUser()
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const [successMessage, setSuccessMessage] = useState("")
   const [sendEmail, setSendEmail] = useState(true)
   const { user } = useAuth()
 
@@ -54,16 +55,15 @@ export default function Page() {
     const lastName = parts.slice(1).join(" ") || "User"
 
     try {
-      await inviteUser({
+      const created = (await inviteUser({
         firstName,
         lastName,
         email,
         role,
         branchId,
-        // New invited users default to an active account.
-        status: "active",
         ...(phone && { phone }),
-      })
+      })) as { message?: string; data?: { status?: string } } | undefined
+      setSuccessMessage(created?.message ?? (created?.data?.status === "invited" ? "Invitation sent — the user will receive an email with their setup link." : "User created."))
       setSuccess(true)
       setTimeout(() => {
         router.push("/branchlead-pastor/users")
@@ -148,7 +148,7 @@ export default function Page() {
             </div>
 
             {error && <div className="text-[10px] text-rose-600 font-semibold">{error}</div>}
-            {success && <div className="text-[10px] text-emerald-600 font-semibold">User created successfully!</div>}
+            {success && <div className="text-[10px] text-emerald-600 font-semibold">{successMessage || "Invitation sent."}</div>}
           </div>
 
           <div className="border-t border-[#EEF1F6] px-4 py-4 space-y-3">
