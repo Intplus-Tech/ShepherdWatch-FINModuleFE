@@ -162,6 +162,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           backend_unavailable:
             "We can't reach the authentication server right now. Please try again shortly.",
           invalid_credentials: "Invalid email or password.",
+          rate_limited:
+            "Too many sign-in attempts. Please wait about 15 minutes before trying again — retrying sooner extends the wait.",
         };
         const friendly =
           (code && messageByCode[code]) ||

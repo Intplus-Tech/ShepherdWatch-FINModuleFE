@@ -25,6 +25,11 @@ export class InvalidCredentialsError extends CredentialsSignin {
 /**
  * Backend unreachable / server error.
  */
+/** The backend caps sign-in attempts (10 per 15 minutes per source). */
+export class RateLimitedError extends CredentialsSignin {
+  code = "rate_limited";
+}
+
 export class BackendUnavailableError extends CredentialsSignin {
   code = "backend_unavailable";
 }
@@ -57,6 +62,12 @@ export function mapLoginErrorToAuthError(
     message.includes("inactive")
   ) {
     return new AccountInactiveError();
+  }
+
+  // A rate-limited attempt is not a wrong password; saying so makes people
+  // retry and lock themselves out for longer.
+  if (status === 429 || message.includes("too many")) {
+    return new RateLimitedError();
   }
 
   if (status >= 500) {
