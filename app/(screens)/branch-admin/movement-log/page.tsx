@@ -26,79 +26,6 @@ function splitDateTime(value: string): { date: string; time: string } {
   };
 }
 
-// Mock data based directly on Figma reference
-const movementData = [
-  {
-    date: "Oct 24, 2023",
-    time: "09:42 AM",
-    asset: "HP LaserJet Pro M404n",
-    icon: <Printer className="w-[15px] h-[15px] text-[#64748B] stroke-[2px]" />,
-    iconBg: "bg-[#F1F5F9] border border-[#E2E8F0]",
-    from: "IT Storage",
-    to: "Front Desk",
-    toDot: "bg-[#22C55E]",
-    handledBy: "J. Doe",
-    handledByInitials: "JD",
-    handledByBg: "bg-[#E0E7FF] text-[#4338CA]",
-    reason: "Printer replacement request"
-  },
-  {
-    date: "Oct 24, 2023",
-    time: "08:15 AM",
-    asset: "Meeting Room Chair #4",
-    icon: <LayoutGrid className="w-[15px] h-[15px] text-[#64748B] stroke-[2px]" />,
-    iconBg: "bg-[#F1F5F9] border border-[#E2E8F0]",
-    from: "Meeting Room A",
-    to: "Storage B",
-    toDot: "bg-[#F97316]",
-    handledBy: "M. Smith",
-    handledByInitials: "MS",
-    handledByBg: "bg-[#FCE7F3] text-[#BE185D]",
-    reason: "Broken leg - needs repair"
-  },
-  {
-    date: "Oct 23, 2023",
-    time: "04:30 PM",
-    asset: 'MacBook Pro 16"',
-    icon: <Laptop className="w-[15px] h-[15px] text-[#64748B] stroke-[2px]" />,
-    iconBg: "bg-[#F1F5F9] border border-[#E2E8F0]",
-    from: "IT Department",
-    to: "Sarah K. (Staff)",
-    toDot: "bg-[#3B82F6]",
-    handledBy: "Admin",
-    handledByInitials: "AD",
-    handledByBg: "bg-[#E2E8F0] text-[#334155]",
-    reason: "New staff allocation"
-  },
-  {
-    date: "Oct 22, 2023",
-    time: "11:00 AM",
-    asset: "Canon XA11 Camcorder",
-    icon: <Video className="w-[15px] h-[15px] text-[#64748B] stroke-[2px]" />,
-    iconBg: "bg-[#F1F5F9] border border-[#E2E8F0]",
-    from: "AV Studio",
-    to: "Main Sanctuary",
-    toDot: "bg-[#22C55E]",
-    handledBy: "D. King",
-    handledByInitials: "DK",
-    handledByBg: "bg-[#CCFBF1] text-[#0F766E]",
-    reason: "Sunday Service Streaming"
-  },
-  {
-    date: "Oct 21, 2023",
-    time: "02:30 PM",
-    asset: "Foldable Table (White)",
-    icon: <TableIcon className="w-[15px] h-[15px] text-[#64748B] stroke-[2px]" />,
-    iconBg: "bg-[#F1F5F9] border border-[#E2E8F0]",
-    from: "Storage B",
-    to: "Courtyard",
-    toDot: "bg-[#EAB308]",
-    handledBy: "R. Taylor",
-    handledByInitials: "RT",
-    handledByBg: "bg-[#FFEDD5] text-[#C2410C]",
-    reason: "Community Picnic Setup"
-  },
-];
 
 const TO_DOTS = ["bg-[#22C55E]", "bg-[#F97316]", "bg-[#3B82F6]", "bg-[#EAB308]"];
 const HANDLER_BGS = [
@@ -134,7 +61,7 @@ export default function MovementLogModalPage() {
     });
   }, [movementItems]);
 
-  const rows = liveRows.length > 0 ? liveRows : movementData;
+  const rows = liveRows;
 
   return (
     <div className={`relative min-h-[100dvh] w-full ${inter.className} antialiased`}>

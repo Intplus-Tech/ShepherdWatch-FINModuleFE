@@ -13,7 +13,13 @@ import { cn } from "@/lib/utils"
 const PERIODS = ["Weekly", "Monthly", "Quarterly", "Annual"] as const
 type Period = (typeof PERIODS)[number]
 
-const MONTHS = ["October 2024", "September 2024", "August 2024", "July 2024"]
+// The last twelve months, newest first.
+const MONTHS = Array.from({ length: 12 }, (_, i) => {
+  const d = new Date()
+  d.setDate(1)
+  d.setMonth(d.getMonth() - i)
+  return d.toLocaleDateString("en-GB", { month: "long", year: "numeric" })
+})
 
 export default function Page() {
   const [period, setPeriod] = useState<Period>("Monthly")

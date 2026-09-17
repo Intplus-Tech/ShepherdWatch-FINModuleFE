@@ -196,23 +196,10 @@ function FinancialImpactModalPageInner() {
                     <span className="text-[#94A3B8] text-[11px] font-[600]">+ Increases Asset Value</span>
                   </div>
 
-                  {/* Registered Improvement Card */}
-                  <div className="bg-[#DCFCE7]/40 border border-[#BBF7D0] rounded-[8px] p-3.5 flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-[#DCFCE7] flex items-center justify-center text-[#16A34A] shrink-0">
-                        <ArrowUpRight className="w-4 h-4 stroke-[3px]" />
-                      </div>
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-[#111827] text-[13.5px] font-[800] tracking-tight">RAM & Storage Upgrade</span>
-                        <span className="text-[#64748B] text-[11.5px] font-[500]">Mar 12, 2023 • Performance Enhancement</span>
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-end gap-0.5">
-                      <span className="text-[#16A34A] text-[14.5px] font-[800] tracking-tight">+ ₦ 45,000.00</span>
-                      <span className="text-[#16A34A] text-[10px] font-[700] uppercase tracking-wide">Value Added</span>
-                    </div>
+                  {/* Capital improvements have no endpoint yet; nothing is invented here. */}
+                  <div className="rounded-[8px] border border-[#EEF1F6] bg-[#F8FAFC] p-3.5 mb-4 text-[12.5px] text-[#64748B]">
+                    No capital improvements recorded for this asset.
                   </div>
-
                   <button className="w-full border border-dashed border-[#CBD5E1] bg-[#F8FAFC] rounded-[8px] py-3.5 flex items-center justify-center gap-2 hover:bg-[#F1F5F9] transition-colors group">
                     <Plus className="w-[14px] h-[14px] text-[#64748B] stroke-[2.5px] group-hover:text-[#475569]" />
                     <span className="text-[#64748B] text-[13px] font-[700] group-hover:text-[#475569]">Register New Capital Improvement</span>
@@ -231,15 +218,15 @@ function FinancialImpactModalPageInner() {
                   <div className="flex flex-col gap-3.5 mb-5">
                     <div className="flex items-center justify-between">
                       <span className="text-[#64748B] text-[13px] font-[500]">Depreciation Method</span>
-                      <span className="text-[#111827] text-[13.5px] font-[700]">Straight Line</span>
+                      <span className="text-[#111827] text-[13.5px] font-[700]">{String((asset as { depreciationMethod?: string } | null)?.depreciationMethod ?? "—").replace(/_/g, " ")}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-[#64748B] text-[13px] font-[500]">Annual Rate</span>
-                      <span className="text-[#111827] text-[13.5px] font-[700]">20%</span>
+                      <span className="text-[#111827] text-[13.5px] font-[700]">{(() => { const yrs = Number((asset as { usefulLifeYears?: number } | null)?.usefulLifeYears); return yrs > 0 ? `${Math.round(100 / yrs)}%` : "—" })()}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-[#64748B] text-[13px] font-[500]">Salvage Value</span>
-                      <span className="text-[#111827] text-[13.5px] font-[800]">₦ 25,000.00</span>
+                      <span className="text-[#111827] text-[13.5px] font-[800]">{asset?.residualValue != null ? new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(Number(asset.residualValue)) : "—"}</span>
                     </div>
                   </div>
 

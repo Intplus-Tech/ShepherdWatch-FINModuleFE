@@ -1,5 +1,7 @@
 "use client"
 
+import { useRouter } from "next/navigation"
+
 import BudgetPage from "../budget/page"
 import { useBudgetDetailedPerformance } from "@/components/hooks/useBudgetDetailedPerformance"
 import { Suspense, useEffect, useMemo } from "react"
@@ -17,6 +19,7 @@ import {
 } from "lucide-react"
 
 function PageInner() {
+  const router = useRouter()
   const searchParams = useSearchParams()
   const selectedBudgetId = searchParams.get("id")
   const { data, loading: bvaLoading, error: bvaError, fetchDetailedPerformance } = useBudgetDetailedPerformance(selectedBudgetId)
@@ -96,6 +99,7 @@ function PageInner() {
                 <span>Export PDF</span>
               </Button>
               <button
+                onClick={() => router.push("/branchlead-pastor/budget")}
                 className="ml-2 flex items-center justify-center text-[#111827] opacity-60 hover:opacity-100 transition-opacity"
                 aria-label="Close"
               >

@@ -531,14 +531,6 @@ function PageInner() {
               </div>
 
               <div className="px-6 py-6">
-                <div className="flex items-center justify-between rounded-[8px] bg-[#EFF6FF] px-4 py-3.5 border border-[#DBEAFE]">
-                  <div className="flex items-center gap-2 font-bold text-[#1E40AF] text-[13px]">
-                    <PieChart className="h-4 w-4" />
-                    {activeCategory} Allocation Target:
-                  </div>
-                  <div className="font-bold text-[#1E40AF] text-[14px]">45% of Total Income</div>
-                </div>
-
                 <div className="mt-4 text-[12px]">
                   {coaLoading && <span className="text-[#64748B]">Loading chart of accounts...</span>}
                   {coaError && <span className="text-rose-600">{coaError}</span>}

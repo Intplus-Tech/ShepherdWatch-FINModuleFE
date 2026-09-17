@@ -35,6 +35,7 @@ const FINANCIAL_ITEMS = [
   { label: "Requisitions", href: "/branch-admin/requisitions", icon: FilePlus2 },
   { label: "Logistics & Repairs", href: "/branch-admin/logistics-repair", icon: Wrench },
   { label: "Assets", href: "/branch-admin/asset", icon: Database },
+  { label: "Users", href: "/branch-admin/users", icon: UsersRound },
 ]
 
 const HR_ITEMS = [

@@ -59,6 +59,16 @@ export default function ComplianceRemittancePage() {
     fetchSummary({ branchId: tenantId, startDate: `${year}-01-01`, endDate: `${year}-12-31` }).catch(() => undefined)
   }, [tenantId, fetchDashboard, fetchDeductions, fetchSummary])
 
+  // Month-over-month movement in total liability, from the schedule.
+  const liabilityChange = (() => {
+    const months = [...(complianceDashboard?.monthlySchedule ?? [])].sort((a, b) => a.month - b.month)
+    const now = new Date().getMonth() + 1
+    const current = months.find((m) => m.month === now)?.total
+    const previous = months.find((m) => m.month === now - 1)?.total
+    if (!current || !previous) return null
+    return ((current - previous) / previous) * 100
+  })()
+
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat("en-NG", {
       style: "currency",
@@ -150,10 +160,12 @@ export default function ComplianceRemittancePage() {
               <div className="mt-3 text-[24px] font-bold text-[#111827]">
                 {complianceDashboard ? formatCurrency(complianceDashboard.totalLiability) : "—"}
               </div>
-              <div className="mt-2.5 flex items-center gap-1.5 text-[11.5px] font-semibold text-emerald-600">
-                <ArrowUpRight className="h-3.5 w-3.5 stroke-[3]" />
-                +2.3% from last month
-              </div>
+              {liabilityChange !== null && (
+                <div className={`mt-2.5 flex items-center gap-1.5 text-[11.5px] font-semibold ${liabilityChange >= 0 ? "text-rose-600" : "text-emerald-600"}`}>
+                  <ArrowUpRight className={`h-3.5 w-3.5 stroke-[3] ${liabilityChange < 0 ? "rotate-90" : ""}`} />
+                  {liabilityChange >= 0 ? "+" : ""}{liabilityChange.toFixed(1)}% from last month
+                </div>
+              )}
             </div>
 
             {/* Funds Card */}

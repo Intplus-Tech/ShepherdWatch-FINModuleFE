@@ -39,7 +39,7 @@ export default function Page() {
           day: "numeric",
           year: "numeric",
         })
-      : "Oct 24, 2026"
+      : "—"
 
   const statCards = [
     {

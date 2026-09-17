@@ -2,14 +2,14 @@
 
 import React, { useState } from "react";
 import { Inter } from "next/font/google";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { X } from "lucide-react";
 import AssetsHubPage from "../asset/page";
 import { useCashBoxTopUp } from "@/components/hooks/useAssetMovements";
+import { useAsset } from "@/components/hooks/useAsset";
 
 const inter = Inter({ subsets: ["latin"] });
 
-const CASH_BOX_ID = "AS-1024";
 
 export default function CashTopUpModalPage() {
   const router = useRouter();
@@ -18,7 +18,12 @@ export default function CashTopUpModalPage() {
   const [justification, setJustification] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const topUp = useCashBoxTopUp(CASH_BOX_ID);
+  // The cash box being topped up is the asset the page was opened for.
+  const searchParams = useSearchParams();
+  const cashBoxId = searchParams.get("id") ?? "";
+  const { asset: cashBox } = useAsset(cashBoxId || null);
+  const currentBalance = Number(cashBox?.currentValue ?? cashBox?.nbv ?? cashBox?.cost ?? 0);
+  const topUp = useCashBoxTopUp(cashBoxId || null);
 
   const handleSubmit = async () => {
     setError(null);
@@ -78,7 +83,7 @@ export default function CashTopUpModalPage() {
             {/* Current Balance Box */}
             <div className="bg-[#F8FAFC] border border-[#EEF1F6] rounded-[10px] px-4 sm:px-5 py-3 sm:py-4 flex items-center justify-between">
               <span className="text-[#4B5563] text-[12px] sm:text-[13px] font-[600]">Current Balance</span>
-              <span className="text-[#111827] text-[16px] sm:text-[18px] font-[800] tracking-tight">₦ 50,000.00</span>
+              <span className="text-[#111827] text-[16px] sm:text-[18px] font-[800] tracking-tight">{new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(currentBalance)}</span>
             </div>
 
             {/* Top-up Amount */}

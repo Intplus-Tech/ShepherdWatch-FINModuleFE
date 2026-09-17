@@ -334,7 +334,7 @@ export default function Page() {
             {/* Performance Cards Row */}
             <div className="mb-10">
               <div className="flex items-center justify-between mb-5">
-                <h2 className="text-[16px] font-extrabold text-[#111827] tracking-tight">January 2024 Performance</h2>
+                <h2 className="text-[16px] font-extrabold text-[#111827] tracking-tight">{new Date().toLocaleDateString("en-GB", { month: "long", year: "numeric" })} Performance</h2>
                 <div className="flex items-center gap-3">
                   <button
                     onClick={() => router.push("/branchlead-pastor/budget-performance")}

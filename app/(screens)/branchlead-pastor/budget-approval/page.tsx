@@ -21,6 +21,8 @@ import {
   CheckSquare,
 } from "lucide-react"
 import { useBudgetEntries } from "@/components/hooks/useBudgetEntries"
+import { useBudgetPerformance } from "@/components/hooks/useBudgetPerformance"
+import { useBranchContext } from "@/components/hooks/useBranchContext"
 import BranchLeadPastorSidebar from "@/components/navigation/BranchLeadPastorSidebar"
 import { getCsrfTokenFromCookie } from "@/lib/csrf"
 
@@ -110,8 +112,14 @@ export default function Page() {
     () => entries.reduce((sum, entry) => sum + Number(entry.amount ?? 0), 0),
     [entries]
   )
+  // Spend against the branch's approved budgets, from the performance endpoint.
+  const { branchId } = useBranchContext()
+  const { performanceData, fetchPerformance } = useBudgetPerformance()
+  useEffect(() => {
+    if (branchId) fetchPerformance({ branchId })
+  }, [branchId, fetchPerformance])
+  const expendedAmount = Number(performanceData?.totalSpent ?? 0)
   const committedAmount = 0
-  const expendedAmount = 0
   const remainingAmount = Math.max(totalBudget - committedAmount - expendedAmount, 0)
   const utilizedPercent = totalBudget
     ? Math.round(((committedAmount + expendedAmount) / totalBudget) * 100)
@@ -240,7 +248,7 @@ export default function Page() {
             {/* Performance Cards Row */}
             <div className="mb-10">
               <div className="flex items-center justify-between mb-5">
-                <h2 className="text-[16px] font-extrabold text-[#111827] tracking-tight">January 2024 Performance</h2>
+                <h2 className="text-[16px] font-extrabold text-[#111827] tracking-tight">{new Date().toLocaleDateString("en-GB", { month: "long", year: "numeric" })} Performance</h2>
                 <span className="rounded-[6px] bg-[#ECFDF3] px-2.5 py-1 text-[10px] font-bold text-[#16A34A] tracking-[0.05em] uppercase border border-[#D1FADF]">ACTIVE PERIOD</span>
               </div>
               
@@ -426,10 +434,10 @@ export default function Page() {
                   <div className="relative flex justify-center items-center py-6">
                     <svg width="200" height="100" viewBox="0 0 200 100" className="overflow-visible">
                       <path d="M 15 100 A 85 85 0 0 1 185 100" fill="none" stroke="#EEF1F6" strokeWidth="22" strokeLinecap="round" />
-                      <path d="M 15 100 A 85 85 0 0 1 161.4 41" fill="none" stroke="#3B5BDB" strokeWidth="22" strokeLinecap="round" strokeDasharray="300" strokeDashoffset="0" />
+                      <path d="M 15 100 A 85 85 0 0 1 185 100" fill="none" stroke="#3B5BDB" strokeWidth="22" strokeLinecap="round" strokeDasharray="267" strokeDashoffset={267 - (267 * Math.min(100, Math.max(0, utilizedPercent))) / 100} />
                     </svg>
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 translate-y-3 flex flex-col items-center">
-                      <span className="text-[34px] font-black text-[#3B5BDB] tracking-tighter">65%</span>
+                      <span className="text-[34px] font-black text-[#3B5BDB] tracking-tighter">{utilizedPercent}%</span>
                       <span className="text-[10px] font-bold text-[#9CA3AF] uppercase tracking-wider mt-0.5">Utilized</span>
                     </div>
                   </div>

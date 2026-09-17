@@ -18,6 +18,8 @@ export type BudgetEntry = {
   category?: string
   stream?: string
   type?: string
+  submittedBy?: string
+  submittedAt?: string
 }
 
 export function useBudgetEntries() {
@@ -76,6 +78,12 @@ export function useBudgetEntries() {
           coaName: item?.coaName ?? item?.coa?.name ?? item?.coa?.accountName,
           status: typeof item?.status === "string" ? item.status.toLowerCase() : undefined,
           name: item?.name ?? item?.title,
+          submittedBy: (() => {
+            const by = item?.submittedBy ?? item?.createdBy
+            if (by && typeof by === "object") return `${by.firstName ?? ""} ${by.lastName ?? ""}`.trim() || by.email || undefined
+            return typeof by === "string" && by.includes("@") ? by : undefined
+          })(),
+          submittedAt: item?.submittedAt ?? (item?.status === "submitted" ? item?.updatedAt : undefined),
           category: item?.category ?? item?.budgetCategory,
           stream: item?.stream ?? item?.budgetStream,
           type: item?.type,
