@@ -135,7 +135,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         const email = String(credentials?.email ?? "").trim();
         const password = String(credentials?.password ?? "");
         if (!email || !password) return null;
@@ -148,9 +148,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         let res: Response;
         try {
+          // The backend rate-limits sign-ins by source address. This call comes
+          // from the Vercel server, so every user would share one bucket; pass
+          // the real client address along for the backend to key on instead.
+          const clientIp = request?.headers?.get("x-forwarded-for")?.split(",")[0]?.trim() || request?.headers?.get("x-real-ip") || "";
           res = await fetch(backendUrl, {
             method: "POST",
-            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+              ...(clientIp ? { "X-Forwarded-For": clientIp, "X-Real-IP": clientIp } : {}),
+            },
             body: JSON.stringify({ email, password }),
             cache: "no-store",
           });
