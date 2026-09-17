@@ -40,6 +40,13 @@ type AssetRow = {
   statusColor: string
   value: string
   selected: boolean
+  /** Detail-panel fields, straight from the asset record. */
+  cost: number
+  bookValue: number
+  method: string
+  purchaseDate: string
+  responsible: string
+  attachments: { name: string; uploadedAt: string; url: string }[]
 }
 
 
@@ -50,6 +57,12 @@ export default function AssetRegisterPage() {
   const roleLabel = user?.role ? String(user.role).replace(/_/g, " ") : "Lead Pastor"
   const [activeCategory, setActiveCategory] = useState("All Assets")
   const [assets, setAssets] = useState<AssetRow[]>([])
+  const selected = assets.find((a) => a.selected) ?? assets[0] ?? null
+  const formatPanelDate = (value: string) => {
+    if (!value) return "—"
+    const d = new Date(value)
+    return Number.isNaN(d.getTime()) ? value : d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
+  }
   const [assetsLoading, setAssetsLoading] = useState(false)
   const [assetsError, setAssetsError] = useState<string | null>(null)
 
@@ -143,6 +156,23 @@ export default function AssetRegisterPage() {
             statusColor: getStatusColor(String(status)),
             value: formatCurrency(Number(valueAmount) || 0),
             selected: index === 0,
+            cost: Number(asset?.cost ?? asset?.purchaseValue ?? asset?.purchaseCost ?? 0) || 0,
+            bookValue: Number(asset?.currentBookValue ?? asset?.netBookValue ?? asset?.currentValue ?? asset?.cost ?? 0) || 0,
+            method: String(asset?.depreciationMethod ?? "").replace(/_/g, " "),
+            purchaseDate: String(asset?.acquisitionDate ?? asset?.purchaseDate ?? ""),
+            responsible: String(
+              asset?.responsiblePersonId?.firstName
+                ? `${asset.responsiblePersonId.firstName} ${asset.responsiblePersonId.lastName ?? ""}`.trim()
+                : asset?.custodianId?.firstName
+                  ? `${asset.custodianId.firstName} ${asset.custodianId.lastName ?? ""}`.trim()
+                  : asset?.responsiblePerson ?? asset?.custodian ?? ""
+            ),
+            attachments: (Array.isArray(asset?.attachments) ? asset.attachments : [])
+              .map((f: Record<string, unknown>) => ({
+                name: String(f?.fileName ?? f?.filename ?? f?.name ?? "Attachment"),
+                uploadedAt: String(f?.createdAt ?? f?.uploadedAt ?? ""),
+                url: String(f?.url ?? ""),
+              })),
           } as AssetRow
         })
 
@@ -270,7 +300,11 @@ export default function AssetRegisterPage() {
                     </thead>
                     <tbody>
                       {assets.map((row, i) => (
-                        <tr key={i} className={`border-b border-[#EEF1F6] last:border-0 transition-colors relative cursor-pointer ${row.selected ? 'bg-[#F8FAFC]' : 'hover:bg-gray-50/50'}`}>
+                        <tr
+                          key={i}
+                          onClick={() => setAssets((prev) => prev.map((a, j) => ({ ...a, selected: j === i })))}
+                          className={`border-b border-[#EEF1F6] last:border-0 transition-colors relative cursor-pointer ${row.selected ? 'bg-[#F8FAFC]' : 'hover:bg-gray-50/50'}`}
+                        >
                           <td className="py-6 px-5 align-top relative">
                             {row.selected && (
                               <div className="absolute left-0 top-0 bottom-0 w-[4px] bg-[#3B5BDB]" />
@@ -320,13 +354,11 @@ export default function AssetRegisterPage() {
                 </div>
 
                 <div className="mb-8 border-b border-[#EEF1F6] pb-8">
-                  <h2 className="text-[28px] xl:text-[32px] font-extrabold text-[#111827] mb-1.5 tracking-tight">PA System</h2>
-                  <div className="text-[#64748B] font-medium text-[14px] mb-6">SW-PA-001</div>
+                  <h2 className="text-[28px] xl:text-[32px] font-extrabold text-[#111827] mb-1.5 tracking-tight">{selected?.title ?? "No asset selected"}</h2>
+                  <div className="text-[#64748B] font-medium text-[14px] mb-6">{selected?.id ?? "—"}</div>
                   <div className="flex items-baseline gap-3">
-                    <span className="text-[32px] xl:text-[36px] font-extrabold text-[#3B5BDB] tracking-tight">₦850,000</span>
-                    <span className="text-[#10B981] font-bold text-[14px] flex items-center mb-1 bg-emerald-50 px-2 py-0.5 rounded-md">
-                      ↑ 2.4%
-                    </span>
+                    <span className="text-[32px] xl:text-[36px] font-extrabold text-[#3B5BDB] tracking-tight">{selected ? formatCurrency(selected.cost) : "—"}</span>
+                    
                   </div>
                 </div>
 
@@ -336,15 +368,15 @@ export default function AssetRegisterPage() {
                   <div className="space-y-4">
                     <div className="flex justify-between items-center text-[13px]">
                       <span className="text-[#64748B] font-medium">Depreciation Method</span>
-                      <span className="text-[#111827] font-extrabold">Straight Line (10%)</span>
+                      <span className="text-[#111827] font-extrabold capitalize">{selected?.method || "—"}</span>
                     </div>
                     <div className="flex justify-between items-center text-[13px]">
                       <span className="text-[#64748B] font-medium">Purchase Date</span>
-                      <span className="text-[#111827] font-extrabold">Mar 12, 2023</span>
+                      <span className="text-[#111827] font-extrabold">{formatPanelDate(selected?.purchaseDate ?? "")}</span>
                     </div>
                     <div className="flex justify-between items-center text-[13px]">
                       <span className="text-[#64748B] font-medium">Book Value</span>
-                      <span className="text-[#111827] font-extrabold text-[14px]">₦765,000</span>
+                      <span className="text-[#111827] font-extrabold text-[14px]">{selected ? formatCurrency(selected.bookValue) : "—"}</span>
                     </div>
                   </div>
                 </div>
@@ -356,7 +388,7 @@ export default function AssetRegisterPage() {
                     <div className="h-[42px] w-[42px] bg-[#E0E7FF] text-[#4F46E5] rounded-full flex items-center justify-center shrink-0">
                       <User className="h-[20px] w-[20px]" />
                     </div>
-                    <span className="font-extrabold text-[#111827] text-[14px]">Deacon Adebayo</span>
+                    <span className="font-extrabold text-[#111827] text-[14px]">{selected?.responsible || "Not assigned"}</span>
                   </div>
                 </div>
 
@@ -364,43 +396,19 @@ export default function AssetRegisterPage() {
                 <div>
                   <div className="flex items-center justify-between mb-5">
                     <h3 className="text-[#64748B] text-[11px] font-extrabold tracking-widest">ATTACHMENTS</h3>
-                    <button className="text-[#3B5BDB] font-extrabold text-[12px] hover:text-[#2e4ac0] transition-colors flex items-center gap-1 bg-[#EEF2FF] px-2.5 py-1 rounded-md">
-                      + Add
-                    </button>
-                  </div>
-                  
-                  <div className="space-y-3">
-                    {/* File 1 */}
-                    <div className="border border-[#EEF1F6] rounded-[12px] p-4 flex items-center justify-between bg-white hover:border-[#3B5BDB]/30 hover:shadow-sm transition-all cursor-pointer group">
-                      <div className="flex items-center gap-4">
-                        <div className="h-10 w-10 rounded-[8px] flex items-center justify-center bg-red-50 text-red-500 shrink-0">
-                          <FileText className="h-[18px] w-[18px]" strokeWidth={2.5} />
-                        </div>
-                        <div>
-                          <div className="font-extrabold text-[#111827] text-[12px] xl:text-[13px] mb-0.5 group-hover:text-[#3B5BDB] transition-colors line-clamp-1 break-all">Purchase_Receipt.pdf</div>
-                          <div className="text-[10px] text-[#9CA3AF] font-medium">Uploaded Mar 14, 2023</div>
-                        </div>
-                      </div>
-                      <button className="h-8 w-8 rounded-full flex items-center justify-center text-[#9CA3AF] hover:text-[#3B5BDB] hover:bg-[#EEF2FF] transition-colors shrink-0">
-                        <Download className="h-4 w-4" strokeWidth={2.5} />
-                      </button>
-                    </div>
-
-                    {/* File 2 */}
-                    <div className="border border-[#EEF1F6] rounded-[12px] p-4 flex items-center justify-between bg-white hover:border-[#3B5BDB]/30 hover:shadow-sm transition-all cursor-pointer group">
-                      <div className="flex items-center gap-4">
-                        <div className="h-10 w-10 rounded-[8px] flex items-center justify-center bg-blue-50 text-[#3B5BDB] shrink-0">
-                          <ImageIcon className="h-[18px] w-[18px]" strokeWidth={2.5} />
-                        </div>
-                        <div>
-                          <div className="font-extrabold text-[#111827] text-[12px] xl:text-[13px] mb-0.5 group-hover:text-[#3B5BDB] transition-colors line-clamp-1 break-all">Installation_View.jpg</div>
-                          <div className="text-[10px] text-[#9CA3AF] font-medium">Uploaded Mar 14, 2023</div>
-                        </div>
-                      </div>
-                      <button className="h-8 w-8 rounded-full flex items-center justify-center text-[#9CA3AF] hover:text-[#3B5BDB] hover:bg-[#EEF2FF] transition-colors shrink-0">
-                        <Download className="h-4 w-4" strokeWidth={2.5} />
-                      </button>
-                    </div>
+                    {(selected?.attachments ?? []).length === 0 ? (
+                      <div className="text-[12px] text-[#9CA3AF]">No attachments on this asset.</div>
+                    ) : (
+                      selected!.attachments.map((file, index) => (
+                        <a key={index} href={file.url || undefined} target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded-[10px] border border-[#EEF1F6] p-3 hover:bg-[#F8FAFC] transition-colors">
+                          <FileText className="h-5 w-5 shrink-0 text-[#3B5BDB]" />
+                          <div className="min-w-0">
+                            <div className="truncate text-[13px] font-bold text-[#111827]">{file.name}</div>
+                            <div className="text-[10px] text-[#9CA3AF] font-medium">{file.uploadedAt ? `Uploaded ${formatPanelDate(file.uploadedAt)}` : ""}</div>
+                          </div>
+                        </a>
+                      ))
+                    )}
                   </div>
                 </div>
 

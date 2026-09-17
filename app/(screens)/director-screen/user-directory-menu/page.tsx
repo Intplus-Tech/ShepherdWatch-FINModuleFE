@@ -146,6 +146,24 @@ export default function Page() {
     fetchBranches()
   }, [])
 
+  const branchNameFor = (user: { branch?: string; rawBranchId?: string }) => {
+    if (user.branch) return user.branch
+    if (!user.rawBranchId) return ""
+    const match = branches.find((br) => String(br?._id ?? br?.id ?? "") === user.rawBranchId)
+    return match ? String(match.name ?? match.branchName ?? "") : ""
+  }
+
+  const formatLastActive = (value: unknown) => {
+    if (!value) return ""
+    const date = new Date(String(value))
+    if (Number.isNaN(date.getTime())) return String(value)
+    const days = Math.floor((Date.now() - date.getTime()) / 86400000)
+    if (days <= 0) return "Today"
+    if (days === 1) return "Yesterday"
+    if (days < 30) return `${days} days ago`
+    return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
+  }
+
   const handleOpenChangeBranch = (user: any) => {
     setDropdownIndex(null)
     setChangeBranchUserId(user.id)
@@ -417,9 +435,13 @@ export default function Page() {
             role: u.roleName || u.role || "Staff",
             roleTone,
             roleDot,
-            branch: u.branchId?.name || u.branch || u.address || "HQ",
+            // A populated branch carries its name; a bare id is resolved at render
+            // time against the branch list, which may load after the users do.
+            branch: u.branchId?.name || u.branch?.name || "",
             rawBranchId: u.branchId?._id || u.branchId?.id || (typeof u.branchId === "string" ? u.branchId : ""),
-            lastActive: u.lastActive || "N/A",
+            // The API has no last-login field yet; read the usual names in case one
+            // appears, otherwise the column stays blank rather than claiming N/A.
+            lastActive: u.lastLoginAt ?? u.lastLogin ?? u.lastActiveAt ?? u.lastActive ?? null,
             status: u.status ? u.status.charAt(0).toUpperCase() + u.status.slice(1) : "Unknown",
             rawStatus,
             statusTone,
@@ -600,10 +622,10 @@ export default function Page() {
                       <td className="py-3 px-4 text-[#6B7280]">
                         <span className="inline-flex items-center gap-1">
                           <MapPin className="h-3.5 w-3.5 text-[#9CA3AF]" />
-                          {user.branch}
+                          {branchNameFor(user) || <span className="text-[#9CA3AF]">Unassigned</span>}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-[#6B7280]">{user.lastActive}</td>
+                      <td className="py-3 px-4 text-[#6B7280]">{formatLastActive(user.lastActive) || <span className="text-[#9CA3AF]">—</span>}</td>
                       <td className="py-3 px-4">
                         <span className={`rounded-full px-2 py-1 text-[10px] ${user.statusTone}`}>{user.status}</span>
                       </td>
@@ -816,7 +838,7 @@ export default function Page() {
                   <div className="text-[11px] font-semibold text-[#6B7280] mb-1">Internal Reference</div>
                   <div className="text-[13px] text-[#4B5563] break-all font-mono opacity-80">ID: {selectedUser._id || selectedUser.id}</div>
                   <div className="text-[11px] text-[#9CA3AF] mt-2">
-                    {selectedUser.lastActive ? `Last online: ${selectedUser.lastActive}` : "Never logged in"} | 
+                    {selectedUser.lastActive ? `Last online: ${formatLastActive(selectedUser.lastActive)}` : "Last login not recorded"} | 
                     Joined: {selectedUser.createdAt ? new Date(selectedUser.createdAt).toLocaleDateString() : 'N/A'}
                   </div>
                 </div>

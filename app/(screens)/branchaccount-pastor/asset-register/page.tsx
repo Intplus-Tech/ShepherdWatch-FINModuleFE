@@ -57,6 +57,13 @@ type AssetRow = {
   statusColor: string
   value: string
   active: boolean
+  /** Detail-panel fields, straight from the asset record. */
+  cost: number
+  bookValue: number
+  method: string
+  purchaseDate: string
+  responsible: string
+  attachments: { name: string; uploadedAt: string; url: string }[]
 }
 
 type AssetFormState = {
@@ -93,6 +100,12 @@ export default function Page() {
   const [createSuccess, setCreateSuccess] = useState<string | null>(null)
   const [activeCategory, setActiveCategory] = useState("All Assets")
   const [assets, setAssets] = useState<AssetRow[]>([])
+  const selected = assets.find((a) => a.active) ?? assets[0] ?? null
+  const formatPanelDate = (value: string) => {
+    if (!value) return "—"
+    const d = new Date(value)
+    return Number.isNaN(d.getTime()) ? value : d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
+  }
   const [assetsLoading, setAssetsLoading] = useState(false)
   const [assetsError, setAssetsError] = useState<string | null>(null)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
@@ -290,6 +303,24 @@ export default function Page() {
             statusColor: getStatusColor(status),
             value: formatCurrencyLocal(valueAmount || 0),
             active: index === 0,
+            cost: Number(asset?.cost ?? asset?.purchaseValue ?? asset?.purchaseCost ?? 0) || 0,
+            bookValue: Number(asset?.currentBookValue ?? asset?.netBookValue ?? asset?.currentValue ?? asset?.cost ?? 0) || 0,
+            method: String(asset?.depreciationMethod ?? "").replace(/_/g, " "),
+            purchaseDate: String(asset?.acquisitionDate ?? asset?.purchaseDate ?? ""),
+            responsible: (() => {
+              const person = ((asset as Record<string, unknown>)?.responsiblePersonId ?? (asset as Record<string, unknown>)?.custodianId) as
+                | { firstName?: string; lastName?: string }
+                | string
+                | undefined
+              if (person && typeof person === "object") return `${person.firstName ?? ""} ${person.lastName ?? ""}`.trim()
+              const loose = asset as Record<string, unknown>
+              return String(loose?.responsiblePerson ?? loose?.custodian ?? "")
+            })(),
+            attachments: (Array.isArray(asset?.attachments) ? asset.attachments : []).map((f: Record<string, unknown>) => ({
+              name: String(f?.fileName ?? f?.filename ?? f?.name ?? "Attachment"),
+              uploadedAt: String(f?.createdAt ?? f?.uploadedAt ?? ""),
+              url: String(f?.url ?? ""),
+            })),
           } as AssetRow
         })
 
@@ -645,7 +676,7 @@ export default function Page() {
                 {/* Mobile Card List */}
                 <div className="lg:hidden divide-y divide-[#EEF1F6]/60">
                   {filteredAssets.map((asset, idx) => (
-                    <div key={idx} className={`p-4 sm:p-5 transition-colors ${asset.active ? "bg-[#F8FAFC]" : "bg-white"}`}>
+                    <div key={idx} onClick={() => setAssets((prev) => prev.map((a) => ({ ...a, active: a.rawId === asset.rawId })))} className={`p-4 sm:p-5 transition-colors cursor-pointer ${asset.active ? "bg-[#F8FAFC]" : "bg-white"}`}>
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-center gap-2">
                           <div className={`text-[12px] font-bold ${asset.active ? "text-[#2563EB]" : "text-[#6B7280]"}`}>
@@ -711,7 +742,7 @@ export default function Page() {
                     </thead>
                     <tbody className="divide-y divide-[#EEF1F6]/50">
                       {filteredAssets.map((asset, idx) => (
-                        <tr key={idx} className={`relative hover:bg-[#F8FAFC] transition-colors cursor-pointer ${asset.active ? 'bg-[#F8FAFC]/50' : ''}`}>
+                        <tr key={idx} onClick={() => setAssets((prev) => prev.map((a) => ({ ...a, active: a.rawId === asset.rawId })))} className={`relative hover:bg-[#F8FAFC] transition-colors cursor-pointer ${asset.active ? 'bg-[#F8FAFC]/50' : ''}`}>
                           <td className="py-4 pl-5 pr-4 align-top relative">
                             {/* Active Blue Indicator */}
                             {asset.active && (
@@ -776,8 +807,8 @@ export default function Page() {
                     <div className="inline-flex items-center justify-center px-2 py-1 rounded-[6px] bg-[#EEF2FF] text-[#3B5BDB] text-[10px] font-[900] uppercase tracking-widest mb-3">
                       ASSET DETAILS
                     </div>
-                    <div className="text-[24px] font-[800] text-[#111827] tracking-tight mb-0.5 leading-none">PA System</div>
-                    <div className="text-[13px] font-semibold text-[#9CA3AF] tracking-wide">SW-PA-001</div>
+                    <div className="text-[24px] font-[800] text-[#111827] tracking-tight mb-0.5 leading-none">{selected?.name ?? "No asset selected"}</div>
+                    <div className="text-[13px] font-semibold text-[#9CA3AF] tracking-wide">{selected?.id ?? "—"}</div>
                   </div>
                   <button className="h-8 w-8 -mr-2 -mt-2 rounded-full flex items-center justify-center text-[#9CA3AF] hover:bg-gray-50 transition-colors">
                     <X className="h-5 w-5" />
@@ -794,10 +825,9 @@ export default function Page() {
                       lineHeight: '29.29px'
                     }}
                   >
-                    ₦850,000
+                    {selected ? formatCurrency(selected.cost) : "—"}
                   </div>
-                  <div className="text-[12px] font-bold text-[#10B981] flex items-center mt-1">
-                    <span className="mr-0.5">↑</span>2.4%
+                  <div className="hidden">
                   </div>
                 </div>
 
@@ -807,15 +837,15 @@ export default function Page() {
                   <div className="space-y-4 text-[13px]">
                     <div className="flex items-center justify-between">
                       <span className="font-medium text-[#6B7280]">Depreciation Method</span>
-                      <span className="font-bold text-[#111827]">Straight Line (10%)</span>
+                      <span className="font-bold text-[#111827] capitalize">{selected?.method || "—"}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="font-medium text-[#6B7280]">Purchase Date</span>
-                      <span className="font-bold text-[#111827]">Mar 12, 2023</span>
+                      <span className="font-bold text-[#111827]">{formatPanelDate(selected?.purchaseDate ?? "")}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="font-medium text-[#6B7280]">Book Value</span>
-                      <span className="font-[800] text-[#111827]">₦765,000</span>
+                      <span className="font-[800] text-[#111827]">{selected ? formatCurrency(selected.bookValue) : "—"}</span>
                     </div>
                   </div>
                 </div>
@@ -827,7 +857,7 @@ export default function Page() {
                     <div className="h-[36px] w-[36px] rounded-full bg-[#DBEAFE] text-[#2563EB] flex items-center justify-center shrink-0">
                       <User className="h-4.5 w-4.5" />
                     </div>
-                    <span className="text-[14px] font-bold text-[#111827]">Deacon Adebayo</span>
+                    <span className="text-[14px] font-bold text-[#111827]">{selected?.responsible || "Not assigned"}</span>
                   </div>
                 </div>
 
@@ -835,61 +865,19 @@ export default function Page() {
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <h4 className="text-[11px] font-[800] text-[#6B7280] uppercase tracking-widest">ATTACHMENTS</h4>
-                    <button
-                      type="button"
-                      onClick={() => attachmentInputRef.current?.click()}
-                      disabled={attaching}
-                      className="text-[12px] font-bold text-[#2563EB] hover:text-[#1D4ED8] transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {attaching ? "Saving…" : "+ Add"}
-                    </button>
-                    <input
-                      ref={attachmentInputRef}
-                      type="file"
-                      multiple
-                      accept="image/*,application/pdf"
-                      className="hidden"
-                      onChange={(e) => {
-                        handleAddAttachment(e.target.files)
-                        e.target.value = ""
-                      }}
-                    />
-                  </div>
-
-                  {(attachError || attachSuccess) && (
-                    <p className={`mb-2 text-[11px] font-medium ${attachError ? "text-[#EF4444]" : "text-emerald-600"}`}>
-                      {attachError ?? attachSuccess}
-                    </p>
-                  )}
-
-                  <div className="space-y-2">
-                    {/* File 1 */}
-                    <div className="flex items-center justify-between p-3 rounded-[10px] bg-white border border-[#EEF1F6] hover:border-[#E5E7EB] transition-colors group cursor-pointer">
-                      <div className="flex items-start gap-3">
-                        <div className="mt-0.5 text-[#EF4444]"><FileText className="h-[18px] w-[18px]" strokeWidth={2.5} /></div>
-                        <div>
-                          <div className="text-[13px] font-bold text-[#111827] list-none tracking-tight">Purchase_Receipt.pdf</div>
-                          <div className="text-[10px] font-medium text-[#9CA3AF]">Uploaded Mar 14, 2023</div>
-                        </div>
-                      </div>
-                      <button className="text-[#9CA3AF] group-hover:text-[#2563EB] transition-colors">
-                        <Download className="h-4 w-4" />
-                      </button>
-                    </div>
-
-                    {/* File 2 */}
-                    <div className="flex items-center justify-between p-3 rounded-[10px] bg-white border border-[#EEF1F6] hover:border-[#E5E7EB] transition-colors group cursor-pointer">
-                      <div className="flex items-start gap-3">
-                        <div className="mt-0.5 text-[#3B82F6]"><ImageIcon className="h-[18px] w-[18px]" strokeWidth={2.5} /></div>
-                        <div>
-                          <div className="text-[13px] font-bold text-[#111827] list-none tracking-tight">Installation_View.jpg</div>
-                          <div className="text-[10px] font-medium text-[#9CA3AF]">Uploaded Mar 14, 2023</div>
-                        </div>
-                      </div>
-                      <button className="text-[#9CA3AF] group-hover:text-[#2563EB] transition-colors">
-                        <Download className="h-4 w-4" />
-                      </button>
-                    </div>
+                    {(selected?.attachments ?? []).length === 0 ? (
+                      <div className="text-[12px] text-[#9CA3AF]">No attachments on this asset.</div>
+                    ) : (
+                      selected!.attachments.map((file, index) => (
+                        <a key={index} href={file.url || undefined} target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded-[10px] border border-[#EEF1F6] p-3 hover:bg-[#F8FAFC] transition-colors">
+                          <FileText className="h-5 w-5 shrink-0 text-[#2563EB]" />
+                          <div className="min-w-0">
+                            <div className="truncate text-[13px] font-bold text-[#111827]">{file.name}</div>
+                            <div className="text-[10px] font-medium text-[#9CA3AF]">{file.uploadedAt ? `Uploaded ${formatPanelDate(file.uploadedAt)}` : ""}</div>
+                          </div>
+                        </a>
+                      ))
+                    )}
                   </div>
                 </div>
 

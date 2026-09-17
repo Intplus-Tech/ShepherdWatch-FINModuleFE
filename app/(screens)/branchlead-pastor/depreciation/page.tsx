@@ -4,6 +4,7 @@ import { API_V1 } from "@/lib/api";
 
 import Image from "next/image"
 import { useEffect, useMemo, useState } from "react"
+import { useBranchContext } from "@/components/hooks/useBranchContext"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -46,6 +47,74 @@ export default function DepreciationPage() {
   const [scheduleLoading, setScheduleLoading] = useState(false)
   const [scheduleError, setScheduleError] = useState<string | null>(null)
   const [categoryData, setCategoryData] = useState<CategoryRow[]>([])
+  const { branchId: contextBranchId } = useBranchContext()
+  const branchId = contextBranchId || user?.branchId || user?.tenantId || user?.tenant?.id || ""
+
+  // The branch's depreciation picture for the year, from the analysis endpoint:
+  // it drives the three cards and the category table.
+  type AnalysisCategory = { className: string; assetCount: number; totalCost: number; openingNBV: number; annualDepreciation: number; closingNBV: number }
+  type Analysis = { fiscalYear: number; totalAssets: number; totalAnnualDepreciation: number; categories: AnalysisCategory[]; monthlyDistribution: { month: number; depreciation: number }[] }
+  const [analysis, setAnalysis] = useState<Analysis | null>(null)
+  useEffect(() => {
+    let active = true
+    const query = branchId ? `?branchId=${encodeURIComponent(branchId)}` : ""
+    fetch(`${API_V1}/assets/depreciation-analysis${query}`, { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (!active || !json) return
+        const data = (json?.data ?? json) as Partial<Analysis> | null
+        if (!data || typeof data !== "object") return
+        setAnalysis({
+          fiscalYear: Number(data.fiscalYear ?? new Date().getFullYear()),
+          totalAssets: Number(data.totalAssets ?? 0),
+          totalAnnualDepreciation: Number(data.totalAnnualDepreciation ?? 0),
+          categories: Array.isArray(data.categories) ? data.categories : [],
+          monthlyDistribution: Array.isArray(data.monthlyDistribution) ? data.monthlyDistribution : [],
+        })
+      })
+      .catch(() => {
+        /* the cards fall back to the asset aggregation below */
+      })
+    return () => {
+      active = false
+    }
+  }, [branchId])
+
+  useEffect(() => {
+    if (!analysis || analysis.categories.length === 0) return
+    const fmt = (v: number) => new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", maximumFractionDigits: 0 }).format(v)
+    setCategoryData(
+      analysis.categories.map((c) => ({
+        category: c.className || "Uncategorised",
+        method: "—",
+        methodColor: "bg-[#F1F5F9] text-[#475569]",
+        cost: fmt(Number(c.totalCost ?? 0)),
+        openingNbv: fmt(Number(c.openingNBV ?? 0)),
+        currentDepr: fmt(Number(c.annualDepreciation ?? 0)),
+        closingNbv: fmt(Number(c.closingNBV ?? 0)),
+      }))
+    )
+  }, [analysis])
+
+  const thisMonth = new Date().getMonth() + 1
+  const monthlyCharge = analysis?.monthlyDistribution.find((m) => Number(m.month) === thisMonth)?.depreciation
+    ?? (analysis ? analysis.totalAnnualDepreciation / 12 : 0)
+  const accumulated = (analysis?.categories ?? []).reduce((sum, c) => sum + Math.max(0, Number(c.totalCost) - Number(c.closingNBV)), 0)
+  const portfolio = (analysis?.categories ?? []).reduce(
+    (acc, c) => ({
+      cost: acc.cost + Number(c.totalCost ?? 0),
+      opening: acc.opening + Number(c.openingNBV ?? 0),
+      depr: acc.depr + Number(c.annualDepreciation ?? 0),
+      closing: acc.closing + Number(c.closingNBV ?? 0),
+    }),
+    { cost: 0, opening: 0, depr: 0, closing: 0 }
+  )
+  const compact = (value: number) => {
+    const abs = Math.abs(value)
+    if (abs >= 1_000_000) return `₦${(value / 1_000_000).toFixed(2).replace(/\.?0+$/, "")}M`
+    if (abs >= 1_000) return `₦${Math.round(value / 1_000)}k`
+    return `₦${Math.round(value).toLocaleString()}`
+  }
 
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat("en-NG", {
@@ -135,7 +204,7 @@ export default function DepreciationPage() {
             currentDepr: formatCurrency(agg.currentDepr),
             closingNbv: formatCurrency(agg.closingNbv),
           }))
-          setCategoryData(rows)
+          setCategoryData((prev) => (prev.length > 0 && prev[0].category !== "General" ? prev : rows))
         }
 
         const firstAsset = assets[0] ?? null
@@ -247,11 +316,8 @@ export default function DepreciationPage() {
                   <h3 className="text-[11px] font-extrabold text-[#94A3B8] tracking-widest uppercase">ANNUAL CHARGE</h3>
                   <Calendar className="h-[18px] w-[18px] text-[#3B5BDB] stroke-[2]" />
                 </div>
-                <div className="text-[#111827] mb-3" style={{ fontWeight: 700, fontSize: '26.67px', lineHeight: '33.33px', letterSpacing: '-0.67px', verticalAlign: 'middle' }}>₦1.45M</div>
-                <div className="flex items-center gap-1.5 text-[12px] font-bold text-[#10B981]">
-                  <TrendingUp className="h-[14px] w-[14px] stroke-[2.5]" />
-                  <span>+2.4% vs LY</span>
-                </div>
+                <div className="text-[#111827] mb-3" style={{ fontWeight: 700, fontSize: '26.67px', lineHeight: '33.33px', letterSpacing: '-0.67px', verticalAlign: 'middle' }}>{analysis ? compact(analysis.totalAnnualDepreciation) : "—"}</div>
+                <div className="text-[12px] font-bold text-[#64748B]">FY {analysis?.fiscalYear ?? new Date().getFullYear()} · {analysis?.totalAssets ?? 0} assets</div>
               </div>
               
               {/* Card 2 */}
@@ -260,11 +326,8 @@ export default function DepreciationPage() {
                   <h3 className="text-[11px] font-extrabold text-[#94A3B8] tracking-widest uppercase">MONTHLY CHARGE</h3>
                   <Calendar className="h-[18px] w-[18px] text-[#3B5BDB] stroke-[2]" />
                 </div>
-                <div className="text-[#111827] mb-3" style={{ fontWeight: 700, fontSize: '26.67px', lineHeight: '33.33px', letterSpacing: '-0.67px', verticalAlign: 'middle' }}>₦120k</div>
-                <div className="flex items-center gap-1.5 text-[12px] font-bold text-[#F43F5E]">
-                  <TrendingDown className="h-[14px] w-[14px] stroke-[2.5]" />
-                  <span>-0.5% vs Prev Month</span>
-                </div>
+                <div className="text-[#111827] mb-3" style={{ fontWeight: 700, fontSize: '26.67px', lineHeight: '33.33px', letterSpacing: '-0.67px', verticalAlign: 'middle' }}>{analysis ? compact(monthlyCharge) : "—"}</div>
+                <div className="text-[12px] font-bold text-[#64748B]">{new Date().toLocaleDateString("en-GB", { month: "long" })} charge</div>
               </div>
 
               {/* Card 3 */}
@@ -273,11 +336,8 @@ export default function DepreciationPage() {
                   <h3 className="text-[11px] font-extrabold text-[#94A3B8] tracking-widest uppercase">ACCUMULATED DEPR</h3>
                   <WalletIcon className="h-[18px] w-[18px] text-[#3B5BDB] stroke-[2]" />
                 </div>
-                <div className="text-[#111827] mb-3" style={{ fontWeight: 700, fontSize: '26.67px', lineHeight: '33.33px', letterSpacing: '-0.67px', verticalAlign: 'middle' }}>₦6.7M</div>
-                <div className="flex items-center gap-1.5 text-[12px] font-bold text-[#10B981]">
-                  <TrendingUp className="h-[14px] w-[14px] stroke-[2.5]" />
-                  <span>+12.1% total base</span>
-                </div>
+                <div className="text-[#111827] mb-3" style={{ fontWeight: 700, fontSize: '26.67px', lineHeight: '33.33px', letterSpacing: '-0.67px', verticalAlign: 'middle' }}>{analysis ? compact(accumulated) : "—"}</div>
+                <div className="text-[12px] font-bold text-[#64748B]">{portfolio.cost > 0 ? `${Math.round((accumulated / portfolio.cost) * 100)}% of cost base` : "No assets yet"}</div>
               </div>
             </div>
 
@@ -335,16 +395,16 @@ export default function DepreciationPage() {
                       </td>
                       <td className="py-6 px-4 align-middle"></td>
                       <td className="py-6 px-4 align-middle text-right">
-                        <span className="text-[#111827] font-extrabold text-[15px]">₦67.7M</span>
+                        <span className="text-[#111827] font-extrabold text-[15px]">{compact(portfolio.cost)}</span>
                       </td>
                       <td className="py-6 px-4 align-middle text-right">
-                        <span className="text-[#111827] font-extrabold text-[15px]">₦53.9M</span>
+                        <span className="text-[#111827] font-extrabold text-[15px]">{compact(portfolio.opening)}</span>
                       </td>
                       <td className="py-6 px-4 align-middle text-right">
-                        <span className="text-[#EF4444] font-extrabold text-[15px]">₦3.1M</span>
+                        <span className="text-[#EF4444] font-extrabold text-[15px]">{compact(portfolio.depr)}</span>
                       </td>
                       <td className="py-6 px-6 sm:px-8 align-middle text-right">
-                        <span className="text-[#3B5BDB] font-extrabold text-[15px]">₦50.8M</span>
+                        <span className="text-[#3B5BDB] font-extrabold text-[15px]">{compact(portfolio.closing)}</span>
                       </td>
                     </tr>
                   </tfoot>

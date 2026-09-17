@@ -165,11 +165,11 @@ export default function BranchLeadPastorSidebar({ mobileOpen, onMobileClose }: P
                     isFinanceActive ? "text-[#2563EB]" : "text-[#6B7280] hover:bg-gray-50 hover:text-[#111827]"
                   )}
                 >
-                  <div className="flex items-center gap-3">
-                    <FileText className={cn("h-5 w-5", isFinanceActive ? "text-[#2563EB]" : "text-[#6B7280]")} strokeWidth={2} />
-                    Financial Management
+                  <div className="flex min-w-0 items-center gap-3 text-left">
+                    <FileText className={cn("h-5 w-5 shrink-0", isFinanceActive ? "text-[#2563EB]" : "text-[#6B7280]")} strokeWidth={2} />
+                    <span className="truncate whitespace-nowrap">Financial Management</span>
                   </div>
-                  <ChevronDown className={cn("h-4 w-4 transition-transform", isFinancialSubOpen ? "rotate-180" : "")} />
+                  <ChevronDown className={cn("h-4 w-4 shrink-0 transition-transform", isFinancialSubOpen ? "rotate-180" : "")} />
                 </button>
 
                 {isFinancialSubOpen && (

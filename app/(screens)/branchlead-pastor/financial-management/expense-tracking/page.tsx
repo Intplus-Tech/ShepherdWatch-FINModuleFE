@@ -1,5 +1,5 @@
 "use client"
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
@@ -26,15 +26,47 @@ import {
 import Link from "next/link"
 import { useAuth } from "@/components/auth/AuthProvider"
 import { useTransactions } from "@/components/hooks/useTransactions"
+import { useTransactionSummaries } from "@/components/hooks/useTransactionSummaries"
+import { useDashboardTransactionsSummary } from "@/components/hooks/useDashboardTransactionsSummary"
+import { useBranchContext } from "@/components/hooks/useBranchContext"
 import { TransactionCreateModal } from "@/components/financial/TransactionCreateModal"
 import BranchLeadPastorSidebar from "@/components/navigation/BranchLeadPastorSidebar"
+
+
+// Compact naira for the KPI cards, as the design draws them.
+function compactNaira(value: number): string {
+  const abs = Math.abs(value)
+  if (abs >= 1_000_000) return `₦${(value / 1_000_000).toFixed(2).replace(/\.?0+$/, "")}M`
+  if (abs >= 1_000) return `₦${Math.round(value / 1_000)}k`
+  return `₦${Math.round(value).toLocaleString()}`
+}
+
+function pctBadge(value: number | null | undefined): { text: string; cls: string } | null {
+  if (value === null || value === undefined || !Number.isFinite(value)) return null
+  const up = value >= 0
+  return { text: `${up ? "+" : ""}${value.toFixed(0)}%`, cls: up ? "bg-[#ECFDF3] text-[#059669]" : "bg-rose-50 text-rose-600" }
+}
 
 export default function Page() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { user } = useAuth();
   const displayName = user?.name || user?.email || "User";
   const roleLabel = user?.role ? String(user.role).replace(/_/g, " ") : "Lead Pastor";
-  const branchId = user?.branchId ?? user?.tenantId ?? user?.tenant?.id ?? "";
+  const { branchId: contextBranchId } = useBranchContext()
+  const branchId = contextBranchId || user?.branchId || user?.tenantId || user?.tenant?.id || "";
+  const now = useMemo(() => new Date(), [])
+  // The month's figures come from the expense-summary endpoint, which returns
+  // exactly what these cards show; the change badge from the dashboard summary.
+  const { expense: monthSummary } = useTransactionSummaries({ branchId: branchId || undefined, month: now.getMonth() + 1, fiscalYear: now.getFullYear() })
+  const { summary: txTrends, fetchTransactionsSummary } = useDashboardTransactionsSummary()
+  useEffect(() => {
+    if (branchId) fetchTransactionsSummary({ branchId })
+  }, [branchId, fetchTransactionsSummary])
+  const trend = (txTrends as { trends?: Record<string, { delta?: number | null }> } | null)?.trends
+  const monthDelta = pctBadge(trend?.outflowMonth?.delta == null ? null : Number(trend?.outflowMonth?.delta) * 100)
+  const unverifiedCount = Number((txTrends as { unverifiedCount?: number } | null)?.unverifiedCount ?? 0)
+  const targetPct = monthSummary && monthSummary.budgetTarget > 0 ? Math.min(100, Math.round((monthSummary.totalApproved / monthSummary.budgetTarget) * 100)) : null
+  const vsTarget = pctBadge(monthSummary?.vsTarget)
   const [page, setPage] = useState(1);
   const { transactions: allTransactions, pagination, loading, error, refresh } = useTransactions({ page, limit: 20 });
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -131,42 +163,39 @@ export default function Page() {
             
             {/* 4 Main Metrics */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {/* Card 1: TOTAL APPROVED */}
-            <div className="rounded-[16px] border border-[#E5E7EB] bg-white p-5 shadow-sm">
-              <div className="flex items-center justify-between mb-3">
-                <div className="text-[11px] font-bold tracking-widest text-[#6B7280]">TOTAL APPROVED</div>
-                <div className="rounded-full bg-[#ECFDF3] px-2 py-0.5 text-[11px] font-bold text-[#059669]">+12%</div>
+              <div className="rounded-[16px] border border-[#E5E7EB] bg-white p-5 shadow-sm">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="text-[11px] font-bold tracking-widest text-[#6B7280]">TOTAL APPROVED</div>
+                  {monthDelta && (
+                    <div className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${monthDelta.cls}`}>{monthDelta.text}</div>
+                  )}
+                </div>
+                <div className="text-[26.67px] font-black text-[#111827] leading-8 tracking-normal">{monthSummary ? compactNaira(monthSummary.totalApproved) : "—"}</div>
               </div>
-              <div className="text-[26.67px] font-black text-[#111827] leading-[32px] tracking-normal">₦1.95M</div>
-            </div>
 
-            {/* Card 2: PAID OUT */}
-            <div className="rounded-[16px] border border-[#E5E7EB] bg-white p-5 shadow-sm">
-              <div className="flex items-center justify-between mb-3">
-                <div className="text-[11px] font-bold tracking-widest text-[#6B7280]">PAID OUT</div>
-                <div className="rounded-full bg-[#ECFDF3] px-2 py-0.5 text-[11px] font-bold text-[#059669]">+5%</div>
+              <div className="rounded-[16px] border border-[#E5E7EB] bg-white p-5 shadow-sm">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="text-[11px] font-bold tracking-widest text-[#6B7280]">DAILY AVG</div>
+                </div>
+                <div className="text-[26.67px] font-black text-[#111827] leading-8 tracking-normal">{monthSummary ? compactNaira(monthSummary.dailyAverage) : "—"}</div>
               </div>
-              <div className="text-[26.67px] font-black text-[#111827] leading-[32px] tracking-normal">₦1.48M</div>
-            </div>
 
-            {/* Card 3: PENDING APPROVAL */}
-            <div className="rounded-[16px] border border-[#E5E7EB] bg-white p-5 shadow-sm">
-              <div className="flex items-center justify-between mb-3">
-                <div className="text-[11px] font-bold tracking-widest text-[#6B7280]">PENDING APPROVAL</div>
-                <div className="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-600">-2%</div>
+              <div className="rounded-[16px] border border-[#E5E7EB] bg-white p-5 shadow-sm">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="text-[11px] font-bold tracking-widest text-[#6B7280]">PENDING APPROVAL</div>
+                </div>
+                <div className="text-[26.67px] font-black text-[#111827] leading-8 tracking-normal">{monthSummary ? compactNaira(monthSummary.pendingApproval) : "—"}</div>
               </div>
-              <div className="text-[26.67px] font-black text-[#111827] leading-[32px] tracking-normal">₦240K</div>
-            </div>
 
             {/* Card 4: VS TARGET */}
             <div className="rounded-[16px] border border-[#E5E7EB] bg-white p-5 shadow-sm flex flex-col justify-center">
               <div className="flex items-center justify-between mb-1">
                 <div className="text-[11px] font-bold tracking-widest text-[#6B7280]">VS TARGET</div>
-                <div className="rounded-full bg-[#ECFDF3] px-2 py-0.5 text-[11px] font-bold text-[#059669]">+8%</div>
+                  {vsTarget && <div className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${vsTarget.cls}`}>{vsTarget.text}</div>}
               </div>
-              <div className="text-[26.67px] font-black text-[#111827] leading-[32px] tracking-normal mb-2">81%</div>
+              <div className="text-[26.67px] font-black text-[#111827] leading-[32px] tracking-normal mb-2">{targetPct === null ? "—" : `${targetPct}%`}</div>
               <div className="h-[6px] w-full rounded-full bg-[#F3F4F6] overflow-hidden">
-                <div className="h-full bg-[#2563EB]" style={{ width: '81%' }} />
+                <div className="h-full bg-[#2563EB]" style={{ width: `${targetPct ?? 0}%` }} />
               </div>
             </div>
             </div>
@@ -221,7 +250,7 @@ export default function Page() {
               aria-label="Unverified tab"
               className={`pb-3 border-b-[3px] text-[14px] font-bold transition-colors flex items-center gap-2 ${activeTab === "unverified" ? "border-[#2563EB] text-[#2563EB]" : "border-transparent text-[#6B7280] hover:text-[#111827]"}`}
             >
-              Unverified <span className="rounded-[6px] bg-orange-50 px-2 py-0.5 text-[10px] font-extrabold text-orange-600">₦25k</span>
+              Unverified {unverifiedCount > 0 && <span className="rounded-[6px] bg-orange-50 px-2 py-0.5 text-[10px] font-extrabold text-orange-600">{unverifiedCount}</span>}
             </button>
           </div>
 
