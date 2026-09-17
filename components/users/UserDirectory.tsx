@@ -499,11 +499,11 @@ export default function UserDirectory({
             roleDot,
             // A populated branch carries its name; a bare id is resolved at render
             // time against the branch list, which may load after the users do.
-            branch: u.branchId?.name || u.branch?.name || "",
-            rawBranchId: u.branchId?._id || u.branchId?.id || (typeof u.branchId === "string" ? u.branchId : ""),
+            branch: u.branchId?.name || u.branch?.name || u.branchName || "",
+            rawBranchId: u.branchId?._id || u.branchId?.id || (typeof u.branchId === "string" ? u.branchId : "") || u.branch?._id || (typeof u.branch === "string" ? u.branch : ""),
             // The API has no last-login field yet; read the usual names in case one
             // appears, otherwise the column stays blank rather than claiming N/A.
-            lastActive: u.lastLoginAt ?? u.lastLogin ?? u.lastActiveAt ?? u.lastActive ?? null,
+            lastActive: u.lastLoginAt ?? u.lastLogin ?? u.lastLoginDate ?? u.lastSignInAt ?? u.lastActiveAt ?? u.lastActive ?? u.lastSeenAt ?? u.lastSeen ?? null,
             status: u.status ? u.status.charAt(0).toUpperCase() + u.status.slice(1) : "Unknown",
             rawStatus,
             statusTone,
