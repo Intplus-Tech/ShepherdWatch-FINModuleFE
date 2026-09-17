@@ -9,6 +9,28 @@ import { getCsrfTokenFromCookie } from "@/lib/csrf"
  * client-side, which only ever reflected the current page; these come from the
  * backend across the whole period.
  */
+/** What /transactions/income-summary returns for the month. */
+export type IncomeSummary = {
+  totalCollected: number
+  dailyAverage: number
+  projected: number
+  budgetTarget: number
+  /** Signed percentage against the target; negative means behind. */
+  vsTarget: number
+  trend: { month: number; total: number }[]
+}
+
+/** What /transactions/expense-summary returns for the month. */
+export type ExpenseSummary = {
+  totalApproved: number
+  pendingApproval: number
+  dailyAverage: number
+  projected: number
+  budgetTarget: number
+  vsTarget: number
+  trend: { month: number; total: number }[]
+}
+
 export type TransactionSummary = {
   bankBalance: number
   totalIncome: number
@@ -36,8 +58,8 @@ async function getJson(path: string): Promise<Record<string, unknown> | null> {
   return inner && typeof inner === "object" ? (inner as Record<string, unknown>) : data
 }
 
-export function useTransactionSummaries(params: { branchId?: string; period?: string } = {}) {
-  const { branchId = "", period = "" } = params
+export function useTransactionSummaries(params: { branchId?: string; period?: string; month?: number; fiscalYear?: number } = {}) {
+  const { branchId = "", period = "", month, fiscalYear } = params
   const [summary, setSummary] = useState<TransactionSummary>({
     bankBalance: 0,
     totalIncome: 0,
@@ -45,6 +67,8 @@ export function useTransactionSummaries(params: { branchId?: string; period?: st
     netPosition: 0,
     transactionCount: 0,
   })
+  const [income, setIncome] = useState<IncomeSummary | null>(null)
+  const [expense, setExpense] = useState<ExpenseSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [reloadIndex, setReloadIndex] = useState(0)
@@ -56,6 +80,8 @@ export function useTransactionSummaries(params: { branchId?: string; period?: st
     const query = new URLSearchParams()
     if (branchId) query.set("branchId", branchId)
     if (period) query.set("period", period)
+    if (month) query.set("month", String(month))
+    if (fiscalYear) query.set("fiscalYear", String(fiscalYear))
     const suffix = query.toString() ? `?${query}` : ""
 
     setLoading(true)
@@ -68,10 +94,37 @@ export function useTransactionSummaries(params: { branchId?: string; period?: st
     ])
       .then(([overall, income, expense]) => {
         if (!active) return
+        const trendOf = (src: Record<string, unknown> | null) =>
+          Array.isArray(src?.trend) ? (src!.trend as { month: number; total: number }[]) : []
+        setIncome(
+          income
+            ? {
+                totalCollected: readNumber(income, "totalCollected", "total", "totalIncome"),
+                dailyAverage: readNumber(income, "dailyAverage"),
+                projected: readNumber(income, "projected"),
+                budgetTarget: readNumber(income, "budgetTarget"),
+                vsTarget: readNumber(income, "vsTarget"),
+                trend: trendOf(income),
+              }
+            : null
+        )
+        setExpense(
+          expense
+            ? {
+                totalApproved: readNumber(expense, "totalApproved", "total", "totalExpense"),
+                pendingApproval: readNumber(expense, "pendingApproval"),
+                dailyAverage: readNumber(expense, "dailyAverage"),
+                projected: readNumber(expense, "projected"),
+                budgetTarget: readNumber(expense, "budgetTarget"),
+                vsTarget: readNumber(expense, "vsTarget"),
+                trend: trendOf(expense),
+              }
+            : null
+        )
         setSummary({
           bankBalance: readNumber(overall, "bankBalance", "balance", "totalBalance"),
-          totalIncome: readNumber(income, "total", "totalIncome", "amount"),
-          totalExpense: readNumber(expense, "total", "totalExpense", "amount"),
+          totalIncome: readNumber(income, "totalCollected", "total", "totalIncome", "amount"),
+          totalExpense: readNumber(expense, "totalApproved", "total", "totalExpense", "amount"),
           netPosition: readNumber(overall, "netPosition", "net", "netTotal"),
           transactionCount: readNumber(overall, "count", "transactionCount", "total"),
         })
@@ -86,9 +139,9 @@ export function useTransactionSummaries(params: { branchId?: string; period?: st
     return () => {
       active = false
     }
-  }, [branchId, period, reloadIndex])
+  }, [branchId, period, month, fiscalYear, reloadIndex])
 
-  return { summary, loading, error, refresh }
+  return { summary, income, expense, loading, error, refresh }
 }
 
 function csrfHeaders(): Record<string, string> {

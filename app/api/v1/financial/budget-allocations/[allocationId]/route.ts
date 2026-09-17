@@ -13,6 +13,7 @@ function buildBackendUrl(allocationId: string): string {
 
 type UpdateBudgetAllocationPayload = {
   amount?: number
+  allocatedAmount?: number
   allocationType?: "percentage" | "fixed_amount"
   notes?: string
 }
@@ -22,10 +23,12 @@ function normalizePayload(body: unknown): UpdateBudgetAllocationPayload | null {
   const source = body as Record<string, unknown>
   const payload: UpdateBudgetAllocationPayload = {}
 
-  if ("amount" in source) {
-    const amount = Number(source.amount)
+  if ("amount" in source || "allocatedAmount" in source) {
+    const amount = Number(source.allocatedAmount ?? source.amount)
     if (!Number.isFinite(amount) || amount <= 0) return null
+    // The API validates allocatedAmount; amount is the swagger's name for it.
     payload.amount = amount
+    payload.allocatedAmount = amount
   }
 
   if ("allocationType" in source) {

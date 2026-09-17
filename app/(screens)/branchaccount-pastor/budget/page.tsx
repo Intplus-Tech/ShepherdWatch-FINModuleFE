@@ -206,7 +206,7 @@ export default function Page() {
               chartOfAccountId: String(populated ? populated._id ?? populated.id ?? "" : coa ?? ""),
               name: String(populated?.name ?? a.notes ?? "Line item"),
               code: String(populated?.code ?? ""),
-              amount: Number(a.amount ?? 0),
+              amount: Number(a.allocatedAmount ?? a.amount ?? 0),
               notes: String(a.notes ?? ""),
             }
           })
@@ -403,7 +403,17 @@ export default function Page() {
             method: "POST",
             headers: csrf(),
             credentials: "include",
-            body: JSON.stringify({ budgetId: budget.id, chartOfAccountId, amount: toNumber(line.proposed), allocationType: "fixed_amount", notes: line.name.trim() }),
+            // The API requires allocatedAmount and fiscalYear (its swagger says
+            // amount and omits the year); send both names.
+            body: JSON.stringify({
+              budgetId: budget.id,
+              chartOfAccountId,
+              fiscalYear: selectedYear,
+              allocatedAmount: toNumber(line.proposed),
+              amount: toNumber(line.proposed),
+              allocationType: "fixed_amount",
+              notes: line.name.trim(),
+            }),
           })
           if (!res.ok) throw new Error(describeApiError(await res.json().catch(() => null), `Unable to save "${line.name}".`))
         }
@@ -413,7 +423,7 @@ export default function Page() {
             method: "PATCH",
             headers: csrf(),
             credentials: "include",
-            body: JSON.stringify({ amount: allocationAmount(a) }),
+            body: JSON.stringify({ allocatedAmount: allocationAmount(a), amount: allocationAmount(a) }),
           })
           if (!res.ok) throw new Error(describeApiError(await res.json().catch(() => null), `Unable to update "${a.name}".`))
         }
@@ -635,7 +645,7 @@ export default function Page() {
 
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" className="mr-2 outline-none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" /></svg>
 
-                    Submit for Director Approval
+                    Submit for Pastor's Approval
 
                   </button>
 

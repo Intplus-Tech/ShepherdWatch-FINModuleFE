@@ -8,6 +8,9 @@ type CreateBudgetAllocationPayload = {
   budgetId: string
   chartOfAccountId: string
   amount: number
+  /** What the API validates; `amount` is the swagger's name for it. */
+  allocatedAmount: number
+  fiscalYear?: number
   allocationType?: "percentage" | "fixed_amount"
   notes?: string
 }
@@ -24,7 +27,8 @@ function normalizePayload(body: unknown): CreateBudgetAllocationPayload | null {
   const source = body as Record<string, unknown>
   const budgetId = String(source.budgetId ?? "").trim()
   const chartOfAccountId = String(source.chartOfAccountId ?? "").trim()
-  const amount = Number(source.amount)
+  const amount = Number(source.allocatedAmount ?? source.amount)
+  const fiscalYear = Number(source.fiscalYear)
   const allocationTypeRaw = String(source.allocationType ?? "fixed_amount").toLowerCase()
   const notes = String(source.notes ?? "").trim()
 
@@ -39,6 +43,8 @@ function normalizePayload(body: unknown): CreateBudgetAllocationPayload | null {
     budgetId,
     chartOfAccountId,
     amount,
+    allocatedAmount: amount,
+    ...(Number.isFinite(fiscalYear) ? { fiscalYear } : {}),
     allocationType,
     ...(notes ? { notes } : {}),
   }
@@ -77,12 +83,7 @@ export async function POST(req: NextRequest) {
     // one — so if the documented shape is refused, try the same values under
     // the names the budget endpoints actually use before giving up. Only a 400
     // triggers a retry, and the first response is what gets reported.
-    const amount = payloadToSend.amount
-    const candidates: Record<string, unknown>[] = [
-      payloadToSend,
-      { ...payloadToSend, annualAmount: amount },
-      { ...payloadToSend, allocatedAmount: amount },
-    ]
+    const candidates: Record<string, unknown>[] = [payloadToSend]
 
     let backendResponse!: Response
     let payload: { message?: string } | null = null

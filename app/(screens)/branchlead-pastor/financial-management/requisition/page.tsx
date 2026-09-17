@@ -1,7 +1,7 @@
 "use client"
 
 import { API_V1 } from "@/lib/api";
-import { useMemo, useState } from "react"
+import { useMemo, useState, useEffect } from "react"
 
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
@@ -27,6 +27,8 @@ import { useAuth } from "@/components/auth/AuthProvider"
 import { RequisitionDetailsModal } from "@/components/modals/RequisitionDetailsModal"
 import BranchLeadPastorSidebar from "@/components/navigation/BranchLeadPastorSidebar"
 import { useRequisitions } from "@/components/hooks/useRequisitions"
+import { useBudgetPerformance } from "@/components/hooks/useBudgetPerformance"
+import { useBranchContext } from "@/components/hooks/useBranchContext"
 import { getCsrfTokenFromCookie } from "@/lib/csrf"
 
 export default function Page() {
@@ -34,7 +36,21 @@ export default function Page() {
   const { user } = useAuth()
   const displayName = user?.name || user?.email || "User"
   const roleLabel = user?.role ? String(user.role).replace(/_/g, " ") : "Lead Pastor"
-  const branchId = user?.branchId ?? user?.tenantId ?? user?.tenant?.id ?? ""
+  const { branchId: contextBranchId } = useBranchContext()
+  const branchId = contextBranchId || user?.branchId || user?.tenantId || user?.tenant?.id || ""
+  // Budgets closest to exhaustion, for the alerts card.
+  const { performanceData, fetchPerformance } = useBudgetPerformance()
+  useEffect(() => {
+    if (branchId) fetchPerformance({ branchId })
+  }, [branchId, fetchPerformance])
+  const budgetAlerts = (performanceData?.budgets ?? [])
+    .map((b) => {
+      const approved = Number(b.approved ?? 0)
+      const spent = Number(b.spent ?? 0)
+      return { id: b.budgetId, title: b.title || "Budget", pct: approved > 0 ? Math.min(100, Math.round((spent / approved) * 100)) : 0 }
+    })
+    .sort((a, b) => b.pct - a.pct)
+    .slice(0, 3)
 
   const { requisitions: liveRequisitions, refresh: refreshReqs } = useRequisitions({
     branchId,
@@ -147,32 +163,22 @@ export default function Page() {
     }
   ]
 
-  const recentActivity = [
-    {
-      id: "#REQ-2298",
-      status: "Paid",
-      description: "Generator Fuel",
-      amount: "₦150,000.00",
-      timeLabel: "Jan 22, 2024",
-      rawId: "req-2298"
-    },
-    {
-      id: "#REQ-2295",
-      status: "Approved",
-      description: "Sunday School Decor",
-      amount: "₦75,000.00",
-      timeLabel: "Jan 20, 2024",
-      rawId: "req-2295"
-    },
-    {
-      id: "#REQ-2292",
-      status: "Paid",
-      description: "Choir Uniform Repair",
-      amount: "₦30,000.00",
-      timeLabel: "Jan 19, 2024",
-      rawId: "req-2292"
-    }
-  ]
+  // The latest requisitions on this branch, as an activity feed.
+  const recentActivity = [...liveRequisitions]
+    .sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime())
+    .slice(0, 5)
+    .map((r) => {
+      const status = String(r.currentStatus ?? "pending").replace(/_/g, " ")
+      const date = r.createdAt ? new Date(r.createdAt) : null
+      return {
+        id: `#${(r.reference || r.id).toString().slice(-8).toUpperCase()}`,
+        status: status.charAt(0).toUpperCase() + status.slice(1),
+        description: r.coaName || r.justification || "Requisition",
+        amount: new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(Number(r.amount ?? 0)),
+        timeLabel: date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "",
+        rawId: r.id,
+      }
+    })
   const expenseChart = {
     segments: [
       { label: "Operational", percentage: 78, color: "#F97316" },
@@ -428,35 +434,24 @@ export default function Page() {
                 <h3 className="text-[15px] font-extrabold text-[#111827] tracking-tight mb-5">Critical Budget Alerts</h3>
                 
                 <div className="space-y-5">
-                  <div>
-                    <div className="flex justify-between items-end mb-2">
-                      <div className="text-[12px] font-extrabold text-[#111827]">Transport</div>
-                      <div className="text-[11px] font-bold text-rose-500">92% exhausted</div>
-                    </div>
-                    <div className="h-2 w-full rounded-full bg-[#F3F4F6] overflow-hidden">
-                      <div className="h-full bg-rose-500 rounded-full" style={{ width: '92%' }}></div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between items-end mb-2">
-                      <div className="text-[12px] font-extrabold text-[#111827]">Utilities</div>
-                      <div className="text-[11px] font-bold text-orange-500">86% exhausted</div>
-                    </div>
-                    <div className="h-2 w-full rounded-full bg-[#F3F4F6] overflow-hidden">
-                      <div className="h-full bg-orange-500 rounded-full" style={{ width: '86%' }}></div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between items-end mb-2">
-                      <div className="text-[12px] font-extrabold text-[#111827]">Maintenance</div>
-                      <div className="text-[11px] font-bold text-orange-500">85% exhausted</div>
-                    </div>
-                    <div className="h-2 w-full rounded-full bg-[#F3F4F6] overflow-hidden">
-                      <div className="h-full bg-orange-500 rounded-full" style={{ width: '85%' }}></div>
-                    </div>
-                  </div>
+                  {budgetAlerts.length === 0 ? (
+                    <div className="text-[12px] text-[#9CA3AF]">No approved budgets to track yet.</div>
+                  ) : (
+                    budgetAlerts.map((b) => {
+                      const tone = b.pct >= 90 ? "rose" : b.pct >= 75 ? "orange" : "blue"
+                      return (
+                        <div key={b.id}>
+                          <div className="flex justify-between items-end mb-2">
+                            <div className="text-[12px] font-extrabold text-[#111827] truncate pr-2">{b.title}</div>
+                            <div className={`text-[11px] font-bold shrink-0 ${tone === "rose" ? "text-rose-500" : tone === "orange" ? "text-orange-500" : "text-[#3B5BDB]"}`}>{b.pct}% used</div>
+                          </div>
+                          <div className="h-2 w-full rounded-full bg-[#F3F4F6] overflow-hidden">
+                            <div className={`h-full rounded-full ${tone === "rose" ? "bg-rose-500" : tone === "orange" ? "bg-orange-500" : "bg-[#3B5BDB]"}`} style={{ width: `${b.pct}%` }}></div>
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
                 </div>
               </div>
 
@@ -465,6 +460,9 @@ export default function Page() {
                 <h3 className="text-[15px] font-extrabold text-[#111827] tracking-tight mb-5">Recent Activity</h3>
                 
                 <div className="space-y-6 relative before:absolute before:inset-y-0 before:left-[11px] before:w-[2px] before:bg-[#F3F4F6]">
+                  {recentActivity.length === 0 && (
+                    <div className="text-[12px] text-[#9CA3AF] pl-8">No requisitions yet.</div>
+                  )}
                   {recentActivity.map((item) => (
                     <div key={item.rawId} className="relative flex gap-4">
                       <div className="h-6 w-6 shrink-0 rounded-full bg-white flex items-center justify-center z-10 border-2 border-white">
