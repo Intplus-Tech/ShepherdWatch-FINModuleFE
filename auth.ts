@@ -16,9 +16,26 @@ import {
   InvalidCredentialsError,
   mapLoginErrorToAuthError,
 } from "@/lib/auth-errors";
-import { extractBranchIdFromJwt, extractIdsFromJwt } from "@/lib/jwt-claims";
+import { extractBranchIdFromJwt, extractIdsFromJwt, extractJwtExpiryMs } from "@/lib/jwt-claims";
 
 const ACCESS_TOKEN_TTL_MS = ACCESS_TOKEN_MAX_AGE_SECONDS * 1000;
+
+/**
+ * When to refresh: the token's own `exp`, falling back to our guessed TTL only
+ * when the token doesn't say. The backend's login limiter also counts refresh
+ * calls, and every session's refreshes leave this server from one address, so
+ * refreshing on a guessed schedule can lock every user out of signing in.
+ */
+function accessTokenExpiryMs(accessToken: string): number {
+  return extractJwtExpiryMs(accessToken) || Date.now() + ACCESS_TOKEN_TTL_MS;
+}
+
+/** The mirrored cookie lives as long as the token it carries. */
+function accessTokenCookieMaxAge(accessToken: string): number {
+  const exp = extractJwtExpiryMs(accessToken);
+  if (!exp) return ACCESS_TOKEN_MAX_AGE_SECONDS;
+  return Math.max(60, Math.floor((exp - Date.now()) / 1000));
+}
 
 function pickToken(source: unknown, keys: string[]): string {
   if (!source || typeof source !== "object") return "";
@@ -76,7 +93,7 @@ async function syncBackendCookies(accessToken: string, refreshToken?: string) {
       secure: isProd,
       sameSite: "lax",
       path: "/",
-      maxAge: ACCESS_TOKEN_MAX_AGE_SECONDS,
+      maxAge: accessTokenCookieMaxAge(accessToken),
     });
     if (refreshToken) {
       store.set({
@@ -232,7 +249,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           name: fullName ?? null,
           accessToken,
           refreshToken,
-          accessTokenExpires: Date.now() + ACCESS_TOKEN_TTL_MS,
+          accessTokenExpires: accessTokenExpiryMs(accessToken),
         };
       },
     }),
@@ -254,7 +271,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.lastName = user.lastName;
         token.accessToken = user.accessToken;
         token.refreshToken = user.refreshToken;
-        token.accessTokenExpires = user.accessTokenExpires ?? Date.now() + ACCESS_TOKEN_TTL_MS;
+        token.accessTokenExpires = user.accessTokenExpires ?? accessTokenExpiryMs(user.accessToken ?? "");
         delete token.error;
         return token;
       }
@@ -298,13 +315,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
       const refreshed = await refreshAccessToken(refreshToken);
       if (!refreshed?.accessToken) {
+        // A refresh that was throttled or the backend being briefly down is not
+        // an expired session. While the backend still honours the access token,
+        // keep it and try again in a minute rather than signing the user out —
+        // which would only send them to a sign-in the same limiter blocks.
+        const hardExpiry = typeof token.accessToken === "string" ? extractJwtExpiryMs(token.accessToken) : 0;
+        if (hardExpiry && Date.now() < hardExpiry - 30_000) {
+          token.accessTokenExpires = Math.min(hardExpiry, Date.now() + 60_000 + 30_000);
+          return token;
+        }
         token.error = "RefreshAccessTokenError";
         return token;
       }
 
       token.accessToken = refreshed.accessToken;
       if (refreshed.refreshToken) token.refreshToken = refreshed.refreshToken;
-      token.accessTokenExpires = Date.now() + ACCESS_TOKEN_TTL_MS;
+      token.accessTokenExpires = accessTokenExpiryMs(refreshed.accessToken);
       delete token.error;
 
       // Keep legacy cookies in sync.

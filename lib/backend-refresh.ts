@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 import { ACCESS_TOKEN_MAX_AGE_SECONDS, BACKEND_REFRESH_TOKEN_COOKIE, BACKEND_TOKEN_COOKIE, REFRESH_TOKEN_MAX_AGE_SECONDS } from './auth-config';
 import { getAuthEndpoint } from './backend-auth-url';
+import { extractJwtExpiryMs } from './jwt-claims';
 
 export type TokenPair = {
   accessToken: string;
@@ -37,7 +38,37 @@ async function getNextAuthTokenPair(req: NextRequest): Promise<TokenPair | null>
   };
 }
 
+/**
+ * Refreshes in flight or just finished, by refresh token.
+ *
+ * The backend counts refresh calls against the same limiter as sign-in, keyed
+ * by the address they come from — and every session's calls leave this server
+ * from one address. A page load fans out into many proxy requests at once, so
+ * without this each of them would refresh the same session separately (and,
+ * with rotating refresh tokens, all but the first would fail). One call per
+ * token, its result shared for a short window.
+ */
+const refreshesInFlight = new Map<string, { promise: Promise<TokenPair | null>; startedAt: number }>();
+const REFRESH_SHARE_WINDOW_MS = 60_000;
+
 export async function refreshAccessToken(refreshToken: string): Promise<TokenPair | null> {
+  const shared = refreshesInFlight.get(refreshToken);
+  if (shared && Date.now() - shared.startedAt < REFRESH_SHARE_WINDOW_MS) return shared.promise;
+
+  const promise = requestRefresh(refreshToken);
+  refreshesInFlight.set(refreshToken, { promise, startedAt: Date.now() });
+  try {
+    const tokens = await promise;
+    // A failure is not worth remembering: let the next caller try again.
+    if (!tokens) refreshesInFlight.delete(refreshToken);
+    return tokens;
+  } catch (err) {
+    refreshesInFlight.delete(refreshToken);
+    throw err;
+  }
+}
+
+async function requestRefresh(refreshToken: string): Promise<TokenPair | null> {
   const refreshUrl = getAuthEndpoint('refresh-token');
   if (!refreshUrl) return null;
 
@@ -109,7 +140,12 @@ export function applyAuthCookies(response: NextResponse, tokens: TokenPair | nul
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     path: '/',
-    maxAge: ACCESS_TOKEN_MAX_AGE_SECONDS,
+    // As long as the token itself, so the cookie doesn't lapse first and
+    // send the next request down the refresh path for a token still good.
+    maxAge: (() => {
+      const exp = extractJwtExpiryMs(tokens.accessToken);
+      return exp ? Math.max(60, Math.floor((exp - Date.now()) / 1000)) : ACCESS_TOKEN_MAX_AGE_SECONDS;
+    })(),
   });
 
   if (tokens.refreshToken) {
@@ -161,8 +197,11 @@ export async function executeWithRefreshRetry(
     };
   }
 
+  // Only a 401 means the token was not accepted. A 403 is a permission
+  // decision on a token the backend did accept; refreshing would not change it
+  // and each refresh costs a sign-in attempt from this server's address.
   let res = await executeRequest(token);
-  if (![401, 403].includes(res.status)) {
+  if (res.status !== 401) {
     stageAuthCookies(req, refreshedTokens);
     return { res, refreshedTokens };
   }
