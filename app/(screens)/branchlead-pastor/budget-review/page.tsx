@@ -29,7 +29,7 @@ import { describeApiError } from "@/lib/api-error"
 const TABS = [
   { key: "operational", label: "Operational", icon: FolderOpen },
   { key: "capital", label: "Capital", icon: Building2 },
-  { key: "project", label: "Program", icon: Users },
+  { key: "programs", label: "Program", icon: Users },
 ] as const
 type TabKey = (typeof TABS)[number]["key"]
 
@@ -117,7 +117,7 @@ export function BudgetReviewContent({ rightSidebar }: { rightSidebar?: React.Rea
         const all: Budget[] = readList(json)
           .map((b) => ({
             id: String(b._id ?? b.id ?? ""),
-            category: (String(b.category ?? "operational") as TabKey) || "operational",
+            category: (String(b.category ?? "operational").replace(/^project$/, "programs") as TabKey) || "operational",
             status: String(b.status ?? "draft").toLowerCase(),
             name: String(b.name ?? b.title ?? ""),
             amount: Number(b.annualAmount ?? b.totalAmount ?? 0),
