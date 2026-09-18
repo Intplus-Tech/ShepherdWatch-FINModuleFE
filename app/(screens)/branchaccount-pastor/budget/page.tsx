@@ -56,7 +56,7 @@ import { describeApiError } from "@/lib/api-error"
 import BranchAccountantSidebar from "@/components/navigation/BranchAccountantSidebar"
 import BudgetLineThread from "@/components/budgets/BudgetLineThread"
 import { useAuth } from "@/components/auth/AuthProvider"
-import { isThreadUnread, loadAccountHeadNames, loadThreadSummaries, threadKey, type ThreadSummary } from "@/lib/budget-threads"
+import { isThreadUnread, loadAccountHeadNames, loadThreadSummaries, threadKey, unreadCount, type ThreadSummary } from "@/lib/budget-threads"
 
 
 
@@ -334,15 +334,48 @@ export default function Page() {
     return STATUS_LABELS[lowest] ?? { key: lowest, label: lowest, tone: "bg-[#F3F4F6] text-[#6B7280]" }
   }, [budgets])
 
+  // Lines with messages this user hasn't read, in table order; the indicator
+  // in the breakdown header jumps to the first.
+  const pendingLines = useMemo(
+    () =>
+      mergedGroups
+        .flatMap((g) => g.items.map((item) => ({ group: g, item })))
+        .map((x) => ({ ...x, unread: unreadCount(threads[threadKey(x.item.budgetId, x.item.chartOfAccountId)], userId, x.item.budgetId, x.item.chartOfAccountId) }))
+        .filter((x) => x.unread > 0),
+    [mergedGroups, threads, userId]
+  )
+  const pendingTotal = pendingLines.reduce((sum, x) => sum + x.unread, 0)
+
+  const jumpToPending = () => {
+    const first = pendingLines[0]
+    if (!first) return
+    setCollapsedGroups((prev) => ({ ...prev, [first.group.key]: false }))
+    setOpenThread({ budgetId: first.item.budgetId, lineItemRef: first.item.chartOfAccountId, lineName: first.item.name })
+    requestAnimationFrame(() => document.getElementById(`budget-line-${first.item.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }))
+  }
+
+  // Once every group is with the pastor or approved there is nothing left to
+  // submit: the button waits until something is sent back or new work exists.
+  const submitLocked = periodStatus.key === "submitted" || periodStatus.key === "approved"
+  const submitHint =
+    periodStatus.key === "submitted"
+      ? "Already with the Lead Pastor — waiting for their decision"
+      : periodStatus.key === "approved"
+        ? "This period's budget is approved"
+        : undefined
+
   // ---------------------------------------------------------------------------
   // Persisting. A line item is a chart-of-account head (so the Expense entry
   // can post against it) plus an allocation on the group's budget.
   // ---------------------------------------------------------------------------
   const csrf = () => ({ "Content-Type": "application/json", "x-csrf-token": getCsrfTokenFromCookie() })
 
-  const findOrCreateHead = async (name: string, groupLabel: string, known: { id: string; name: string; code: string }[]) => {
+  const findOrCreateHead = async (name: string, groupLabel: string, known: { id: string; name: string; code: string; description: string }[]) => {
     const wanted = name.trim().toLowerCase()
-    const existing = known.find((h) => h.name.trim().toLowerCase() === wanted)
+    // Reuse a head only within the same group: "Transport" under Operational
+    // and "Transport" under Programs are different lines, and an expense
+    // posted to a shared head could not be told apart.
+    const existing = known.find((h) => h.name.trim().toLowerCase() === wanted && h.description === `Budget line · ${groupLabel}`)
     if (existing) return existing.id
     // Next free expense code: highest existing numeric code in the 5000s + 10.
     const codes = known.map((h) => Number(h.code)).filter((n) => Number.isFinite(n) && n >= 5000 && n < 6000)
@@ -358,7 +391,7 @@ export default function Page() {
     if (!res.ok) throw new Error(describeApiError(json, `Unable to create the "${name}" account head.`))
     const id = String(json?.data?._id ?? json?.data?.id ?? "")
     if (!id) throw new Error(`The "${name}" account head was created but no id came back.`)
-    known.push({ id, name: name.trim(), code: String(code) })
+    known.push({ id, name: name.trim(), code: String(code), description: `Budget line · ${groupLabel}` })
     return id
   }
 
@@ -390,7 +423,7 @@ export default function Page() {
       // Expense heads already in the chart, to reuse by name.
       const coaRes = await fetch(`${API_V1}/financial/coa?page=1&limit=100&accountType=expense&branchId=${encodeURIComponent(tenantId)}`, { credentials: "include" })
       const coaJson = await coaRes.json().catch(() => null)
-      const known = readList(coaJson).map((h) => ({ id: String(h._id ?? h.id ?? ""), name: String(h.name ?? ""), code: String(h.code ?? "") }))
+      const known = readList(coaJson).map((h) => ({ id: String(h._id ?? h.id ?? ""), name: String(h.name ?? ""), code: String(h.code ?? ""), description: String(h.description ?? "") }))
 
       let submitted = 0
       for (const group of work) {
@@ -818,7 +851,24 @@ export default function Page() {
 
                 {/* Header Row */}
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 sm:p-5 lg:p-6 lg:pb-4 gap-3 sm:gap-4 border-b border-[#EEF1F6]">
-                  <h3 className="text-[16px] sm:text-[18px] font-bold text-[#111827] tracking-tight">Budget Breakdown</h3>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <h3 className="text-[16px] sm:text-[18px] font-bold text-[#111827] tracking-tight">Budget Breakdown</h3>
+                    {pendingTotal > 0 && (
+                      <button
+                        type="button"
+                        onClick={jumpToPending}
+                        title={`Open "${pendingLines[0].item.name}"`}
+                        className="inline-flex items-center gap-2 rounded-full bg-rose-50 px-3 py-1.5 text-[12px] font-semibold text-rose-600 ring-1 ring-inset ring-rose-500/20 hover:bg-rose-100 transition-colors"
+                      >
+                        <span className="relative flex h-2 w-2">
+                          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75" />
+                          <span className="relative inline-flex h-2 w-2 rounded-full bg-rose-500" />
+                        </span>
+                        {pendingTotal} new {pendingTotal === 1 ? "message" : "messages"}
+                        {pendingLines.length > 1 && <span className="text-rose-400 font-medium">· {pendingLines.length} lines</span>}
+                      </button>
+                    )}
+                  </div>
                   <div className="relative">
                     <button
                       type="button"
@@ -922,7 +972,7 @@ export default function Page() {
                             </tr>
 
                             {!collapsedGroups[group.key] && group.items.map((item) => (
-                              <tr key={item.id} className="hover:bg-gray-50/20 transition-colors bg-white group border-b border-[#EEF1F6]/50 last:border-0">
+                              <tr key={item.id} id={`budget-line-${item.id}`} className="hover:bg-gray-50/20 transition-colors bg-white group border-b border-[#EEF1F6]/50 last:border-0">
                                 <td className="py-3 pl-[32px] sm:pl-[44px] lg:pl-[52px] pr-4 font-medium text-[#374151] border-0 text-[12px] sm:text-[13px]">
                                   {item.name}
                                 </td>
@@ -947,7 +997,8 @@ export default function Page() {
                                   {(() => {
                                     const summary = threads[threadKey(item.budgetId, item.chartOfAccountId)]
                                     const unread = isThreadUnread(summary, userId, item.budgetId, item.chartOfAccountId)
-                                    const count = summary?.count ?? 0
+                                    const fresh = unreadCount(summary, userId, item.budgetId, item.chartOfAccountId)
+                                    const count = unread && fresh > 0 ? fresh : summary?.count ?? 0
                                     return (
                                       <button
                                         type="button"
@@ -1034,7 +1085,7 @@ export default function Page() {
                     </div>
                   )}
                   <button onClick={handleSaveDraft} disabled={submittingProposal} className="text-[12px] sm:text-[13px] font-semibold text-[#6B7280] hover:text-[#111827] transition-colors shrink-0 whitespace-nowrap bg-white sm:bg-transparent border border-[#E5E7EB] sm:border-transparent px-4 py-2 sm:px-0 sm:py-0 rounded-[6px] sm:rounded-none disabled:opacity-60">Save as Draft</button>
-                  <button onClick={handleSubmitProposal} disabled={submittingProposal} className="h-[38px] sm:h-[40px] flex-1 sm:flex-none justify-center shrink-0 whitespace-nowrap px-4 sm:px-6 rounded-[8px] bg-[#3B5BDB] text-white text-[12px] sm:text-[13px] font-bold shadow-[0_4px_14px_rgba(59,91,219,0.35)] hover:bg-[#3451b2] transition-colors tracking-wide outline-none disabled:opacity-60 disabled:cursor-not-allowed">
+                  <button onClick={handleSubmitProposal} disabled={submittingProposal || submitLocked} title={submitHint} className="h-[38px] sm:h-[40px] flex-1 sm:flex-none justify-center shrink-0 whitespace-nowrap px-4 sm:px-6 rounded-[8px] bg-[#3B5BDB] text-white text-[12px] sm:text-[13px] font-bold shadow-[0_4px_14px_rgba(59,91,219,0.35)] hover:bg-[#3451b2] transition-colors tracking-wide outline-none disabled:bg-[#E5E7EB] disabled:text-[#9CA3AF] disabled:shadow-none disabled:cursor-not-allowed">
                     {submittingProposal ? "Submitting..." : "Submit for Pastor's Approval"}
                   </button>
                 </div>

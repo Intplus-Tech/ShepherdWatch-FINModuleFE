@@ -52,6 +52,7 @@ import BranchesDropdown from "@/components/navigation/BranchesDropdown"
 import { useToast } from "@/components/ui/toast"
 import { useAuth } from "@/components/auth/AuthProvider"
 import { useBranchContext } from "@/components/hooks/useBranchContext"
+import { loadBudgetLineOptions, type BudgetLineOption } from "@/lib/budget-threads"
 
 const navItems = [
   { label: "Dashboard", href: "/director-screen/dashboard", icon: LayoutDashboard },
@@ -1255,7 +1256,8 @@ function mapBankAccountToRow(item: any, index: number): AccountRow {
 }
 
 function ManageAccountsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { branchId, branches, selectBranch } = useBranchContext()
+  const { branchId, branches, selectBranch, isFixed: branchFixed } = useBranchContext()
+  const fixedBranchName = branches.find((b) => b.id === branchId)?.name ?? ""
 
   const [accounts, setAccounts] = useState<AccountRow[]>([])
   const [loading, setLoading] = useState(false)
@@ -1534,7 +1536,13 @@ function ManageAccountsModal({ open, onClose }: { open: boolean; onClose: () => 
             <Field label="Bank Name">
               <input value={bankName} onChange={(e) => setBankName(e.target.value)} placeholder="e.g. First Bank" className={inputClass} />
             </Field>
-            {branches.length > 1 && (
+            {/* A branch-bound account (accountant, pastor) sees its own branch;
+                only organisation-level users choose one. */}
+            {branchFixed && branchId ? (
+              <Field label="Branch">
+                <input value={fixedBranchName || "Your branch"} readOnly title="Accounts are created for your branch" className={`${inputClass} bg-[#F9FAFB] text-[#6B7280] cursor-not-allowed`} />
+              </Field>
+            ) : branches.length > 1 && (
               <Field label="Branch">
                 <div className="relative">
                   <select
@@ -1629,6 +1637,32 @@ function RecordExpenseModal({ open, onClose, onSaved }: { open: boolean; onClose
   const { branchId } = useBranchContext()
   const { options: coaOptions, loading: coaLoading, error: coaError } = useCoaOptions(open, "expense", branchId)
 
+  // The branch's budget lines, each under its group, are what an expense is
+  // recorded against. Account heads are the fallback when no budget exists.
+  const [lineOptions, setLineOptions] = useState<BudgetLineOption[]>([])
+  const [linesLoading, setLinesLoading] = useState(false)
+  useEffect(() => {
+    if (!open || !branchId) return
+    let active = true
+    setLinesLoading(true)
+    loadBudgetLineOptions(branchId)
+      .then((lines) => {
+        if (active) setLineOptions(lines)
+      })
+      .catch(() => {
+        if (active) setLineOptions([])
+      })
+      .finally(() => {
+        if (active) setLinesLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [open, branchId])
+  const useLines = lineOptions.length > 0
+  const [lineId, setLineId] = useState("")
+  const selectedLine = lineOptions.find((l) => l.id === lineId) ?? null
+
   const [date, setDate] = useState("")
   const [amount, setAmount] = useState("")
   const [method, setMethod] = useState("Transfer")
@@ -1645,6 +1679,7 @@ function RecordExpenseModal({ open, onClose, onSaved }: { open: boolean; onClose
     setMethod("Transfer")
     setPayee("")
     setCoaId("")
+    setLineId("")
     setNotes("")
     setSaving(false)
     setSaveError(null)
@@ -1659,7 +1694,11 @@ function RecordExpenseModal({ open, onClose, onSaved }: { open: boolean; onClose
       setSaveError("Enter an amount greater than zero.")
       return
     }
-    if (!coaId) {
+    if (useLines && !selectedLine) {
+      setSaveError("Choose the budget line this expense is for.")
+      return
+    }
+    if (!useLines && !coaId) {
       setSaveError(
         coaError
           ? `The chart of accounts could not be loaded, so this expense cannot be posted yet. ${coaError}`
@@ -1693,11 +1732,16 @@ function RecordExpenseModal({ open, onClose, onSaved }: { open: boolean; onClose
           amount: parseAmount(amount),
           description,
           branchId,
-          chartOfAccountId: coaId,
+          chartOfAccountId: selectedLine ? selectedLine.chartOfAccountId : coaId,
+          ...(selectedLine ? { budgetId: selectedLine.budgetId, budgetAllocationId: selectedLine.id } : {}),
           transactionDate: date,
           source: "manual",
           currency: "NGN",
-          meta: { paymentMethod: method, payee: payee.trim() || undefined },
+          meta: {
+            paymentMethod: method,
+            payee: payee.trim() || undefined,
+            ...(selectedLine ? { budgetLine: selectedLine.name, budgetGroup: selectedLine.group, budgetPeriod: selectedLine.period } : {}),
+          },
         }),
       })
       const data = await response.json().catch(() => null)
@@ -1752,9 +1796,19 @@ function RecordExpenseModal({ open, onClose, onSaved }: { open: boolean; onClose
         </Field>
 
         <Field label="Category">
+          {useLines ? (
+            <SelectField value={lineId} onChange={setLineId}>
+              <option value="">Select a budget line…</option>
+              {lineOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </SelectField>
+          ) : (
           <SelectField value={coaId} onChange={setCoaId}>
             <option value="">
-              {coaLoading
+              {coaLoading || linesLoading
                 ? "Loading categories…"
                 : coaError
                   ? `Couldn't load categories — ${coaError}`
@@ -1768,6 +1822,7 @@ function RecordExpenseModal({ open, onClose, onSaved }: { open: boolean; onClose
               </option>
             ))}
           </SelectField>
+          )}
         </Field>
 
         <Field label="Notes/Description">

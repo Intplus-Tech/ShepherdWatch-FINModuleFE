@@ -44,6 +44,8 @@ export function useBranchContext() {
     }
   })
   const [hint, setHint] = useState<string | null>(null)
+  // The branch record named this user as its accountant or pastor.
+  const [assignedToOne, setAssignedToOne] = useState(false)
   const [loading, setLoading] = useState(!sessionBranchId)
   const [error, setError] = useState<string | null>(null)
 
@@ -94,6 +96,7 @@ export function useBranchContext() {
         if (!active) return
         const options = assigned.length > 0 ? assigned : all
         setBranches(options)
+        setAssignedToOne(assigned.length === 1)
         setChosenBranchId((prev) => prev || sessionBranchId || (options.length === 1 ? options[0].id : ""))
 
         // Explain the outcome so a stuck screen can say what is actually missing.
@@ -147,5 +150,11 @@ export function useBranchContext() {
     /** Why no branch could be chosen automatically, when that is the case. */
     hint,
     selectBranch,
+    /**
+     * True when the account itself is tied to a branch (accountants, pastors,
+     * admins): screens show it rather than offering a choice. Organisation-
+     * level users (Director, Super Admin) carry no branch and pick one.
+     */
+    isFixed: Boolean(sessionBranchId) || assignedToOne,
   }
 }

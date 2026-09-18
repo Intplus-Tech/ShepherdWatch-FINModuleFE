@@ -1,6 +1,6 @@
 "use client"
 
-import React, { Suspense } from "react"
+import React, { Suspense, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { BudgetReviewContent } from "../budget-review/page"
 import BudgetLineThread from "@/components/budgets/BudgetLineThread"
@@ -16,6 +16,9 @@ function BudgetCommunicationInner() {
   const budgetId = searchParams.get("budgetId") ?? ""
   const lineItemRef = searchParams.get("lineItemRef") ?? ""
   const lineName = searchParams.get("lineName") ?? ""
+  const tab = searchParams.get("tab") ?? undefined
+  // Bumped when the thread is read or replied to, so the indicators follow.
+  const [activity, setActivity] = useState(0)
 
   const rightSidebar = (
     <BudgetLineThread
@@ -23,10 +26,11 @@ function BudgetCommunicationInner() {
       lineItemRef={lineItemRef}
       lineName={lineName}
       onClose={() => router.push("/branchlead-pastor/budget-review")}
+      onActivity={() => setActivity((v) => v + 1)}
     />
   )
 
-  return <BudgetReviewContent rightSidebar={rightSidebar} />
+  return <BudgetReviewContent rightSidebar={rightSidebar} initialTab={tab} refreshKey={activity} />
 }
 
 export default function BudgetCommunicationPage() {
