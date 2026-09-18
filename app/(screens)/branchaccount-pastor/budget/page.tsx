@@ -54,6 +54,9 @@ import { useExport } from "@/components/hooks/useExport"
 import { useBranchContext } from "@/components/hooks/useBranchContext"
 import { describeApiError } from "@/lib/api-error"
 import BranchAccountantSidebar from "@/components/navigation/BranchAccountantSidebar"
+import BudgetLineThread from "@/components/budgets/BudgetLineThread"
+import { useAuth } from "@/components/auth/AuthProvider"
+import { isThreadUnread, loadAccountHeadNames, loadThreadSummaries, threadKey, type ThreadSummary } from "@/lib/budget-threads"
 
 
 
@@ -122,6 +125,13 @@ export default function Page() {
   const { branchId, branches, needsSelection, loading: branchLoading, error: branchError, hint: branchHint, selectBranch } =
     useBranchContext()
   const tenantId = branchId
+  const { user } = useAuth()
+  const userId = String((user as { id?: string } | null)?.id ?? "")
+
+  // Messages per line: the pastor's queries and the accountant's replies.
+  const [threads, setThreads] = useState<Record<string, ThreadSummary>>({})
+  const [threadsVersion, setThreadsVersion] = useState(0)
+  const [openThread, setOpenThread] = useState<{ budgetId: string; lineItemRef: string; lineName: string } | null>(null)
 
   const [budgets, setBudgets] = useState<Partial<Record<GroupKey, PeriodBudget>>>({})
   const [allocations, setAllocations] = useState<Allocation[]>([])
@@ -180,6 +190,10 @@ export default function Page() {
         if (cancelled) return
         setBudgets(found)
 
+        // The allocation API returns only the account head's id (and drops
+        // the notes we send), so the line's name is read off the head.
+        const heads = await loadAccountHeadNames(tenantId).catch(() => ({}) as Record<string, { name: string; code: string }>)
+
         const ids = Object.values(found).map((b) => b!.id)
         const [allocLists, perfs] = await Promise.all([
           Promise.all(
@@ -202,12 +216,14 @@ export default function Page() {
           allocLists.flat().map((a) => {
             const coa = a.chartOfAccountId as Record<string, unknown> | string | undefined
             const populated = coa && typeof coa === "object" ? coa : null
+            const chartOfAccountId = String(populated ? populated._id ?? populated.id ?? "" : coa ?? "")
+            const head = heads[chartOfAccountId]
             return {
               id: String(a._id ?? a.id ?? ""),
               budgetId: String(a.budgetId),
-              chartOfAccountId: String(populated ? populated._id ?? populated.id ?? "" : coa ?? ""),
-              name: String(populated?.name ?? a.notes ?? "Line item"),
-              code: String(populated?.code ?? ""),
+              chartOfAccountId,
+              name: String(populated?.name ?? head?.name ?? a.notes ?? "Line item"),
+              code: String(populated?.code ?? head?.code ?? ""),
               amount: Number(a.allocatedAmount ?? a.amount ?? 0),
               notes: String(a.notes ?? ""),
             }
@@ -228,6 +244,22 @@ export default function Page() {
       cancelled = true
     }
   }, [tenantId, branchLoading, selectedYear, periodLabel, reloadIndex])
+
+  // Which lines have messages, and whether the latest is new to this user.
+  const budgetIds = useMemo(() => Object.values(budgets).map((b) => b!.id).join(","), [budgets])
+  useEffect(() => {
+    if (!budgetIds) {
+      setThreads({})
+      return
+    }
+    let active = true
+    loadThreadSummaries(budgetIds.split(",")).then((t) => {
+      if (active) setThreads(t)
+    })
+    return () => {
+      active = false
+    }
+  }, [budgetIds, threadsVersion])
 
   // ---------------------------------------------------------------------------
   // Editing. Existing allocations get amount edits; new lines are added under
@@ -912,7 +944,28 @@ export default function Page() {
                                   </div>
                                 </td>
                                 <td className="py-3 text-center border-0">
-                                  <MessageSquare className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-[#3AA5F3] mx-auto cursor-pointer hover:opacity-80 transition-opacity" strokeWidth={2} />
+                                  {(() => {
+                                    const summary = threads[threadKey(item.budgetId, item.chartOfAccountId)]
+                                    const unread = isThreadUnread(summary, userId, item.budgetId, item.chartOfAccountId)
+                                    const count = summary?.count ?? 0
+                                    return (
+                                      <button
+                                        type="button"
+                                        onClick={() => setOpenThread({ budgetId: item.budgetId, lineItemRef: item.chartOfAccountId, lineName: item.name })}
+                                        title={unread ? "New message from the pastor" : count ? `${count} ${count === 1 ? "message" : "messages"}` : "Discuss this line"}
+                                        className={`relative inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
+                                          unread ? "bg-[#EEF2FF] text-[#2563EB]" : count ? "text-[#2563EB] hover:bg-[#EEF2FF]" : "text-[#3AA5F3] hover:bg-[#EEF2FF]"
+                                        }`}
+                                      >
+                                        <MessageSquare className="h-3.5 w-3.5 sm:h-4 sm:w-4" strokeWidth={2} />
+                                        {count > 0 && (
+                                          <span className={`absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full text-[9px] font-bold flex items-center justify-center ${unread ? "bg-rose-500 text-white" : "bg-[#E0E7FF] text-[#3B5BDB]"}`}>
+                                            {count}
+                                          </span>
+                                        )}
+                                      </button>
+                                    )
+                                  })()}
                                 </td>
                                 <td className="py-3 pr-4 sm:pr-6 lg:pr-8 text-right border-0">
                                   <span className="inline-flex items-center justify-center px-1.5 sm:px-2 py-0.5 rounded-[4px] text-[10px] sm:text-[11px] font-bold tracking-wide bg-[#F3F4F6] text-[#6B7280]">
@@ -996,9 +1049,21 @@ export default function Page() {
 
         </main>
 
-
-
       </div>
+
+      {openThread && (
+        <BudgetLineThread
+          variant="overlay"
+          budgetId={openThread.budgetId}
+          lineItemRef={openThread.lineItemRef}
+          lineName={openThread.lineName}
+          onClose={() => {
+            setOpenThread(null)
+            setThreadsVersion((v) => v + 1)
+          }}
+          onActivity={() => setThreadsVersion((v) => v + 1)}
+        />
+      )}
 
     </div>
 
