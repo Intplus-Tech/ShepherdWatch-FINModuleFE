@@ -298,16 +298,22 @@ export default function Page() {
                 title={
                   entries.length === 0
                     ? "No budget to review yet"
-                    : "Review and approve the submitted budget"
+                    : pendingApproval.length > 0
+                      ? "A submitted budget is waiting for your decision"
+                      : "Nothing awaiting approval — open the review"
                 }
-                className={`h-[38px] rounded-[10px] px-4 text-[13px] font-bold text-white transition-colors ${
+                // Draws the eye only while a proposal is actually waiting;
+                // once approved (or sent back) it settles into a plain button.
+                className={`h-[38px] rounded-[10px] px-4 text-[13px] font-bold transition-colors ${
                   entries.length === 0
                     ? "bg-[#E5E7EB] text-[#9CA3AF] shadow-none cursor-not-allowed"
-                    : "cta-attention bg-[#EF4444] hover:bg-[#DC2626]"
+                    : pendingApproval.length > 0
+                      ? "cta-attention bg-[#EF4444] text-white hover:bg-[#DC2626]"
+                      : "bg-white text-[#374151] border border-[#E5E7EB] shadow-sm hover:bg-gray-50"
                 }`}
               >
-                <CheckSquare className="mr-2 h-4 w-4" />
-                Approve New Budget
+                <CheckSquare className={`mr-2 h-4 w-4 ${entries.length > 0 && pendingApproval.length === 0 ? "text-[#6B7280]" : ""}`} />
+                {pendingApproval.length > 0 ? "Approve New Budget" : "Review Budget"}
               </Button>
               <Button
                 onClick={handleExport}

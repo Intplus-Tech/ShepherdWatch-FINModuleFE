@@ -25,7 +25,7 @@ import { useToast } from "@/components/ui/toast"
 import { getCsrfTokenFromCookie } from "@/lib/csrf"
 import { describeApiError } from "@/lib/api-error"
 import { useAuth } from "@/components/auth/AuthProvider"
-import { isThreadUnread, loadAccountHeadNames, loadThreadSummaries, threadKey, type ThreadSummary } from "@/lib/budget-threads"
+import { isThreadUnread, loadAccountHeadNames, loadThreadSummaries, threadKey, unreadCount, type ThreadSummary } from "@/lib/budget-threads"
 
 // The three tabs are the API's three budget categories.
 const TABS = [
@@ -67,7 +67,7 @@ const STATUS_PILL: Record<string, { label: string; cls: string }> = {
   draft: { label: "Draft", cls: "bg-gray-100 text-gray-600 ring-gray-500/20" },
 }
 
-export function BudgetReviewContent({ rightSidebar }: { rightSidebar?: React.ReactNode } = {}) {
+export function BudgetReviewContent({ rightSidebar, initialTab, refreshKey = 0 }: { rightSidebar?: React.ReactNode; initialTab?: string; refreshKey?: number } = {}) {
   const router = useRouter()
   const { pushToast } = useToast()
   const { branchId } = useBranchContext()
@@ -81,7 +81,7 @@ export function BudgetReviewContent({ rightSidebar }: { rightSidebar?: React.Rea
   const [reloadIndex, setReloadIndex] = useState(0)
   const reload = () => setReloadIndex((i) => i + 1)
 
-  const [tab, setTab] = useState<TabKey>("operational")
+  const [tab, setTab] = useState<TabKey>(TABS.some((t) => t.key === initialTab) ? (initialTab as TabKey) : "operational")
   // The pastor's allocation per line, prefilled with the proposal.
   const [allocations, setAllocations] = useState<Record<string, string>>({})
   const [savingLineId, setSavingLineId] = useState<string | null>(null)
@@ -201,7 +201,7 @@ export function BudgetReviewContent({ rightSidebar }: { rightSidebar?: React.Rea
     return () => {
       active = false
     }
-  }, [budgets, threadsVersion])
+  }, [budgets, threadsVersion, refreshKey])
   useEffect(() => {
     // Coming back from a thread: refresh the indicators.
     const onFocus = () => setThreadsVersion((v) => v + 1)
@@ -234,6 +234,13 @@ export function BudgetReviewContent({ rightSidebar }: { rightSidebar?: React.Rea
     { title: "Total Actual to Date", value: formatCurrency(spent), meta: totalAllocated > 0 ? `${Math.round((spent / totalAllocated) * 100)}% of budget spent` : "No budget set", metaColor: "text-[#6B7280]", icon: TrendingUp, iconBg: "bg-[#ECFDF5]", iconColor: "text-[#10B981]" },
     { title: "Variance (%)", value: totalAllocated > 0 ? `${variancePct >= 0 ? "+" : ""}${variancePct.toFixed(1)}%` : "—", meta: totalAllocated > 0 ? (variancePct >= 0 ? `${formatCurrency(totalAllocated - spent)} under budget` : `${formatCurrency(spent - totalAllocated)} over budget`) : "Add line items to compare", metaColor: variancePct >= 0 ? "text-[#10B981]" : "text-rose-600", icon: Landmark, iconBg: "bg-[#FAF5FF]", iconColor: "text-[#9333EA]" },
   ]
+
+  // Lines with messages this user hasn't read, in table order, for the
+  // "new messages" indicator — clicking it jumps to the first one.
+  const pendingLines = lines
+    .map((l) => ({ line: l, unread: unreadCount(threads[threadKey(l.budgetId, l.chartOfAccountId)], userId, l.budgetId, l.chartOfAccountId) }))
+    .filter((x) => x.unread > 0)
+  const pendingTotal = pendingLines.reduce((s, x) => s + x.unread, 0)
 
   const tabBudget = budgets.find((b) => b.category === tab) ?? null
   const tabLines = lines.filter((l) => tabBudget && l.budgetId === tabBudget.id)
@@ -310,6 +317,7 @@ export function BudgetReviewContent({ rightSidebar }: { rightSidebar?: React.Rea
   const openThread = (line: Line) =>
     router.push(
       `/branchlead-pastor/budget-communication?budgetId=${encodeURIComponent(line.budgetId)}` +
+        `&tab=${encodeURIComponent(budgets.find((b) => b.id === line.budgetId)?.category ?? tab)}` +
         // lineItemRef must be a chart-of-account id; the API rejects a name.
         (/^[a-f0-9]{24}$/i.test(line.chartOfAccountId) ? `&lineItemRef=${encodeURIComponent(line.chartOfAccountId)}` : "") +
         `&lineName=${encodeURIComponent(line.name)}`
@@ -379,7 +387,8 @@ export function BudgetReviewContent({ rightSidebar }: { rightSidebar?: React.Rea
                     variant="outline"
                     onClick={() => decide("revision")}
                     disabled={!canDecide || acting !== null}
-                    className="bg-white text-[#374151] shadow-sm hover:bg-gray-50 flex items-center gap-2 justify-center border-[#E5E7EB] h-9 rounded-[7px] px-4 text-[12.5px] font-bold disabled:opacity-60"
+                    className="bg-white text-[#374151] shadow-sm hover:bg-gray-50 flex items-center gap-2 justify-center border-[#E5E7EB] h-9 rounded-[7px] px-4 text-[12.5px] font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={canDecide ? "Return the proposal to the accountant" : "Nothing is awaiting your decision"}
                   >
                     <Undo2 className="h-4 w-4 text-[#6B7280]" />
                     {acting === "return" ? "Sending…" : "Send Back"}
@@ -387,7 +396,8 @@ export function BudgetReviewContent({ rightSidebar }: { rightSidebar?: React.Rea
                   <Button
                     onClick={() => decide("approved")}
                     disabled={!canDecide || acting !== null}
-                    className="bg-[#2563EB] text-white shadow hover:bg-blue-700 transition-colors flex items-center gap-1.5 justify-center h-9 rounded-[7px] px-4 text-[12.5px] font-bold disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="bg-[#2563EB] text-white shadow hover:bg-blue-700 transition-colors flex items-center gap-1.5 justify-center h-9 rounded-[7px] px-4 text-[12.5px] font-bold disabled:bg-[#E5E7EB] disabled:text-[#9CA3AF] disabled:shadow-none disabled:cursor-not-allowed"
+                    title={canDecide ? "Approve the submitted proposal" : "Nothing is awaiting your decision"}
                   >
                     <Check className="h-3.5 w-3.5" />
                     {acting === "approve" ? "Approving…" : "Approve Budget"}
@@ -436,6 +446,21 @@ export function BudgetReviewContent({ rightSidebar }: { rightSidebar?: React.Rea
                   </button>
                 )
               })}
+              {pendingTotal > 0 && (
+                <button
+                  type="button"
+                  onClick={() => openThread(pendingLines[0].line)}
+                  title={`Open "${pendingLines[0].line.name}"`}
+                  className="ml-auto mb-2 inline-flex items-center gap-2 rounded-full bg-rose-50 px-3 py-1.5 text-[12px] font-semibold text-rose-600 ring-1 ring-inset ring-rose-500/20 hover:bg-rose-100 transition-colors"
+                >
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-rose-500" />
+                  </span>
+                  {pendingTotal} new {pendingTotal === 1 ? "message" : "messages"}
+                  {pendingLines.length > 1 && <span className="text-rose-400 font-medium">· {pendingLines.length} lines</span>}
+                </button>
+              )}
             </div>
 
             {/* Table */}
@@ -510,7 +535,8 @@ export function BudgetReviewContent({ rightSidebar }: { rightSidebar?: React.Rea
                                 {(() => {
                                   const summary = threads[threadKey(line.budgetId, line.chartOfAccountId)]
                                   const unread = isThreadUnread(summary, userId, line.budgetId, line.chartOfAccountId)
-                                  const count = summary?.count ?? 0
+                                  const fresh = unreadCount(summary, userId, line.budgetId, line.chartOfAccountId)
+                                  const count = unread && fresh > 0 ? fresh : summary?.count ?? 0
                                   return (
                                     <button
                                       onClick={() => openThread(line)}

@@ -26,6 +26,8 @@ export type ThreadSummary = {
   latestId: string
   latestAt: string
   latestUserId: string
+  /** Every comment in the thread, oldest first, for counting what's unread. */
+  entries: { id: string; userId: string }[]
 }
 
 const readList = (payload: unknown): Record<string, unknown>[] => {
@@ -88,9 +90,10 @@ export async function loadThreadSummaries(budgetIds: string[]): Promise<Record<s
     const key = threadKey(c.budgetId, c.lineItemRef)
     const cur = out[key]
     if (!cur) {
-      out[key] = { count: 1, latestId: c.id, latestAt: c.createdAt, latestUserId: c.userId }
+      out[key] = { count: 1, latestId: c.id, latestAt: c.createdAt, latestUserId: c.userId, entries: [{ id: c.id, userId: c.userId }] }
     } else {
       cur.count += 1
+      cur.entries.push({ id: c.id, userId: c.userId })
       if (new Date(c.createdAt).getTime() >= new Date(cur.latestAt).getTime()) {
         cur.latestId = c.id
         cur.latestAt = c.createdAt
@@ -131,6 +134,14 @@ export function isThreadUnread(summary: ThreadSummary | undefined, userId: strin
   return readSeen(userId)[threadKey(budgetId, lineItemRef)] !== summary.latestId
 }
 
+/** How many messages from other people this user hasn't opened the thread for. */
+export function unreadCount(summary: ThreadSummary | undefined, userId: string, budgetId: string, lineItemRef: string): number {
+  if (!summary || summary.count === 0) return 0
+  const seenId = readSeen(userId)[threadKey(budgetId, lineItemRef)]
+  const seenIndex = seenId ? summary.entries.findIndex((e) => e.id === seenId) : -1
+  return summary.entries.slice(seenIndex + 1).filter((e) => e.userId && e.userId !== userId).length
+}
+
 /**
  * Names for the chart-of-account heads a branch's budget lines point at. The
  * allocation API returns only the head's id and drops the notes we send, so
@@ -153,4 +164,89 @@ export async function loadAccountHeadNames(branchId: string): Promise<Record<str
     if (items.length < 100) break
   }
   return out
+}
+
+// ---------------------------------------------------------------------------
+// Budget lines as things to post an expense against.
+// ---------------------------------------------------------------------------
+
+/** The table group each API budget category is shown under. */
+export const BUDGET_GROUP_LABELS: Record<string, string> = {
+  operational: "Operational Expenses",
+  programs: "Program Budgets",
+  project: "Program Budgets",
+  capital: "Capital Projects",
+}
+
+export type BudgetLineOption = {
+  /** The allocation's id. */
+  id: string
+  budgetId: string
+  chartOfAccountId: string
+  name: string
+  code: string
+  group: string
+  period: string
+  /** "Name (Group)", with the period added when more than one is listed. */
+  label: string
+}
+
+/**
+ * Every line of the branch's budgets, newest budget per period and category,
+ * labelled with the group it sits under — so an expense is posted against the
+ * line the accountant budgeted, not just an account head.
+ */
+export async function loadBudgetLineOptions(branchId: string): Promise<BudgetLineOption[]> {
+  const res = await fetch(`${API_V1}/budgets?branchId=${encodeURIComponent(branchId)}&limit=100`, { credentials: "include" })
+  const json = await res.json().catch(() => null)
+  if (!res.ok) throw new Error((json as { message?: string } | null)?.message ?? "Unable to load budgets.")
+
+  // One budget per (period, category): the first the API lists is its newest.
+  const budgets: { id: string; period: string; group: string }[] = []
+  for (const b of readList(json)) {
+    const id = idOf(b)
+    const name = String(b.name ?? b.title ?? "")
+    const period = name.split(" · ")[0]
+    const category = String(b.category ?? "operational")
+    const group = BUDGET_GROUP_LABELS[category] ?? category
+    if (!id || budgets.some((x) => x.period === period && x.group === group)) continue
+    budgets.push({ id, period, group })
+  }
+  if (budgets.length === 0) return []
+
+  type Row = { a: Record<string, unknown>; b: (typeof budgets)[number] }
+  const [heads, lists] = await Promise.all([
+    loadAccountHeadNames(branchId).catch(() => ({}) as Record<string, { name: string; code: string }>),
+    Promise.all(
+      budgets.map((b) =>
+        fetch(`${API_V1}/financial/budget-allocations?budgetId=${encodeURIComponent(b.id)}&limit=100`, { credentials: "include" })
+          .then((r) => r.json().catch(() => null))
+          .then((j) => readList(j).map((a): Row => ({ a, b })))
+          .catch(() => [] as Row[])
+      )
+    ),
+  ])
+  const periods = new Set(budgets.map((b) => b.period))
+  return lists.flat().flatMap(({ a, b }): BudgetLineOption[] => {
+    const coa = a.chartOfAccountId
+    const coaId = idOf(coa)
+    const populated = coa && typeof coa === "object" ? (coa as Record<string, unknown>) : null
+    const head = heads[coaId]
+    const id = idOf(a)
+    if (!id || !coaId) return []
+    const name = String(populated?.name ?? head?.name ?? a.notes ?? "Line item")
+    const code = String(populated?.code ?? head?.code ?? "")
+    return [
+      {
+        id,
+        budgetId: b.id,
+        chartOfAccountId: coaId,
+        name,
+        code,
+        group: b.group,
+        period: b.period,
+        label: periods.size > 1 ? `${name} (${b.group} · ${b.period})` : `${name} (${b.group})`,
+      },
+    ]
+  })
 }
