@@ -24,6 +24,8 @@ import { useBudgetPerformance } from "@/components/hooks/useBudgetPerformance"
 import { useToast } from "@/components/ui/toast"
 import { getCsrfTokenFromCookie } from "@/lib/csrf"
 import { describeApiError } from "@/lib/api-error"
+import { useAuth } from "@/components/auth/AuthProvider"
+import { isThreadUnread, loadAccountHeadNames, loadThreadSummaries, threadKey, type ThreadSummary } from "@/lib/budget-threads"
 
 // The three tabs are the API's three budget categories.
 const TABS = [
@@ -69,6 +71,8 @@ export function BudgetReviewContent({ rightSidebar }: { rightSidebar?: React.Rea
   const router = useRouter()
   const { pushToast } = useToast()
   const { branchId } = useBranchContext()
+  const { user } = useAuth()
+  const userId = String((user as { id?: string } | null)?.id ?? "")
 
   const [budgets, setBudgets] = useState<Budget[]>([])
   const [lines, setLines] = useState<Line[]>([])
@@ -83,6 +87,9 @@ export function BudgetReviewContent({ rightSidebar }: { rightSidebar?: React.Rea
   const [savingLineId, setSavingLineId] = useState<string | null>(null)
   const [acting, setActing] = useState<"approve" | "return" | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  // Message activity per line, for the indicator on its thread button.
+  const [threads, setThreads] = useState<Record<string, ThreadSummary>>({})
+  const [threadsVersion, setThreadsVersion] = useState(0)
 
   const readList = (payload: unknown): Record<string, unknown>[] => {
     const body = payload as Record<string, unknown> | null
@@ -130,9 +137,21 @@ export function BudgetReviewContent({ rightSidebar }: { rightSidebar?: React.Rea
         const ranked = [...all].sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime())
         const lead = ranked.find((b) => b.status === "submitted") ?? ranked[0]
         const period = lead ? lead.name.split(" · ")[0] : ""
-        const inPeriod = lead ? all.filter((b) => b.name.split(" · ")[0] === period) : []
+        // One budget per category, the first the API lists (its newest) — the
+        // same one the accountant's page edits. Earlier duplicates in the
+        // period are left out so their lines don't inflate the totals.
+        const inPeriod: Budget[] = []
+        for (const b of all) {
+          if (!lead || b.name.split(" · ")[0] !== period) continue
+          if (inPeriod.some((x) => x.category === b.category)) continue
+          inPeriod.push(b)
+        }
         if (!active) return
         setBudgets(inPeriod)
+
+        // The allocation API returns only the account head's id; its name
+        // lives on the head, so load the branch's heads to label the lines.
+        const heads = await loadAccountHeadNames(branchId).catch(() => ({}) as Record<string, { name: string; code: string }>)
 
         const allocLists = await Promise.all(
           inPeriod.map((b) =>
@@ -145,12 +164,13 @@ export function BudgetReviewContent({ rightSidebar }: { rightSidebar?: React.Rea
         const mapped: Line[] = allocLists.flat().map((a) => {
           const coa = a.chartOfAccountId as Record<string, unknown> | string | undefined
           const populated = coa && typeof coa === "object" ? coa : null
+          const head = heads[idOf(coa)]
           return {
             id: String(a._id ?? a.id ?? ""),
             budgetId: String(a.budgetId),
             chartOfAccountId: idOf(coa),
-            name: String(populated?.name ?? a.notes ?? "Line item"),
-            code: String(populated?.code ?? ""),
+            name: String(populated?.name ?? head?.name ?? a.notes ?? "Line item"),
+            code: String(populated?.code ?? head?.code ?? ""),
             proposed: Number(a.allocatedAmount ?? a.amount ?? 0),
           }
         })
@@ -167,6 +187,27 @@ export function BudgetReviewContent({ rightSidebar }: { rightSidebar?: React.Rea
       active = false
     }
   }, [branchId, reloadIndex])
+
+  // Which lines have messages, and whether the latest is new to this user.
+  useEffect(() => {
+    if (budgets.length === 0) {
+      setThreads({})
+      return
+    }
+    let active = true
+    loadThreadSummaries(budgets.map((b) => b.id)).then((t) => {
+      if (active) setThreads(t)
+    })
+    return () => {
+      active = false
+    }
+  }, [budgets, threadsVersion])
+  useEffect(() => {
+    // Coming back from a thread: refresh the indicators.
+    const onFocus = () => setThreadsVersion((v) => v + 1)
+    window.addEventListener("focus", onFocus)
+    return () => window.removeEventListener("focus", onFocus)
+  }, [])
 
   // Spend to date against these budgets, for the cards.
   const { performanceData, fetchPerformance } = useBudgetPerformance()
@@ -466,13 +507,27 @@ export function BudgetReviewContent({ rightSidebar }: { rightSidebar?: React.Rea
                                 {delta === 0 ? "0%" : `${delta > 0 ? "+" : ""}${delta.toFixed(0)}%`}
                               </td>
                               <td className="px-6 py-4 text-right">
-                                <button
-                                  onClick={() => openThread(line)}
-                                  title="Discuss this line"
-                                  className="inline-flex h-8 w-8 items-center justify-center rounded-full text-[#94A3B8] hover:bg-[#EEF2FF] hover:text-[#2563EB] transition-colors"
-                                >
-                                  <MessageCircle className="h-4 w-4" />
-                                </button>
+                                {(() => {
+                                  const summary = threads[threadKey(line.budgetId, line.chartOfAccountId)]
+                                  const unread = isThreadUnread(summary, userId, line.budgetId, line.chartOfAccountId)
+                                  const count = summary?.count ?? 0
+                                  return (
+                                    <button
+                                      onClick={() => openThread(line)}
+                                      title={unread ? "New message on this line" : count ? `${count} ${count === 1 ? "message" : "messages"}` : "Discuss this line"}
+                                      className={`relative inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
+                                        unread ? "bg-[#EEF2FF] text-[#2563EB]" : count ? "text-[#2563EB] hover:bg-[#EEF2FF]" : "text-[#94A3B8] hover:bg-[#EEF2FF] hover:text-[#2563EB]"
+                                      }`}
+                                    >
+                                      <MessageCircle className="h-4 w-4" />
+                                      {count > 0 && (
+                                        <span className={`absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full text-[9px] font-bold flex items-center justify-center ${unread ? "bg-rose-500 text-white" : "bg-[#E0E7FF] text-[#3B5BDB]"}`}>
+                                          {count}
+                                        </span>
+                                      )}
+                                    </button>
+                                  )
+                                })()}
                               </td>
                             </tr>
                           )

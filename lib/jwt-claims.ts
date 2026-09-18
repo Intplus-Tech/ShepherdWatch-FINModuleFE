@@ -73,3 +73,14 @@ export function extractIdsFromJwt(token: string): { branchId: string; tenantId: 
     tenantId: pickString(payload, ["tenantId", "tenant_id"]),
   };
 }
+
+/**
+ * When the backend says this token expires, in epoch milliseconds, or 0 when
+ * the token carries no `exp`. Lets us refresh only when the backend needs us
+ * to, rather than on a guessed schedule.
+ */
+export function extractJwtExpiryMs(token: string): number {
+  const payload = decodeJwtPayload(token);
+  const exp = payload?.exp;
+  return typeof exp === "number" && Number.isFinite(exp) && exp > 0 ? exp * 1000 : 0;
+}
