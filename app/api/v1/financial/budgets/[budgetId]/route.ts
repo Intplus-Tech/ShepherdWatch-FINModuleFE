@@ -7,7 +7,7 @@ import { executeWithRefreshRetry } from "@/lib/backend-refresh"
 type UpdateBudgetPayload = {
   title?: string
   totalAmount?: number
-  category?: "operational" | "capital" | "project"
+  category?: "operational" | "capital" | "programs"
   notes?: string
 }
 
@@ -36,7 +36,7 @@ function normalizeUpdatePayload(body: unknown): UpdateBudgetPayload | null {
 
   if ("category" in source) {
     const category = String(source.category ?? "").toLowerCase()
-    if (!["operational", "capital", "project"].includes(category)) return null
+    if (!["operational", "capital", "programs"].includes(category)) return null
     payload.category = category as UpdateBudgetPayload["category"]
   }
 

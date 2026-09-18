@@ -69,7 +69,7 @@ const MONTHS = ["January", "February", "March", "April", "May", "June", "July", 
 /** The table's three groups are the API's three budget categories. */
 const GROUPS = [
   { key: "operational", label: "Operational Expenses" },
-  { key: "project", label: "Program Budgets" },
+  { key: "programs", label: "Program Budgets" },
   { key: "capital", label: "Capital Projects" },
 ] as const
 
@@ -165,7 +165,9 @@ export default function Page() {
         for (const item of readList(listJson)) {
           const title = String(item.name ?? item.title ?? "")
           if (!title.startsWith(periodLabel)) continue
-          const category = String(item.category ?? "operational") as GroupKey
+          // Budgets saved before the API renamed "project" to "programs" still load.
+          const rawCategory = String(item.category ?? "operational")
+          const category = (rawCategory === "project" ? "programs" : rawCategory) as GroupKey
           if (!GROUPS.some((g) => g.key === category) || found[category]) continue
           found[category] = {
             id: String(item._id ?? item.id ?? ""),

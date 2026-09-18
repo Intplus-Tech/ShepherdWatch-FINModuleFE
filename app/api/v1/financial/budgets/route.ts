@@ -18,7 +18,7 @@ type CreateBudgetPayload = {
   branchId: string
   fiscalYear: number
   totalAmount: number
-  category?: "operational" | "capital" | "project"
+  category?: "operational" | "capital" | "programs"
   notes?: string
 }
 
@@ -44,7 +44,7 @@ function normalizeCreatePayload(body: unknown): CreateBudgetPayload | null {
     totalAmount,
   }
 
-  if (["operational", "capital", "project"].includes(categoryRaw)) {
+  if (["operational", "capital", "programs"].includes(categoryRaw)) {
     payload.category = categoryRaw as CreateBudgetPayload["category"]
   }
   if (notes) payload.notes = notes

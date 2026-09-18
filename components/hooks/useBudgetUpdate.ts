@@ -10,7 +10,7 @@ export interface BudgetPayload {
   annualAmount?: number
   title?: string
   totalAmount?: number
-  category?: "operational" | "capital" | "project"
+  category?: "operational" | "capital" | "programs"
   notes?: string
 }
 

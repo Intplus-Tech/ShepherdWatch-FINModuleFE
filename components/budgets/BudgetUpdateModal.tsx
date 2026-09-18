@@ -133,7 +133,7 @@ export function BudgetUpdateModal({
                 >
                   <option value="operational">Operational</option>
                   <option value="capital">Capital</option>
-                  <option value="project">Project</option>
+                  <option value="programs">Programs</option>
                 </select>
               </div>
             </div>
