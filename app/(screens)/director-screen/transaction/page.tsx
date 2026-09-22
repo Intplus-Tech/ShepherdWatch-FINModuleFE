@@ -1255,7 +1255,7 @@ function mapBankAccountToRow(item: any, index: number): AccountRow {
   }
 }
 
-function ManageAccountsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function ManageAccountsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { branchId, branches, selectBranch, isFixed: branchFixed } = useBranchContext()
   const fixedBranchName = branches.find((b) => b.id === branchId)?.name ?? ""
 
