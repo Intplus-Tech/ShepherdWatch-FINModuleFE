@@ -58,7 +58,7 @@ function formatRoleLabel(role?: string | null): string {
 
 const navItems = [
   { label: "Dashboard", href: "/branchaccount-pastor/dashboard", icon: LayoutDashboard },
-  { label: "Transaction", href: "/branchaccount-pastor/transaction", icon: ArrowRightLeft },
+  { label: "General Ledger", href: "/branchaccount-pastor/general-ledger", icon: ArrowRightLeft },
   { label: "Budget", href: "/branchaccount-pastor/budget", icon: Wallet },
   { label: "Assets", href: "/branchaccount-pastor/asset", icon: Database },
   // Compliance temporarily hidden for now (kept for later re-enable):
