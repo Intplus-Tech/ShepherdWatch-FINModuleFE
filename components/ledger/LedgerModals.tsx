@@ -26,6 +26,7 @@ import {
   allocateEntry,
   createEntry,
   entryRef,
+  type SafeFund,
   loadAccountHeads,
   loadBankAccounts,
   longDate,
@@ -92,6 +93,7 @@ export function SafeBatchModal({
   mode,
   branchName,
   entry,
+  onCashPaidIn,
 }: {
   open: boolean
   onClose: () => void
@@ -99,14 +101,52 @@ export function SafeBatchModal({
   mode: "safe" | "journal"
   branchName?: string
   entry?: LedgerEntry | null
+  /** Paying the batch into the bank opens the teller form for it. */
+  onCashPaidIn?: (entry: LedgerEntry) => void
 }) {
   const safe = MOCK_SAFE
   const total = entry ? entry.amount : safe.total
   const reconciled = mode === "journal"
   const teller = entry?.meta?.teller as { slipName?: string; slipUrl?: string } | undefined
-  const funds = entry
-    ? [{ name: entry.coaName || entry.description || "Fund", gl: entry.coaCode || "—", counted: entry.amount, remaining: entry.amount }]
+  // A real entry is one fund; the sample batch carries the four it counted.
+  const funds: SafeFund[] = entry
+    ? [
+        {
+          name: entry.coaName || entry.description || "Fund",
+          gl: entry.coaCode || "—",
+          cash: String(entry.meta.tender ?? "cash") === "cheque" ? 0 : entry.amount,
+          cheque: String(entry.meta.tender ?? "cash") === "cheque" ? entry.amount : 0,
+          chequeDocs: String(entry.meta.tender ?? "cash") === "cheque" ? [{ ref: entryRef(entry), amount: entry.amount, url: entry.attachments[0] ?? "" }] : [],
+          remaining: entry.amount,
+        },
+      ]
     : safe.funds
+  const totalCash = funds.reduce((sum, f) => sum + f.cash, 0)
+  const totalCheque = funds.reduce((sum, f) => sum + f.cheque, 0)
+
+  // The batch the teller form is filled in against: the real entry when there
+  // is one, otherwise a stand-in for the sample batch, which the form refuses
+  // to post because there is nothing on the ledger behind it.
+  const payInTarget: LedgerEntry =
+    entry ?? ({
+      id: "",
+      reference: safe.batch.ref,
+      type: "income",
+      amount: safe.total,
+      currency: "NGN",
+      description: safe.batch.serviceType,
+      status: "pending",
+      date: safe.batch.serviceDate,
+      createdAt: safe.batch.serviceDate,
+      source: "manual",
+      coaId: "",
+      coaName: "",
+      coaCode: "",
+      bankAccountId: "",
+      bankAccountName: "",
+      attachments: [],
+      meta: {},
+    } as LedgerEntry)
   return (
     <ModalShell open={open} onClose={onClose} className="max-w-3xl">
       <Header
@@ -153,7 +193,16 @@ export function SafeBatchModal({
                   )}
                 </td>
                 {!reconciled && (
-                  <td className="px-3 py-3 text-right"><span className="inline-flex rounded-[6px] bg-[#3B5BDB] text-white px-3 py-1.5 text-[11px] font-bold">Cash debited</span></td>
+                  <td className="px-3 py-3 text-right">
+                    <button
+                      type="button"
+                      onClick={() => onCashPaidIn?.(payInTarget)}
+                      title="Record the bank deposit for this batch"
+                      className="inline-flex rounded-[6px] bg-rose-600 text-white px-3 py-1.5 text-[11px] font-bold hover:bg-rose-700 transition-colors"
+                    >
+                      Cash Paid In
+                    </button>
+                  </td>
                 )}
               </tr>
             </tbody>
@@ -166,21 +215,41 @@ export function SafeBatchModal({
             <thead className="bg-[#EEF2FF] text-[#3B5BDB]">
               <tr className="text-left text-[10px] font-bold uppercase tracking-wide">
                 <th className="px-3 py-2.5">Fund / GL account specification</th>
-                <th className="px-3 py-2.5 text-right">Counted</th>
+                <th className="px-3 py-2.5 text-right">Cash</th>
+                <th className="px-3 py-2.5 text-right">Cheque</th>
                 <th className="px-3 py-2.5 text-right">Remaining in safe</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#EEF1F6]">
               {funds.map((f) => (
                 <tr key={f.name} className="bg-white">
-                  <td className="px-3 py-3"><div className="font-bold text-[#111827]">{f.name}</div><div className={`${mono} text-[10.5px] text-[#6B7280]`}>GL {f.gl}</div></td>
-                  <td className={`px-3 py-3 text-right font-semibold text-[#111827] ${mono}`}>{ngn(f.counted, { decimals: true })}</td>
+                  <td className="px-3 py-3 font-bold text-[#111827]">{f.name}</td>
+                  <td className={`px-3 py-3 text-right font-semibold text-[#111827] ${mono}`}>{f.cash > 0 ? ngn(f.cash, { decimals: true }) : "—"}</td>
+                  <td className="px-3 py-3 text-right">
+                    {f.cheque > 0 ? (
+                      <div className="inline-flex flex-col items-end gap-0.5">
+                        <span className={`font-semibold text-[#111827] ${mono}`}>{ngn(f.cheque, { decimals: true })}</span>
+                        <span className="flex items-center gap-1.5">
+                          {f.chequeDocs.map((c) =>
+                            c.url ? (
+                              <a key={c.ref} href={c.url} target="_blank" rel="noreferrer" title={`${c.ref} · ${ngn(c.amount, { decimals: true })}`} className="text-[9.5px] font-bold uppercase tracking-wide text-rose-600 hover:underline inline-flex items-center gap-1"><Receipt className="h-3 w-3" />View</a>
+                            ) : (
+                              <span key={c.ref} title={`${c.ref} · scan not uploaded`} className="text-[9.5px] font-bold uppercase tracking-wide text-[#9CA3AF] inline-flex items-center gap-1"><Receipt className="h-3 w-3" />No scan</span>
+                            )
+                          )}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-[#9CA3AF]">—</span>
+                    )}
+                  </td>
                   <td className={`px-3 py-3 text-right font-bold text-[#111827] ${mono}`}>{ngn(reconciled ? 0 : f.remaining, { decimals: true })}</td>
                 </tr>
               ))}
               <tr className="bg-[#F8FAFC]">
                 <td className="px-3 py-3 font-extrabold text-[#111827]">TOTAL LOCKED BALANCE:</td>
-                <td className={`px-3 py-3 text-right font-extrabold text-[#111827] ${mono}`}>{ngn(total, { decimals: true })}</td>
+                <td className={`px-3 py-3 text-right font-extrabold text-[#111827] ${mono}`}>{ngn(totalCash, { decimals: true })}</td>
+                <td className={`px-3 py-3 text-right font-extrabold text-[#111827] ${mono}`}>{totalCheque > 0 ? ngn(totalCheque, { decimals: true }) : "—"}</td>
                 <td className={`px-3 py-3 text-right font-extrabold text-[#10B981] ${mono}`}>{ngn(reconciled ? 0 : total, { decimals: true })}</td>
               </tr>
             </tbody>
@@ -421,6 +490,10 @@ export function RecordTellerModal({
   const save = async (post: boolean) => {
     if (!entry) return
     setError(null)
+    if (!entry.id) {
+      setError("This is the sample safe batch — record a teller against a posted income entry, or wait for the counting-room API.")
+      return
+    }
     const value = parseAmount(amount)
     if (!bankAccountId) return setError("Choose the bank account the money was paid into.")
     if (!tellerDate) return setError("Enter the teller date.")
@@ -466,6 +539,11 @@ export function RecordTellerModal({
   return (
     <ModalShell open={open} onClose={onClose} className="max-w-3xl">
       <Header title="RECORD BANK TELLER DEPOSIT" subtitle="Fiduciary custody transfer & bank slip attribution" onClose={onClose} />
+      {!entry.id && (
+        <div className="mx-6 mt-4 rounded-[8px] border border-amber-200 bg-amber-50 px-4 py-2.5 text-[11.5px] text-amber-800">
+          Sample safe batch — the form is shown for reference. Deposits can be recorded once the batch exists as an income entry.
+        </div>
+      )}
       <div className="px-6 py-4 border-b border-[#EEF1F6] grid grid-cols-1 sm:grid-cols-3 gap-3 items-center">
         <div className={`${inputCls} flex items-center justify-between ${mono}`}>{entryRef(entry)}<ChevronDown className="h-4 w-4 text-[#9CA3AF]" /></div>
         <div><div className={labelCls}>Safe batch origin</div><div className="text-[12.5px] font-bold text-[#111827] mt-0.5 truncate">{entry.description || "Service collection"} ({longDate(entry.date)})</div></div>
@@ -550,6 +628,19 @@ export function RecordTellerModal({
 
 type RequisitionOption = { id: string; reference: string; amount: number; purpose: string; approver: string; coaId: string; coaName: string }
 
+/**
+ * Income reaches the branch two ways, and they are recorded differently.
+ * Over the counter the accountant takes it in person, so the entry stands on
+ * its own. A service collection is counted, written up on a counting form and
+ * locked in the safe for the next bank run, so the photographed form has to
+ * come with it.
+ */
+const COLLECTIONS = [
+  { value: "office", label: "Office collection", hint: "Handed in at the church office — tithe, donation or gift, in cash or cheque." },
+  { value: "service", label: "Service collection", hint: "Counted after a service and locked in the safe for the bank run. Attach the counting form." },
+] as const
+type CollectionType = (typeof COLLECTIONS)[number]["value"]
+
 export function NewEntryModal({
   open,
   onClose,
@@ -564,6 +655,7 @@ export function NewEntryModal({
   const { pushToast } = useToast()
   const { branchId } = useBranchContext()
   const [kind, setKind] = useState<"expense" | "income">("expense")
+  const [collection, setCollection] = useState<CollectionType>("service")
   const [date, setDate] = useState("")
   const [requisitions, setRequisitions] = useState<RequisitionOption[]>([])
   const [requisitionId, setRequisitionId] = useState("")
@@ -585,6 +677,7 @@ export function NewEntryModal({
   useEffect(() => {
     if (!open) return
     setKind("expense")
+    setCollection("service")
     setDate(new Date().toISOString().slice(0, 10))
     setRequisitionId("")
     setLineId("")
@@ -657,11 +750,17 @@ export function NewEntryModal({
     const value = parseAmount(amount)
     if (!branchId) return setError("No branch is available for your account.")
     if (!date) return setError("Pick the effective date.")
-    if (kind === "expense" && requisitions.length > 0 && !requisitionId) return setError("Select the approved requisition this payment is for.")
+    if (kind === "expense" && !requisitionId)
+      return setError(
+        requisitions.length === 0
+          ? "A church expense must be raised against an approved requisition, and none are awaiting payment. Raise and approve one first."
+          : "Select the approved requisition this payment is for."
+      )
     if (!chartOfAccountId) return setError(kind === "expense" ? "Choose the expense account (budget line)." : "Choose the income account.")
     if (!(value > 0)) return setError("Enter the gross amount.")
-    if (!payee.trim()) return setError(kind === "expense" ? "Enter the payee / beneficiary." : "Enter the source of the income.")
+    if (!payee.trim()) return setError(kind === "expense" ? "Enter the payee / beneficiary." : collection === "service" ? "Enter which service this collection came from." : "Enter who the money was received from.")
     if (kind === "expense" && !draft && !file) return setError("Attach the proof-of-payment receipt — expense entries can't be posted without one.")
+    if (kind === "income" && collection === "service" && !draft && !file) return setError("Attach a photo of the counting form for this service collection.")
     setSaving(draft ? "draft" : "post")
     try {
       const attachments: string[] = []
@@ -684,6 +783,7 @@ export function NewEntryModal({
             payee: payee.trim(),
             paymentMethod: method,
             draft,
+            ...(kind === "income" ? { collectionType: collection } : {}),
             ...(requisition ? { requisitionId: requisition.id, requisitionRef: requisition.reference } : {}),
             ...(selectedLine ? { budgetAllocationId: selectedLine.id, budgetLine: selectedLine.name, budgetGroup: selectedLine.group } : {}),
             ...(file ? { receiptName: file.name } : {}),
@@ -721,6 +821,28 @@ export function NewEntryModal({
       </div>
 
       <div className="px-6 py-5 space-y-4">
+        {kind === "income" && (
+          <div>
+            <div className={labelCls}>How was this collected? <span className="text-rose-500">*</span></div>
+            <div className="mt-1.5 grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {COLLECTIONS.map((c) => (
+                <button
+                  key={c.value}
+                  type="button"
+                  onClick={() => setCollection(c.value)}
+                  className={`text-left rounded-[8px] border p-3 transition-colors ${collection === c.value ? "border-rose-500 bg-rose-50" : "border-[#E5E7EB] bg-white hover:border-[#CBD5E1]"}`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className={`h-3.5 w-3.5 rounded-full border-2 ${collection === c.value ? "border-rose-500 bg-rose-500" : "border-[#CBD5E1]"}`} />
+                    <span className="text-[12.5px] font-bold text-[#111827]">{c.label}</span>
+                  </div>
+                  <div className="text-[11px] text-[#6B7280] mt-1 leading-snug">{c.hint}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {kind === "expense" && (
           <div className="rounded-[8px] border border-amber-200 bg-amber-50 px-4 py-3 flex gap-3">
             <TriangleAlert className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
@@ -779,8 +901,8 @@ export function NewEntryModal({
             </div>
           ) : (
             <div>
-              <div className={labelCls}>Source / service <span className="text-rose-500">*</span></div>
-              <div className="relative mt-1.5"><Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6B7280]" /><input value={payee} onChange={(e) => setPayee(e.target.value)} placeholder="e.g. Sunday 1st Service" className={`${inputCls} pl-9`} /></div>
+              <div className={labelCls}>{collection === "service" ? "Service" : "Received from"} <span className="text-rose-500">*</span></div>
+              <div className="relative mt-1.5"><Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6B7280]" /><input value={payee} onChange={(e) => setPayee(e.target.value)} placeholder={collection === "service" ? "e.g. Sunday 1st Service" : "e.g. Bro. Chidi Okafor — tithe"} className={`${inputCls} pl-9`} /></div>
             </div>
           )}
           <div>
@@ -818,12 +940,25 @@ export function NewEntryModal({
 
         <div>
           <div className="flex items-center justify-between"><span className={labelCls}>Auditable transaction description</span><span className="text-[10px] text-[#9CA3AF]">Max. 250 characters</span></div>
-          <textarea value={description} onChange={(e) => setDescription(e.target.value.slice(0, 250))} rows={3} placeholder={kind === "expense" ? "Payment for church auditorium roof repairs (Vestry & Altar ceiling leak reinforcement)" : "Sunday 1st service tithes & offerings — counting batch 01"} className="mt-1.5 w-full rounded-[8px] border border-[#E5E7EB] bg-[#F8FAFC] px-3.5 py-3 text-[12.5px] text-[#111827] outline-none focus:border-[#3B5BDB] focus:ring-1 focus:ring-[#3B5BDB]/20" />
+          <textarea value={description} onChange={(e) => setDescription(e.target.value.slice(0, 250))} rows={3} placeholder={kind === "expense" ? "Payment for church auditorium roof repairs (Vestry & Altar ceiling leak reinforcement)" : collection === "service" ? "Sunday 1st service tithes & offerings — counting batch 01" : "Tithe received at the church office, in cash"} className="mt-1.5 w-full rounded-[8px] border border-[#E5E7EB] bg-[#F8FAFC] px-3.5 py-3 text-[12.5px] text-[#111827] outline-none focus:border-[#3B5BDB] focus:ring-1 focus:ring-[#3B5BDB]/20" />
         </div>
 
         <div>
-          <div className="flex items-center justify-between"><span className={labelCls}>{kind === "expense" ? "Upload payment receipt" : "Upload counting sheet (optional)"} {kind === "expense" && <span className="text-rose-500">*</span>}</span><span className="text-[10px] text-[#9CA3AF]">pdf, png, jpeg up to 10MB</span></div>
-          <div className="mt-1.5"><DropZone file={file} onFile={setFile} onClear={() => setFile(null)} hint={kind === "expense" ? "Upload the receipt stamped paid" : "Upload the counting sheet"} /></div>
+          <div className="flex items-center justify-between">
+            <span className={labelCls}>
+              {kind === "expense" ? "Upload payment receipt" : collection === "service" ? "Upload the counting form" : "Upload the receipt or cheque (optional)"}
+              {(kind === "expense" || collection === "service") && <span className="text-rose-500"> *</span>}
+            </span>
+            <span className="text-[10px] text-[#9CA3AF]">pdf, png, jpeg up to 10MB</span>
+          </div>
+          <div className="mt-1.5">
+            <DropZone
+              file={file}
+              onFile={setFile}
+              onClear={() => setFile(null)}
+              hint={kind === "expense" ? "Upload the receipt stamped paid" : collection === "service" ? "Photograph the signed counting form" : "Upload the receipt or cheque"}
+            />
+          </div>
         </div>
 
         {error && <p className="text-[12px] font-medium text-rose-600">{error}</p>}
