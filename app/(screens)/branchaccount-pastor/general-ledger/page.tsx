@@ -7,18 +7,18 @@ import {
   Bell,
   ChevronDown,
   ChevronRight,
+  Download,
   Eye,
-  FileText,
   Landmark,
   Menu,
   PenLine,
   Plus,
-  Receipt,
   Search,
   Upload,
   Vault,
 } from "lucide-react"
 import BranchAccountantSidebar from "@/components/navigation/BranchAccountantSidebar"
+import { useToast } from "@/components/ui/toast"
 import { useBranchContext } from "@/components/hooks/useBranchContext"
 import { useTransactionSummaries } from "@/components/hooks/useTransactionSummaries"
 import { ManageAccountsModal, UploadTransactionsModal } from "@/app/(screens)/director-screen/transaction/page"
@@ -40,6 +40,7 @@ const mono = "font-mono tracking-tight"
  */
 export default function Page() {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const { pushToast } = useToast()
   const { branchId, branches, loading: branchLoading } = useBranchContext()
   const branchName = branches.find((b) => b.id === branchId)?.name ?? ""
 
@@ -97,6 +98,36 @@ export default function Page() {
   const [allocating, setAllocating] = useState<LedgerEntry | null>(null)
 
   const receiptOf = (e: LedgerEntry) => e.attachments[0] ?? ""
+
+  // "All Slips" / "All Receipt": save every document attached to the rows on
+  // screen. The browser handles one download per file.
+  const downloadAll = (rows: LedgerEntry[], what: string) => {
+    const files = rows.flatMap((e) => e.attachments.map((url) => ({ url, name: `${entryRef(e)}-${url.split("/").pop() || what}` })))
+    if (files.length === 0) {
+      pushToast(`No ${what} are attached to these entries yet.`, "info")
+      return
+    }
+    files.forEach((f, i) => {
+      window.setTimeout(() => {
+        const a = document.createElement("a")
+        a.href = f.url
+        a.download = f.name
+        a.target = "_blank"
+        a.rel = "noreferrer"
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+      }, i * 250)
+    })
+    pushToast(`Downloading ${files.length} ${files.length === 1 ? what.replace(/s$/, "") : what}…`, "success")
+  }
+
+  // How an income entry was collected: over the counter, or counted after a
+  // service and locked in the safe for the next bank run.
+  const collectionOf = (e: LedgerEntry) =>
+    String(e.meta.collectionType ?? "") === "office"
+      ? { label: "Office collection", cls: "bg-[#F1F5F9] text-[#475569]" }
+      : { label: "Service collection", cls: "bg-rose-50 text-rose-600" }
 
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
@@ -184,11 +215,11 @@ export default function Page() {
                   {incomeOpen ? <ChevronDown className="h-4 w-4 text-[#6B7280]" /> : <ChevronRight className="h-4 w-4 text-[#6B7280]" />}
                   <span className="text-[12px] font-extrabold uppercase tracking-wide">Pending income entries</span>
                   <span className="text-[11px] text-[#6B7280] hidden sm:inline">(Real-time entries waiting for bank deposit)</span>
-                  <span className="rounded-[4px] bg-[#EEF2FF] text-[#3B5BDB] px-1.5 py-0.5 text-[10px] font-bold">{pendingIncome.length} {pendingIncome.length === 1 ? "item" : "items"}</span>
+                  <span className="rounded-[4px] bg-rose-50 text-rose-600 px-1.5 py-0.5 text-[10px] font-bold">{pendingIncome.length} {pendingIncome.length === 1 ? "item" : "items"}</span>
                 </button>
                 <div className="flex items-center gap-2">
-                  <input value={incomeFilter} onChange={(e) => setIncomeFilter(e.target.value)} placeholder="Filter income batches..." className="h-8 w-44 rounded-[6px] border border-[#E5E7EB] bg-white px-3 text-[11.5px]" />
-                  <button onClick={() => setEntryOpen(true)} className="h-8 rounded-[6px] border border-[#E5E7EB] bg-white px-3 text-[11px] font-bold text-[#374151] inline-flex items-center gap-1.5"><Receipt className="h-3.5 w-3.5" />Batch Slip</button>
+                  <input value={incomeFilter} onChange={(e) => setIncomeFilter(e.target.value)} placeholder="Filter income batches..." className="h-8 w-[200px] rounded-[6px] border border-[#E5E7EB] bg-white px-3 text-[11.5px]" />
+                  <button onClick={() => downloadAll(incomeRows, "slips")} className="h-8 w-[150px] rounded-[6px] border border-[#E5E7EB] bg-white px-3 text-[11px] font-bold text-[#374151] inline-flex items-center justify-center gap-1.5 hover:bg-gray-50"><Download className="h-3.5 w-3.5" />All Slips</button>
                 </div>
               </div>
               {incomeOpen && (
@@ -208,14 +239,28 @@ export default function Page() {
                             <td className={`px-5 py-3 ${mono} text-[#6B7280]`}>{String(i + 1).padStart(2, "0")}</td>
                             <td className="px-3 py-3 font-semibold whitespace-nowrap">{shortDate(e.date)}</td>
                             <td className={`px-3 py-3 ${mono} font-bold`}>{entryRef(e)}</td>
-                            <td className="px-3 py-3 text-[#374151]">{e.description || String(e.meta.payee ?? "") || "—"}</td>
-                            <td className="px-3 py-3"><span className={`${mono} rounded-[4px] bg-[#EEF2FF] text-[#3B5BDB] px-1.5 py-0.5 text-[10.5px] font-bold`}>{e.coaName || "Uncategorised"}{e.coaCode ? ` • ${e.coaCode}` : ""}</span></td>
+                            <td className="px-3 py-3">
+                              {(() => {
+                                const c = collectionOf(e)
+                                const form = e.attachments[0]
+                                return (
+                                  <div className="min-w-0">
+                                    <div className="font-semibold truncate max-w-[220px]">{e.description || String(e.meta.payee ?? "") || "—"}</div>
+                                    <div className="flex items-center gap-1.5 mt-0.5">
+                                      <span className={`rounded-[4px] px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide ${c.cls}`}>{c.label}</span>
+                                      {form && <a href={form} target="_blank" rel="noreferrer" className="text-[9.5px] font-bold uppercase tracking-wide text-rose-600 hover:underline">View form</a>}
+                                    </div>
+                                  </div>
+                                )
+                              })()}
+                            </td>
+                            <td className="px-3 py-3"><span className={`${mono} rounded-[4px] bg-rose-50 text-rose-600 px-1.5 py-0.5 text-[10.5px] font-bold`}>{e.coaName || "Uncategorised"}{e.coaCode ? ` • ${e.coaCode}` : ""}</span></td>
                             <td className={`px-3 py-3 text-right ${mono} font-extrabold`}>{ngn(e.amount, { decimals: true })}</td>
-                            <td className="px-3 py-3"><span className="inline-flex items-center gap-1 rounded-[4px] bg-emerald-50 text-emerald-700 px-2 py-1 text-[10px] font-bold uppercase whitespace-nowrap"><Vault className="h-3 w-3" />In safe</span></td>
+                            <td className="px-3 py-3"><span className="inline-flex items-center gap-1 rounded-[4px] bg-amber-50 text-amber-700 px-2 py-1 text-[10px] font-bold uppercase whitespace-nowrap"><Vault className="h-3 w-3" />In safe</span></td>
                             <td className="px-5 py-3">
                               <div className="flex items-center justify-end gap-2">
-                                <button onClick={() => setTeller(e)} className="h-7 rounded-[6px] bg-[#3B5BDB] text-white px-3 text-[11px] font-bold">Record Teller</button>
-                                <button onClick={() => setViewing(e)} className="h-7 w-7 rounded-full text-[#6B7280] hover:bg-[#EEF2FF] inline-flex items-center justify-center" aria-label="View batch"><Eye className="h-4 w-4" /></button>
+                                <button onClick={() => setTeller(e)} className="h-7 rounded-[6px] bg-rose-600 text-white px-3 text-[11px] font-bold hover:bg-rose-700">Record Teller</button>
+                                <button onClick={() => setViewing(e)} className="h-7 w-7 rounded-full text-[#6B7280] hover:bg-rose-50 hover:text-rose-600 inline-flex items-center justify-center" aria-label="View batch"><Eye className="h-4 w-4" /></button>
                               </div>
                             </td>
                           </tr>
@@ -238,11 +283,11 @@ export default function Page() {
                   {expenseOpen ? <ChevronDown className="h-4 w-4 text-[#6B7280]" /> : <ChevronRight className="h-4 w-4 text-[#6B7280]" />}
                   <span className="text-[12px] font-extrabold uppercase tracking-wide">Pending expense entries</span>
                   <span className="text-[11px] text-[#6B7280] hidden sm:inline">(Real-time entries waiting for bank debit confirmation)</span>
-                  <span className="rounded-[4px] bg-[#EEF2FF] text-[#3B5BDB] px-1.5 py-0.5 text-[10px] font-bold">{pendingExpense.length} {pendingExpense.length === 1 ? "item" : "items"}</span>
+                  <span className="rounded-[4px] bg-rose-50 text-rose-600 px-1.5 py-0.5 text-[10px] font-bold">{pendingExpense.length} {pendingExpense.length === 1 ? "item" : "items"}</span>
                 </button>
                 <div className="flex items-center gap-2">
-                  <input value={expenseFilter} onChange={(e) => setExpenseFilter(e.target.value)} placeholder="Filter expenses..." className="h-8 w-44 rounded-[6px] border border-[#E5E7EB] bg-white px-3 text-[11.5px]" />
-                  <button onClick={() => setEntryOpen(true)} className="h-8 rounded-[6px] border border-[#E5E7EB] bg-white px-3 text-[11px] font-bold text-[#374151] inline-flex items-center gap-1.5"><FileText className="h-3.5 w-3.5" />Batch Vouchers</button>
+                  <input value={expenseFilter} onChange={(e) => setExpenseFilter(e.target.value)} placeholder="Filter expenses..." className="h-8 w-[200px] rounded-[6px] border border-[#E5E7EB] bg-white px-3 text-[11.5px]" />
+                  <button onClick={() => downloadAll(expenseRows, "receipts")} className="h-8 w-[150px] rounded-[6px] border border-[#E5E7EB] bg-white px-3 text-[11px] font-bold text-[#374151] inline-flex items-center justify-center gap-1.5 hover:bg-gray-50"><Download className="h-3.5 w-3.5" />All Receipt</button>
                 </div>
               </div>
               {expenseOpen && (
@@ -263,7 +308,13 @@ export default function Page() {
                             <td className={`px-5 py-3 ${mono} text-[#6B7280]`}>{String(i + 1).padStart(2, "0")}</td>
                             <td className="px-3 py-3 font-semibold whitespace-nowrap">{shortDate(e.date)}</td>
                             <td className={`px-3 py-3 ${mono} font-bold`}>{entryRef(e)}</td>
-                            <td className={`px-3 py-3 ${mono} text-[#374151]`}>{String(e.meta.requisitionRef ?? e.reference ?? "") || "—"}</td>
+                            <td className="px-3 py-3">
+                              {String(e.meta.requisitionRef ?? e.reference ?? "") ? (
+                                <span className={`${mono} rounded-[4px] bg-rose-50 text-rose-600 px-1.5 py-0.5 text-[10.5px] font-bold`}>{String(e.meta.requisitionRef ?? e.reference)}</span>
+                              ) : (
+                                <span className="text-[10.5px] font-bold uppercase text-amber-600" title="Church expenses must carry an approved requisition">No requisition</span>
+                              )}
+                            </td>
                             <td className="px-3 py-3"><div className="font-semibold">{String(e.meta.payee ?? "") || e.description || "—"}</div>{e.meta.payee ? <div className="text-[11px] text-[#6B7280] truncate max-w-[320px]">{e.description}</div> : null}</td>
                             <td className={`px-3 py-3 text-right ${mono} font-extrabold`}>{ngn(e.amount, { decimals: true })}</td>
                             <td className="px-5 py-3">
@@ -273,7 +324,7 @@ export default function Page() {
                                 ) : (
                                   <span className="h-7 rounded-[6px] border border-dashed border-[#E5E7EB] px-3 text-[11px] font-bold text-[#9CA3AF] inline-flex items-center" title="No receipt attached">No receipt</span>
                                 )}
-                                <button onClick={() => setAllocating(e)} className="h-7 w-7 rounded-full text-[#6B7280] hover:bg-[#EEF2FF] inline-flex items-center justify-center" aria-label="Categorise" title="Change the expense account"><Eye className="h-4 w-4" /></button>
+                                <button onClick={() => setAllocating(e)} className="h-7 w-7 rounded-full text-[#6B7280] hover:bg-rose-50 hover:text-rose-600 inline-flex items-center justify-center" aria-label="Categorise" title="Change the expense account"><Eye className="h-4 w-4" /></button>
                               </div>
                             </td>
                           </tr>
@@ -294,8 +345,27 @@ export default function Page() {
         </div>
       </main>
 
-      <SafeBatchModal open={safeOpen} onClose={() => setSafeOpen(false)} mode="safe" branchName={branchName} />
-      <SafeBatchModal open={viewing !== null} onClose={() => setViewing(null)} mode={viewing?.status === "verified" ? "journal" : "safe"} branchName={branchName} entry={viewing} />
+      <SafeBatchModal
+        open={safeOpen}
+        onClose={() => setSafeOpen(false)}
+        mode="safe"
+        branchName={branchName}
+        onCashPaidIn={(e) => {
+          setSafeOpen(false)
+          setTeller(e)
+        }}
+      />
+      <SafeBatchModal
+        open={viewing !== null}
+        onClose={() => setViewing(null)}
+        mode={viewing?.status === "verified" ? "journal" : "safe"}
+        branchName={branchName}
+        entry={viewing}
+        onCashPaidIn={(e) => {
+          setViewing(null)
+          setTeller(e)
+        }}
+      />
       <BankBalanceModal open={bankOpen} onClose={() => setBankOpen(false)} branchName={branchName} accounts={accounts} entries={entries} onAddAccount={() => { setBankOpen(false); setAccountsOpen(true) }} />
       <ManageAccountsModal open={accountsOpen} onClose={() => { setAccountsOpen(false); refresh() }} />
       <UploadTransactionsModal open={uploadOpen} onClose={() => setUploadOpen(false)} onProcess={() => { setUploadOpen(false); refresh() }} />

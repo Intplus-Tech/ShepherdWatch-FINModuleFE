@@ -284,7 +284,16 @@ export function entryState(e: LedgerEntry): { label: string; tone: "green" | "am
 // safe endpoints land.
 // ---------------------------------------------------------------------------
 
-export type SafeFund = { name: string; gl: string; counted: number; remaining: number }
+export type SafeFund = {
+  name: string
+  gl: string
+  /** Notes and coins counted for this fund. */
+  cash: number
+  /** Cheques received for it, and where the scans are. */
+  cheque: number
+  chequeDocs: { ref: string; amount: number; url: string }[]
+  remaining: number
+}
 export type SafeBatch = { ref: string; serviceDate: string; serviceType: string; total: number; status: string }
 
 export const MOCK_SAFE = {
@@ -293,10 +302,10 @@ export const MOCK_SAFE = {
   cheques: 50_000,
   batch: { ref: "SVC-202609-13-01", serviceDate: "2026-09-13", serviceType: "Sunday 1st Service", total: 1_100_000, status: "IN_SAFE (PENDING BANK RUN)" } as SafeBatch,
   funds: [
-    { name: "Tithes (General)", gl: "4010-01", counted: 450_000, remaining: 450_000 },
-    { name: "General Offering", gl: "4020-01", counted: 250_000, remaining: 250_000 },
-    { name: "Building Project Fund", gl: "4050-02", counted: 300_000, remaining: 300_000 },
-    { name: "Thanksgiving & Vows", gl: "4030-01", counted: 100_000, remaining: 100_000 },
+    { name: "Tithes (General)", gl: "4010-01", cash: 420_000, cheque: 30_000, chequeDocs: [{ ref: "CHQ-100482", amount: 30_000, url: "" }], remaining: 450_000 },
+    { name: "General Offering", gl: "4020-01", cash: 250_000, cheque: 0, chequeDocs: [], remaining: 250_000 },
+    { name: "Building Project Fund", gl: "4050-02", cash: 280_000, cheque: 20_000, chequeDocs: [{ ref: "CHQ-100483", amount: 20_000, url: "" }], remaining: 300_000 },
+    { name: "Thanksgiving & Vows", gl: "4030-01", cash: 100_000, cheque: 0, chequeDocs: [], remaining: 100_000 },
   ] as SafeFund[],
   signatories: [
     { name: "Grace Okonkwo", role: "Counting Committee Officer" },
