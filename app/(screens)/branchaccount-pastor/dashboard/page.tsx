@@ -81,7 +81,8 @@ export default function Page() {
   useEffect(() => {
     if (branchLoading) return
     let active = true
-    loadLedgerEntries({ branchId, status: "verified", limit: 100 })
+    // The ledger scopes itself to the caller's branch.
+    loadLedgerEntries({ reconciliationStatus: "reconciled", limit: 100 })
       .then((list) => {
         if (active) setVerified(list)
       })
