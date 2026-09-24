@@ -18,25 +18,36 @@ import {
   Vault,
 } from "lucide-react"
 import BranchAccountantSidebar from "@/components/navigation/BranchAccountantSidebar"
-import { useToast } from "@/components/ui/toast"
 import { useBranchContext } from "@/components/hooks/useBranchContext"
-import { useTransactionSummaries } from "@/components/hooks/useTransactionSummaries"
-import { ManageAccountsModal, UploadTransactionsModal } from "@/app/(screens)/director-screen/transaction/page"
+import { useToast } from "@/components/ui/toast"
+import { ManageAccountsModal } from "@/app/(screens)/director-screen/transaction/page"
 import {
   AllocateModal,
   BankBalanceModal,
+  MatchModal,
   NewEntryModal,
-  RecordTellerModal,
   SafeBatchModal,
+  StatementImportModal,
   useLedgerAccounts,
 } from "@/components/ledger/LedgerModals"
-import { entryRef, loadLedgerEntries, MOCK_SAFE, ngn, shortDate, type LedgerEntry } from "@/lib/ledger"
+import {
+  buildSafeView,
+  entryRef,
+  loadLedgerEntries,
+  loadStatementLines,
+  loadStatementSummary,
+  loadStreams,
+  ngn,
+  shortDate,
+  type LedgerEntry,
+  type StatementLine,
+} from "@/lib/ledger"
 
 const mono = "font-mono tracking-tight"
 
 /**
- * The accountant's General Ledger: what has been keyed in, what the bank has
- * confirmed, and the tools to move entries from one to the other.
+ * The accountant's General Ledger: entries the church has booked and not yet
+ * seen on the bank statement, and the tools that close them out.
  */
 export default function Page() {
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -48,17 +59,33 @@ export default function Page() {
   const refresh = useCallback(() => setVersion((v) => v + 1), [])
   const { accounts } = useLedgerAccounts(branchId, version)
 
-  const [entries, setEntries] = useState<LedgerEntry[]>([])
+  const [pendingIncome, setPendingIncome] = useState<LedgerEntry[]>([])
+  const [pendingExpense, setPendingExpense] = useState<LedgerEntry[]>([])
+  const [reconciledEntries, setReconciledEntries] = useState<LedgerEntry[]>([])
+  const [monthToDate, setMonthToDate] = useState(0)
+  const [unclassified, setUnclassified] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
   useEffect(() => {
     if (branchLoading) return
     let active = true
     setLoading(true)
     setError(null)
-    loadLedgerEntries({ branchId, limit: 100 })
-      .then((list) => {
-        if (active) setEntries(list)
+    Promise.all([
+      loadLedgerEntries({ entryType: "income", reconciliationStatus: "unreconciled", limit: 100 }),
+      loadLedgerEntries({ entryType: "expense", reconciliationStatus: "unreconciled", limit: 100 }),
+      loadLedgerEntries({ reconciliationStatus: "reconciled", limit: 100 }).catch(() => [] as LedgerEntry[]),
+      loadStreams({ entryType: "income" }).catch(() => null),
+      loadStatementSummary().catch(() => null),
+    ])
+      .then(([income, expense, reconciled, streams, summary]) => {
+        if (!active) return
+        setPendingIncome(income)
+        setPendingExpense(expense)
+        setReconciledEntries(reconciled)
+        setMonthToDate(streams?.totals.income ?? 0)
+        setUnclassified(summary?.counts.unclassified ?? 0)
       })
       .catch((err) => {
         if (active) setError(err instanceof Error ? err.message : "Unable to load the ledger.")
@@ -71,38 +98,32 @@ export default function Page() {
     }
   }, [branchId, branchLoading, version])
 
-  const { income } = useTransactionSummaries({ branchId })
-
-  // Pending = on the ledger, not yet confirmed by the bank.
-  const pendingIncome = useMemo(() => entries.filter((e) => e.type === "income" && e.status === "pending" && e.source !== "import"), [entries])
-  const pendingExpense = useMemo(() => entries.filter((e) => e.type === "expense" && e.status === "pending" && e.source !== "import"), [entries])
-  const unallocated = useMemo(() => entries.filter((e) => e.source === "import" && !e.coaId && e.status === "pending").length, [entries])
   const bankTotal = accounts.reduce((s, a) => s + a.balance, 0)
-  const monthToDate = income?.totalCollected ?? 0
+  // The safe is the income already recorded that the bank has not confirmed.
+  const safe = useMemo(() => buildSafeView(pendingIncome), [pendingIncome])
 
   const [incomeOpen, setIncomeOpen] = useState(true)
   const [expenseOpen, setExpenseOpen] = useState(true)
   const [incomeFilter, setIncomeFilter] = useState("")
   const [expenseFilter, setExpenseFilter] = useState("")
-  const matches = (e: LedgerEntry, q: string) => !q || [entryRef(e), e.description, e.coaName, e.coaCode, String(e.meta.requisitionRef ?? ""), String(e.meta.payee ?? "")].join(" ").toLowerCase().includes(q.toLowerCase())
-  const incomeRows = pendingIncome.filter((e) => matches(e, incomeFilter))
-  const expenseRows = pendingExpense.filter((e) => matches(e, expenseFilter))
+  const matches = (e: LedgerEntry, q: string) =>
+    !q || [entryRef(e), e.description, e.coaName, e.coaCode, e.requisitionNumber, e.payee, e.notes].join(" ").toLowerCase().includes(q.toLowerCase())
+  const incomeRows = useMemo(() => pendingIncome.filter((e) => matches(e, incomeFilter)), [pendingIncome, incomeFilter])
+  const expenseRows = useMemo(() => pendingExpense.filter((e) => matches(e, expenseFilter)), [pendingExpense, expenseFilter])
 
   const [safeOpen, setSafeOpen] = useState(false)
   const [bankOpen, setBankOpen] = useState(false)
   const [accountsOpen, setAccountsOpen] = useState(false)
-  const [uploadOpen, setUploadOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const [entryOpen, setEntryOpen] = useState(false)
-  const [teller, setTeller] = useState<LedgerEntry | null>(null)
   const [viewing, setViewing] = useState<LedgerEntry | null>(null)
-  const [allocating, setAllocating] = useState<LedgerEntry | null>(null)
+  const [matchLine, setMatchLine] = useState<StatementLine | null>(null)
+  const [allocateLine, setAllocateLine] = useState<StatementLine | null>(null)
+  const [findingLine, setFindingLine] = useState(false)
 
-  const receiptOf = (e: LedgerEntry) => e.attachments[0] ?? ""
-
-  // "All Slips" / "All Receipt": save every document attached to the rows on
-  // screen. The browser handles one download per file.
+  // "All Slips" / "All Receipt": save every receipt on the rows shown.
   const downloadAll = (rows: LedgerEntry[], what: string) => {
-    const files = rows.flatMap((e) => e.attachments.map((url) => ({ url, name: `${entryRef(e)}-${url.split("/").pop() || what}` })))
+    const files = rows.filter((e) => e.receiptUrl).map((e) => ({ url: e.receiptUrl, name: `${entryRef(e)}-${e.receiptUrl.split("/").pop() || what}` }))
     if (files.length === 0) {
       pushToast(`No ${what} are attached to these entries yet.`, "info")
       return
@@ -122,10 +143,33 @@ export default function Page() {
     pushToast(`Downloading ${files.length} ${files.length === 1 ? what.replace(/s$/, "") : what}…`, "success")
   }
 
-  // How an income entry was collected: over the counter, or counted after a
-  // service and locked in the safe for the next bank run.
+  /**
+   * Banking a pay-in means reconciling it against the deposit on the bank
+   * statement, so the safe's "Cash Paid In" opens that line's matching modal.
+   * The unreconciled credit closest in amount is the one to open.
+   */
+  const openPayIn = async (entry: LedgerEntry | null) => {
+    setSafeOpen(false)
+    setViewing(null)
+    setFindingLine(true)
+    try {
+      const { lines } = await loadStatementLines({ direction: "credit", status: "unreconciled", limit: 100 })
+      if (lines.length === 0) {
+        pushToast("No unreconciled bank deposits yet. Import the statement for the bank run first.", "info")
+        return
+      }
+      const target = entry?.amount ?? safe.total
+      const best = [...lines].sort((a, b) => Math.abs(a.amount - target) - Math.abs(b.amount - target))[0]
+      setMatchLine(best)
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : "Unable to find the bank deposit.", "error")
+    } finally {
+      setFindingLine(false)
+    }
+  }
+
   const collectionOf = (e: LedgerEntry) =>
-    String(e.meta.collectionType ?? "") === "office"
+    e.notes.toLowerCase().startsWith("office")
       ? { label: "Office collection", cls: "bg-[#F1F5F9] text-[#475569]" }
       : { label: "Service collection", cls: "bg-rose-50 text-rose-600" }
 
@@ -147,7 +191,7 @@ export default function Page() {
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
               <input className="h-10 w-56 rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] pl-9 pr-3 text-sm" placeholder="Search entries..." value={incomeFilter} onChange={(e) => { setIncomeFilter(e.target.value); setExpenseFilter(e.target.value) }} />
             </div>
-            <button className="relative text-[#6B7280] hover:text-[#111827]" aria-label="Notifications"><Bell className="h-5 w-5" />{unallocated > 0 && <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-rose-500" />}</button>
+            <button className="relative text-[#6B7280] hover:text-[#111827]" aria-label="Notifications"><Bell className="h-5 w-5" />{unclassified > 0 && <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-rose-500" />}</button>
           </div>
         </header>
 
@@ -158,49 +202,47 @@ export default function Page() {
               <p className="text-[12.5px] text-[#6B7280] mt-1">Real-time dual-entry postings, physical safe arrivals, and statement batches.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <button onClick={() => setUploadOpen(true)} className="h-9 inline-flex items-center gap-2 rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[12px] font-bold text-[#374151] hover:bg-gray-50"><Upload className="h-4 w-4" />Upload Statements</button>
-              <button onClick={() => setEntryOpen(true)} className="h-9 inline-flex items-center gap-2 rounded-[8px] bg-[#3B5BDB] px-3.5 text-[12px] font-bold text-white hover:bg-[#3451b2]"><PenLine className="h-4 w-4" />Entry</button>
+              <button onClick={() => setImportOpen(true)} className="h-9 inline-flex items-center gap-2 rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[12px] font-bold text-[#374151] hover:bg-gray-50"><Upload className="h-4 w-4" />Upload Statements</button>
+              <button onClick={() => setEntryOpen(true)} className="h-9 inline-flex items-center gap-2 rounded-[8px] bg-rose-600 px-3.5 text-[12px] font-bold text-white hover:bg-rose-700"><PenLine className="h-4 w-4" />Entry</button>
               <Link href="/branchaccount-pastor/general-ledger/reports" className="relative h-9 inline-flex items-center gap-2 rounded-[8px] bg-[#0F172A] px-3.5 text-[12px] font-bold text-white hover:bg-[#1E293B]">
                 <BarChart3 className="h-4 w-4" />Reports
-                {unallocated > 0 && <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">{unallocated}</span>}
+                {unclassified > 0 && <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">{unclassified}</span>}
               </Link>
             </div>
           </div>
 
-          {/* Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-            <button onClick={() => setSafeOpen(true)} className="text-left rounded-[12px] border border-[#EEF1F6] bg-white p-5 shadow-sm hover:border-[#C7D2FE] transition-colors">
+            <button onClick={() => setSafeOpen(true)} className="text-left rounded-[12px] border border-[#EEF1F6] bg-white p-5 shadow-sm hover:border-rose-200 transition-colors">
               <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#6B7280]">Cash safe balance</div>
-              <div className={`${mono} text-[24px] font-extrabold mt-2`}>{ngn(MOCK_SAFE.total)}</div>
+              <div className={`${mono} text-[24px] font-extrabold mt-2`}>{ngn(safe.total)}</div>
               <div className="flex items-center justify-between mt-3">
-                <span className="text-[10.5px] text-[#9CA3AF]">Batch {MOCK_SAFE.batch.ref} · sample</span>
-                <span className="h-7 rounded-[6px] bg-[#3B5BDB] text-white px-3 text-[11px] font-bold inline-flex items-center">View</span>
+                <span className="text-[10.5px] text-[#9CA3AF]">{safe.batches.length} unbanked {safe.batches.length === 1 ? "collection" : "collections"}</span>
+                <span className="h-7 rounded-[6px] bg-rose-600 text-white px-3 text-[11px] font-bold inline-flex items-center">View</span>
               </div>
             </button>
-            <button onClick={() => setBankOpen(true)} className="text-left rounded-[12px] border border-[#EEF1F6] bg-white p-5 shadow-sm hover:border-[#C7D2FE] transition-colors">
+            <button onClick={() => setBankOpen(true)} className="text-left rounded-[12px] border border-[#EEF1F6] bg-white p-5 shadow-sm hover:border-rose-200 transition-colors">
               <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#6B7280]">Bank balance</div>
               <div className={`${mono} text-[24px] font-extrabold mt-2`}>{ngn(bankTotal)}</div>
               <div className="flex items-center justify-between mt-3">
                 <span className="text-[10.5px] text-[#9CA3AF]">{accounts.length} {accounts.length === 1 ? "account" : "accounts"}</span>
-                <span className="h-7 rounded-[6px] bg-[#3B5BDB] text-white px-3 text-[11px] font-bold inline-flex items-center">View Bank Balances</span>
+                <span className="h-7 rounded-[6px] bg-rose-600 text-white px-3 text-[11px] font-bold inline-flex items-center">View Bank Balances</span>
               </div>
             </button>
             <div className="rounded-[12px] border border-[#EEF1F6] bg-white p-5 shadow-sm">
-              <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#6B7280]">Month-to-date</div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#6B7280]">Income to date</div>
               <div className={`${mono} text-[24px] font-extrabold mt-2`}>{ngn(monthToDate)}</div>
-              <div className="text-[10.5px] text-[#9CA3AF] mt-3">Tithes, pledges &amp; offerings</div>
+              <div className="text-[10.5px] text-[#9CA3AF] mt-3">Across every income stream</div>
             </div>
             <div className="rounded-[12px] border border-[#EEF1F6] bg-white p-5 shadow-sm">
               <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#6B7280]">Accounts</div>
               <div className={`${mono} text-[24px] font-extrabold mt-2`}>{accounts.length}</div>
               <div className="flex items-center justify-between mt-3">
                 <span className="text-[10.5px] text-[#9CA3AF]">Add new account</span>
-                <button onClick={() => setAccountsOpen(true)} className="h-7 w-7 rounded-[6px] bg-[#3B5BDB] text-white inline-flex items-center justify-center" aria-label="Add new account"><Plus className="h-4 w-4" /></button>
+                <button onClick={() => setAccountsOpen(true)} className="h-7 w-7 rounded-[6px] bg-rose-600 text-white inline-flex items-center justify-center" aria-label="Add new account"><Plus className="h-4 w-4" /></button>
               </div>
             </div>
           </div>
 
-          {/* Stream */}
           <section className="mt-6 rounded-[12px] border border-[#EEF1F6] bg-white shadow-sm">
             <div className="px-5 py-4 border-b border-[#EEF1F6]">
               <h2 className="text-[16px] font-extrabold">Recent Activity &amp; Ledger Stream</h2>
@@ -214,7 +256,7 @@ export default function Page() {
                 <button onClick={() => setIncomeOpen((v) => !v)} className="flex items-center gap-2 text-left">
                   {incomeOpen ? <ChevronDown className="h-4 w-4 text-[#6B7280]" /> : <ChevronRight className="h-4 w-4 text-[#6B7280]" />}
                   <span className="text-[12px] font-extrabold uppercase tracking-wide">Pending income entries</span>
-                  <span className="text-[11px] text-[#6B7280] hidden sm:inline">(Real-time entries waiting for bank deposit)</span>
+                  <span className="text-[11px] text-[#6B7280] hidden sm:inline">(Recorded, waiting for the bank deposit)</span>
                   <span className="rounded-[4px] bg-rose-50 text-rose-600 px-1.5 py-0.5 text-[10px] font-bold">{pendingIncome.length} {pendingIncome.length === 1 ? "item" : "items"}</span>
                 </button>
                 <div className="flex items-center gap-2">
@@ -234,32 +276,27 @@ export default function Page() {
                       {loading && <tr><td colSpan={8} className="px-5 py-8 text-center text-[#9CA3AF]">Loading entries…</td></tr>}
                       {!loading && incomeRows.length === 0 && <tr><td colSpan={8} className="px-5 py-8 text-center text-[#9CA3AF]">{pendingIncome.length === 0 ? "No income is waiting for a bank deposit. Post an income entry to see it here." : "No entries match the filter."}</td></tr>}
                       {incomeRows.map((e, i) => {
+                        const c = collectionOf(e)
                         return (
                           <tr key={e.id} className="hover:bg-[#F8FAFC]">
                             <td className={`px-5 py-3 ${mono} text-[#6B7280]`}>{String(i + 1).padStart(2, "0")}</td>
                             <td className="px-3 py-3 font-semibold whitespace-nowrap">{shortDate(e.date)}</td>
                             <td className={`px-3 py-3 ${mono} font-bold`}>{entryRef(e)}</td>
                             <td className="px-3 py-3">
-                              {(() => {
-                                const c = collectionOf(e)
-                                const form = e.attachments[0]
-                                return (
-                                  <div className="min-w-0">
-                                    <div className="font-semibold truncate max-w-[220px]">{e.description || String(e.meta.payee ?? "") || "—"}</div>
-                                    <div className="flex items-center gap-1.5 mt-0.5">
-                                      <span className={`rounded-[4px] px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide ${c.cls}`}>{c.label}</span>
-                                      {form && <a href={form} target="_blank" rel="noreferrer" className="text-[9.5px] font-bold uppercase tracking-wide text-rose-600 hover:underline">View form</a>}
-                                    </div>
-                                  </div>
-                                )
-                              })()}
+                              <div className="min-w-0">
+                                <div className="font-semibold truncate max-w-[220px]">{e.description || e.notes || "—"}</div>
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                  <span className={`rounded-[4px] px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide ${c.cls}`}>{c.label}</span>
+                                  {e.receiptUrl && <a href={e.receiptUrl} target="_blank" rel="noreferrer" className="text-[9.5px] font-bold uppercase tracking-wide text-rose-600 hover:underline">View form</a>}
+                                </div>
+                              </div>
                             </td>
                             <td className="px-3 py-3"><span className={`${mono} rounded-[4px] bg-rose-50 text-rose-600 px-1.5 py-0.5 text-[10.5px] font-bold`}>{e.coaName || "Uncategorised"}{e.coaCode ? ` • ${e.coaCode}` : ""}</span></td>
                             <td className={`px-3 py-3 text-right ${mono} font-extrabold`}>{ngn(e.amount, { decimals: true })}</td>
-                            <td className="px-3 py-3"><span className="inline-flex items-center gap-1 rounded-[4px] bg-amber-50 text-amber-700 px-2 py-1 text-[10px] font-bold uppercase whitespace-nowrap"><Vault className="h-3 w-3" />In safe</span></td>
+                            <td className="px-3 py-3"><span className="inline-flex items-center gap-1 rounded-[4px] bg-amber-50 text-amber-700 px-2 py-1 text-[10px] font-bold uppercase whitespace-nowrap"><Vault className="h-3 w-3" />{e.paymentMethod === "cash" ? "In safe" : "Awaiting bank"}</span></td>
                             <td className="px-5 py-3">
                               <div className="flex items-center justify-end gap-2">
-                                <button onClick={() => setTeller(e)} className="h-7 rounded-[6px] bg-rose-600 text-white px-3 text-[11px] font-bold hover:bg-rose-700">Record Teller</button>
+                                <button onClick={() => openPayIn(e)} disabled={findingLine} className="h-7 rounded-[6px] bg-rose-600 text-white px-3 text-[11px] font-bold hover:bg-rose-700 disabled:opacity-60">{findingLine ? "Finding…" : "Record Pay-in"}</button>
                                 <button onClick={() => setViewing(e)} className="h-7 w-7 rounded-full text-[#6B7280] hover:bg-rose-50 hover:text-rose-600 inline-flex items-center justify-center" aria-label="View batch"><Eye className="h-4 w-4" /></button>
                               </div>
                             </td>
@@ -282,7 +319,7 @@ export default function Page() {
                 <button onClick={() => setExpenseOpen((v) => !v)} className="flex items-center gap-2 text-left">
                   {expenseOpen ? <ChevronDown className="h-4 w-4 text-[#6B7280]" /> : <ChevronRight className="h-4 w-4 text-[#6B7280]" />}
                   <span className="text-[12px] font-extrabold uppercase tracking-wide">Pending expense entries</span>
-                  <span className="text-[11px] text-[#6B7280] hidden sm:inline">(Real-time entries waiting for bank debit confirmation)</span>
+                  <span className="text-[11px] text-[#6B7280] hidden sm:inline">(Paid, waiting for the bank debit)</span>
                   <span className="rounded-[4px] bg-rose-50 text-rose-600 px-1.5 py-0.5 text-[10px] font-bold">{pendingExpense.length} {pendingExpense.length === 1 ? "item" : "items"}</span>
                 </button>
                 <div className="flex items-center gap-2">
@@ -301,35 +338,32 @@ export default function Page() {
                     <tbody className="divide-y divide-[#EEF1F6]">
                       {loading && <tr><td colSpan={7} className="px-5 py-8 text-center text-[#9CA3AF]">Loading entries…</td></tr>}
                       {!loading && expenseRows.length === 0 && <tr><td colSpan={7} className="px-5 py-8 text-center text-[#9CA3AF]">{pendingExpense.length === 0 ? "No expenses are waiting for bank confirmation." : "No entries match the filter."}</td></tr>}
-                      {expenseRows.map((e, i) => {
-                        const receipt = receiptOf(e)
-                        return (
-                          <tr key={e.id} className="hover:bg-[#F8FAFC]">
-                            <td className={`px-5 py-3 ${mono} text-[#6B7280]`}>{String(i + 1).padStart(2, "0")}</td>
-                            <td className="px-3 py-3 font-semibold whitespace-nowrap">{shortDate(e.date)}</td>
-                            <td className={`px-3 py-3 ${mono} font-bold`}>{entryRef(e)}</td>
-                            <td className="px-3 py-3">
-                              {String(e.meta.requisitionRef ?? e.reference ?? "") ? (
-                                <span className={`${mono} rounded-[4px] bg-rose-50 text-rose-600 px-1.5 py-0.5 text-[10.5px] font-bold`}>{String(e.meta.requisitionRef ?? e.reference)}</span>
+                      {expenseRows.map((e, i) => (
+                        <tr key={e.id} className="hover:bg-[#F8FAFC]">
+                          <td className={`px-5 py-3 ${mono} text-[#6B7280]`}>{String(i + 1).padStart(2, "0")}</td>
+                          <td className="px-3 py-3 font-semibold whitespace-nowrap">{shortDate(e.date)}</td>
+                          <td className={`px-3 py-3 ${mono} font-bold`}>{entryRef(e)}</td>
+                          <td className="px-3 py-3">
+                            {e.requisitionNumber ? (
+                              <span className={`${mono} rounded-[4px] bg-rose-50 text-rose-600 px-1.5 py-0.5 text-[10.5px] font-bold`}>{e.requisitionNumber}</span>
+                            ) : (
+                              <span className="text-[10.5px] font-bold uppercase text-amber-600" title="Church expenses must carry an approved requisition">No requisition</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-3"><div className="font-semibold">{e.payee || e.description || "—"}</div>{e.payee && e.description ? <div className="text-[11px] text-[#6B7280] truncate max-w-[320px]">{e.description}</div> : null}</td>
+                          <td className={`px-3 py-3 text-right ${mono} font-extrabold`}>{ngn(e.amount, { decimals: true })}</td>
+                          <td className="px-5 py-3">
+                            <div className="flex items-center justify-end gap-2">
+                              {e.receiptUrl ? (
+                                <a href={e.receiptUrl} target="_blank" rel="noreferrer" className="h-7 rounded-[6px] border border-[#E5E7EB] bg-white px-3 text-[11px] font-bold text-[#374151] inline-flex items-center hover:bg-gray-50">View Receipt</a>
                               ) : (
-                                <span className="text-[10.5px] font-bold uppercase text-amber-600" title="Church expenses must carry an approved requisition">No requisition</span>
+                                <span className="h-7 rounded-[6px] border border-dashed border-[#E5E7EB] px-3 text-[11px] font-bold text-[#9CA3AF] inline-flex items-center" title="No receipt attached">No receipt</span>
                               )}
-                            </td>
-                            <td className="px-3 py-3"><div className="font-semibold">{String(e.meta.payee ?? "") || e.description || "—"}</div>{e.meta.payee ? <div className="text-[11px] text-[#6B7280] truncate max-w-[320px]">{e.description}</div> : null}</td>
-                            <td className={`px-3 py-3 text-right ${mono} font-extrabold`}>{ngn(e.amount, { decimals: true })}</td>
-                            <td className="px-5 py-3">
-                              <div className="flex items-center justify-end gap-2">
-                                {receipt ? (
-                                  <a href={receipt} target="_blank" rel="noreferrer" className="h-7 rounded-[6px] border border-[#E5E7EB] bg-white px-3 text-[11px] font-bold text-[#374151] inline-flex items-center">View Receipt</a>
-                                ) : (
-                                  <span className="h-7 rounded-[6px] border border-dashed border-[#E5E7EB] px-3 text-[11px] font-bold text-[#9CA3AF] inline-flex items-center" title="No receipt attached">No receipt</span>
-                                )}
-                                <button onClick={() => setAllocating(e)} className="h-7 w-7 rounded-full text-[#6B7280] hover:bg-rose-50 hover:text-rose-600 inline-flex items-center justify-center" aria-label="Categorise" title="Change the expense account"><Eye className="h-4 w-4" /></button>
-                              </div>
-                            </td>
-                          </tr>
-                        )
-                      })}
+                              <Link href={`/branchaccount-pastor/general-ledger/reports?search=${encodeURIComponent(e.requisitionNumber || entryRef(e))}`} className="h-7 w-7 rounded-full text-[#6B7280] hover:bg-rose-50 hover:text-rose-600 inline-flex items-center justify-center" aria-label="Find on the statement" title="Find this debit on the bank statement"><Eye className="h-4 w-4" /></Link>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                   <div className="flex items-center justify-between px-5 py-2.5 text-[10.5px] font-bold uppercase tracking-wide text-[#6B7280] bg-[#F8FAFC] rounded-b-[12px]">
@@ -345,33 +379,14 @@ export default function Page() {
         </div>
       </main>
 
-      <SafeBatchModal
-        open={safeOpen}
-        onClose={() => setSafeOpen(false)}
-        mode="safe"
-        branchName={branchName}
-        onCashPaidIn={(e) => {
-          setSafeOpen(false)
-          setTeller(e)
-        }}
-      />
-      <SafeBatchModal
-        open={viewing !== null}
-        onClose={() => setViewing(null)}
-        mode={viewing?.status === "verified" ? "journal" : "safe"}
-        branchName={branchName}
-        entry={viewing}
-        onCashPaidIn={(e) => {
-          setViewing(null)
-          setTeller(e)
-        }}
-      />
-      <BankBalanceModal open={bankOpen} onClose={() => setBankOpen(false)} branchName={branchName} accounts={accounts} entries={entries} onAddAccount={() => { setBankOpen(false); setAccountsOpen(true) }} />
+      <SafeBatchModal open={safeOpen} onClose={() => setSafeOpen(false)} branchName={branchName} entries={pendingIncome} onCashPaidIn={openPayIn} />
+      <SafeBatchModal open={viewing !== null} onClose={() => setViewing(null)} branchName={branchName} entries={pendingIncome} entry={viewing} onCashPaidIn={openPayIn} />
+      <BankBalanceModal open={bankOpen} onClose={() => setBankOpen(false)} branchName={branchName} accounts={accounts} entries={reconciledEntries} onAddAccount={() => { setBankOpen(false); setAccountsOpen(true) }} />
       <ManageAccountsModal open={accountsOpen} onClose={() => { setAccountsOpen(false); refresh() }} />
-      <UploadTransactionsModal open={uploadOpen} onClose={() => setUploadOpen(false)} onProcess={() => { setUploadOpen(false); refresh() }} />
+      <StatementImportModal open={importOpen} onClose={() => setImportOpen(false)} accounts={accounts} onImported={refresh} />
       <NewEntryModal open={entryOpen} onClose={() => setEntryOpen(false)} accounts={accounts} onPosted={refresh} />
-      <RecordTellerModal open={teller !== null} onClose={() => setTeller(null)} entry={teller} accounts={accounts} onSaved={refresh} />
-      <AllocateModal open={allocating !== null} onClose={() => setAllocating(null)} entry={allocating} onAllocated={refresh} />
+      <MatchModal open={matchLine !== null} onClose={() => setMatchLine(null)} line={matchLine} onReconciled={refresh} />
+      <AllocateModal open={allocateLine !== null} onClose={() => setAllocateLine(null)} line={allocateLine} onAllocated={refresh} />
     </div>
   )
 }
