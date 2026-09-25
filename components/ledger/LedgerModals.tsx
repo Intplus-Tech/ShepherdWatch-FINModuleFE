@@ -10,6 +10,7 @@ import {
   ChevronUp,
   CloudUpload,
   FileText,
+  Pencil,
   Landmark,
   Receipt,
   Trash2,
@@ -21,17 +22,28 @@ import { AmountInput, parseAmount } from "@/components/ui/amount-input"
 import { useToast } from "@/components/ui/toast"
 import { useBranchContext } from "@/components/hooks/useBranchContext"
 import {
+  addService,
+  loadServices,
+  removeService,
+  renameService,
+  toggleService,
+  type ChurchService,
+} from "@/lib/services-store"
+import {
   allocateStatementLine,
   buildSafeView,
   createLedgerEntry,
   entryRef,
   importStatement,
   loadAccountHeads,
+  loadAwaitingRequisitions,
   loadBankAccounts,
   loadMatchCandidates,
   loadPostableRequisitions,
   longDate,
+  uploadReceipt,
   matchStatementLine,
+  nextBatchNumber,
   ngn,
   shortDate,
   unmatchStatementLine,
@@ -345,18 +357,6 @@ export function BankBalanceModal({
 // New Entry — POST /general-ledger, multipart, receipt required.
 // ---------------------------------------------------------------------------
 
-/**
- * Income reaches the branch two ways. Over the counter the accountant takes
- * it in person; a service collection is counted, written up on a form and
- * locked in the safe for the next bank run. Both are banked as cash, which is
- * how the matching modal finds them against the bank run.
- */
-const COLLECTIONS = [
-  { value: "office", label: "Office collection", hint: "Handed in at the church office — tithe, donation or gift, in cash or cheque." },
-  { value: "service", label: "Service collection", hint: "Counted after a service and locked in the safe for the bank run. Attach the counting form." },
-] as const
-type CollectionType = (typeof COLLECTIONS)[number]["value"]
-
 const PAYMENT_METHODS = [
   { value: "transfer", label: "Bank Transfer" },
   { value: "cash", label: "Cash" },
@@ -365,6 +365,154 @@ const PAYMENT_METHODS = [
   { value: "pos", label: "POS" },
 ] as const
 type PaymentMethod = (typeof PAYMENT_METHODS)[number]["value"]
+
+/** Money counted at a service, or handed in at the office outside one. */
+const INCOME_TYPES = [
+  { value: "service", label: "Service Collection (Congregational)" },
+  { value: "office", label: "Non-Service Collection" },
+] as const
+type IncomeType = (typeof INCOME_TYPES)[number]["value"]
+
+/** One fund, and the cash and cheques counted into it. */
+type Collection = {
+  key: string
+  coaId: string
+  rows: { key: string; amount: string; tender: "cash" | "cheque" }[]
+}
+
+const newRow = () => ({ key: `row-${Math.random().toString(36).slice(2)}`, amount: "", tender: "cash" as const })
+const newCollection = (): Collection => ({ key: `col-${Math.random().toString(36).slice(2)}`, coaId: "", rows: [newRow()] })
+
+// ---------------------------------------------------------------------------
+
+/** Manage the branch's service list, kept per browser until an API exists. */
+function ServicesModal({
+  open,
+  onClose,
+  branchId,
+  services,
+  onChange,
+}: {
+  open: boolean
+  onClose: () => void
+  branchId: string
+  services: ChurchService[]
+  onChange: (next: ChurchService[]) => void
+}) {
+  const [name, setName] = useState("")
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState("")
+
+  useEffect(() => {
+    if (!open) return
+    setName("")
+    setEditingId(null)
+  }, [open])
+
+  return (
+    <ModalShell open={open} onClose={onClose} className="max-w-md">
+      <Header title="Add New Service" onClose={onClose} />
+      <div className="px-6 py-5">
+        <div className={labelCls}>Service details</div>
+        <div className="mt-3 rounded-[10px] bg-[#F8FAFC] border border-[#EEF1F6] p-4">
+          <div className={labelCls}>Service name <span className="text-rose-500">*</span></div>
+          <div className="mt-1.5 flex items-center gap-2">
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && name.trim()) {
+                  onChange(addService(branchId, name))
+                  setName("")
+                }
+              }}
+              placeholder="e.g. Sunday 3rd Service"
+              className={inputCls}
+            />
+            <button
+              type="button"
+              onClick={() => {
+                if (!name.trim()) return
+                onChange(addService(branchId, name))
+                setName("")
+              }}
+              className="h-[42px] shrink-0 rounded-[8px] bg-rose-600 px-4 text-[12.5px] font-bold text-white hover:bg-rose-700"
+            >
+              Add Service
+            </button>
+          </div>
+
+          <div className="mt-5 flex items-center justify-between">
+            <span className="text-[13px] font-bold text-[#111827]">Services</span>
+            <span className={labelCls}>Actions</span>
+          </div>
+          <ul className="mt-2 divide-y divide-[#EEF1F6]">
+            {services.length === 0 && <li className="py-3 text-[12px] text-[#9CA3AF]">No services yet.</li>}
+            {services.map((svc) => (
+              <li key={svc.id} className="flex items-center justify-between gap-3 py-2.5">
+                {editingId === svc.id ? (
+                  <input
+                    autoFocus
+                    value={editingName}
+                    onChange={(e) => setEditingName(e.target.value)}
+                    onBlur={() => {
+                      onChange(renameService(branchId, svc.id, editingName))
+                      setEditingId(null)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        onChange(renameService(branchId, svc.id, editingName))
+                        setEditingId(null)
+                      }
+                    }}
+                    className="h-8 flex-1 rounded-[6px] border border-[#E5E7EB] px-2 text-[12.5px]"
+                  />
+                ) : (
+                  <label className="flex items-center gap-2.5 min-w-0 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={svc.active}
+                      onChange={() => onChange(toggleService(branchId, svc.id))}
+                      className="h-4 w-4 accent-[#0F172A]"
+                    />
+                    <span className={`text-[13px] truncate ${svc.active ? "text-[#111827]" : "text-[#9CA3AF] line-through"}`}>{svc.name}</span>
+                  </label>
+                )}
+                <div className="flex items-center gap-3 shrink-0">
+                  <button
+                    type="button"
+                    aria-label={`Rename ${svc.name}`}
+                    onClick={() => {
+                      setEditingId(svc.id)
+                      setEditingName(svc.name)
+                    }}
+                    className="text-[#3B5BDB] hover:text-[#1E3A8A]"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${svc.name}`}
+                    onClick={() => onChange(removeService(branchId, svc.id))}
+                    className="text-rose-500 hover:text-rose-700"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-4 text-[10.5px] text-[#9CA3AF]">Unticked services stay on the list but drop out of the picker.</p>
+        </div>
+      </div>
+      <div className="flex items-center justify-end px-6 py-4 border-t border-[#EEF1F6]">
+        <button onClick={onClose} className="h-9 rounded-[6px] bg-[#0F172A] px-4 text-[12px] font-bold text-white">Done</button>
+      </div>
+    </ModalShell>
+  )
+}
+
+// ---------------------------------------------------------------------------
 
 export function NewEntryModal({
   open,
@@ -380,29 +528,39 @@ export function NewEntryModal({
   const { pushToast } = useToast()
   const { branchId } = useBranchContext()
   const [kind, setKind] = useState<"expense" | "income">("expense")
-  const [collection, setCollection] = useState<CollectionType>("service")
   const [date, setDate] = useState("")
-  const [requisitions, setRequisitions] = useState<RequisitionOption[]>([])
-  const [requisitionId, setRequisitionId] = useState("")
   const [incomeHeads, setIncomeHeads] = useState<AccountHead[]>([])
   const [expenseHeads, setExpenseHeads] = useState<AccountHead[]>([])
+  const [loadingLists, setLoadingLists] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [file, setFile] = useState<File | null>(null)
+
+  // --- expense ---
+  const [postable, setPostable] = useState<RequisitionOption[]>([])
+  const [awaiting, setAwaiting] = useState<RequisitionOption[]>([])
+  const [requisitionId, setRequisitionId] = useState("")
   const [coaId, setCoaId] = useState("")
   const [amount, setAmount] = useState("")
   const [payee, setPayee] = useState("")
   const [method, setMethod] = useState<PaymentMethod>("transfer")
   const [bankAccountId, setBankAccountId] = useState("")
   const [description, setDescription] = useState("")
-  const [file, setFile] = useState<File | null>(null)
-  const [loadingLists, setLoadingLists] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+
+  // --- income ---
+  const [incomeType, setIncomeType] = useState<IncomeType>("service")
+  const [services, setServices] = useState<ChurchService[]>([])
+  const [serviceName, setServiceName] = useState("")
+  const [servicesOpen, setServicesOpen] = useState(false)
+  const [batchNumber, setBatchNumber] = useState("")
+  const [collections, setCollections] = useState<Collection[]>([newCollection()])
+
+  const today = () => new Date().toISOString().slice(0, 10)
 
   useEffect(() => {
     if (!open) return
     setKind("expense")
-    setCollection("service")
-    setDate(new Date().toISOString().slice(0, 10))
+    setDate(today())
     setRequisitionId("")
     setCoaId("")
     setAmount("")
@@ -413,17 +571,24 @@ export function NewEntryModal({
     setFile(null)
     setSaving(false)
     setError(null)
-    setFieldErrors({})
+    setIncomeType("service")
+    setCollections([newCollection()])
+    const list = loadServices(branchId)
+    setServices(list)
+    setServiceName(list.find((x) => x.active)?.name ?? "")
+
     let active = true
     setLoadingLists(true)
     Promise.all([
       loadPostableRequisitions().catch(() => [] as RequisitionOption[]),
+      loadAwaitingRequisitions().catch(() => [] as RequisitionOption[]),
       loadAccountHeads(branchId, "income").catch(() => [] as AccountHead[]),
       loadAccountHeads(branchId, "expense").catch(() => [] as AccountHead[]),
     ])
-      .then(([r, inc, exp]) => {
+      .then(([ready, queued, inc, exp]) => {
         if (!active) return
-        setRequisitions(r)
+        setPostable(ready)
+        setAwaiting(queued)
         setIncomeHeads(inc)
         setExpenseHeads(exp)
       })
@@ -435,199 +600,397 @@ export function NewEntryModal({
     }
   }, [open, branchId])
 
-  // Collections are banked as cash: that is how matching pairs them with the
-  // bank run. The accountant can still override it.
+  // A collection needs a batch number the whole counting session shares.
   useEffect(() => {
-    if (kind === "income") setMethod("cash")
-    else setMethod("transfer")
-  }, [kind])
+    if (!open || kind !== "income" || !date) return
+    let active = true
+    nextBatchNumber(date, incomeType === "service" ? "service" : "office")
+      .then((ref) => {
+        if (active) setBatchNumber(ref)
+      })
+      .catch(() => undefined)
+    return () => {
+      active = false
+    }
+  }, [open, kind, date, incomeType])
 
-  const requisition = requisitions.find((r) => r.id === requisitionId) ?? null
+  const requisition = postable.find((r) => r.id === requisitionId) ?? null
   useEffect(() => {
     if (!requisition) return
     setAmount((prev) => prev || String(requisition.amount))
-    setDescription((prev) => prev || requisition.justification)
+    setDescription((prev) => prev || requisition.title || requisition.justification)
     setCoaId((prev) => prev || requisition.coaId)
+    setPayee((prev) => prev || requisition.accountName)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requisitionId])
 
-  const heads = kind === "income" ? incomeHeads : expenseHeads
+  const money = (value: string) => parseAmount(value)
+  const collectionTotal = collections.reduce((sum, c) => sum + c.rows.reduce((s, r) => s + money(r.amount), 0), 0)
 
-  const post = async () => {
-    setError(null)
-    setFieldErrors({})
-    const value = parseAmount(amount)
+  const updateCollection = (key: string, patch: Partial<Collection>) =>
+    setCollections((prev) => prev.map((c) => (c.key === key ? { ...c, ...patch } : c)))
+  const updateRow = (colKey: string, rowKey: string, patch: Partial<Collection["rows"][number]>) =>
+    setCollections((prev) =>
+      prev.map((c) => (c.key === colKey ? { ...c, rows: c.rows.map((r) => (r.key === rowKey ? { ...r, ...patch } : r)) } : c))
+    )
+
+  const postExpense = async () => {
+    const value = money(amount)
     if (!date) return setError("Pick the entry's effective date.")
-    if (kind === "expense" && !requisitionId)
+    if (!requisitionId)
       return setError(
-        requisitions.length === 0
-          ? "A church expense must be posted against an approved requisition, and none are awaiting payment. Raise and approve one first."
+        postable.length === 0
+          ? "No approved requisition is available to pay. A request has to clear the branch pastor and a Director before it can be posted."
           : "Select the approved requisition this payment is for."
       )
-    if (!coaId) return setError(kind === "income" ? "Choose the income stream this belongs to." : "Choose the expense account.")
+    if (!coaId) return setError("Choose the budget category to post against.")
     if (!(value > 0)) return setError("Enter an amount greater than zero.")
-    if (kind === "expense" && !payee.trim()) return setError("Enter the payee / vendor.")
-    if (kind === "income" && !payee.trim()) return setError(collection === "service" ? "Enter which service this collection came from." : "Enter who the money was received from.")
-    if (kind === "expense" && requisition && value > requisition.amount) return setError(`The amount may not exceed the requisition's approved ${ngn(requisition.amount)}.`)
-    if (!file) return setError(kind === "expense" ? "Attach the payment receipt — entries can't be posted without one." : collection === "service" ? "Attach a photo of the signed counting form." : "Attach the receipt or cheque for this collection.")
+    if (!payee.trim()) return setError("Enter the payee / vendor.")
+    if (requisition && value > requisition.amount) return setError(`The amount may not exceed the approved ${ngn(requisition.amount)}.`)
+    if (!file) return setError("Attach the payment receipt — entries can't be posted without one.")
 
     setSaving(true)
     try {
       await createLedgerEntry({
-        entryType: kind,
+        entryType: "expense",
         transactionDate: date,
         chartOfAccountId: coaId,
         amount: value,
         receipt: file,
         paymentMethod: method,
-        ...(kind === "expense" ? { payee: payee.trim(), requisitionId } : {}),
+        payee: payee.trim(),
+        requisitionId,
         ...(bankAccountId && method !== "cash" ? { bankAccountId } : {}),
         ...(description.trim() ? { description: description.trim() } : {}),
-        ...(kind === "income" ? { notes: `${collection === "service" ? "Service collection" : "Office collection"} — ${payee.trim()}` } : {}),
       })
-      pushToast(kind === "expense" ? "Expense posted — awaiting the bank debit." : "Income posted — awaiting the bank deposit.", "success")
+      pushToast("Expense posted — awaiting the bank debit.", "success")
       onPosted?.()
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to post the entry.")
-      const detail = (err as { errors?: Record<string, string[]> }).errors
-      if (detail) setFieldErrors(Object.fromEntries(Object.entries(detail).map(([k, v]) => [k, Array.isArray(v) ? v[0] : String(v)])))
     } finally {
       setSaving(false)
     }
   }
 
-  const fieldError = (name: string) => (fieldErrors[name] ? <p className="mt-1 text-[11px] font-medium text-rose-600">{fieldErrors[name]}</p> : null)
+  /**
+   * A collection posts one ledger entry per fund and tender, all carrying the
+   * batch number, so the safe can be reconciled as one counting session.
+   */
+  const postIncome = async () => {
+    if (!date) return setError("Pick the entry's effective date.")
+    if (incomeType === "service" && !serviceName) return setError("Choose which service this collection came from.")
+    const lines = collections.flatMap((c) =>
+      c.rows.filter((r) => money(r.amount) > 0).map((r) => ({ coaId: c.coaId, amount: money(r.amount), tender: r.tender }))
+    )
+    if (lines.length === 0) return setError("Enter at least one received amount.")
+    if (lines.some((l) => !l.coaId)) return setError("Choose the income account for every collection.")
+    if (!file) return setError("Attach the teller slip or counting sheet.")
+
+    setSaving(true)
+    try {
+      const label = incomeType === "service" ? serviceName : "Office collection"
+      // The slip is stored once; every line of the batch points at it.
+      const receiptFileId = await uploadReceipt(file, branchId)
+      let posted = 0
+      try {
+        for (const line of lines) {
+          await createLedgerEntry({
+            entryType: "income",
+            transactionDate: date,
+            chartOfAccountId: line.coaId,
+            amount: line.amount,
+            receiptFileId,
+            paymentMethod: line.tender,
+            reference: batchNumber,
+            description: label,
+            notes: `${incomeType === "service" ? "Service collection" : "Office collection"} — batch ${batchNumber}`,
+          })
+          posted += 1
+        }
+      } catch (err) {
+        // The API posts one line at a time, so a failure part-way leaves the
+        // batch incomplete. Say exactly how far it got.
+        throw new Error(
+          `${posted} of ${lines.length} lines posted to batch ${batchNumber} before this failed: ${err instanceof Error ? err.message : "unknown error"}. Re-enter only the remaining lines against the same batch number.`
+        )
+      }
+      pushToast(`${lines.length} ${lines.length === 1 ? "line" : "lines"} recorded in batch ${batchNumber}.`, "success")
+      onPosted?.()
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to post the collection.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const activeServices = services.filter((svc) => svc.active)
 
   return (
-    <ModalShell open={open} onClose={onClose} className="max-w-3xl">
-      <Header title="NEW ENTRY" onClose={onClose} dark />
-      <div className="px-6 py-3 border-b border-[#EEF1F6] flex items-center gap-3 flex-wrap">
-        <span className="text-[11px] font-bold text-[#6B7280]">Transaction Type:</span>
-        <div className="inline-flex rounded-[8px] bg-[#EEF1F6] p-1">
-          <button type="button" onClick={() => { setKind("expense"); setCoaId("") }} className={`h-8 px-3 rounded-[6px] text-[11.5px] font-bold inline-flex items-center gap-1.5 ${kind === "expense" ? "bg-[#0F172A] text-white" : "text-[#6B7280]"}`}><ArrowUpFromLine className="h-3.5 w-3.5" />Expense Entry</button>
-          <button type="button" onClick={() => { setKind("income"); setCoaId("") }} className={`h-8 px-3 rounded-[6px] text-[11.5px] font-bold inline-flex items-center gap-1.5 ${kind === "income" ? "bg-[#0F172A] text-white" : "text-[#6B7280]"}`}><ArrowDownToLine className="h-3.5 w-3.5" />Income Entry</button>
+    <>
+      <ModalShell open={open} onClose={onClose} className="max-w-3xl">
+        <Header title="NEW ENTRY" onClose={onClose} dark />
+        <div className="px-6 py-3 border-b border-[#EEF1F6] flex items-center gap-3 flex-wrap bg-[#F8FAFC]">
+          <span className="text-[11px] font-bold text-[#6B7280]">Transaction Type:</span>
+          <div className="inline-flex rounded-[8px] bg-[#EEF1F6] p-1">
+            <button type="button" onClick={() => { setKind("expense"); setError(null) }} className={`h-8 px-3 rounded-[6px] text-[11.5px] font-bold inline-flex items-center gap-1.5 ${kind === "expense" ? "bg-[#0F172A] text-white" : "text-[#6B7280]"}`}><ArrowUpFromLine className="h-3.5 w-3.5" />Expense Entry</button>
+            <button type="button" onClick={() => { setKind("income"); setError(null) }} className={`h-8 px-3 rounded-[6px] text-[11.5px] font-bold inline-flex items-center gap-1.5 ${kind === "income" ? "bg-[#0F172A] text-white" : "text-[#6B7280]"}`}><ArrowDownToLine className="h-3.5 w-3.5" />Income Entry</button>
+          </div>
         </div>
-      </div>
 
-      <div className="px-6 py-5 space-y-4 max-h-[62vh] overflow-y-auto">
-        {kind === "income" && (
-          <div>
-            <div className={labelCls}>How was this collected? <span className="text-rose-500">*</span></div>
-            <div className="mt-1.5 grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {COLLECTIONS.map((c) => (
-                <button key={c.value} type="button" onClick={() => setCollection(c.value)} className={`text-left rounded-[8px] border p-3 transition-colors ${collection === c.value ? "border-rose-500 bg-rose-50" : "border-[#E5E7EB] bg-white hover:border-[#CBD5E1]"}`}>
-                  <div className="flex items-center gap-2"><span className={`h-3.5 w-3.5 rounded-full border-2 ${collection === c.value ? "border-rose-500 bg-rose-500" : "border-[#CBD5E1]"}`} /><span className="text-[12.5px] font-bold text-[#111827]">{c.label}</span></div>
-                  <div className="text-[11px] text-[#6B7280] mt-1 leading-snug">{c.hint}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {kind === "expense" && (
-          <div className="rounded-[8px] border border-amber-200 bg-amber-50 px-4 py-3 flex gap-3">
-            <TriangleAlert className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-            <div><div className="text-[12px] font-bold text-[#111827]">Fiduciary validation enforces audit compliance</div><div className="text-[11.5px] text-[#6B7280] mt-0.5">An expense cannot be posted without an approved requisition and a proof-of-payment receipt. Posting settles the requisition.</div></div>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_1.6fr] gap-4">
-          <div>
-            <div className={labelCls}>Entry effective date <span className="text-rose-500">*</span></div>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={`${inputCls} mt-1.5`} />
-            {fieldError("transactionDate")}
-          </div>
+        <div className="px-6 py-5 space-y-4 max-h-[62vh] overflow-y-auto">
           {kind === "expense" ? (
-            <div>
-              <div className="flex items-center justify-between gap-2"><span className={labelCls}>Requisition <span className="text-rose-500">*</span></span><span className="text-[10px] text-[#9CA3AF] truncate">(Approved, not yet posted)</span></div>
-              <div className="relative mt-1.5">
-                <select value={requisitionId} onChange={(e) => setRequisitionId(e.target.value)} className={`${inputCls} appearance-none pr-9`}>
-                  <option value="">{loadingLists ? "Loading requisitions…" : requisitions.length === 0 ? "No approved requisitions awaiting payment" : "Select requisition…"}</option>
-                  {requisitions.map((r) => <option key={r.id} value={r.id}>{r.requisitionNumber} — {ngn(r.amount)} — {r.justification || "Requisition"}{r.requestedBy ? ` (${r.requestedBy})` : ""}</option>)}
-                </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9CA3AF] pointer-events-none" />
+            <>
+              <div className="rounded-[8px] border border-amber-200 bg-amber-50 px-4 py-3 flex gap-3">
+                <TriangleAlert className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                <div><div className="text-[12px] font-bold text-[#111827]">Fiduciary validation enforces audit compliance</div><div className="text-[11.5px] text-[#6B7280] mt-0.5">An expense cannot be posted without an approved requisition and a proof-of-payment receipt. Posting settles the requisition.</div></div>
               </div>
-              {fieldError("requisitionId")}
-            </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-[1fr_1.6fr] gap-4">
+                <div>
+                  <div className={labelCls}>Entry effective date <span className="text-rose-500">*</span></div>
+                  <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={`${inputCls} mt-1.5`} />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between gap-2"><span className={labelCls}>Requisition <span className="text-rose-500">*</span></span><span className="text-[10px] text-[#9CA3AF] truncate">(Approved, not yet posted)</span></div>
+                  <div className="relative mt-1.5">
+                    <select value={requisitionId} onChange={(e) => setRequisitionId(e.target.value)} className={`${inputCls} appearance-none pr-9`}>
+                      <option value="">{loadingLists ? "Loading requisitions…" : postable.length === 0 ? "No approved requisitions awaiting payment" : "Select requisition…"}</option>
+                      {postable.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.requisitionNumber} — {ngn(r.amount)} — {r.title || r.justification || "Requisition"}{r.requestedBy ? ` (${r.requestedBy})` : ""}
+                        </option>
+                      ))}
+                      {awaiting.length > 0 && (
+                        <optgroup label="Still in approval — cannot be posted yet">
+                          {awaiting.map((r) => (
+                            <option key={r.id} value="" disabled>
+                              {r.requisitionNumber} — {ngn(r.amount)} — {r.blockedReason}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9CA3AF] pointer-events-none" />
+                  </div>
+                </div>
+              </div>
+
+              {requisition && (requisition.payee || requisition.attachmentUrl) && (
+                <div className="rounded-[8px] border border-[#EEF1F6] bg-[#F8FAFC] px-4 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className={labelCls}>Pay into (from the request)</div>
+                      <div className="text-[13px] font-semibold text-[#111827] mt-0.5">{requisition.payee || "No account details were given"}</div>
+                    </div>
+                    {requisition.attachmentUrl && (
+                      <a href={requisition.attachmentUrl} target="_blank" rel="noreferrer" className="text-[11px] font-bold uppercase text-rose-600 hover:underline shrink-0">View attachment</a>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-[1.6fr_1fr] gap-4">
+                <div>
+                  <div className={labelCls}>Budget category (debit account) <span className="text-rose-500">*</span></div>
+                  <div className="relative mt-1.5">
+                    <select value={coaId} onChange={(e) => setCoaId(e.target.value)} className={`${inputCls} appearance-none pr-9`}>
+                      <option value="">{loadingLists ? "Loading categories…" : expenseHeads.length === 0 ? "No expense accounts in the chart of accounts" : "Select budget category…"}</option>
+                      {expenseHeads.map((h) => <option key={h.id} value={h.id}>{h.name}{h.code ? ` (GL ${h.code})` : ""}</option>)}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9CA3AF] pointer-events-none" />
+                  </div>
+                  {requisition?.coaName && <p className="mt-1 text-[10.5px] text-[#9CA3AF]">Requested against {requisition.coaName}.</p>}
+                </div>
+                <div>
+                  <div className="flex items-center justify-between"><span className={labelCls}>Gross amount <span className="text-rose-500">*</span></span>{requisition && <span className={`${mono} text-[10px] font-bold text-rose-600`}>Max {ngn(requisition.amount)}</span>}</div>
+                  <div className="relative mt-1.5"><span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#6B7280] font-bold">₦</span><AmountInput value={amount} onValueChange={setAmount} className={`${inputCls} pl-8 text-right ${mono} text-[15px] font-extrabold`} placeholder="0.00" /></div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <div className={labelCls}>Payee / beneficiary vendor <span className="text-rose-500">*</span></div>
+                  <div className="relative mt-1.5"><Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6B7280]" /><input value={payee} onChange={(e) => setPayee(e.target.value)} placeholder="e.g. Grace Building Supplies" className={`${inputCls} pl-9`} /></div>
+                </div>
+                <div>
+                  <div className={labelCls}>Disbursement method &amp; credit account</div>
+                  <div className="mt-1.5 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div className="relative">
+                      <select value={method} onChange={(e) => setMethod(e.target.value as PaymentMethod)} className={`${inputCls} appearance-none pr-9`}>
+                        {PAYMENT_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+                      </select>
+                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9CA3AF] pointer-events-none" />
+                    </div>
+                    <div className="relative">
+                      <select value={bankAccountId} onChange={(e) => setBankAccountId(e.target.value)} disabled={method === "cash"} className={`${inputCls} appearance-none pr-9`}>
+                        <option value="">{method === "cash" ? "Cash — no bank account" : accounts.length === 0 ? "No bank accounts yet" : "Branch default account"}</option>
+                        {accounts.map((a) => <option key={a.id} value={a.id}>{a.bankName} — {a.accountName} · {ngn(a.balance)}</option>)}
+                      </select>
+                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9CA3AF] pointer-events-none" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between"><span className={labelCls}>Auditable transaction description</span><span className="text-[10px] text-[#9CA3AF]">Built automatically if left blank</span></div>
+                <textarea value={description} onChange={(e) => setDescription(e.target.value.slice(0, 250))} rows={3} placeholder="Payment for church auditorium roof repairs (Vestry &amp; Altar ceiling leak reinforcement)" className="mt-1.5 w-full rounded-[8px] border border-[#E5E7EB] bg-[#F8FAFC] px-3.5 py-3 text-[12.5px] text-[#111827] outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500/20" />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between"><span className={labelCls}>Upload payment receipt <span className="text-rose-500">*</span></span><span className="text-[10px] text-[#9CA3AF]">PDF, JPG or PNG, up to 10MB</span></div>
+                <div className="mt-1.5"><DropZone file={file} onFile={setFile} onClear={() => setFile(null)} hint="Upload the receipt stamped paid" /></div>
+              </div>
+            </>
           ) : (
-            <div>
-              <div className={labelCls}>{collection === "service" ? "Service" : "Received from"} <span className="text-rose-500">*</span></div>
-              <div className="relative mt-1.5"><Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6B7280]" /><input value={payee} onChange={(e) => setPayee(e.target.value)} placeholder={collection === "service" ? "e.g. Sunday 1st Service" : "e.g. Bro. Chidi Okafor — tithe"} className={`${inputCls} pl-9`} /></div>
-            </div>
-          )}
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-[1.6fr_1fr] gap-4">
-          <div>
-            <div className={labelCls}>{kind === "income" ? "Income stream (credit account)" : "Expense account (debit account)"} <span className="text-rose-500">*</span></div>
-            <div className="relative mt-1.5">
-              <select value={coaId} onChange={(e) => setCoaId(e.target.value)} className={`${inputCls} appearance-none pr-9`}>
-                <option value="">{loadingLists ? "Loading accounts…" : heads.length === 0 ? `No ${kind} accounts in the chart of accounts` : "Select account…"}</option>
-                {heads.map((h) => <option key={h.id} value={h.id}>{h.name}{h.code ? ` (GL ${h.code})` : ""}</option>)}
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9CA3AF] pointer-events-none" />
-            </div>
-            {fieldError("chartOfAccountId")}
-          </div>
-          <div>
-            <div className="flex items-center justify-between"><span className={labelCls}>Gross amount <span className="text-rose-500">*</span></span>{requisition && <span className={`${mono} text-[10px] font-bold text-rose-600`}>Max {ngn(requisition.amount)}</span>}</div>
-            <div className="relative mt-1.5"><span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#6B7280] font-bold">₦</span><AmountInput value={amount} onValueChange={setAmount} className={`${inputCls} pl-8 text-right ${mono} text-[15px] font-extrabold`} placeholder="0.00" /></div>
-            {fieldError("amount")}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {kind === "expense" && (
-            <div>
-              <div className={labelCls}>Payee / beneficiary vendor <span className="text-rose-500">*</span></div>
-              <div className="relative mt-1.5"><Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6B7280]" /><input value={payee} onChange={(e) => setPayee(e.target.value)} placeholder="e.g. Grace Building Supplies" className={`${inputCls} pl-9`} /></div>
-              {fieldError("payee")}
-            </div>
-          )}
-          <div className={kind === "income" ? "md:col-span-2" : ""}>
-            <div className={labelCls}>{kind === "expense" ? "Disbursement method & credit account" : "Deposit method & receiving account"}</div>
-            <div className="mt-1.5 grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <div className="relative">
-                <select value={method} onChange={(e) => setMethod(e.target.value as PaymentMethod)} className={`${inputCls} appearance-none pr-9`}>
-                  {PAYMENT_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-                </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9CA3AF] pointer-events-none" />
+            <>
+              <div>
+                <div className={labelCls}>Entry effective date</div>
+                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={`${inputCls} mt-1.5 bg-[#EEF2FF]/40`} />
               </div>
-              <div className="relative">
-                <select value={bankAccountId} onChange={(e) => setBankAccountId(e.target.value)} disabled={method === "cash"} className={`${inputCls} appearance-none pr-9`}>
-                  <option value="">{method === "cash" ? "Cash — banked later" : accounts.length === 0 ? "No bank accounts yet" : "Branch default account"}</option>
-                  {accounts.map((a) => <option key={a.id} value={a.id}>{a.bankName} — {a.accountName}</option>)}
-                </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9CA3AF] pointer-events-none" />
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <div className={labelCls}>Income type <span className="text-rose-500">*</span></div>
+                  <div className="relative mt-1.5">
+                    <select value={incomeType} onChange={(e) => setIncomeType(e.target.value as IncomeType)} className={`${inputCls} appearance-none pr-9`}>
+                      {INCOME_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9CA3AF] pointer-events-none" />
+                  </div>
+                </div>
+                {incomeType === "service" && (
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className={labelCls}>Service <span className="text-rose-500">*</span></span>
+                      <button type="button" onClick={() => setServicesOpen(true)} className="text-[10.5px] font-bold uppercase tracking-wide text-rose-600 hover:underline">+ Add service</button>
+                    </div>
+                    {activeServices.length > 1 ? (
+                      <div className="relative mt-1.5">
+                        <select value={serviceName} onChange={(e) => setServiceName(e.target.value)} className={`${inputCls} appearance-none pr-9`}>
+                          <option value="">Select service…</option>
+                          {activeServices.map((svc) => <option key={svc.id} value={svc.name}>{svc.name}</option>)}
+                        </select>
+                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9CA3AF] pointer-events-none" />
+                      </div>
+                    ) : (
+                      <input readOnly value={activeServices[0]?.name ?? "Add a service first"} className={`${inputCls} mt-1.5 bg-[#F9FAFB] text-[#6B7280]`} />
+                    )}
+                  </div>
+                )}
               </div>
-            </div>
-            {fieldError("bankAccountId")}
-          </div>
+
+              <div>
+                <div className={labelCls}>Batch number</div>
+                <div className="mt-1.5 flex items-center gap-2">
+                  <input readOnly value={batchNumber || "Generating…"} title="Every line of this counting session shares this reference" className={`${inputCls} bg-[#EEF2FF]/40 ${mono} text-[#4B5563]`} />
+                  <button
+                    type="button"
+                    onClick={() => setCollections((prev) => [...prev, newCollection()])}
+                    className="h-[42px] shrink-0 rounded-[8px] bg-[#0F172A] px-4 text-[12px] font-bold text-white hover:bg-[#1E293B] whitespace-nowrap"
+                  >
+                    + Add New Collection
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-[10px] border border-[#EEF1F6] bg-[#F8FAFC] divide-y divide-[#EEF1F6]">
+                {collections.map((col, index) => (
+                  <div key={col.key} className="p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={labelCls}>Income account (credit account) <span className="text-rose-500">*</span></span>
+                      {collections.length > 1 && (
+                        <button type="button" onClick={() => setCollections((prev) => prev.filter((c) => c.key !== col.key))} className="text-rose-500 hover:text-rose-700" aria-label={`Remove collection ${index + 1}`}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                    <div className="relative mt-1.5">
+                      <select value={col.coaId} onChange={(e) => updateCollection(col.key, { coaId: e.target.value })} className={`${inputCls} appearance-none pr-9 bg-white`}>
+                        <option value="">{loadingLists ? "Loading…" : incomeHeads.length === 0 ? "No income accounts in the chart of accounts" : "Select income account…"}</option>
+                        {incomeHeads.map((h) => <option key={h.id} value={h.id}>{h.name}{h.code ? ` (GL ${h.code})` : ""}</option>)}
+                      </select>
+                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9CA3AF] pointer-events-none" />
+                    </div>
+
+                    {col.rows.map((row, rowIndex) => (
+                      <div key={row.key} className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                        <div>
+                          <div className={labelCls}>Received amount <span className="text-rose-500">*</span></div>
+                          <div className="relative mt-1.5"><span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#6B7280] font-bold">₦</span><AmountInput value={row.amount} onValueChange={(v) => updateRow(col.key, row.key, { amount: v })} className={`${inputCls} pl-8 text-right ${mono} font-bold bg-white`} placeholder="0.00" /></div>
+                        </div>
+                        <div>
+                          <div className="flex items-center justify-between">
+                            <span className={labelCls}>Tender type <span className="text-rose-500">*</span></span>
+                            {col.rows.length > 1 && (
+                              <button type="button" onClick={() => updateCollection(col.key, { rows: col.rows.filter((r) => r.key !== row.key) })} className="text-[10px] font-bold uppercase text-rose-500 hover:underline" aria-label={`Remove amount ${rowIndex + 1}`}>Remove</button>
+                            )}
+                          </div>
+                          <div className="relative mt-1.5">
+                            <select value={row.tender} onChange={(e) => updateRow(col.key, row.key, { tender: e.target.value as "cash" | "cheque" })} className={`${inputCls} appearance-none pr-9 bg-white`}>
+                              <option value="cash">Cash</option>
+                              <option value="cheque">Cheque</option>
+                            </select>
+                            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9CA3AF] pointer-events-none" />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                    <button
+                      type="button"
+                      onClick={() => updateCollection(col.key, { rows: [...col.rows, newRow()] })}
+                      className="mt-3 text-[10.5px] font-bold uppercase tracking-wide text-rose-600 hover:underline"
+                    >
+                      + Add another amount / tender
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex items-center justify-between rounded-[8px] bg-[#0F172A] px-4 py-3">
+                <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-300">Batch total</span>
+                <span className={`${mono} text-[18px] font-extrabold text-white`}>{ngn(collectionTotal, { decimals: true })}</span>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between"><span className={labelCls}>Upload teller slip / deposit receipt <span className="text-rose-500">*</span></span><span className="text-[10px] text-[#9CA3AF]">JPG, PNG or PDF, up to 10MB</span></div>
+                <div className="mt-1.5"><DropZone file={file} onFile={setFile} onClear={() => setFile(null)} hint="Drag & drop the physical counterfoil image here, or click to browse" /></div>
+                <p className="mt-2 text-[10.5px] text-[#9CA3AF]">No bank account is chosen here: the money goes to the safe under this batch number, and is matched to the bank deposit later.</p>
+              </div>
+            </>
+          )}
+
+          {error && <p className="text-[12px] font-medium text-rose-600">{error}</p>}
         </div>
 
-        <div>
-          <div className="flex items-center justify-between"><span className={labelCls}>Auditable transaction description</span><span className="text-[10px] text-[#9CA3AF]">Built automatically if left blank</span></div>
-          <textarea value={description} onChange={(e) => setDescription(e.target.value.slice(0, 250))} rows={3} placeholder={kind === "expense" ? "Payment for church auditorium roof repairs (Vestry & Altar ceiling leak reinforcement)" : collection === "service" ? "Sunday 1st service tithes & offerings — counting batch 01" : "Tithe received at the church office, in cash"} className="mt-1.5 w-full rounded-[8px] border border-[#E5E7EB] bg-[#F8FAFC] px-3.5 py-3 text-[12.5px] text-[#111827] outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500/20" />
+        <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-[#EEF1F6]">
+          <button onClick={onClose} className="text-[12px] font-bold text-[#4B5563]">Cancel</button>
+          <button
+            onClick={kind === "expense" ? postExpense : postIncome}
+            disabled={saving}
+            className="h-9 rounded-[6px] bg-rose-600 px-4 text-[12px] font-bold text-white hover:bg-rose-700 disabled:opacity-60"
+          >
+            {saving ? "Posting…" : "Post Entry to Ledger"}
+          </button>
         </div>
+      </ModalShell>
 
-        <div>
-          <div className="flex items-center justify-between">
-            <span className={labelCls}>{kind === "expense" ? "Upload payment receipt" : collection === "service" ? "Upload the counting form" : "Upload the receipt or cheque"} <span className="text-rose-500">*</span></span>
-            <span className="text-[10px] text-[#9CA3AF]">PDF, JPG or PNG, up to 10MB</span>
-          </div>
-          <div className="mt-1.5"><DropZone file={file} onFile={setFile} onClear={() => setFile(null)} hint={kind === "expense" ? "Upload the receipt stamped paid" : collection === "service" ? "Photograph the signed counting form" : "Upload the receipt or cheque"} /></div>
-          {fieldError("receipt")}
-        </div>
-
-        {error && <p className="text-[12px] font-medium text-rose-600">{error}</p>}
-      </div>
-
-      <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-[#EEF1F6]">
-        <button onClick={onClose} className="text-[12px] font-bold text-[#4B5563]">Cancel</button>
-        <button onClick={post} disabled={saving} className="h-9 rounded-[6px] bg-rose-600 px-4 text-[12px] font-bold text-white hover:bg-rose-700 disabled:opacity-60">{saving ? "Posting…" : "Post Entry to Ledger"}</button>
-      </div>
-    </ModalShell>
+      <ServicesModal
+        open={servicesOpen}
+        onClose={() => setServicesOpen(false)}
+        branchId={branchId}
+        services={services}
+        onChange={(next) => {
+          setServices(next)
+          if (!next.some((svc) => svc.active && svc.name === serviceName)) {
+            setServiceName(next.find((svc) => svc.active)?.name ?? "")
+          }
+        }}
+      />
+    </>
   )
 }
 
