@@ -1,6 +1,7 @@
 import { API_V1 } from "@/lib/api"
 import { getCsrfTokenFromCookie } from "@/lib/csrf"
 import { describeApiError } from "@/lib/api-error"
+import { decodeRequisitionDetails, payeeSummary } from "@/lib/requisition-details"
 
 /**
  * The accountant's General Ledger and bank reconciliation.
@@ -107,10 +108,23 @@ export type RequisitionOption = {
   id: string
   requisitionNumber: string
   amount: number
+  /** The expense title the requester gave, when there is one. */
+  title: string
   justification: string
   requestedBy: string
+  /** The budget head it was raised against. */
   coaId: string
   coaName: string
+  /** Where the requester asked to be paid. */
+  accountName: string
+  bankName: string
+  accountNumber: string
+  payee: string
+  attachmentUrl: string
+  /** approved entries can be posted; anything else is still in the chain. */
+  status: string
+  /** Empty when it can be posted, otherwise why it cannot be. */
+  blockedReason: string
 }
 
 export type AccountHead = { id: string; name: string; code: string; type: string }
@@ -284,6 +298,37 @@ export async function loadStreams(params: { entryType?: "income" | "expense"; st
   }
 }
 
+const BLOCKED_REASON: Record<string, string> = {
+  pending_pastor: "awaiting the branch pastor",
+  pending_director: "awaiting Director approval",
+  draft: "not submitted yet",
+  declined: "declined",
+  paid: "already paid",
+}
+
+function mapRequisition(r: Record<string, unknown>, statusOverride?: string): RequisitionOption {
+  const head = obj(r.budgetHeadId) ?? obj(r.chartOfAccountId)
+  const details = decodeRequisitionDetails(String(r.justification ?? r.purpose ?? r.description ?? ""))
+  const status = String(statusOverride ?? r.status ?? "approved").toLowerCase()
+  return {
+    id: idOf(r),
+    requisitionNumber: String(r.requisitionNumber ?? r.reference ?? ""),
+    amount: Number(r.amount ?? 0),
+    title: details.title,
+    justification: details.justification || String(r.justification ?? ""),
+    requestedBy: personOf(r.requestedBy),
+    coaId: idOf(r.budgetHeadId ?? r.chartOfAccountId),
+    coaName: String(head?.name ?? ""),
+    accountName: details.accountName,
+    bankName: details.bankName,
+    accountNumber: details.accountNumber,
+    payee: payeeSummary(details),
+    attachmentUrl: details.attachmentUrl,
+    status,
+    blockedReason: status === "approved" ? "" : BLOCKED_REASON[status] ?? `status: ${status}`,
+  }
+}
+
 /** Approved requisitions that have not been posted to the ledger yet. */
 export async function loadPostableRequisitions(search = ""): Promise<RequisitionOption[]> {
   const q = new URLSearchParams()
@@ -291,20 +336,24 @@ export async function loadPostableRequisitions(search = ""): Promise<Requisition
   const res = await fetch(`${API_V1}/general-ledger/requisitions${q.toString() ? `?${q}` : ""}`, { credentials: "include" })
   const json = await res.json().catch(() => null)
   if (!res.ok) throw new Error(describeApiError(json, "Unable to load requisitions."))
-  return readList(json)
-    .map((r) => {
-      const head = obj(r.budgetHeadId) ?? obj(r.chartOfAccountId)
-      return {
-        id: idOf(r),
-        requisitionNumber: String(r.requisitionNumber ?? r.reference ?? ""),
-        amount: Number(r.amount ?? 0),
-        justification: String(r.justification ?? r.purpose ?? r.description ?? ""),
-        requestedBy: personOf(r.requestedBy),
-        coaId: idOf(r.budgetHeadId ?? r.chartOfAccountId),
-        coaName: String(head?.name ?? ""),
-      }
-    })
-    .filter((r) => r.id)
+  return readList(json).map((r) => mapRequisition(r, "approved")).filter((r) => r.id)
+}
+
+/**
+ * Requests still moving through the approval chain. The accountant cannot
+ * post against these yet, but seeing them — and why — beats an empty list.
+ */
+export async function loadAwaitingRequisitions(): Promise<RequisitionOption[]> {
+  const statuses = ["pending_pastor", "pending_director"] as const
+  const lists = await Promise.all(
+    statuses.map((status) =>
+      fetch(`${API_V1}/financial/requisitions?status=${status}&limit=50`, { credentials: "include" })
+        .then((r) => r.json().catch(() => null))
+        .then((j) => readList(j).map((r) => mapRequisition(r, status)))
+        .catch(() => [] as RequisitionOption[])
+    )
+  )
+  return lists.flat().filter((r) => r.id)
 }
 
 export type NewEntryInput = {
@@ -312,8 +361,9 @@ export type NewEntryInput = {
   transactionDate: string
   chartOfAccountId: string
   amount: number
-  /** The receipt or voucher. No receipt, no post. */
-  receipt: File
+  /** The receipt or voucher: the file itself, or one already uploaded. */
+  receipt?: File
+  receiptFileId?: string
   payee?: string
   requisitionId?: string
   paymentMethod?: "cash" | "transfer" | "cheque" | "card" | "pos"
@@ -323,29 +373,72 @@ export type NewEntryInput = {
   notes?: string
 }
 
-/**
- * Posts an entry with its receipt attached. Multipart, so the file travels
- * with the record and the backend can enforce "no receipt, no post".
- */
-export async function createLedgerEntry(input: NewEntryInput): Promise<LedgerEntry> {
+/** Stores a document and returns its FileUpload id, for reuse across entries. */
+export async function uploadReceipt(file: File, branchId: string): Promise<string> {
   const form = new FormData()
-  form.append("entryType", input.entryType)
-  form.append("transactionDate", input.transactionDate)
-  form.append("chartOfAccountId", input.chartOfAccountId)
-  form.append("amount", String(input.amount))
-  form.append("receipt", input.receipt)
-  // Blank multipart fields are ignored by the API, but sending only what we
-  // have keeps the request readable in the network tab.
-  for (const key of ["payee", "requisitionId", "paymentMethod", "bankAccountId", "description", "reference", "notes"] as const) {
-    const value = input[key]
-    if (value) form.append(key, String(value))
-  }
-  const res = await fetch(`${API_V1}/general-ledger`, {
+  form.append("file", file)
+  form.append("folder", "ledger-receipts")
+  if (branchId) form.append("branchId", branchId)
+  const res = await fetch(`${API_V1}/file-uploads`, {
     method: "POST",
     headers: { "x-csrf-token": getCsrfTokenFromCookie() },
     credentials: "include",
     body: form,
   })
+  const json = await res.json().catch(() => null)
+  if (!res.ok) throw new Error(describeApiError(json, "Unable to upload the document."))
+  const data = readData(json)
+  const id = idOf(data)
+  if (!id) throw new Error("The document was uploaded but no file id came back.")
+  return id
+}
+
+/**
+ * Posts an entry with its receipt. A single entry sends the file inline;
+ * a collection uploads the slip once and passes `receiptFileId` on every
+ * line, so one counting session stores one document, not one per line.
+ */
+export async function createLedgerEntry(input: NewEntryInput): Promise<LedgerEntry> {
+  const optional = ["payee", "requisitionId", "paymentMethod", "bankAccountId", "description", "reference", "notes"] as const
+  let res: Response
+
+  if (input.receiptFileId) {
+    res = await fetch(`${API_V1}/general-ledger`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfTokenFromCookie() },
+      credentials: "include",
+      body: JSON.stringify({
+        entryType: input.entryType,
+        transactionDate: input.transactionDate,
+        chartOfAccountId: input.chartOfAccountId,
+        amount: input.amount,
+        receiptFileId: input.receiptFileId,
+        currency: "NGN",
+        ...Object.fromEntries(optional.map((k) => [k, input[k]]).filter(([, v]) => Boolean(v))),
+      }),
+    })
+  } else {
+    if (!input.receipt) throw new Error("A receipt is required before an entry can be posted.")
+    const form = new FormData()
+    form.append("entryType", input.entryType)
+    form.append("transactionDate", input.transactionDate)
+    form.append("chartOfAccountId", input.chartOfAccountId)
+    form.append("amount", String(input.amount))
+    form.append("receipt", input.receipt)
+    // Blank multipart fields are ignored by the API, but sending only what we
+    // have keeps the request readable in the network tab.
+    for (const key of optional) {
+      const value = input[key]
+      if (value) form.append(key, String(value))
+    }
+    res = await fetch(`${API_V1}/general-ledger`, {
+      method: "POST",
+      headers: { "x-csrf-token": getCsrfTokenFromCookie() },
+      credentials: "include",
+      body: form,
+    })
+  }
+
   const json = await res.json().catch(() => null)
   if (!res.ok) throw new Error(describeApiError(json, "Unable to post the entry."))
   return mapLedgerEntry(readData(json))
@@ -673,4 +766,29 @@ export function buildSafeView(entries: LedgerEntry[]): SafeView {
     batches: unbanked,
     funds: [...byFund.values()].sort((a, b) => b.total - a.total),
   }
+}
+
+// ---------------------------------------------------------------------------
+// Collection batches
+// ---------------------------------------------------------------------------
+
+/**
+ * The reference every line of one counting session shares, so the safe can be
+ * audited as a batch: SVC-YYYYMM-DD-NN for a service collection, OFC- for an
+ * office one. NN counts the batches already recorded that day.
+ */
+export async function nextBatchNumber(date: string, kind: "service" | "office"): Promise<string> {
+  const day = (date || new Date().toISOString().slice(0, 10)).slice(0, 10)
+  const [year, month, dayOfMonth] = day.split("-")
+  const prefix = `${kind === "service" ? "SVC" : "OFC"}-${year}${month}-${dayOfMonth}`
+  let used = new Set<string>()
+  try {
+    const entries = await loadLedgerEntries({ entryType: "income", startDate: day, endDate: day, limit: 100 })
+    used = new Set(entries.map((e) => e.reference).filter((ref) => ref.startsWith(prefix)))
+  } catch {
+    // A failed lookup only risks a duplicate suffix; the entry still posts.
+  }
+  let n = 1
+  while (used.has(`${prefix}-${String(n).padStart(2, "0")}`)) n += 1
+  return `${prefix}-${String(n).padStart(2, "0")}`
 }
