@@ -162,7 +162,7 @@ export default function Page() {
       if (!res.ok) throw new Error(payload?.message ?? `Unable to ${action === "approved" ? "approve" : "decline"} the requisition.`)
       setApproveSuccess(
         action === "approved"
-          ? "Approved — the accountant can now post the expense against it."
+          ? "Approved — it now goes to a Director for final approval before the accountant can pay it."
           : "Requisition declined."
       )
       refreshReqs()
@@ -173,7 +173,6 @@ export default function Page() {
     }
   }
 
-  const handleApprove = (id: string) => decide(id, "approved")
 
 
 
@@ -229,10 +228,14 @@ export default function Page() {
         onClose={() => setSelectedRequisitionId(null)}
         isAuthorizing={isApproving !== null}
         requisition={selectedRequisition}
-        onAuthorize={async () => {
+        onApprove={async () => {
           if (!selectedRequisitionId) return
-          await handleApprove(selectedRequisitionId)
-          refreshReqs()
+          await decide(selectedRequisitionId, "approved")
+          setSelectedRequisitionId(null)
+        }}
+        onDecline={async () => {
+          if (!selectedRequisitionId) return
+          await decide(selectedRequisitionId, "declined")
           setSelectedRequisitionId(null)
         }}
       />
