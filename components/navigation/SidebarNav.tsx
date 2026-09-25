@@ -57,6 +57,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Dashboard", href: "/director-screen/dashboard", icon: LayoutGrid },
       { label: "Transactions", href: "/director-screen/transaction", icon: ArrowLeftRight },
       { label: "Budgeting", href: "/director-screen/budgeting", icon: WalletCards },
+      { label: "Requisitions", href: "/director-screen/requisitions", icon: ClipboardList },
       { label: "Compliance", href: "/director-screen/compliance", icon: Scale },
       { label: "Asset", href: "/director-screen/assets", icon: Folder },
       { label: "Branch Management", href: "/director-screen/branch-management", icon: GitBranch },
