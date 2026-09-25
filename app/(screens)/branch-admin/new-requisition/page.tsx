@@ -26,6 +26,7 @@ import {
 } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
 import { useBranchContext } from "@/components/hooks/useBranchContext"
+import { encodeRequisitionDetails } from "@/lib/requisition-details"
 import FileUploadDropzone from "@/components/ui/FileUploadDropzone"
 import { getCsrfTokenFromCookie } from "@/lib/csrf"
 
@@ -79,6 +80,12 @@ export default function NewRequisitionPage() {
   const [amount, setAmount] = useState("")
   const [justification, setJustification] = useState("")
   const [requiredDate, setRequiredDate] = useState("")
+  // Where the money should be paid. The API has no fields for these, so they
+  // travel inside the justification (see lib/requisition-details.ts).
+  const [accountName, setAccountName] = useState("")
+  const [bankName, setBankName] = useState("")
+  const [accountNumber, setAccountNumber] = useState("")
+  const [attachment, setAttachment] = useState<{ url: string; name: string } | null>(null)
   const [coaOptions, setCoaOptions] = useState<Array<{ id: string; label: string }>>([])
   const [coaLoading, setCoaLoading] = useState(true)
   const [coaError, setCoaError] = useState<string | null>(null)
@@ -91,12 +98,11 @@ export default function NewRequisitionPage() {
   const {
     branchId,
     branches,
-    needsSelection,
     loading: branchLoading,
     error: branchError,
-    selectBranch,
   } = useBranchContext()
   const tenantId = branchId
+  const branchName = branches.find((b) => b.id === branchId)?.name ?? ""
 
   useEffect(() => {
     let isMounted = true
@@ -215,6 +221,26 @@ export default function NewRequisitionPage() {
 
   const getCsrfToken = getCsrfTokenFromCookie
 
+  /** Everything the approver and the accountant need, folded into one field. */
+  const buildJustification = () =>
+    encodeRequisitionDetails({
+      title,
+      justification,
+      accountName,
+      bankName,
+      accountNumber,
+      attachmentUrl: attachment?.url,
+      attachmentName: attachment?.name,
+    })
+
+  /** Shared checks for the payee's account, which the accountant pays into. */
+  const payeeProblem = () => {
+    if (!accountName.trim()) return "Enter the account name the funds should be paid to."
+    if (!bankName.trim()) return "Enter the bank name."
+    if (!/^\d{10}$/.test(accountNumber.trim())) return "Enter the 10-digit account number."
+    return null
+  }
+
   const handleSaveDraft = async () => {
     setSubmitError(null)
     setSubmitSuccess(null)
@@ -244,14 +270,17 @@ export default function NewRequisitionPage() {
       setSubmitError("Please select the required date.")
       return
     }
+    const payeeIssue = payeeProblem()
+    if (payeeIssue) {
+      setSubmitError(payeeIssue)
+      return
+    }
 
     setSubmitting(true)
 
     try {
       const csrfToken = getCsrfToken()
-      const justificationText = title.trim()
-        ? `${title.trim()} - ${justification.trim()}`
-        : justification.trim()
+      const justificationText = buildJustification()
 
       const response = await fetch(`${API_V1}/financial/requisitions`, {
         method: "POST",
@@ -316,14 +345,17 @@ export default function NewRequisitionPage() {
       setSubmitError("Please select the required date.")
       return
     }
+    const payeeIssue = payeeProblem()
+    if (payeeIssue) {
+      setSubmitError(payeeIssue)
+      return
+    }
 
     setSubmitting(true)
 
     try {
       const csrfToken = getCsrfToken()
-      const justificationText = title.trim()
-        ? `${title.trim()} - ${justification.trim()}`
-        : justification.trim()
+      const justificationText = buildJustification()
 
       const response = await fetch(`${API_V1}/financial/requisitions`, {
         method: "POST",
@@ -557,29 +589,16 @@ export default function NewRequisitionPage() {
                       />
                     </div>
 
-                    {(needsSelection || branches.length > 1) && (
-                      <div className="flex flex-col gap-2">
-                        <label htmlFor="requisition-branch" className="text-[13px] font-[700] text-[#4B5563]">
-                          Branch <span className="text-red-500">*</span>
-                        </label>
-                        <div className="relative">
-                          <select
-                            id="requisition-branch"
-                            value={branchId}
-                            onChange={(event) => selectBranch(event.target.value)}
-                            className="h-[46px] w-full rounded-[8px] border border-[#E5E7EB] bg-white px-4 pr-10 text-[14px] font-[500] text-[#111827] focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20 outline-none transition-all shadow-sm appearance-none cursor-pointer"
-                          >
-                            <option value="">Select a branch…</option>
-                            {branches.map((branch) => (
-                              <option key={branch.id} value={branch.id}>
-                                {branch.name}
-                              </option>
-                            ))}
-                          </select>
-                          <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6B7280] pointer-events-none" />
-                        </div>
-                      </div>
-                    )}
+                    {/* The branch comes from the account; requests are always for it. */}
+                    <div className="flex flex-col gap-2">
+                      <label className="text-[13px] font-[700] text-[#4B5563]">Branch</label>
+                      <input
+                        readOnly
+                        value={branchLoading ? "Loading…" : branchName || "No branch assigned to your account"}
+                        title="Requests are raised for the branch your account belongs to"
+                        className="h-[46px] w-full rounded-[8px] border border-[#E5E7EB] bg-[#F9FAFB] px-4 text-[14px] font-[500] text-[#6B7280] outline-none shadow-sm cursor-not-allowed"
+                      />
+                    </div>
 
                     {/* Category and Amount Row */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5 md:gap-6">
@@ -664,6 +683,48 @@ export default function NewRequisitionPage() {
                         onChange={(event) => setJustification(event.target.value)}
                       ></textarea>
                     </div>
+
+                    {/* Where the money goes. The accountant pays into this account. */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
+                      <div className="flex flex-col gap-2">
+                        <label className="text-[13px] font-[700] text-[#4B5563]">
+                          Account Name <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. John Doe"
+                          value={accountName}
+                          onChange={(event) => setAccountName(event.target.value)}
+                          className="h-[46px] w-full rounded-[8px] border border-[#E5E7EB] bg-white px-4 text-[14px] font-[500] text-[#111827] placeholder:text-[#9CA3AF] focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20 outline-none transition-all shadow-sm"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <label className="text-[13px] font-[700] text-[#4B5563]">
+                          Bank Name <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Zenith Bank"
+                          value={bankName}
+                          onChange={(event) => setBankName(event.target.value)}
+                          className="h-[46px] w-full rounded-[8px] border border-[#E5E7EB] bg-white px-4 text-[14px] font-[500] text-[#111827] placeholder:text-[#9CA3AF] focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20 outline-none transition-all shadow-sm"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <label className="text-[13px] font-[700] text-[#4B5563]">
+                          Account Number <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={10}
+                          placeholder="e.g. 0123456789"
+                          value={accountNumber}
+                          onChange={(event) => setAccountNumber(event.target.value.replace(/\D/g, "").slice(0, 10))}
+                          className="h-[46px] w-full rounded-[8px] border border-[#E5E7EB] bg-white px-4 text-[14px] font-[500] text-[#111827] placeholder:text-[#9CA3AF] focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]/20 outline-none transition-all shadow-sm font-mono tracking-tight"
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
                 
@@ -717,9 +778,24 @@ export default function NewRequisitionPage() {
                       maxSizeMB={10}
                       acceptedTypes="image/jpeg,image/png,application/pdf"
                       label="Upload a file"
-                      onUploadComplete={(data) => console.log('Requisition attachment uploaded:', data)}
+                      onUploadComplete={(data) => {
+                        const file = (data ?? {}) as { url?: string; secureUrl?: string; fileName?: string; originalName?: string }
+                        const url = String(file.url ?? file.secureUrl ?? "")
+                        if (url) setAttachment({ url, name: String(file.fileName ?? file.originalName ?? "Document") })
+                      }}
                     />
                   </div>
+
+                  {attachment && (
+                    <div className="flex items-center justify-between gap-3 rounded-[8px] border border-[#EEF1F6] bg-[#F9FAFB] px-3 py-2.5">
+                      <a href={attachment.url} target="_blank" rel="noreferrer" className="text-[12.5px] font-semibold text-[#2563EB] truncate hover:underline">
+                        {attachment.name}
+                      </a>
+                      <button type="button" onClick={() => setAttachment(null)} className="text-[11px] font-bold uppercase text-[#9CA3AF] hover:text-red-500 shrink-0">
+                        Remove
+                      </button>
+                    </div>
+                  )}
 
                 </div>
               </div>
