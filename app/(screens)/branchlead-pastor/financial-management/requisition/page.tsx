@@ -18,7 +18,6 @@ import {
   Menu,
   X,
   AlertCircle,
-  MoreVertical,
   LockKeyhole,
   FileText
 } from "lucide-react"
@@ -30,6 +29,8 @@ import { useRequisitions } from "@/components/hooks/useRequisitions"
 import { useBudgetPerformance } from "@/components/hooks/useBudgetPerformance"
 import { useBranchContext } from "@/components/hooks/useBranchContext"
 import { getCsrfTokenFromCookie } from "@/lib/csrf"
+import { decodeRequisitionDetails, payeeSummary } from "@/lib/requisition-details"
+import { loadStreams } from "@/lib/ledger"
 
 export default function Page() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -52,10 +53,86 @@ export default function Page() {
     .sort((a, b) => b.pct - a.pct)
     .slice(0, 3)
 
-  const { requisitions: liveRequisitions, refresh: refreshReqs } = useRequisitions({
+  const { requisitions: liveRequisitions, loading: reqsLoading, refresh: refreshReqs } = useRequisitions({
     branchId,
     limit: 50,
   })
+
+  const naira = (value: number) => new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", maximumFractionDigits: 0 }).format(value)
+  const whenLabel = (iso?: string) => {
+    const d = iso ? new Date(iso) : null
+    if (!d || Number.isNaN(d.getTime())) return ""
+    const today = new Date().toDateString() === d.toDateString()
+    const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    return today ? `Today, ${time}` : `${d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}, ${time}`
+  }
+
+  /**
+   * Requests that have reached this pastor. A submitted requisition sits in
+   * `pending_pastor` until it is approved or declined here.
+   */
+  const awaiting = useMemo(
+    () =>
+      liveRequisitions
+        .filter((r) => String(r.currentStatus ?? "").toLowerCase() === "pending_pastor")
+        .sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()),
+    [liveRequisitions]
+  )
+
+  const decorate = (r: (typeof liveRequisitions)[number]) => {
+    const details = decodeRequisitionDetails(r.justification ?? "")
+    return {
+      rawId: r.id,
+      id: `#${r.requisitionNumber || r.reference || r.id.slice(-6).toUpperCase()}`,
+      description: details.title || r.coaName || "Requisition",
+      fullDescription: details.justification || r.justification || "",
+      category: r.coaName || "Uncategorised",
+      amountValue: Number(r.amount ?? 0),
+      amount: naira(Number(r.amount ?? 0)),
+      payee: payeeSummary(details),
+      requestedBy: r.requestedBy || "Branch user",
+      timeLabel: whenLabel(r.createdAt),
+      status: "IN REVIEW",
+    }
+  }
+
+  // The largest requests lead, since they carry the most budget risk.
+  const priorityCards = useMemo(
+    () => [...awaiting].sort((a, b) => Number(b.amount ?? 0) - Number(a.amount ?? 0)).slice(0, 2).map(decorate),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [awaiting]
+  )
+  const pendingRows = useMemo(() => {
+    const lead = new Set(priorityCards.map((c) => c.rawId))
+    return awaiting.filter((r) => !lead.has(r.id)).map(decorate)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [awaiting, priorityCards])
+
+  // Where the branch's money actually goes, by expense stream.
+  const [expenseStreams, setExpenseStreams] = useState<{ label: string; percentage: number; color: string }[]>([])
+  useEffect(() => {
+    let active = true
+    loadStreams({ entryType: "expense" })
+      .then((streams) => {
+        if (!active) return
+        const palette = ["#F97316", "#0EA5E9", "#22C55E", "#A855F7", "#EF4444", "#EAB308"]
+        const total = streams.expense.reduce((sum, x) => sum + x.total, 0)
+        if (total <= 0) {
+          setExpenseStreams([])
+          return
+        }
+        setExpenseStreams(
+          [...streams.expense]
+            .sort((a, b) => b.total - a.total)
+            .slice(0, 6)
+            .map((x, i) => ({ label: x.name || "Unnamed", percentage: Math.round((x.total / total) * 100), color: palette[i % palette.length] }))
+        )
+      })
+      .catch(() => undefined)
+    return () => {
+      active = false
+    }
+  }, [branchId])
 
   const [isApproving, setIsApproving] = useState<string | null>(null)
   const [approveError, setApproveError] = useState<string | null>(null)
@@ -65,103 +142,40 @@ export default function Page() {
 
   const getCsrfToken = getCsrfTokenFromCookie
 
-  const handleApprove = async (id: string) => {
+  /** Record the pastor's decision. Approving frees the accountant to pay it. */
+  const decide = async (id: string, action: "approved" | "declined") => {
     if (!id) return
     setIsApproving(id)
     setApproveError(null)
     setApproveSuccess(null)
     try {
-      const csrfToken = getCsrfToken()
       const res = await fetch(`${API_V1}/financial/requisitions/${id}/approve`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          "x-csrf-token": csrfToken,
-        },
+        headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfTokenFromCookie() },
         credentials: "include",
-        body: JSON.stringify({ action: "approved", comment: "Approved within budget" }),
+        body: JSON.stringify({
+          action,
+          comment: action === "approved" ? "Approved by the lead pastor." : "Declined by the lead pastor.",
+        }),
       })
       const payload = await res.json().catch(() => null)
-      if (!res.ok) {
-        throw new Error(payload?.message ?? "Failed to approve requisition")
-      }
-      setApproveSuccess("Requisition approved successfully.")
-    } catch (err: unknown) {
-      setApproveError(err instanceof Error ? err.message : "Failed to approve requisition")
+      if (!res.ok) throw new Error(payload?.message ?? `Unable to ${action === "approved" ? "approve" : "decline"} the requisition.`)
+      setApproveSuccess(
+        action === "approved"
+          ? "Approved — the accountant can now post the expense against it."
+          : "Requisition declined."
+      )
+      refreshReqs()
+    } catch (err) {
+      setApproveError(err instanceof Error ? err.message : "The decision could not be recorded.")
     } finally {
       setIsApproving(null)
     }
   }
 
+  const handleApprove = (id: string) => decide(id, "approved")
 
-  const priorityCards = [
-    {
-      id: "#REQ-2301",
-      description: "Audio Upgrade",
-      fullDescription: "The proposed equipment list for the main hall exceeds the Q1 Capital Allocation by $1,200.",
-      category: "Capital Expenditure",
-      amount: "₦1,150,000",
-      timeLabel: "Today, 09:42 AM",
-      rawId: "req-2301"
-    },
-    {
-      id: "#REQ-2302",
-      description: "Emergency Repairs",
-      fullDescription: "Leaking roof in the youth center requires immediate professional repair. Exceeds Maintenance budget by $300.",
-      category: "Maintenance",
-      amount: "₦3,150,000",
-      timeLabel: "Yesterday, 04:15 PM",
-      rawId: "req-2302"
-    }
-  ]
 
-  const pendingRows = [
-    {
-      id: "#REQ-2303",
-      description: "Weekly Cleaning Supplies",
-      requestedBy: "Admin Unit",
-      category: "Operational",
-      amount: "$250.00",
-      status: "IN REVIEW",
-      rawId: "req-2303"
-    },
-    {
-      id: "#REQ-2304",
-      description: "Sunday Bulletin Print",
-      requestedBy: "Media Dept",
-      category: "Programs",
-      amount: "$185.00",
-      status: "IN REVIEW",
-      rawId: "req-2304"
-    },
-    {
-      id: "#REQ-2305",
-      description: "Guest Speaker Honorarium",
-      requestedBy: "Pastoral",
-      category: "Programs",
-      amount: "$500.00",
-      status: "IN REVIEW",
-      rawId: "req-2305"
-    },
-    {
-      id: "#REQ-2306",
-      description: "Utility Bill - Water",
-      requestedBy: "Facility",
-      category: "Operational",
-      amount: "$120.00",
-      status: "IN REVIEW",
-      rawId: "req-2306"
-    },
-    {
-      id: "#REQ-2307",
-      description: "Stationery & Ink",
-      requestedBy: "Admin Unit",
-      category: "Operational",
-      amount: "$95.00",
-      status: "IN REVIEW",
-      rawId: "req-2307"
-    }
-  ]
 
   // The latest requisitions on this branch, as an activity feed.
   const recentActivity = [...liveRequisitions]
@@ -179,43 +193,32 @@ export default function Page() {
         rawId: r.id,
       }
     })
-  const expenseChart = {
-    segments: [
-      { label: "Operational", percentage: 78, color: "#F97316" },
-      { label: "Programs", percentage: 15, color: "#0EA5E9" },
-      { label: "Capital", percentage: 7, color: "#22C55E" }
-    ],
-    background: "conic-gradient(#F97316 0% 78%, #0EA5E9 78% 93%, #22C55E 93% 100%)"
-  }
+  const expenseChart = useMemo(() => {
+    if (expenseStreams.length === 0) return { segments: [], background: "conic-gradient(#E5E7EB 0% 100%)" }
+    let at = 0
+    const stops = expenseStreams.map((seg) => {
+      const from = at
+      at += seg.percentage
+      return `${seg.color} ${from}% ${at}%`
+    })
+    return { segments: expenseStreams, background: `conic-gradient(${stops.join(", ")})` }
+  }, [expenseStreams])
 
   const selectedRequisition = useMemo(() => {
     if (!selectedRequisitionId) return null
-    const foundLive = liveRequisitions.find((r) => r.id === selectedRequisitionId)
-    if (foundLive) return foundLive
-    const foundCard = priorityCards.find((c) => c.rawId === selectedRequisitionId)
-    if (foundCard) {
-      return {
-        id: foundCard.rawId,
-        reference: foundCard.id.replace(/^#REQ-/, ""),
-        description: foundCard.description,
-        justification: foundCard.fullDescription,
-        category: foundCard.category,
-        amount: foundCard.amount,
-      }
+    const found = liveRequisitions.find((r) => r.id === selectedRequisitionId)
+    if (!found) return null
+    const details = decodeRequisitionDetails(found.justification ?? "")
+    return {
+      ...found,
+      reference: found.requisitionNumber || found.reference,
+      description: details.title || found.coaName || "Requisition",
+      justification: details.justification || found.justification,
+      category: found.coaName,
+      payee: payeeSummary(details),
+      attachmentUrl: details.attachmentUrl,
+      attachmentName: details.attachmentName,
     }
-    const foundRow = pendingRows.find((r) => r.rawId === selectedRequisitionId)
-    if (foundRow) {
-      return {
-        id: foundRow.rawId,
-        reference: foundRow.id.replace(/^#REQ-/, ""),
-        description: foundRow.description,
-        category: foundRow.category,
-        amount: foundRow.amount,
-        requestedBy: foundRow.requestedBy,
-        status: foundRow.status,
-      }
-    }
-    return null
   }, [selectedRequisitionId, liveRequisitions])
 
   return (
@@ -288,6 +291,16 @@ export default function Page() {
 
               {/* Priority Cards */}
               <div className="flex flex-col gap-6">
+                {reqsLoading && priorityCards.length === 0 && (
+                  <div className="rounded-[16px] border border-[#E5E7EB] bg-white p-8 text-[14px] text-[#9CA3AF]">Loading requisitions…</div>
+                )}
+                {!reqsLoading && awaiting.length === 0 && (
+                  <div className="rounded-[16px] border border-[#E5E7EB] bg-white p-8 text-center">
+                    <CheckCircle2 className="h-6 w-6 text-emerald-500 mx-auto" />
+                    <div className="text-[15px] font-bold text-[#111827] mt-3">Nothing awaiting your approval</div>
+                    <div className="text-[13px] text-[#6B7280] mt-1">Requests submitted by the branch admin land here for your decision.</div>
+                  </div>
+                )}
                 {priorityCards.map((card, index) => (
                   <div
                     key={card.rawId}
@@ -296,7 +309,7 @@ export default function Page() {
                     <div className="flex-1 p-6 md:p-8">
                       <div className="flex items-center justify-between mb-4">
                         <div className={`text-[11px] font-extrabold tracking-widest uppercase ${index === 0 ? "text-rose-500" : "text-orange-500"}`}>
-                          {index === 0 ? "CRITICAL: OVER-BUDGET" : "URGENT: OVER-BUDGET"}
+                          {index === 0 ? "HIGHEST VALUE" : "AWAITING APPROVAL"}
                         </div>
                         <div className="text-[12px] font-semibold text-[#9CA3AF]">Requested: {card.timeLabel}</div>
                       </div>
@@ -306,7 +319,7 @@ export default function Page() {
                       <p className="text-[14px] text-[#6B7280] font-medium leading-relaxed max-w-[90%] mb-8">
                         {card.fullDescription}
                       </p>
-                      
+
                       <div className="flex flex-col sm:flex-row sm:items-center gap-8 mb-8">
                         <div>
                           <div className="text-[10px] font-bold text-[#9CA3AF] tracking-widest uppercase mb-1">REQUEST AMOUNT</div>
@@ -316,7 +329,18 @@ export default function Page() {
                           <div className="text-[10px] font-bold text-[#9CA3AF] tracking-widest uppercase mb-1">CATEGORY</div>
                           <div className="text-[14px] font-bold text-[#111827]">{card.category}</div>
                         </div>
+                        <div>
+                          <div className="text-[10px] font-bold text-[#9CA3AF] tracking-widest uppercase mb-1">REQUESTED BY</div>
+                          <div className="text-[14px] font-bold text-[#111827]">{card.requestedBy}</div>
+                        </div>
                       </div>
+
+                      {card.payee && (
+                        <div className="mb-8 rounded-[10px] border border-[#EEF1F6] bg-[#F9FAFB] px-4 py-3">
+                          <div className="text-[10px] font-bold text-[#9CA3AF] tracking-widest uppercase mb-1">PAY TO</div>
+                          <div className="text-[13.5px] font-semibold text-[#111827]">{card.payee}</div>
+                        </div>
+                      )}
 
                       <div className="flex items-center gap-6">
                         <button
@@ -324,7 +348,14 @@ export default function Page() {
                           className="h-[44px] rounded-[8px] bg-[#2563EB] px-6 text-[14px] font-bold text-white shadow-md hover:bg-[#1D4ED8] transition-colors flex items-center gap-2">
                           <LockKeyhole className="h-4 w-4" /> Review &amp; Approve
                         </button>
-                        <button 
+                        <button
+                          onClick={() => decide(card.rawId, "declined")}
+                          disabled={isApproving !== null}
+                          className="h-[44px] rounded-[8px] border border-[#E5E7EB] bg-white px-5 text-[14px] font-bold text-[#B91C1C] hover:bg-rose-50 transition-colors disabled:opacity-60"
+                        >
+                          {isApproving === card.rawId ? "Working…" : "Decline"}
+                        </button>
+                        <button
                           onClick={() => setSelectedRequisitionId(card.rawId)}
                           className="text-[14px] font-bold text-[#6B7280] hover:text-[#111827] transition-colors"
                         >
@@ -351,9 +382,9 @@ export default function Page() {
               <div className="mt-4 flex flex-col gap-4">
                 <div className="flex items-center justify-between">
                   <h2 className="text-[18px] font-extrabold text-[#111827] tracking-tight">Pending Requisitions</h2>
-                  <button className="text-[13px] font-bold text-[#2563EB] hover:underline">View All ({pendingRows.length})</button>
+                  <span className="text-[13px] font-bold text-[#6B7280]">{pendingRows.length} awaiting</span>
                 </div>
-                
+
                 <div className="rounded-[16px] border border-[#E5E7EB] bg-white overflow-hidden shadow-sm flex flex-col">
                   <div className="overflow-x-auto">
                     <table className="w-full text-left whitespace-nowrap">
@@ -367,11 +398,18 @@ export default function Page() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#F3F4F6]">
-                        {pendingRows.slice(0, 5).map((row) => (
+                        {pendingRows.length === 0 && (
+                          <tr>
+                            <td colSpan={5} className="px-6 py-8 text-center text-[13px] text-[#9CA3AF]">
+                              {reqsLoading ? "Loading…" : "No other requisitions are waiting on you."}
+                            </td>
+                          </tr>
+                        )}
+                        {pendingRows.slice(0, 8).map((row) => (
                           <tr key={row.rawId} className="hover:bg-[#F9FAFB] transition-colors">
                             <td className="px-6 py-4">
                               <div className="text-[14px] font-black text-[#111827]">{row.id} {row.description}</div>
-                              <div className="text-[12px] font-semibold text-[#9CA3AF] mt-0.5">Requested by {row.requestedBy}</div>
+                              <div className="text-[12px] font-semibold text-[#9CA3AF] mt-0.5">Requested by {row.requestedBy}{row.payee ? ` · Pay to ${row.payee}` : ""}</div>
                             </td>
                             <td className="px-5 py-4 text-[13px] font-semibold text-[#4B5563]">{row.category}</td>
                             <td className="px-5 py-4 text-[15px] font-black text-[#111827]">{row.amount}</td>
@@ -381,9 +419,21 @@ export default function Page() {
                               </span>
                             </td>
                             <td className="px-6 py-4 text-right">
-                              <button className="text-[#9CA3AF] hover:text-[#111827] transition-colors">
-                                <MoreVertical className="h-5 w-5" />
-                              </button>
+                              <div className="inline-flex items-center gap-2">
+                                <button
+                                  onClick={() => setSelectedRequisitionId(row.rawId)}
+                                  className="h-8 rounded-[6px] bg-[#2563EB] px-3 text-[12px] font-bold text-white hover:bg-[#1D4ED8] transition-colors"
+                                >
+                                  Review
+                                </button>
+                                <button
+                                  onClick={() => decide(row.rawId, "declined")}
+                                  disabled={isApproving !== null}
+                                  className="h-8 rounded-[6px] border border-[#E5E7EB] bg-white px-3 text-[12px] font-bold text-[#B91C1C] hover:bg-rose-50 transition-colors disabled:opacity-60"
+                                >
+                                  Decline
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -396,10 +446,13 @@ export default function Page() {
 
             {/* Right Column Area (340px) */}
             <div className="flex flex-col gap-6">
-              
+
               {/* Expense Distribution */}
               <div className="rounded-[16px] border border-[#E5E7EB] bg-white p-6 shadow-sm">
                 <h3 className="text-[15px] font-extrabold text-[#111827] tracking-tight mb-8">Expense Distribution</h3>
+                {expenseChart.segments.length === 0 && (
+                  <p className="-mt-6 mb-6 text-[12px] text-[#9CA3AF]">No expenses posted yet.</p>
+                )}
                 <div className="relative flex justify-center items-center mb-10 w-full py-4">
                   <div className="relative h-[180px] w-[180px] sm:h-[200px] sm:w-[200px]">
                     <div
@@ -432,7 +485,7 @@ export default function Page() {
               {/* Critical Budget Alerts */}
               <div className="rounded-[16px] border border-[#E5E7EB] bg-white p-6 shadow-sm">
                 <h3 className="text-[15px] font-extrabold text-[#111827] tracking-tight mb-5">Critical Budget Alerts</h3>
-                
+
                 <div className="space-y-5">
                   {budgetAlerts.length === 0 ? (
                     <div className="text-[12px] text-[#9CA3AF]">No approved budgets to track yet.</div>
@@ -458,7 +511,7 @@ export default function Page() {
               {/* Recent Activity */}
               <div className="rounded-[16px] border border-[#E5E7EB] bg-white p-6 shadow-sm flex flex-col h-fit">
                 <h3 className="text-[15px] font-extrabold text-[#111827] tracking-tight mb-5">Recent Activity</h3>
-                
+
                 <div className="space-y-6 relative before:absolute before:inset-y-0 before:left-[11px] before:w-[2px] before:bg-[#F3F4F6]">
                   {recentActivity.length === 0 && (
                     <div className="text-[12px] text-[#9CA3AF] pl-8">No requisitions yet.</div>

@@ -10,6 +10,8 @@ export type RequisitionDocument = {
 
 export type RequisitionItem = {
   id: string
+  /** REQ-YYYYMM-NNNN, the number shown everywhere a requisition is listed. */
+  requisitionNumber?: string
   amount: number
   currentStatus?: string
   createdAt?: string
@@ -180,15 +182,20 @@ export function useRequisitions(options: UseRequisitionsOptions = {}) {
               requiredDate: readString(item.requiredDate, item.dateRequired, item.needByDate),
               coaName: readString(item.coaName, coa.name, coa.accountName, item.category),
               justification: readString(item.justification, item.reason, item.description),
+              requisitionNumber: readString(item.requisitionNumber, item.reference),
               reference: readString(
+                item.requisitionNumber,
                 item.reference,
                 item.code,
                 item.requisitionCode,
                 item.requestCode
               ),
               requestedBy: readString(
+                `${readString(requestedBy.firstName)} ${readString(requestedBy.lastName)}`.trim(),
                 requestedBy.name,
+                requestedBy.email,
                 item.requesterName,
+                `${readString(createdBy.firstName)} ${readString(createdBy.lastName)}`.trim(),
                 createdBy.name,
                 item.createdBy
               ),
