@@ -32,6 +32,7 @@ import {
 import {
   allocateStatementLine,
   buildSafeView,
+  createAccountHead,
   createLedgerEntry,
   entryRef,
   importStatement,
@@ -514,6 +515,123 @@ function ServicesModal({
 
 // ---------------------------------------------------------------------------
 
+/**
+ * Add an income stream to the chart of accounts. A branch starts with none,
+ * and a collection cannot be recorded until Tithe, Offering and the rest
+ * exist, so they can be created here rather than in a separate screen.
+ */
+function IncomeAccountsModal({
+  open,
+  onClose,
+  branchId,
+  heads,
+  onChange,
+}: {
+  open: boolean
+  onClose: () => void
+  branchId: string
+  heads: AccountHead[]
+  onChange: (next: AccountHead[]) => void
+}) {
+  const [name, setName] = useState("")
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    setName("")
+    setError(null)
+  }, [open])
+
+  const add = async (value: string) => {
+    const label = value.trim()
+    if (!label) return
+    setSaving(true)
+    setError(null)
+    try {
+      const head = await createAccountHead(branchId, label, "income")
+      onChange([...heads, head].sort((a, b) => a.code.localeCompare(b.code)))
+      setName("")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to add the account.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const SUGGESTIONS = ["Tithe", "Offering", "Building Project Fund", "Thanksgiving & Vows", "Welfare", "Donation"]
+  const missing = SUGGESTIONS.filter((x) => !heads.some((h) => h.name.trim().toLowerCase() === x.toLowerCase()))
+
+  return (
+    <ModalShell open={open} onClose={onClose} className="max-w-md">
+      <Header title="Income Accounts" subtitle="The streams a collection can be posted to" onClose={onClose} />
+      <div className="px-6 py-5">
+        <div className="rounded-[10px] bg-[#F8FAFC] border border-[#EEF1F6] p-4">
+          <div className={labelCls}>Account name <span className="text-rose-500">*</span></div>
+          <div className="mt-1.5 flex items-center gap-2">
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void add(name)
+              }}
+              placeholder="e.g. Tithe"
+              className={inputCls}
+            />
+            <button
+              type="button"
+              onClick={() => void add(name)}
+              disabled={saving || !name.trim()}
+              className="h-[42px] shrink-0 rounded-[8px] bg-rose-600 px-4 text-[12.5px] font-bold text-white hover:bg-rose-700 disabled:opacity-60"
+            >
+              {saving ? "Adding…" : "Add"}
+            </button>
+          </div>
+
+          {missing.length > 0 && (
+            <div className="mt-3">
+              <div className="text-[10.5px] text-[#9CA3AF] mb-1.5">Common streams — tap to add:</div>
+              <div className="flex flex-wrap gap-1.5">
+                {missing.map((x) => (
+                  <button
+                    key={x}
+                    type="button"
+                    disabled={saving}
+                    onClick={() => void add(x)}
+                    className="rounded-full border border-[#E5E7EB] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#374151] hover:border-rose-300 hover:text-rose-600 disabled:opacity-60"
+                  >
+                    + {x}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="mt-5 text-[13px] font-bold text-[#111827]">In the chart of accounts</div>
+          <ul className="mt-2 divide-y divide-[#EEF1F6]">
+            {heads.length === 0 && <li className="py-3 text-[12px] text-[#9CA3AF]">None yet — add the first one above.</li>}
+            {heads.map((h) => (
+              <li key={h.id} className="flex items-center justify-between gap-3 py-2.5">
+                <span className="text-[13px] text-[#111827] truncate">{h.name}</span>
+                <span className={`${mono} text-[11px] text-[#6B7280] shrink-0`}>GL {h.code}</span>
+              </li>
+            ))}
+          </ul>
+          {error && <p className="mt-3 text-[12px] font-medium text-rose-600">{error}</p>}
+          <p className="mt-4 text-[10.5px] text-[#9CA3AF]">
+            These are chart-of-account heads, not bank accounts. Codes are assigned in the 4000s.
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center justify-end px-6 py-4 border-t border-[#EEF1F6]">
+        <button onClick={onClose} className="h-9 rounded-[6px] bg-[#0F172A] px-4 text-[12px] font-bold text-white">Done</button>
+      </div>
+    </ModalShell>
+  )
+}
+
+// ---------------------------------------------------------------------------
+
 export function NewEntryModal({
   open,
   onClose,
@@ -552,6 +670,7 @@ export function NewEntryModal({
   const [services, setServices] = useState<ChurchService[]>([])
   const [serviceName, setServiceName] = useState("")
   const [servicesOpen, setServicesOpen] = useState(false)
+  const [incomeAccountsOpen, setIncomeAccountsOpen] = useState(false)
   const [batchNumber, setBatchNumber] = useState("")
   const [collections, setCollections] = useState<Collection[]>([newCollection()])
 
@@ -900,7 +1019,16 @@ export function NewEntryModal({
                 {collections.map((col, index) => (
                   <div key={col.key} className="p-4">
                     <div className="flex items-center justify-between gap-2">
-                      <span className={labelCls}>Income account (credit account) <span className="text-rose-500">*</span></span>
+                      <span className={labelCls}>
+                        Income account (credit account) <span className="text-rose-500">*</span>
+                        <button
+                          type="button"
+                          onClick={() => setIncomeAccountsOpen(true)}
+                          className="ml-2 text-[10.5px] font-bold uppercase tracking-wide text-rose-600 hover:underline normal-case"
+                        >
+                          + Add account
+                        </button>
+                      </span>
                       {collections.length > 1 && (
                         <button type="button" onClick={() => setCollections((prev) => prev.filter((c) => c.key !== col.key))} className="text-rose-500 hover:text-rose-700" aria-label={`Remove collection ${index + 1}`}>
                           <Trash2 className="h-3.5 w-3.5" />
@@ -909,7 +1037,7 @@ export function NewEntryModal({
                     </div>
                     <div className="relative mt-1.5">
                       <select value={col.coaId} onChange={(e) => updateCollection(col.key, { coaId: e.target.value })} className={`${inputCls} appearance-none pr-9 bg-white`}>
-                        <option value="">{loadingLists ? "Loading…" : incomeHeads.length === 0 ? "No income accounts in the chart of accounts" : "Select income account…"}</option>
+                        <option value="">{loadingLists ? "Loading…" : incomeHeads.length === 0 ? "None yet — use “+ Add account”" : "Select income account…"}</option>
                         {incomeHeads.map((h) => <option key={h.id} value={h.id}>{h.name}{h.code ? ` (GL ${h.code})` : ""}</option>)}
                       </select>
                       <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9CA3AF] pointer-events-none" />
@@ -977,6 +1105,14 @@ export function NewEntryModal({
           </button>
         </div>
       </ModalShell>
+
+      <IncomeAccountsModal
+        open={incomeAccountsOpen}
+        onClose={() => setIncomeAccountsOpen(false)}
+        branchId={branchId}
+        heads={incomeHeads}
+        onChange={setIncomeHeads}
+      />
 
       <ServicesModal
         open={servicesOpen}
