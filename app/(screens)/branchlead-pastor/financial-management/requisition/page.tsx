@@ -29,7 +29,7 @@ import { useRequisitions } from "@/components/hooks/useRequisitions"
 import { useBudgetPerformance } from "@/components/hooks/useBudgetPerformance"
 import { useBranchContext } from "@/components/hooks/useBranchContext"
 import { getCsrfTokenFromCookie } from "@/lib/csrf"
-import { decodeRequisitionDetails, fetchBudgetContexts, payeeSummary, type BudgetFit } from "@/lib/requisition-details"
+import { budgetIssue, fetchBudgetContexts, payeeSummary, readRequisitionDetails, type BudgetFit } from "@/lib/requisition-details"
 import { loadStreams } from "@/lib/ledger"
 
 export default function Page() {
@@ -100,9 +100,10 @@ export default function Page() {
     }
   }, [awaitingIds])
   const overageOf = (id: string) => (fits[id]?.isOverBudget ? fits[id] : null)
+  const issueOf = (id: string) => budgetIssue(fits[id])
 
   const decorate = (r: (typeof liveRequisitions)[number]) => {
-    const details = decodeRequisitionDetails(r.justification ?? "")
+    const details = readRequisitionDetails(r)
     return {
       rawId: r.id,
       id: `#${r.requisitionNumber || r.reference || r.id.slice(-6).toUpperCase()}`,
@@ -116,6 +117,7 @@ export default function Page() {
       timeLabel: whenLabel(r.createdAt),
       status: "IN REVIEW",
       overage: overageOf(r.id),
+      issue: issueOf(r.id),
     }
   }
 
@@ -231,7 +233,7 @@ export default function Page() {
     if (!selectedRequisitionId) return null
     const found = liveRequisitions.find((r) => r.id === selectedRequisitionId)
     if (!found) return null
-    const details = decodeRequisitionDetails(found.justification ?? "")
+    const details = readRequisitionDetails(found)
     return {
       ...found,
       reference: found.requisitionNumber || found.reference,
@@ -336,7 +338,13 @@ export default function Page() {
                     <div className="flex-1 p-6 md:p-8">
                       <div className="flex items-center justify-between mb-4">
                         <div className={`text-[11px] font-extrabold tracking-widest uppercase ${card.overage ? "text-rose-500" : index === 0 ? "text-rose-500" : "text-orange-500"}`}>
-                          {card.overage ? "OVER BUDGET — NEEDS A DIRECTOR OVERRIDE" : index === 0 ? "HIGHEST VALUE" : "AWAITING APPROVAL"}
+                          {card.issue === "overage"
+                            ? "OVER BUDGET — NEEDS A DIRECTOR OVERRIDE"
+                            : card.issue === "unallocated"
+                              ? "NO BUDGET ALLOCATED — NEEDS A DIRECTOR OVERRIDE"
+                              : index === 0
+                                ? "HIGHEST VALUE"
+                                : "AWAITING APPROVAL"}
                         </div>
                         <div className="text-[12px] font-semibold text-[#9CA3AF]">Requested: {card.timeLabel}</div>
                       </div>
@@ -369,13 +377,25 @@ export default function Page() {
                         </div>
                       )}
 
-                      {card.overage && (
+                      {card.issue === "overage" && (
                         <div className="mb-8 rounded-[10px] border border-rose-200 bg-rose-50 px-4 py-3">
                           <div className="text-[12px] font-bold text-rose-700">
-                            {naira(card.overage.overageAmount)} over the remaining budget on {card.category}
+                            {naira(card.overage?.overageAmount ?? 0)} over the remaining budget on {card.category}
                           </div>
                           <div className="text-[11.5px] text-rose-600 mt-0.5">
                             You cannot approve this as it stands. Ask a Director to authorise the overage, or raise the budget for this head.
+                          </div>
+                        </div>
+                      )}
+
+                      {card.issue === "unallocated" && (
+                        <div className="mb-8 rounded-[10px] border border-amber-200 bg-amber-50 px-4 py-3">
+                          <div className="text-[12px] font-bold text-amber-900">
+                            Nothing is budgeted for {card.category}
+                          </div>
+                          <div className="text-[11.5px] text-amber-800 mt-0.5">
+                            This is not an overspend — there is simply no budget on this head to spend against. Allocate a budget
+                            for it, or ask a Director to authorise the request as an overage.
                           </div>
                         </div>
                       )}
@@ -384,9 +404,9 @@ export default function Page() {
                         <button
                           onClick={() => setSelectedRequisitionId(card.rawId)}
                           disabled={Boolean(card.overage)}
-                          title={card.overage ? "Over budget — a Director has to authorise the overage first" : ""}
+                          title={card.issue === "none" ? "" : "Blocked by the budget check — a Director override clears it"}
                           className="h-[44px] rounded-[8px] bg-[#2563EB] px-6 text-[14px] font-bold text-white shadow-md hover:bg-[#1D4ED8] transition-colors flex items-center gap-2 disabled:bg-[#E5E7EB] disabled:text-[#9CA3AF] disabled:shadow-none disabled:cursor-not-allowed">
-                          <LockKeyhole className="h-4 w-4" /> {card.overage ? "Blocked — over budget" : "Review & Approve"}
+                          <LockKeyhole className="h-4 w-4" /> {card.issue === "none" ? "Review & Approve" : "Blocked — needs an override"}
                         </button>
                         <button
                           onClick={() => decide(card.rawId, "declined")}

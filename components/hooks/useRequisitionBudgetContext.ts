@@ -9,7 +9,10 @@ export type RequisitionBudgetContext = {
   overageAmount: number
   isOverBudget: boolean
   fiscalYear?: number
+  /** Null when the budget is held annually rather than per month. */
   month?: number
+  /** "annual" or "monthly" — which window the figures above cover. */
+  period?: string
 }
 
 function toNumber(value: unknown): number {
@@ -61,6 +64,7 @@ export function useRequisitionBudgetContext(requisitionId?: string) {
               ? Number(raw?.fiscalYear)
               : undefined,
             month: Number.isFinite(Number(raw?.month)) ? Number(raw?.month) : undefined,
+            period: typeof raw?.period === "string" ? raw.period : undefined,
           })
         }
       } catch (err) {
