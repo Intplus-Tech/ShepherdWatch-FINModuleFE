@@ -478,14 +478,18 @@ export async function loadBankAccounts(branchId: string): Promise<BankAccountRow
 }
 
 /**
- * Account heads of one type. The ledger keys off the API's own account types:
- * `income` for the streams an inflow belongs to, `expense` for spending.
+ * Account heads of one type. The chart of accounts uses `income` and
+ * `expense` (its swagger says `revenue`, which the API rejects), so the
+ * streams an inflow belongs to — Tithe, Offering, Building Fund — are
+ * `income` heads.
  */
+export const coaTypeFor = (type: "income" | "expense") => type
+
 export async function loadAccountHeads(branchId: string, type: "income" | "expense"): Promise<AccountHead[]> {
   const out: AccountHead[] = []
   const seen = new Set<string>()
   for (let page = 1; page <= 5; page++) {
-    const q = new URLSearchParams({ page: String(page), limit: "100", accountType: type })
+    const q = new URLSearchParams({ page: String(page), limit: "100", accountType: coaTypeFor(type) })
     if (branchId) q.set("branchId", branchId)
     const res = await fetch(`${API_V1}/financial/coa?${q.toString()}`, { credentials: "include" })
     const json = await res.json().catch(() => null)
@@ -791,4 +795,33 @@ export async function nextBatchNumber(date: string, kind: "service" | "office"):
   let n = 1
   while (used.has(`${prefix}-${String(n).padStart(2, "0")}`)) n += 1
   return `${prefix}-${String(n).padStart(2, "0")}`
+}
+
+/**
+ * Adds a stream to the chart of accounts, picking the next free code in the
+ * band its type uses: 4000s for income (revenue), 5000s for expense.
+ */
+export async function createAccountHead(branchId: string, name: string, type: "income" | "expense"): Promise<AccountHead> {
+  const label = name.trim()
+  if (!label) throw new Error("Give the account a name.")
+  const existing = await loadAccountHeads(branchId, type).catch(() => [] as AccountHead[])
+  if (existing.some((h) => h.name.trim().toLowerCase() === label.toLowerCase())) {
+    throw new Error(`"${label}" already exists in the chart of accounts.`)
+  }
+  const base = type === "income" ? 4000 : 5000
+  const taken = new Set(existing.map((h) => h.code))
+  const codes = existing.map((h) => Number(h.code)).filter((n) => Number.isFinite(n) && n >= base && n < base + 1000)
+  let code = codes.length > 0 ? Math.max(...codes) + 10 : base
+  while (taken.has(String(code))) code += 10
+
+  const res = await fetch(`${API_V1}/financial/coa`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfTokenFromCookie() },
+    credentials: "include",
+    body: JSON.stringify({ code: String(code), name: label, accountType: coaTypeFor(type), branchId }),
+  })
+  const json = await res.json().catch(() => null)
+  if (!res.ok) throw new Error(describeApiError(json, `Unable to add "${label}".`))
+  const data = readData(json)
+  return { id: idOf(data), name: label, code: String(data.code ?? code), type: coaTypeFor(type) }
 }
