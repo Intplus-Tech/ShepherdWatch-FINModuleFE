@@ -1,18 +1,13 @@
 import { API_V1 } from "@/lib/api"
 
 /**
- * Requisition details the API has no fields for.
+ * Requisition details beyond the core amount and justification.
  *
- * `POST /requisitions` accepts only branchId, budgetHeadId, amount,
- * justification and requiredDate — anything else sent alongside is silently
- * dropped. The expense title, the payee's bank details and any attachment
- * still have to reach the approver and the accountant who pays, so they ride
- * inside the justification in a fixed, human-readable block and are parsed
- * back out for display.
- *
- * This is a stopgap. Once the backend adds real fields (title, accountName,
- * bankName, accountNumber, attachments), `encode` and `decode` are the only
- * two places that need to change.
+ * The API now stores `title`, `accountName`, `bankName`, `accountNumber` and
+ * `attachments` as real fields, so `readRequisitionDetails` reads them
+ * straight off the record. Requisitions raised before those fields existed
+ * carry the same information packed inside the justification, so the decoder
+ * below stays as the fallback for them.
  */
 
 const PAYMENT_MARKER = "-- Payment details --"
@@ -92,6 +87,35 @@ export function decodeRequisitionDetails(justification: string): RequisitionDeta
   }
 }
 
+/**
+ * The details for one requisition, preferring the stored fields and falling
+ * back to the older justification packing.
+ */
+export function readRequisitionDetails(record: Record<string, unknown> | null | undefined): RequisitionDetails {
+  const rec = record ?? {}
+  const text = String(rec.justification ?? "")
+  const legacy = decodeRequisitionDetails(text)
+  const str = (value: unknown) => (typeof value === "string" ? value.trim() : "")
+
+  // The first attachment, however the API returns it: an id, a url, or an
+  // object carrying both.
+  const first = Array.isArray(rec.attachments) ? (rec.attachments as unknown[])[0] : undefined
+  const asObject = first && typeof first === "object" ? (first as Record<string, unknown>) : null
+  const attachmentUrl = asObject ? str(asObject.url ?? asObject.secureUrl) : str(first).startsWith("http") ? str(first) : ""
+  const attachmentName = asObject ? str(asObject.fileName ?? asObject.originalName) : ""
+
+  return {
+    title: str(rec.title) || legacy.title,
+    // The stored justification is the plain reason once real fields exist.
+    justification: str(rec.title) ? text.trim() : legacy.justification || text.trim(),
+    accountName: str(rec.accountName) || legacy.accountName,
+    bankName: str(rec.bankName) || legacy.bankName,
+    accountNumber: str(rec.accountNumber) || legacy.accountNumber,
+    attachmentUrl: attachmentUrl || legacy.attachmentUrl,
+    attachmentName: attachmentName || legacy.attachmentName || (attachmentUrl ? "Document" : ""),
+  }
+}
+
 /** A one-line payee summary for tables, or "" when no details were given. */
 export function payeeSummary(details: RequisitionDetails): string {
   return [details.accountName, details.bankName, details.accountNumber].filter(Boolean).join(" · ")
@@ -101,7 +125,29 @@ export function payeeSummary(details: RequisitionDetails): string {
  * Whether a requisition still fits its budget head. The API blocks a plain
  * approval once it does not, so screens check this before offering one.
  */
-export type BudgetFit = { isOverBudget: boolean; overageAmount: number; remainingBudget: number }
+export type BudgetFit = {
+  isOverBudget: boolean
+  overageAmount: number
+  remainingBudget: number
+  allocatedAmount: number
+  totalSpent: number
+}
+
+/**
+ * Why an approval is blocked.
+ *
+ * `unallocated` is the important one: `budget-context` reports the month's
+ * allocation for the budget head, and it reads 0 even when the branch has an
+ * approved budget with allocations against that head — so every request looks
+ * over budget. Saying "over budget" there would be untrue; the figure is
+ * simply missing.
+ */
+export type BudgetIssue = "none" | "overage" | "unallocated"
+
+export function budgetIssue(fit?: BudgetFit | null): BudgetIssue {
+  if (!fit || !fit.isOverBudget) return "none"
+  return fit.allocatedAmount > 0 ? "overage" : "unallocated"
+}
 
 export async function fetchBudgetContext(id: string): Promise<BudgetFit | null> {
   try {
@@ -116,6 +162,8 @@ export async function fetchBudgetContext(id: string): Promise<BudgetFit | null> 
       isOverBudget: Boolean(d.isOverBudget),
       overageAmount: Number(d.overageAmount ?? 0),
       remainingBudget: Number(d.remainingBudget ?? 0),
+      allocatedAmount: Number(d.allocatedAmount ?? 0),
+      totalSpent: Number(d.totalSpent ?? 0),
     }
   } catch {
     return null

@@ -10,7 +10,7 @@ import { useToast } from "@/components/ui/toast"
 import { API_V1 } from "@/lib/api"
 import { getCsrfTokenFromCookie } from "@/lib/csrf"
 import { describeApiError } from "@/lib/api-error"
-import { decodeRequisitionDetails, fetchBudgetContexts, payeeSummary, type BudgetFit } from "@/lib/requisition-details"
+import { budgetIssue, fetchBudgetContexts, payeeSummary, readRequisitionDetails, type BudgetFit } from "@/lib/requisition-details"
 
 const naira = (value: number) =>
   new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", maximumFractionDigits: 0 }).format(value)
@@ -42,7 +42,7 @@ export default function Page() {
       [...requisitions]
         .sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime())
         .map((r) => {
-          const details = decodeRequisitionDetails(r.justification ?? "")
+          const details = readRequisitionDetails(r)
           return {
             raw: r,
             id: r.id,
@@ -80,6 +80,7 @@ export default function Page() {
 
   const needsOverride = (id: string) => Boolean(fits[id]?.isOverBudget)
   const blockedCount = rows.filter((r) => needsOverride(r.id)).length
+  const unallocatedCount = rows.filter((r) => budgetIssue(fits[r.id]) === "unallocated").length
   const selected = rows.find((r) => r.id === selectedId) ?? null
 
   /** Approve a request that exceeds its budget head, with the reason on record. */
@@ -143,8 +144,20 @@ export default function Page() {
 
           {blockedCount > 0 ? (
             <div className="mb-4 rounded-[10px] border border-amber-200 bg-amber-50 px-4 py-3 text-[12.5px] text-amber-900">
-              <span className="font-bold">{blockedCount} {blockedCount === 1 ? "request exceeds" : "requests exceed"} the budget.</span>{" "}
-              A branch pastor cannot approve these — open one and authorise the overage, or have the branch raise the budget for that head.
+              <span className="font-bold">
+                {blockedCount} {blockedCount === 1 ? "request is" : "requests are"} blocked by the budget check.
+              </span>{" "}
+              A branch pastor cannot approve these; authorising the overage here releases them.
+              {unallocatedCount > 0 && (
+                <>
+                  {" "}
+                  <span className="font-bold">
+                    {unallocatedCount} of them {unallocatedCount === 1 ? "has" : "have"} no budget at all
+                  </span>{" "}
+                  on the head {unallocatedCount === 1 ? "it was" : "they were"} raised against — the branch may need to budget for it
+                  rather than rely on an override.
+                </>
+              )}
             </div>
           ) : (
             <div className="mb-4 rounded-[10px] border border-[#BFDBFE] bg-[#EFF6FF] px-4 py-3 text-[12.5px] text-[#1D4ED8]">

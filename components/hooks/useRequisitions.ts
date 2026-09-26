@@ -13,6 +13,11 @@ export type RequisitionItem = {
   /** REQ-YYYYMM-NNNN, the number shown everywhere a requisition is listed. */
   requisitionNumber?: string
   branchName?: string
+  title?: string
+  accountName?: string
+  bankName?: string
+  accountNumber?: string
+  attachments?: unknown[]
   amount: number
   currentStatus?: string
   createdAt?: string
@@ -184,6 +189,11 @@ export function useRequisitions(options: UseRequisitionsOptions = {}) {
               requiredDate: readString(item.requiredDate, item.dateRequired, item.needByDate),
               coaName: readString(item.coaName, coa.name, coa.accountName, item.category),
               branchName: readString(branch.name, item.branchName),
+              title: readString(item.title),
+              accountName: readString(item.accountName),
+              bankName: readString(item.bankName),
+              accountNumber: readString(item.accountNumber),
+              attachments: Array.isArray(item.attachments) ? (item.attachments as unknown[]) : [],
               justification: readString(item.justification, item.reason, item.description),
               requisitionNumber: readString(item.requisitionNumber, item.reference),
               reference: readString(
@@ -210,10 +220,9 @@ export function useRequisitions(options: UseRequisitionsOptions = {}) {
           setRequisitions(mapped)
         }
 
-        // `GET /requisitions` answers with bare ObjectIds for requestedBy,
-        // budgetHeadId and branchId, so a list alone cannot show who asked or
-        // which budget head it is. The detail endpoint populates them; fill
-        // the rows in behind the first paint rather than leaving them blank.
+        // The list populates requestedBy, budgetHeadId and branchId, so this
+        // is a no-op in practice. It stays as a fallback for any record that
+        // still comes back with bare ObjectIds.
         const needsNames = mapped.filter((row) => !row.requestedBy || !row.coaName).slice(0, 30)
         if (needsNames.length > 0) {
           const details = await Promise.all(

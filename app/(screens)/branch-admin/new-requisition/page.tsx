@@ -26,7 +26,6 @@ import {
 } from "lucide-react"
 import { useAuth } from "@/components/auth/AuthProvider"
 import { useBranchContext } from "@/components/hooks/useBranchContext"
-import { encodeRequisitionDetails } from "@/lib/requisition-details"
 import FileUploadDropzone from "@/components/ui/FileUploadDropzone"
 import { getCsrfTokenFromCookie } from "@/lib/csrf"
 
@@ -85,7 +84,7 @@ export default function NewRequisitionPage() {
   const [accountName, setAccountName] = useState("")
   const [bankName, setBankName] = useState("")
   const [accountNumber, setAccountNumber] = useState("")
-  const [attachment, setAttachment] = useState<{ url: string; name: string } | null>(null)
+  const [attachment, setAttachment] = useState<{ id: string; url: string; name: string } | null>(null)
   const [coaOptions, setCoaOptions] = useState<Array<{ id: string; label: string }>>([])
   const [coaLoading, setCoaLoading] = useState(true)
   const [coaError, setCoaError] = useState<string | null>(null)
@@ -221,17 +220,15 @@ export default function NewRequisitionPage() {
 
   const getCsrfToken = getCsrfTokenFromCookie
 
-  /** Everything the approver and the accountant need, folded into one field. */
-  const buildJustification = () =>
-    encodeRequisitionDetails({
-      title,
-      justification,
-      accountName,
-      bankName,
-      accountNumber,
-      attachmentUrl: attachment?.url,
-      attachmentName: attachment?.name,
-    })
+  /** The fields the API stores alongside the amount and justification. */
+  const detailFields = () => ({
+    ...(title.trim() ? { title: title.trim() } : {}),
+    accountName: accountName.trim(),
+    bankName: bankName.trim(),
+    accountNumber: accountNumber.trim(),
+    // `attachments` takes FileUpload ids, not URLs.
+    ...(attachment?.id ? { attachments: [attachment.id] } : {}),
+  })
 
   /** Shared checks for the payee's account, which the accountant pays into. */
   const payeeProblem = () => {
@@ -280,7 +277,6 @@ export default function NewRequisitionPage() {
 
     try {
       const csrfToken = getCsrfToken()
-      const justificationText = buildJustification()
 
       const response = await fetch(`${API_V1}/financial/requisitions`, {
         method: "POST",
@@ -294,8 +290,9 @@ export default function NewRequisitionPage() {
           budgetHeadId: coaId,
           amount: amountValue,
           currency: "NGN",
-          justification: justificationText,
+          justification: justification.trim(),
           requiredDate,
+          ...detailFields(),
         }),
       })
       const payload = await response.json().catch(() => null)
@@ -355,7 +352,6 @@ export default function NewRequisitionPage() {
 
     try {
       const csrfToken = getCsrfToken()
-      const justificationText = buildJustification()
 
       const response = await fetch(`${API_V1}/financial/requisitions`, {
         method: "POST",
@@ -369,8 +365,9 @@ export default function NewRequisitionPage() {
           budgetHeadId: coaId,
           amount: amountValue,
           currency: "NGN",
-          justification: justificationText,
+          justification: justification.trim(),
           requiredDate,
+          ...detailFields(),
         }),
       })
       const payload = await response.json().catch(() => null)
@@ -779,9 +776,10 @@ export default function NewRequisitionPage() {
                       acceptedTypes="image/jpeg,image/png,application/pdf"
                       label="Upload a file"
                       onUploadComplete={(data) => {
-                        const file = (data ?? {}) as { url?: string; secureUrl?: string; fileName?: string; originalName?: string }
+                        const file = (data ?? {}) as { _id?: string; id?: string; url?: string; secureUrl?: string; fileName?: string; originalName?: string }
+                        const id = String(file._id ?? file.id ?? "")
                         const url = String(file.url ?? file.secureUrl ?? "")
-                        if (url) setAttachment({ url, name: String(file.fileName ?? file.originalName ?? "Document") })
+                        if (id) setAttachment({ id, url, name: String(file.fileName ?? file.originalName ?? "Document") })
                       }}
                     />
                   </div>

@@ -1,7 +1,7 @@
 import { API_V1 } from "@/lib/api"
 import { getCsrfTokenFromCookie } from "@/lib/csrf"
 import { describeApiError } from "@/lib/api-error"
-import { decodeRequisitionDetails, payeeSummary } from "@/lib/requisition-details"
+import { payeeSummary, readRequisitionDetails } from "@/lib/requisition-details"
 
 /**
  * The accountant's General Ledger and bank reconciliation.
@@ -308,7 +308,7 @@ const BLOCKED_REASON: Record<string, string> = {
 
 function mapRequisition(r: Record<string, unknown>, statusOverride?: string): RequisitionOption {
   const head = obj(r.budgetHeadId) ?? obj(r.chartOfAccountId)
-  const details = decodeRequisitionDetails(String(r.justification ?? r.purpose ?? r.description ?? ""))
+  const details = readRequisitionDetails(r)
   const status = String(statusOverride ?? r.status ?? "approved").toLowerCase()
   return {
     id: idOf(r),

@@ -81,12 +81,21 @@ export function RequisitionDetailsModal({
   const budgetHead = requisition.coaName || requisition.category || "Unassigned budget head"
   const status = String(requisition.status ?? "").replace(/_/g, " ").toUpperCase()
 
-  // Only claim an overage once the real figures have come back.
+  // Only claim an overage once the real figures have come back — and only when
+  // there is an allocation to exceed. A zero allocation means the figure is
+  // missing, not that the head is exhausted.
   const overBudget = Boolean(budget?.isOverBudget)
+  // A zero allocation means nothing was budgeted for this head, not that the
+  // head is exhausted — worth saying differently.
+  const unallocated = overBudget && (budget?.allocatedAmount ?? 0) <= 0
   const allocated = budget?.allocatedAmount ?? 0
   const spent = budget?.totalSpent ?? 0
   const usedPct = allocated > 0 ? Math.min(100, Math.round((spent / allocated) * 100)) : 0
-  const period = budget?.month ? `${MONTHS[budget.month - 1]} ${budget.fiscalYear ?? ""}`.trim() : ""
+  const period = budget?.month
+    ? `${MONTHS[budget.month - 1]} ${budget.fiscalYear ?? ""}`.trim()
+    : budget?.period === "annual"
+      ? `FY ${budget.fiscalYear ?? ""}`.trim()
+      : ""
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#111827]/40 backdrop-blur-sm p-4 sm:p-6 lg:p-8">
@@ -107,8 +116,10 @@ export function RequisitionDetailsModal({
               </span>
             )}
             {!budgetLoading && overBudget && (
-              <span className="inline-flex items-center rounded-full bg-rose-50 px-2.5 py-0.5 text-[10px] font-extrabold text-rose-500 uppercase tracking-widest">
-                Over-budget
+              <span
+                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-widest ${unallocated ? "bg-amber-50 text-amber-700" : "bg-rose-50 text-rose-500"}`}
+              >
+                {unallocated ? "No budget allocated" : "Over-budget"}
               </span>
             )}
           </div>
@@ -182,7 +193,7 @@ export function RequisitionDetailsModal({
                 <>
                   <div className="mb-6">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-[12px] font-semibold text-[#6B7280]">Monthly Allocation</span>
+                      <span className="text-[12px] font-semibold text-[#6B7280]">{budget?.period === "annual" ? "Annual allocation" : "Monthly allocation"}</span>
                       <span className="text-[13px] font-extrabold text-[#111827]">{naira(allocated)}</span>
                     </div>
                     <div className="h-2 w-full rounded-full bg-[#E5E7EB] overflow-hidden">
@@ -205,7 +216,18 @@ export function RequisitionDetailsModal({
                     <span className="text-[15px] font-black text-[#111827]">{naira(budget?.requestedAmount ?? amountValue)}</span>
                   </div>
 
-                  {overBudget ? (
+                  {unallocated ? (
+                    <div className="rounded-[10px] border border-amber-200 bg-amber-50 px-4 py-4 mb-4">
+                      <div className="flex items-center gap-2 mb-1">
+                        <AlertTriangle className="h-4 w-4 text-amber-600" strokeWidth={2.5} />
+                        <span className="text-[11px] font-extrabold text-amber-700 uppercase tracking-widest">No budget allocated</span>
+                      </div>
+                      <p className="text-[11.5px] text-amber-800 leading-relaxed">
+                        Nothing has been budgeted for {budgetHead}, so there is nothing to spend against. Allocate a budget to this
+                        head, or authorise the request as an overage.
+                      </p>
+                    </div>
+                  ) : overBudget ? (
                     <div className="flex items-center justify-between rounded-[10px] border border-rose-200 bg-rose-50 px-4 py-4 mb-4">
                       <div className="flex items-center gap-2">
                         <AlertTriangle className="h-4 w-4 text-rose-500" strokeWidth={2.5} />
@@ -220,7 +242,7 @@ export function RequisitionDetailsModal({
                     </div>
                   )}
 
-                  {overBudget && (
+                  {overBudget && !unallocated && (
                     <div className="rounded-[10px] border border-[#BFDBFE] bg-[#EFF6FF] p-4 mt-auto">
                       <p className="text-[11px] font-semibold text-[#1D4ED8] leading-relaxed">
                         <span className="font-extrabold">Note:</span> This request exceeds what is left on {budgetHead} by{" "}
