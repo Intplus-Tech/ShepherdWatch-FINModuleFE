@@ -148,8 +148,11 @@ export default function Page() {
           </div>
 
           {tab === "pending_director" && (
-            <div className="mb-4 rounded-[10px] border border-[#BFDBFE] bg-[#EFF6FF] px-4 py-3 text-[12.5px] text-[#1D4ED8]">
-              A branch accountant can only post an expense once the requisition is approved here.
+            <div className="mb-4 rounded-[10px] border border-amber-200 bg-amber-50 px-4 py-3 text-[12.5px] text-amber-900">
+              <span className="font-bold">Temporary step.</span> The Director is meant to be read-only here, but the API only lets a
+              branch accountant post against a requisition in <span className="font-mono">approved</span> status, and a branch
+              pastor&apos;s approval only moves it to <span className="font-mono">pending_director</span>. Until the backend makes the
+              pastor the final approver, someone has to clear it here.
             </div>
           )}
 
@@ -189,7 +192,7 @@ export default function Page() {
                       </td>
                     </tr>
                   )}
-                  {rows.map((r) => (
+                  {!loading && rows.map((r) => (
                     <tr key={r.id} className="hover:bg-[#F8FAFC] align-top">
                       <td className="px-5 py-3">
                         <div className="font-mono text-[11.5px] font-bold text-[#2563EB]">{r.number}</div>
@@ -235,7 +238,7 @@ export default function Page() {
                 </tbody>
               </table>
             </div>
-            {rows.length > 0 && (
+            {!loading && rows.length > 0 && (
               <div className="flex items-center justify-between px-5 py-3 border-t border-[#EEF1F6] text-[11px] font-semibold uppercase tracking-wide text-[#6B7280]">
                 <span className="inline-flex items-center gap-1.5"><ClipboardList className="h-3.5 w-3.5" />{rows.length} {rows.length === 1 ? "requisition" : "requisitions"}</span>
                 <span>Total: <span className="font-mono text-[#111827]">{naira(rows.reduce((s, r) => s + r.amount, 0))}</span></span>

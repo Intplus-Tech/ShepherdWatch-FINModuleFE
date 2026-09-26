@@ -12,6 +12,7 @@ export type RequisitionItem = {
   id: string
   /** REQ-YYYYMM-NNNN, the number shown everywhere a requisition is listed. */
   requisitionNumber?: string
+  branchName?: string
   amount: number
   currentStatus?: string
   createdAt?: string
@@ -170,7 +171,8 @@ export function useRequisitions(options: UseRequisitionsOptions = {}) {
         const mapped = rawItems
           .map((rawItem: unknown) => {
             const item = asRecord(rawItem)
-            const coa = asRecord(item.coa)
+            const coa = asRecord(item.budgetHeadId ?? item.coa)
+            const branch = asRecord(item.branchId)
             const requestedBy = asRecord(item.requestedBy)
             const createdBy = asRecord(item.createdBy)
 
@@ -181,6 +183,7 @@ export function useRequisitions(options: UseRequisitionsOptions = {}) {
               createdAt: readString(item.createdAt, item.requestedAt, item.requestDate, item.date),
               requiredDate: readString(item.requiredDate, item.dateRequired, item.needByDate),
               coaName: readString(item.coaName, coa.name, coa.accountName, item.category),
+              branchName: readString(branch.name, item.branchName),
               justification: readString(item.justification, item.reason, item.description),
               requisitionNumber: readString(item.requisitionNumber, item.reference),
               reference: readString(
@@ -205,6 +208,46 @@ export function useRequisitions(options: UseRequisitionsOptions = {}) {
 
         if (isMounted) {
           setRequisitions(mapped)
+        }
+
+        // `GET /requisitions` answers with bare ObjectIds for requestedBy,
+        // budgetHeadId and branchId, so a list alone cannot show who asked or
+        // which budget head it is. The detail endpoint populates them; fill
+        // the rows in behind the first paint rather than leaving them blank.
+        const needsNames = mapped.filter((row) => !row.requestedBy || !row.coaName).slice(0, 30)
+        if (needsNames.length > 0) {
+          const details = await Promise.all(
+            needsNames.map((row) =>
+              fetch(`${API_V1}/financial/requisitions/${encodeURIComponent(row.id)}`, { credentials: "include" })
+                .then((r) => (r.ok ? r.json().catch(() => null) : null))
+                .then((payload) => ({ id: row.id, data: asRecord(asRecord(payload).data) }))
+                .catch(() => ({ id: row.id, data: {} as Record<string, unknown> }))
+            )
+          )
+          const byId = new Map(details.map((d) => [d.id, d.data]))
+          if (isMounted) {
+            setRequisitions((current) =>
+              current.map((row) => {
+                const full = byId.get(row.id)
+                if (!full || Object.keys(full).length === 0) return row
+                const person = asRecord(full.requestedBy)
+                const head = asRecord(full.budgetHeadId)
+                const branch = asRecord(full.branchId)
+                return {
+                  ...row,
+                  requestedBy:
+                    row.requestedBy ||
+                    readString(
+                      `${readString(person.firstName)} ${readString(person.lastName)}`.trim(),
+                      person.name,
+                      person.email
+                    ),
+                  coaName: row.coaName || readString(head.name, head.accountName),
+                  branchName: row.branchName || readString(branch.name),
+                }
+              })
+            )
+          }
         }
       } catch (err) {
         if (isMounted) {
