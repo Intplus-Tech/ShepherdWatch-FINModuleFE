@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { CheckCircle2, ClipboardList, Landmark, RefreshCw } from "lucide-react"
 import SidebarNav from "@/components/navigation/SidebarNav"
 import ScreenHeader from "@/components/navigation/ScreenHeader"
@@ -10,7 +10,7 @@ import { useToast } from "@/components/ui/toast"
 import { API_V1 } from "@/lib/api"
 import { getCsrfTokenFromCookie } from "@/lib/csrf"
 import { describeApiError } from "@/lib/api-error"
-import { decodeRequisitionDetails, payeeSummary } from "@/lib/requisition-details"
+import { decodeRequisitionDetails, fetchBudgetContexts, payeeSummary, type BudgetFit } from "@/lib/requisition-details"
 
 const naira = (value: number) =>
   new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", maximumFractionDigits: 0 }).format(value)
@@ -21,16 +21,17 @@ const shortDate = (iso?: string) => {
 }
 
 /**
- * Final approval for expense requisitions.
+ * Oversight of expense requisitions, and the one thing only a Director can do.
  *
- * A request reaches a Director once the branch pastor has approved it. Only a
- * Director's approval moves it to APPROVED, which is what lets the branch
- * accountant post the expense against it. Over-budget requests need an
- * override with a written reason instead of a plain approval.
+ * Branch pastors approve their own branch's requests outright, so there is
+ * nothing here for a Director to approve. The exception is a request that
+ * exceeds its budget head: the API refuses a plain approval and requires a
+ * Director's override, with a written reason, to release it.
  */
 export default function Page() {
   const { pushToast } = useToast()
-  const [tab, setTab] = useState<"pending_director" | "approved" | "pending_pastor">("pending_director")
+  const [tab, setTab] = useState<"pending_pastor" | "approved" | "pending_director">("pending_pastor")
+  const [fits, setFits] = useState<Record<string, BudgetFit>>({})
   const { requisitions, loading, error, refresh } = useRequisitions({ status: tab, limit: 100 })
 
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -61,32 +62,25 @@ export default function Page() {
     [requisitions]
   )
 
-  const selected = rows.find((r) => r.id === selectedId) ?? null
-
-  const decide = async (id: string, action: "approved" | "declined") => {
-    setBusyId(id)
-    try {
-      const res = await fetch(`${API_V1}/financial/requisitions/${encodeURIComponent(id)}/approve`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfTokenFromCookie() },
-        credentials: "include",
-        body: JSON.stringify({ action, comment: action === "approved" ? "Approved by the Director." : "Declined by the Director." }),
-      })
-      if (!res.ok) throw new Error(describeApiError(await res.json().catch(() => null), "The decision could not be recorded."))
-      pushToast(
-        action === "approved"
-          ? "Approved — the branch accountant can now post the expense against it."
-          : "Requisition declined.",
-        "success"
-      )
-      setSelectedId(null)
-      refresh()
-    } catch (err) {
-      pushToast(err instanceof Error ? err.message : "The decision could not be recorded.", "error")
-    } finally {
-      setBusyId(null)
+  // Only over-budget requests need this screen; check each one's budget head.
+  useEffect(() => {
+    if (tab === "approved" || rows.length === 0) {
+      setFits({})
+      return
     }
-  }
+    let active = true
+    fetchBudgetContexts(rows.map((r) => r.id)).then((next) => {
+      if (active) setFits(next)
+    })
+    return () => {
+      active = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, rows.map((r) => r.id).join(",")])
+
+  const needsOverride = (id: string) => Boolean(fits[id]?.isOverBudget)
+  const blockedCount = rows.filter((r) => needsOverride(r.id)).length
+  const selected = rows.find((r) => r.id === selectedId) ?? null
 
   /** Approve a request that exceeds its budget head, with the reason on record. */
   const override = async (id: string, justification: string) => {
@@ -99,7 +93,7 @@ export default function Page() {
         body: JSON.stringify({ overrideJustification: justification }),
       })
       if (!res.ok) throw new Error(describeApiError(await res.json().catch(() => null), "The override could not be recorded."))
-      pushToast("Override authorised — the requisition is approved and ready for payment.", "success")
+      pushToast("Override authorised — the requisition is approved and the branch accountant can now pay it.", "success")
       setSelectedId(null)
       refresh()
     } catch (err) {
@@ -110,9 +104,9 @@ export default function Page() {
   }
 
   const TABS = [
-    { key: "pending_director" as const, label: "Awaiting your approval" },
     { key: "pending_pastor" as const, label: "With branch pastors" },
     { key: "approved" as const, label: "Approved" },
+    { key: "pending_director" as const, label: "Escalated to you" },
   ]
 
   return (
@@ -124,7 +118,7 @@ export default function Page() {
 
       <main className="flex-1 xl:ml-[260px] text-[#111827]">
         <div className="mx-auto w-full px-6 pt-6 pb-6 lg:px-8 lg:pt-8 lg:pb-8 max-w-7xl">
-          <ScreenHeader title="Expense Requisitions" subtitle="Final approval before a branch can pay" />
+          <ScreenHeader title="Expense Requisitions" subtitle="Oversight, and budget overrides" />
 
           <div className="flex flex-wrap items-center justify-between gap-3 mt-6 mb-4">
             <div className="inline-flex rounded-[8px] bg-[#EEF1F6] p-1">
@@ -147,12 +141,14 @@ export default function Page() {
             </button>
           </div>
 
-          {tab === "pending_director" && (
+          {blockedCount > 0 ? (
             <div className="mb-4 rounded-[10px] border border-amber-200 bg-amber-50 px-4 py-3 text-[12.5px] text-amber-900">
-              <span className="font-bold">Temporary step.</span> The Director is meant to be read-only here, but the API only lets a
-              branch accountant post against a requisition in <span className="font-mono">approved</span> status, and a branch
-              pastor&apos;s approval only moves it to <span className="font-mono">pending_director</span>. Until the backend makes the
-              pastor the final approver, someone has to clear it here.
+              <span className="font-bold">{blockedCount} {blockedCount === 1 ? "request exceeds" : "requests exceed"} the budget.</span>{" "}
+              A branch pastor cannot approve these — open one and authorise the overage, or have the branch raise the budget for that head.
+            </div>
+          ) : (
+            <div className="mb-4 rounded-[10px] border border-[#BFDBFE] bg-[#EFF6FF] px-4 py-3 text-[12.5px] text-[#1D4ED8]">
+              Branch pastors approve their own requests. Nothing here needs your approval — you only step in when a request exceeds its budget head.
             </div>
           )}
 
@@ -213,24 +209,15 @@ export default function Page() {
                       <td className="px-5 py-3 text-right">
                         {tab === "approved" ? (
                           <span className="inline-flex items-center gap-1 rounded-[4px] bg-emerald-50 text-emerald-700 px-2 py-1 text-[10px] font-bold uppercase"><CheckCircle2 className="h-3 w-3" />Approved</span>
-                        ) : tab === "pending_pastor" ? (
-                          <span className="inline-flex rounded-[4px] bg-amber-50 text-amber-700 px-2 py-1 text-[10px] font-bold uppercase whitespace-nowrap">With pastor</span>
+                        ) : needsOverride(r.id) ? (
+                          <button
+                            onClick={() => setSelectedId(r.id)}
+                            className="h-8 rounded-[6px] bg-[#2563EB] px-3 text-[12px] font-bold text-white hover:bg-[#1D4ED8] transition-colors whitespace-nowrap"
+                          >
+                            Authorize override
+                          </button>
                         ) : (
-                          <div className="inline-flex items-center gap-2">
-                            <button
-                              onClick={() => setSelectedId(r.id)}
-                              className="h-8 rounded-[6px] bg-[#2563EB] px-3 text-[12px] font-bold text-white hover:bg-[#1D4ED8] transition-colors"
-                            >
-                              Review
-                            </button>
-                            <button
-                              onClick={() => decide(r.id, "declined")}
-                              disabled={busyId !== null}
-                              className="h-8 rounded-[6px] border border-[#E5E7EB] bg-white px-3 text-[12px] font-bold text-[#B91C1C] hover:bg-rose-50 transition-colors disabled:opacity-60"
-                            >
-                              Decline
-                            </button>
-                          </div>
+                          <span className="inline-flex rounded-[4px] bg-amber-50 text-amber-700 px-2 py-1 text-[10px] font-bold uppercase whitespace-nowrap">With pastor</span>
                         )}
                       </td>
                     </tr>
@@ -270,12 +257,6 @@ export default function Page() {
               }
             : null
         }
-        onApprove={async () => {
-          if (selected) await decide(selected.id, "approved")
-        }}
-        onDecline={async () => {
-          if (selected) await decide(selected.id, "declined")
-        }}
         onOverride={async (reason) => {
           if (selected) await override(selected.id, reason)
         }}
