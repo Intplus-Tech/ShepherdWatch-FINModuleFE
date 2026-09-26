@@ -29,7 +29,7 @@ import { useRequisitions } from "@/components/hooks/useRequisitions"
 import { useBudgetPerformance } from "@/components/hooks/useBudgetPerformance"
 import { useBranchContext } from "@/components/hooks/useBranchContext"
 import { getCsrfTokenFromCookie } from "@/lib/csrf"
-import { decodeRequisitionDetails, payeeSummary } from "@/lib/requisition-details"
+import { decodeRequisitionDetails, fetchBudgetContexts, payeeSummary, type BudgetFit } from "@/lib/requisition-details"
 import { loadStreams } from "@/lib/ledger"
 
 export default function Page() {
@@ -79,6 +79,28 @@ export default function Page() {
     [liveRequisitions]
   )
 
+  /**
+   * The API refuses to approve a request that exceeds its budget head, so
+   * check each one up front and say so on the card rather than after a
+   * failed click.
+   */
+  const [fits, setFits] = useState<Record<string, BudgetFit>>({})
+  const awaitingIds = awaiting.map((r) => r.id).join(",")
+  useEffect(() => {
+    if (!awaitingIds) {
+      setFits({})
+      return
+    }
+    let active = true
+    fetchBudgetContexts(awaitingIds.split(",")).then((next) => {
+      if (active) setFits(next)
+    })
+    return () => {
+      active = false
+    }
+  }, [awaitingIds])
+  const overageOf = (id: string) => (fits[id]?.isOverBudget ? fits[id] : null)
+
   const decorate = (r: (typeof liveRequisitions)[number]) => {
     const details = decodeRequisitionDetails(r.justification ?? "")
     return {
@@ -93,6 +115,7 @@ export default function Page() {
       requestedBy: r.requestedBy || "Branch user",
       timeLabel: whenLabel(r.createdAt),
       status: "IN REVIEW",
+      overage: overageOf(r.id),
     }
   }
 
@@ -100,13 +123,14 @@ export default function Page() {
   const priorityCards = useMemo(
     () => [...awaiting].sort((a, b) => Number(b.amount ?? 0) - Number(a.amount ?? 0)).slice(0, 2).map(decorate),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [awaiting]
+    [awaiting, fits]
   )
   const pendingRows = useMemo(() => {
     const lead = new Set(priorityCards.map((c) => c.rawId))
     return awaiting.filter((r) => !lead.has(r.id)).map(decorate)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [awaiting, priorityCards])
+  }, [awaiting, priorityCards, fits])
+
 
   // Where the branch's money actually goes, by expense stream.
   const [expenseStreams, setExpenseStreams] = useState<{ label: string; percentage: number; color: string }[]>([])
@@ -162,7 +186,7 @@ export default function Page() {
       if (!res.ok) throw new Error(payload?.message ?? `Unable to ${action === "approved" ? "approve" : "decline"} the requisition.`)
       setApproveSuccess(
         action === "approved"
-          ? "Approved — it now goes to a Director for final approval before the accountant can pay it."
+          ? "Approved — the branch accountant can now post the expense against it."
           : "Requisition declined."
       )
       refreshReqs()
@@ -311,8 +335,8 @@ export default function Page() {
                   >
                     <div className="flex-1 p-6 md:p-8">
                       <div className="flex items-center justify-between mb-4">
-                        <div className={`text-[11px] font-extrabold tracking-widest uppercase ${index === 0 ? "text-rose-500" : "text-orange-500"}`}>
-                          {index === 0 ? "HIGHEST VALUE" : "AWAITING APPROVAL"}
+                        <div className={`text-[11px] font-extrabold tracking-widest uppercase ${card.overage ? "text-rose-500" : index === 0 ? "text-rose-500" : "text-orange-500"}`}>
+                          {card.overage ? "OVER BUDGET — NEEDS A DIRECTOR OVERRIDE" : index === 0 ? "HIGHEST VALUE" : "AWAITING APPROVAL"}
                         </div>
                         <div className="text-[12px] font-semibold text-[#9CA3AF]">Requested: {card.timeLabel}</div>
                       </div>
@@ -339,17 +363,30 @@ export default function Page() {
                       </div>
 
                       {card.payee && (
-                        <div className="mb-8 rounded-[10px] border border-[#EEF1F6] bg-[#F9FAFB] px-4 py-3">
+                        <div className="mb-4 rounded-[10px] border border-[#EEF1F6] bg-[#F9FAFB] px-4 py-3">
                           <div className="text-[10px] font-bold text-[#9CA3AF] tracking-widest uppercase mb-1">PAY TO</div>
                           <div className="text-[13.5px] font-semibold text-[#111827]">{card.payee}</div>
+                        </div>
+                      )}
+
+                      {card.overage && (
+                        <div className="mb-8 rounded-[10px] border border-rose-200 bg-rose-50 px-4 py-3">
+                          <div className="text-[12px] font-bold text-rose-700">
+                            {naira(card.overage.overageAmount)} over the remaining budget on {card.category}
+                          </div>
+                          <div className="text-[11.5px] text-rose-600 mt-0.5">
+                            You cannot approve this as it stands. Ask a Director to authorise the overage, or raise the budget for this head.
+                          </div>
                         </div>
                       )}
 
                       <div className="flex items-center gap-6">
                         <button
                           onClick={() => setSelectedRequisitionId(card.rawId)}
-                          className="h-[44px] rounded-[8px] bg-[#2563EB] px-6 text-[14px] font-bold text-white shadow-md hover:bg-[#1D4ED8] transition-colors flex items-center gap-2">
-                          <LockKeyhole className="h-4 w-4" /> Review &amp; Approve
+                          disabled={Boolean(card.overage)}
+                          title={card.overage ? "Over budget — a Director has to authorise the overage first" : ""}
+                          className="h-[44px] rounded-[8px] bg-[#2563EB] px-6 text-[14px] font-bold text-white shadow-md hover:bg-[#1D4ED8] transition-colors flex items-center gap-2 disabled:bg-[#E5E7EB] disabled:text-[#9CA3AF] disabled:shadow-none disabled:cursor-not-allowed">
+                          <LockKeyhole className="h-4 w-4" /> {card.overage ? "Blocked — over budget" : "Review & Approve"}
                         </button>
                         <button
                           onClick={() => decide(card.rawId, "declined")}

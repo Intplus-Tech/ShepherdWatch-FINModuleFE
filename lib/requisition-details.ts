@@ -1,3 +1,5 @@
+import { API_V1 } from "@/lib/api"
+
 /**
  * Requisition details the API has no fields for.
  *
@@ -93,4 +95,35 @@ export function decodeRequisitionDetails(justification: string): RequisitionDeta
 /** A one-line payee summary for tables, or "" when no details were given. */
 export function payeeSummary(details: RequisitionDetails): string {
   return [details.accountName, details.bankName, details.accountNumber].filter(Boolean).join(" · ")
+}
+
+/**
+ * Whether a requisition still fits its budget head. The API blocks a plain
+ * approval once it does not, so screens check this before offering one.
+ */
+export type BudgetFit = { isOverBudget: boolean; overageAmount: number; remainingBudget: number }
+
+export async function fetchBudgetContext(id: string): Promise<BudgetFit | null> {
+  try {
+    const res = await fetch(`${API_V1}/financial/requisitions/${encodeURIComponent(id)}/budget-context`, {
+      credentials: "include",
+    })
+    if (!res.ok) return null
+    const json = (await res.json().catch(() => null)) as { data?: Record<string, unknown> } | null
+    const d = json?.data
+    if (!d) return null
+    return {
+      isOverBudget: Boolean(d.isOverBudget),
+      overageAmount: Number(d.overageAmount ?? 0),
+      remainingBudget: Number(d.remainingBudget ?? 0),
+    }
+  } catch {
+    return null
+  }
+}
+
+/** Budget fit for several requisitions at once, keyed by id. */
+export async function fetchBudgetContexts(ids: string[]): Promise<Record<string, BudgetFit>> {
+  const results = await Promise.all(ids.slice(0, 30).map((id) => fetchBudgetContext(id).then((fit) => ({ id, fit }))))
+  return Object.fromEntries(results.filter((r) => r.fit).map((r) => [r.id, r.fit as BudgetFit]))
 }

@@ -223,8 +223,9 @@ export function RequisitionDetailsModal({
                   {overBudget && (
                     <div className="rounded-[10px] border border-[#BFDBFE] bg-[#EFF6FF] p-4 mt-auto">
                       <p className="text-[11px] font-semibold text-[#1D4ED8] leading-relaxed">
-                        <span className="font-extrabold">Note:</span> This request exceeds what is left on{" "}
-                        {budgetHead} by {naira(budget?.overageAmount ?? 0)}. A Director has to authorise the overage.
+                        <span className="font-extrabold">Note:</span> This request exceeds what is left on {budgetHead} by{" "}
+                        {naira(budget?.overageAmount ?? 0)}. It cannot be approved as it stands — either a Director authorises the
+                        overage, or the branch raises the budget for this head.
                       </p>
                     </div>
                   )}
@@ -255,6 +256,11 @@ export function RequisitionDetailsModal({
               )}
 
               <div className="flex flex-col gap-3 mb-6">
+                {canOverride && !overBudget && !budgetLoading && (
+                  <div className="rounded-[10px] border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-3 text-[12px] text-[#4B5563]">
+                    This one fits its budget, so the branch pastor approves it. Nothing for you to do here.
+                  </div>
+                )}
                 {canOverride && overBudget ? (
                   <button
                     type="button"
@@ -266,32 +272,37 @@ export function RequisitionDetailsModal({
                     <FileSignature className="h-4 w-4" />
                     {isAuthorizing ? "Authorizing…" : "Authorize Override"}
                   </button>
-                ) : (
+                ) : onApprove ? (
                   <button
                     type="button"
                     onClick={onApprove}
-                    disabled={isAuthorizing || !onApprove}
-                    className="flex h-11 w-full items-center justify-center gap-2 rounded-[8px] bg-[#2563EB] text-[13px] font-bold text-white shadow-sm hover:bg-[#1D4ED8] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                    disabled={isAuthorizing || overBudget}
+                    title={overBudget ? "Over budget — a Director has to authorise the overage first" : ""}
+                    className="flex h-11 w-full items-center justify-center gap-2 rounded-[8px] bg-[#2563EB] text-[13px] font-bold text-white shadow-sm hover:bg-[#1D4ED8] transition-colors disabled:bg-[#E5E7EB] disabled:text-[#9CA3AF] disabled:cursor-not-allowed"
                   >
                     <CheckCircle2 className="h-4 w-4" />
-                    {isAuthorizing ? "Working…" : "Approve Requisition"}
+                    {isAuthorizing ? "Working…" : overBudget ? "Blocked — needs an override" : "Approve Requisition"}
+                  </button>
+                ) : null}
+                {onDecline && (
+                  <button
+                    type="button"
+                    onClick={onDecline}
+                    disabled={isAuthorizing}
+                    className="flex h-11 w-full items-center justify-center text-[13px] font-bold text-rose-500 hover:text-rose-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    Decline Requisition
                   </button>
                 )}
-                <button
-                  type="button"
-                  onClick={onDecline}
-                  disabled={isAuthorizing || !onDecline}
-                  className="flex h-11 w-full items-center justify-center text-[13px] font-bold text-rose-500 hover:text-rose-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  Decline Requisition
-                </button>
               </div>
 
               <div className="mt-auto flex gap-3 rounded-[10px] bg-[#F9FAFB] p-4">
                 <Info className="h-4 w-4 shrink-0 text-[#6B7280]" />
                 <p className="text-[10px] font-medium text-[#6B7280] leading-relaxed">
                   Every decision is recorded against this requisition with your role, the time, and any comment.
-                  {canOverride ? "" : " Once you approve, it goes to a Director for final approval before the accountant can pay it."}
+                  {canOverride
+                    ? " An override is logged with your written reason."
+                    : " Approving releases it to the branch accountant to pay."}
                 </p>
               </div>
             </div>
