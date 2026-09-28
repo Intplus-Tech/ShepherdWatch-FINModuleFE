@@ -42,16 +42,20 @@ import {
   loadMatchCandidates,
   loadPostableRequisitions,
   longDate,
+  uploadDocument,
   uploadReceipt,
   matchStatementLine,
   nextBatchNumber,
   ngn,
+  payInOf,
+  recordPayIn,
   shortDate,
   unmatchStatementLine,
   type AccountHead,
   type BankAccountRow,
   type LedgerEntry,
   type MatchCandidate,
+  type PayIn,
   type RequisitionOption,
   type StatementLine,
 } from "@/lib/ledger"
@@ -1203,6 +1207,193 @@ export function NewEntryModal({
         }}
       />
     </>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Record Pay-in — the teller for a collection carried to the bank.
+// ---------------------------------------------------------------------------
+
+export function RecordPayInModal({
+  open,
+  onClose,
+  entries,
+  accounts,
+  label,
+  batchRef,
+  onRecorded,
+}: {
+  open: boolean
+  onClose: () => void
+  /** Every line of the collection being banked. */
+  entries: LedgerEntry[]
+  accounts: BankAccountRow[]
+  label: string
+  batchRef: string
+  onRecorded?: () => void
+}) {
+  const { pushToast } = useToast()
+  const { branchId } = useBranchContext()
+  const total = entries.reduce((sum, e) => sum + e.amount, 0)
+  const existing = entries.length > 0 ? payInOf(entries[0]) : null
+
+  const [bankAccountId, setBankAccountId] = useState("")
+  const [date, setDate] = useState("")
+  const [reference, setReference] = useState("")
+  const [amount, setAmount] = useState("")
+  const [file, setFile] = useState<File | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    setBankAccountId(existing?.bankAccountId ?? accounts[0]?.id ?? "")
+    setDate(existing?.date ?? new Date().toISOString().slice(0, 10))
+    setReference(existing?.reference ?? "")
+    setAmount(String(existing?.amount ?? total))
+    setFile(null)
+    setSaving(false)
+    setError(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, entries])
+
+  const account = accounts.find((a) => a.id === bankAccountId)
+
+  const save = async () => {
+    setError(null)
+    const value = parseAmount(amount)
+    if (!bankAccountId) return setError("Choose the account the money was paid into.")
+    if (!date) return setError("Enter the date on the teller.")
+    if (!reference.trim()) return setError("Enter the teller / deposit reference.")
+    if (!(value > 0)) return setError("Enter the amount paid in.")
+    if (!file && !existing?.slipUrl) return setError("Attach the teller slip.")
+
+    setSaving(true)
+    try {
+      let slipUrl = existing?.slipUrl ?? ""
+      let slipName = existing?.slipName ?? ""
+      if (file) {
+        const up = await uploadDocument(file, branchId)
+        slipUrl = up.url
+        slipName = up.name
+      }
+      const payIn: PayIn = {
+        bankAccountId,
+        bankAccountName: account ? `${account.bankName} — ${account.accountName}` : "",
+        date,
+        reference: reference.trim(),
+        amount: value,
+        slipUrl,
+        slipName,
+      }
+      await recordPayIn(entries, payIn)
+      pushToast(`Teller ${payIn.reference} recorded. It will reconcile once the bank statement is imported.`, "success")
+      onRecorded?.()
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to record the pay-in.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (entries.length === 0) return null
+  return (
+    <ModalShell open={open} onClose={onClose} className="max-w-2xl">
+      <Header title="RECORD PAY-IN" subtitle="The teller for money carried to the bank" onClose={onClose} />
+
+      <div className="px-6 py-4 border-b border-[#EEF1F6] bg-[#F8FAFC] flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className={labelCls}>Collection</div>
+          <div className="text-[13.5px] font-bold text-[#111827] mt-0.5 truncate">{label}</div>
+          <div className={`${mono} text-[11px] text-[#6B7280]`}>
+            Batch {batchRef} · {entries.length} {entries.length === 1 ? "line" : "lines"}
+          </div>
+        </div>
+        <div className="text-right">
+          <div className={labelCls}>Counted</div>
+          <div className={`${mono} text-[20px] font-extrabold text-[#111827]`}>{ngn(total, { decimals: true })}</div>
+        </div>
+      </div>
+
+      <div className="px-6 py-5 space-y-4 max-h-[62vh] overflow-y-auto">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <div className={labelCls}>Paid into <span className="text-rose-500">*</span></div>
+            <div className="relative mt-1.5">
+              <Landmark className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-rose-500" />
+              <select value={bankAccountId} onChange={(e) => setBankAccountId(e.target.value)} className={`${inputCls} pl-9 appearance-none pr-9`}>
+                <option value="">{accounts.length === 0 ? "No bank accounts yet" : "Select the bank account…"}</option>
+                {accounts.map((a) => (
+                  <option key={a.id} value={a.id}>{a.bankName} — {a.accountName} ({a.accountNumber})</option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9CA3AF] pointer-events-none" />
+            </div>
+          </div>
+          <div>
+            <div className={labelCls}>Teller date <span className="text-rose-500">*</span></div>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={`${inputCls} mt-1.5`} />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <div className={labelCls}>Teller / deposit reference <span className="text-rose-500">*</span></div>
+            <input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="e.g. 4912" className={`${inputCls} mt-1.5 ${mono}`} />
+          </div>
+          <div>
+            <div className="flex items-center justify-between">
+              <span className={labelCls}>Amount paid in <span className="text-rose-500">*</span></span>
+              <span className={`${mono} text-[10px] font-bold text-rose-600`}>Counted {ngn(total)}</span>
+            </div>
+            <div className="relative mt-1.5">
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#6B7280] font-bold">₦</span>
+              <AmountInput value={amount} onValueChange={setAmount} className={`${inputCls} pl-8 text-right ${mono} text-[15px] font-extrabold`} />
+            </div>
+            {parseAmount(amount) > 0 && Math.abs(parseAmount(amount) - total) > 0.005 && (
+              <p className="mt-1 text-[10.5px] font-semibold text-amber-600">
+                {ngn(Math.abs(parseAmount(amount) - total), { decimals: true })}{" "}
+                {parseAmount(amount) > total ? "more than" : "short of"} what was counted.
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between">
+            <span className={labelCls}>Teller slip <span className="text-rose-500">*</span></span>
+            <span className="text-[10px] text-[#9CA3AF]">JPG, PNG or PDF, up to 10MB</span>
+          </div>
+          <div className="mt-1.5">
+            <DropZone file={file} onFile={setFile} onClear={() => setFile(null)} hint="Upload the stamped teller slip" />
+          </div>
+          {!file && existing?.slipUrl && (
+            <p className="mt-2 text-[11px] text-[#6B7280]">
+              Already attached:{" "}
+              <a href={existing.slipUrl} target="_blank" rel="noreferrer" className="font-semibold text-rose-600 hover:underline">
+                {existing.slipName || "teller slip"}
+              </a>
+              . Upload another to replace it.
+            </p>
+          )}
+        </div>
+
+        <div className="rounded-[8px] border border-[#BFDBFE] bg-[#EFF6FF] px-4 py-3 text-[11.5px] text-[#1D4ED8]">
+          This records that the money was banked. It stays unreconciled until the bank statement is imported and this deposit is
+          matched to it under Reports.
+        </div>
+
+        {error && <p className="text-[12px] font-medium text-rose-600">{error}</p>}
+      </div>
+
+      <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-[#EEF1F6]">
+        <button onClick={onClose} className="text-[12px] font-bold text-[#4B5563]">Cancel</button>
+        <button onClick={save} disabled={saving} className="h-9 rounded-[6px] bg-rose-600 px-4 text-[12px] font-bold text-white hover:bg-rose-700 disabled:opacity-60">
+          {saving ? "Recording…" : existing ? "Update Teller" : "Record Pay-in"}
+        </button>
+      </div>
+    </ModalShell>
   )
 }
 

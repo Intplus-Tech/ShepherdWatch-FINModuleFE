@@ -26,6 +26,7 @@ import {
   BankBalanceModal,
   MatchModal,
   NewEntryModal,
+  RecordPayInModal,
   SafeBatchModal,
   StatementImportModal,
   useLedgerAccounts,
@@ -33,8 +34,8 @@ import {
 import {
   buildSafeView,
   entryRef,
+  payInOf,
   loadLedgerEntries,
-  loadStatementLines,
   loadStatementSummary,
   loadStreams,
   ngn,
@@ -108,7 +109,56 @@ export default function Page() {
   const [expenseFilter, setExpenseFilter] = useState("")
   const matches = (e: LedgerEntry, q: string) =>
     !q || [entryRef(e), e.description, e.coaName, e.coaCode, e.requisitionNumber, e.payee, e.notes].join(" ").toLowerCase().includes(q.toLowerCase())
-  const incomeRows = useMemo(() => pendingIncome.filter((e) => matches(e, incomeFilter)), [pendingIncome, incomeFilter])
+  /**
+   * One row per collection, not per tender. The accountant counts a fund once
+   * — some of it cash, some cheques — and banks it as one deposit, so the cash
+   * and cheque lines of the same fund in the same batch belong on one row.
+   */
+  type CollectionRow = {
+    key: string
+    batchRef: string
+    date: string
+    source: string
+    fundName: string
+    fundCode: string
+    cash: number
+    cheque: number
+    total: number
+    entries: LedgerEntry[]
+    payIn: ReturnType<typeof payInOf>
+    receiptUrl: string
+  }
+
+  const incomeRows = useMemo<CollectionRow[]>(() => {
+    const groups = new Map<string, CollectionRow>()
+    for (const e of pendingIncome.filter((x) => matches(x, incomeFilter))) {
+      const key = `${e.reference || e.id}|${e.coaId || e.coaName}`
+      const row =
+        groups.get(key) ??
+        {
+          key,
+          batchRef: e.reference || entryRef(e),
+          date: e.date,
+          source: e.description || e.notes || "Collection",
+          fundName: e.coaName || "Uncategorised",
+          fundCode: e.coaCode,
+          cash: 0,
+          cheque: 0,
+          total: 0,
+          entries: [],
+          payIn: null,
+          receiptUrl: "",
+        }
+      if (e.paymentMethod === "cheque") row.cheque += e.amount
+      else row.cash += e.amount
+      row.total += e.amount
+      row.entries.push(e)
+      row.payIn = row.payIn ?? payInOf(e)
+      row.receiptUrl = row.receiptUrl || e.receiptUrl
+      groups.set(key, row)
+    }
+    return [...groups.values()].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+  }, [pendingIncome, incomeFilter])
   const expenseRows = useMemo(() => pendingExpense.filter((e) => matches(e, expenseFilter)), [pendingExpense, expenseFilter])
 
   const [safeOpen, setSafeOpen] = useState(false)
@@ -118,8 +168,8 @@ export default function Page() {
   const [entryOpen, setEntryOpen] = useState(false)
   const [viewing, setViewing] = useState<LedgerEntry | null>(null)
   const [matchLine, setMatchLine] = useState<StatementLine | null>(null)
+  const [payInRow, setPayInRow] = useState<CollectionRow | null>(null)
   const [allocateLine, setAllocateLine] = useState<StatementLine | null>(null)
-  const [findingLine, setFindingLine] = useState(false)
 
   // "All Slips" / "All Receipt": save every receipt on the rows shown.
   const downloadAll = (rows: LedgerEntry[], what: string) => {
@@ -143,35 +193,6 @@ export default function Page() {
     pushToast(`Downloading ${files.length} ${files.length === 1 ? what.replace(/s$/, "") : what}…`, "success")
   }
 
-  /**
-   * Banking a pay-in means reconciling it against the deposit on the bank
-   * statement, so the safe's "Cash Paid In" opens that line's matching modal.
-   * The unreconciled credit closest in amount is the one to open.
-   */
-  const openPayIn = async (entry: LedgerEntry | null) => {
-    setSafeOpen(false)
-    setViewing(null)
-    setFindingLine(true)
-    try {
-      const { lines } = await loadStatementLines({ direction: "credit", status: "unreconciled", limit: 100 })
-      if (lines.length === 0) {
-        pushToast("No unreconciled bank deposits yet. Import the statement for the bank run first.", "info")
-        return
-      }
-      const target = entry?.amount ?? safe.total
-      const best = [...lines].sort((a, b) => Math.abs(a.amount - target) - Math.abs(b.amount - target))[0]
-      setMatchLine(best)
-    } catch (err) {
-      pushToast(err instanceof Error ? err.message : "Unable to find the bank deposit.", "error")
-    } finally {
-      setFindingLine(false)
-    }
-  }
-
-  const collectionOf = (e: LedgerEntry) =>
-    e.notes.toLowerCase().startsWith("office")
-      ? { label: "Office collection", cls: "bg-[#F1F5F9] text-[#475569]" }
-      : { label: "Service collection", cls: "bg-rose-50 text-rose-600" }
 
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
@@ -216,7 +237,7 @@ export default function Page() {
               <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#6B7280]">Cash safe balance</div>
               <div className={`${mono} text-[24px] font-extrabold mt-2`}>{ngn(safe.total)}</div>
               <div className="flex items-center justify-between mt-3">
-                <span className="text-[10.5px] text-[#9CA3AF]">{safe.batches.length} unbanked {safe.batches.length === 1 ? "collection" : "collections"}</span>
+                <span className="text-[10.5px] text-[#9CA3AF]">{incomeRows.length} unbanked {incomeRows.length === 1 ? "collection" : "collections"}</span>
                 <span className="h-7 rounded-[6px] bg-rose-600 text-white px-3 text-[11px] font-bold inline-flex items-center">View</span>
               </div>
             </button>
@@ -261,7 +282,7 @@ export default function Page() {
                 </button>
                 <div className="flex items-center gap-2">
                   <input value={incomeFilter} onChange={(e) => setIncomeFilter(e.target.value)} placeholder="Filter income batches..." className="h-8 w-[200px] rounded-[6px] border border-[#E5E7EB] bg-white px-3 text-[11.5px]" />
-                  <button onClick={() => downloadAll(incomeRows, "slips")} className="h-8 w-[150px] rounded-[6px] border border-[#E5E7EB] bg-white px-3 text-[11px] font-bold text-[#374151] inline-flex items-center justify-center gap-1.5 hover:bg-gray-50"><Download className="h-3.5 w-3.5" />All Slips</button>
+                  <button onClick={() => downloadAll(incomeRows.flatMap((r) => r.entries), "slips")} className="h-8 w-[150px] rounded-[6px] border border-[#E5E7EB] bg-white px-3 text-[11px] font-bold text-[#374151] inline-flex items-center justify-center gap-1.5 hover:bg-gray-50"><Download className="h-3.5 w-3.5" />All Slips</button>
                 </div>
               </div>
               {incomeOpen && (
@@ -275,29 +296,61 @@ export default function Page() {
                     <tbody className="divide-y divide-[#EEF1F6]">
                       {loading && <tr><td colSpan={8} className="px-5 py-8 text-center text-[#9CA3AF]">Loading entries…</td></tr>}
                       {!loading && incomeRows.length === 0 && <tr><td colSpan={8} className="px-5 py-8 text-center text-[#9CA3AF]">{pendingIncome.length === 0 ? "No income is waiting for a bank deposit. Post an income entry to see it here." : "No entries match the filter."}</td></tr>}
-                      {incomeRows.map((e, i) => {
-                        const c = collectionOf(e)
+                      {incomeRows.map((row, i) => {
+                        const banked = Boolean(row.payIn)
                         return (
-                          <tr key={e.id} className="hover:bg-[#F8FAFC]">
+                          <tr key={row.key} className="hover:bg-[#F8FAFC]">
                             <td className={`px-5 py-3 ${mono} text-[#6B7280]`}>{String(i + 1).padStart(2, "0")}</td>
-                            <td className="px-3 py-3 font-semibold whitespace-nowrap">{shortDate(e.date)}</td>
-                            <td className={`px-3 py-3 ${mono} font-bold`}>{entryRef(e)}</td>
+                            <td className="px-3 py-3 font-semibold whitespace-nowrap">{shortDate(row.date)}</td>
+                            <td className={`px-3 py-3 ${mono} font-bold`}>{row.batchRef}</td>
                             <td className="px-3 py-3">
                               <div className="min-w-0">
-                                <div className="font-semibold truncate max-w-[220px]">{e.description || e.notes || "—"}</div>
+                                <div className="font-semibold truncate max-w-[220px]">{row.source}</div>
                                 <div className="flex items-center gap-1.5 mt-0.5">
-                                  <span className={`rounded-[4px] px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide ${c.cls}`}>{c.label}</span>
-                                  {e.receiptUrl && <a href={e.receiptUrl} target="_blank" rel="noreferrer" className="text-[9.5px] font-bold uppercase tracking-wide text-rose-600 hover:underline">View form</a>}
+                                  <span className="rounded-[4px] px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide bg-rose-50 text-rose-600">
+                                    {row.entries.length === 1 ? "1 line" : `${row.entries.length} lines`}
+                                  </span>
+                                  {row.receiptUrl && (
+                                    <a href={row.receiptUrl} target="_blank" rel="noreferrer" className="text-[9.5px] font-bold uppercase tracking-wide text-rose-600 hover:underline">
+                                      View form
+                                    </a>
+                                  )}
                                 </div>
                               </div>
                             </td>
-                            <td className="px-3 py-3"><span className={`${mono} rounded-[4px] bg-rose-50 text-rose-600 px-1.5 py-0.5 text-[10.5px] font-bold`}>{e.coaName || "Uncategorised"}{e.coaCode ? ` • ${e.coaCode}` : ""}</span></td>
-                            <td className={`px-3 py-3 text-right ${mono} font-extrabold`}>{ngn(e.amount, { decimals: true })}</td>
-                            <td className="px-3 py-3"><span className="inline-flex items-center gap-1 rounded-[4px] bg-amber-50 text-amber-700 px-2 py-1 text-[10px] font-bold uppercase whitespace-nowrap"><Vault className="h-3 w-3" />{e.paymentMethod === "cash" ? "In safe" : "Awaiting bank"}</span></td>
+                            <td className="px-3 py-3">
+                              <span className={`${mono} rounded-[4px] bg-rose-50 text-rose-600 px-1.5 py-0.5 text-[10.5px] font-bold`}>
+                                {row.fundName}{row.fundCode ? ` • ${row.fundCode}` : ""}
+                              </span>
+                            </td>
+                            <td className="px-3 py-3 text-right">
+                              <div className={`${mono} font-extrabold`}>{ngn(row.total, { decimals: true })}</div>
+                              {row.cash > 0 && row.cheque > 0 && (
+                                <div className="text-[10px] text-[#9CA3AF] mt-0.5">
+                                  {ngn(row.cash)} cash · {ngn(row.cheque)} cheque
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-3 py-3">
+                              {banked ? (
+                                <span className="inline-flex items-center gap-1 rounded-[4px] bg-[#EEF2FF] text-[#3B5BDB] px-2 py-1 text-[10px] font-bold uppercase whitespace-nowrap" title={`Teller ${row.payIn?.reference}`}>
+                                  <Landmark className="h-3 w-3" />Paid in · awaiting statement
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 rounded-[4px] bg-amber-50 text-amber-700 px-2 py-1 text-[10px] font-bold uppercase whitespace-nowrap">
+                                  <Vault className="h-3 w-3" />In safe
+                                </span>
+                              )}
+                            </td>
                             <td className="px-5 py-3">
                               <div className="flex items-center justify-end gap-2">
-                                <button onClick={() => openPayIn(e)} disabled={findingLine} className="h-7 rounded-[6px] bg-rose-600 text-white px-3 text-[11px] font-bold hover:bg-rose-700 disabled:opacity-60">{findingLine ? "Finding…" : "Record Pay-in"}</button>
-                                <button onClick={() => setViewing(e)} className="h-7 w-7 rounded-full text-[#6B7280] hover:bg-rose-50 hover:text-rose-600 inline-flex items-center justify-center" aria-label="View batch"><Eye className="h-4 w-4" /></button>
+                                <button
+                                  onClick={() => setPayInRow(row)}
+                                  className={`h-7 rounded-[6px] px-3 text-[11px] font-bold ${banked ? "border border-[#E5E7EB] bg-white text-[#374151] hover:bg-gray-50" : "bg-rose-600 text-white hover:bg-rose-700"}`}
+                                >
+                                  {banked ? "View teller" : "Record Pay-in"}
+                                </button>
+                                <button onClick={() => setViewing(row.entries[0])} className="h-7 w-7 rounded-full text-[#6B7280] hover:bg-rose-50 hover:text-rose-600 inline-flex items-center justify-center" aria-label="View batch"><Eye className="h-4 w-4" /></button>
                               </div>
                             </td>
                           </tr>
@@ -306,7 +359,7 @@ export default function Page() {
                     </tbody>
                   </table>
                   <div className="flex items-center justify-between px-5 py-2.5 text-[10.5px] font-bold uppercase tracking-wide text-[#6B7280] bg-[#F8FAFC]">
-                    <span>{pendingIncome.length} pending {pendingIncome.length === 1 ? "line" : "lines"} stored</span>
+                    <span>{incomeRows.length} {incomeRows.length === 1 ? "collection" : "collections"} awaiting the bank</span>
                     <span>Income queue batch total: <span className={`${mono} text-[#111827]`}>{ngn(pendingIncome.reduce((s, e) => s + e.amount, 0), { decimals: true })}</span></span>
                   </div>
                 </div>
@@ -379,12 +432,31 @@ export default function Page() {
         </div>
       </main>
 
-      <SafeBatchModal open={safeOpen} onClose={() => setSafeOpen(false)} branchName={branchName} entries={pendingIncome} onCashPaidIn={openPayIn} />
-      <SafeBatchModal open={viewing !== null} onClose={() => setViewing(null)} branchName={branchName} entries={pendingIncome} entry={viewing} onCashPaidIn={openPayIn} />
+      <SafeBatchModal open={safeOpen} onClose={() => setSafeOpen(false)} branchName={branchName} entries={pendingIncome} onCashPaidIn={(entry) => {
+          const target = entry ? incomeRows.find((r) => r.entries.some((x) => x.id === entry.id)) : incomeRows[0]
+          setSafeOpen(false)
+          setViewing(null)
+          if (target) setPayInRow(target)
+        }} />
+      <SafeBatchModal open={viewing !== null} onClose={() => setViewing(null)} branchName={branchName} entries={pendingIncome} entry={viewing} onCashPaidIn={(entry) => {
+          const target = entry ? incomeRows.find((r) => r.entries.some((x) => x.id === entry.id)) : incomeRows[0]
+          setSafeOpen(false)
+          setViewing(null)
+          if (target) setPayInRow(target)
+        }} />
       <BankBalanceModal open={bankOpen} onClose={() => setBankOpen(false)} branchName={branchName} accounts={accounts} entries={reconciledEntries} onAddAccount={() => { setBankOpen(false); setAccountsOpen(true) }} />
       <ManageAccountsModal open={accountsOpen} onClose={() => { setAccountsOpen(false); refresh() }} />
       <StatementImportModal open={importOpen} onClose={() => setImportOpen(false)} accounts={accounts} onImported={refresh} />
       <NewEntryModal open={entryOpen} onClose={() => setEntryOpen(false)} accounts={accounts} onPosted={refresh} />
+      <RecordPayInModal
+        open={payInRow !== null}
+        onClose={() => setPayInRow(null)}
+        entries={payInRow?.entries ?? []}
+        accounts={accounts}
+        label={payInRow ? `${payInRow.fundName} — ${payInRow.source}` : ""}
+        batchRef={payInRow?.batchRef ?? ""}
+        onRecorded={refresh}
+      />
       <MatchModal open={matchLine !== null} onClose={() => setMatchLine(null)} line={matchLine} onReconciled={refresh} />
       <AllocateModal open={allocateLine !== null} onClose={() => setAllocateLine(null)} line={allocateLine} onAllocated={refresh} />
     </div>

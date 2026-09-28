@@ -373,8 +373,8 @@ export type NewEntryInput = {
   notes?: string
 }
 
-/** Stores a document and returns its FileUpload id, for reuse across entries. */
-export async function uploadReceipt(file: File, branchId: string): Promise<string> {
+/** Stores a document and returns its id, link and name. */
+export async function uploadDocument(file: File, branchId: string): Promise<{ id: string; url: string; name: string }> {
   const form = new FormData()
   form.append("file", file)
   form.append("folder", "ledger-receipts")
@@ -390,7 +390,16 @@ export async function uploadReceipt(file: File, branchId: string): Promise<strin
   const data = readData(json)
   const id = idOf(data)
   if (!id) throw new Error("The document was uploaded but no file id came back.")
-  return id
+  return {
+    id,
+    url: String(data.url ?? data.secureUrl ?? ""),
+    name: String(data.fileName ?? data.originalName ?? file.name),
+  }
+}
+
+/** The FileUpload id alone, for entries that only reference the document. */
+export async function uploadReceipt(file: File, branchId: string): Promise<string> {
+  return (await uploadDocument(file, branchId)).id
 }
 
 /**
@@ -831,4 +840,77 @@ export async function createAccountHead(branchId: string, name: string, type: "i
   if (!res.ok) throw new Error(describeApiError(json, `Unable to add "${label}".`))
   const data = readData(json)
   return { id: idOf(data), name: label, code: String(data.code ?? code), type: coaTypeFor(type) }
+}
+
+// ---------------------------------------------------------------------------
+// Banking a collection
+// ---------------------------------------------------------------------------
+
+/**
+ * The teller slip for a collection that has been carried to the bank.
+ *
+ * Recording a pay-in and reconciling are two different steps. This is the
+ * first: the accountant says "I paid this in, here is the teller". The entry
+ * is only reconciled later, when the bank statement is imported and the
+ * deposit on it is matched to these entries.
+ *
+ * The API has no field for a teller, so it lives in the entry's free-form
+ * `meta`, which `PATCH /transactions/{id}` merges onto the record.
+ */
+export type PayIn = {
+  bankAccountId: string
+  bankAccountName: string
+  date: string
+  reference: string
+  amount: number
+  slipUrl: string
+  slipName: string
+}
+
+/**
+ * Merges free-form details onto an entry. The ledger create endpoint has no
+ * field for a teller, so `PATCH /transactions/{id}` and its `meta` object is
+ * where anything the API has no column for is kept.
+ */
+export async function updateEntry(
+  id: string,
+  patch: { meta?: Record<string, unknown>; reference?: string; description?: string }
+): Promise<void> {
+  const res = await fetch(`${API_V1}/financial/transactions/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfTokenFromCookie() },
+    credentials: "include",
+    body: JSON.stringify(patch),
+  })
+  if (!res.ok) throw new Error(describeApiError(await res.json().catch(() => null), "Unable to update the entry."))
+}
+
+export function payInOf(entry: LedgerEntry): PayIn | null {
+  const raw = obj(entry.meta?.payIn)
+  if (!raw || !String(raw.reference ?? "").trim()) return null
+  return {
+    bankAccountId: String(raw.bankAccountId ?? ""),
+    bankAccountName: String(raw.bankAccountName ?? ""),
+    date: String(raw.date ?? ""),
+    reference: String(raw.reference ?? ""),
+    amount: Number(raw.amount ?? 0),
+    slipUrl: String(raw.slipUrl ?? ""),
+    slipName: String(raw.slipName ?? ""),
+  }
+}
+
+/**
+ * Records one teller against every entry of a collection, then reads one back
+ * to confirm it stuck — `meta` is free-form, so a silent drop would otherwise
+ * look like success.
+ */
+export async function recordPayIn(entries: LedgerEntry[], payIn: PayIn): Promise<void> {
+  if (entries.length === 0) throw new Error("Nothing to record against.")
+  for (const entry of entries) {
+    await updateEntry(entry.id, { meta: { payIn } })
+  }
+  const check = await loadLedgerEntry(entries[0].id).catch(() => null)
+  if (check && !payInOf(check)) {
+    throw new Error("The teller details did not save. The API accepted the update but did not store them.")
+  }
 }
