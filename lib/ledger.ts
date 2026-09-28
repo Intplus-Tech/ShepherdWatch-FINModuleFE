@@ -456,6 +456,12 @@ export type BankAccountRow = {
   currency: string
   balance: number
   isActive: boolean
+  /**
+   * The chart-of-account head this account is linked to. Its type is what
+   * makes the account one collections come into or one spending goes out of;
+   * the API has no type field of its own.
+   */
+  chartOfAccountId: string
 }
 
 export async function loadBankAccounts(branchId: string): Promise<BankAccountRow[]> {
@@ -473,6 +479,7 @@ export async function loadBankAccounts(branchId: string): Promise<BankAccountRow
       currency: String(a.currency ?? "NGN"),
       balance: Number(a.lastClosingBalance ?? a.balance ?? a.currentBalance ?? 0),
       isActive: a.isActive !== false,
+      chartOfAccountId: idOf(a.chartOfAccountId),
     }))
     .filter((a) => a.id)
 }

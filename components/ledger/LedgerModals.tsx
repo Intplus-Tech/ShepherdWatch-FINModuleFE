@@ -374,15 +374,26 @@ const INCOME_TYPES = [
 ] as const
 type IncomeType = (typeof INCOME_TYPES)[number]["value"]
 
+const TENDERS = [
+  { value: "cash", label: "Cash" },
+  { value: "cheque", label: "Cheque" },
+] as const
+type Tender = (typeof TENDERS)[number]["value"]
+
 /** One fund, and the cash and cheques counted into it. */
 type Collection = {
   key: string
+  /** What the accountant called it — matched to a head, or created on post. */
+  label: string
   coaId: string
-  rows: { key: string; amount: string; tender: "cash" | "cheque" }[]
+  rows: { key: string; amount: string; tender: Tender }[]
 }
 
-const newRow = () => ({ key: `row-${Math.random().toString(36).slice(2)}`, amount: "", tender: "cash" as const })
-const newCollection = (): Collection => ({ key: `col-${Math.random().toString(36).slice(2)}`, coaId: "", rows: [newRow()] })
+const newRow = (tender: Tender = "cash") => ({ key: `row-${Math.random().toString(36).slice(2)}`, amount: "", tender })
+
+/** The tender a new line should take: the one this fund has not counted yet. */
+const freeTender = (used: Tender[]): Tender | null => TENDERS.map((t) => t.value).find((t) => !used.includes(t)) ?? null
+const newCollection = (): Collection => ({ key: `col-${Math.random().toString(36).slice(2)}`, label: "", coaId: "", rows: [newRow()] })
 
 // ---------------------------------------------------------------------------
 
@@ -743,6 +754,17 @@ export function NewEntryModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requisitionId])
 
+  /**
+   * Money is paid out of an expense account, not one collections come into.
+   * An account is typed by the head it is linked to; when none are typed yet,
+   * all of them are offered rather than an empty list.
+   */
+  const payFromAccounts = useMemo(() => {
+    const expenseIds = new Set(expenseHeads.map((h) => h.id))
+    const typed = accounts.filter((a) => expenseIds.has(a.chartOfAccountId))
+    return typed.length > 0 ? typed : accounts
+  }, [accounts, expenseHeads])
+
   const money = (value: string) => parseAmount(value)
   const collectionTotal = collections.reduce((sum, c) => sum + c.rows.reduce((s, r) => s + money(r.amount), 0), 0)
 
@@ -799,15 +821,36 @@ export function NewEntryModal({
   const postIncome = async () => {
     if (!date) return setError("Pick the entry's effective date.")
     if (incomeType === "service" && !serviceName) return setError("Choose which service this collection came from.")
-    const lines = collections.flatMap((c) =>
-      c.rows.filter((r) => money(r.amount) > 0).map((r) => ({ coaId: c.coaId, amount: money(r.amount), tender: r.tender }))
-    )
-    if (lines.length === 0) return setError("Enter at least one received amount.")
-    if (lines.some((l) => !l.coaId)) return setError("Choose the income account for every collection.")
+    const filled = collections.filter((c) => c.rows.some((r) => money(r.amount) > 0))
+    if (filled.length === 0) return setError("Enter at least one received amount.")
+    if (filled.some((c) => !c.label.trim())) return setError("Say what was collected for every line.")
     if (!file) return setError("Attach the teller slip or counting sheet.")
 
     setSaving(true)
     try {
+      // A name typed rather than picked becomes a new collection type, so the
+      // branch builds its own list as it records.
+      const resolved: { coaId: string; amount: number; tender: Tender }[] = []
+      let heads = incomeHeads
+      for (const c of filled) {
+        const label = c.label.trim()
+        let coaId = c.coaId
+        if (!coaId) {
+          const match = heads.find((h) => h.name.trim().toLowerCase() === label.toLowerCase())
+          if (match) {
+            coaId = match.id
+          } else {
+            const created = await createAccountHead(branchId, label, "income")
+            heads = [...heads, created]
+            setIncomeHeads(heads)
+            coaId = created.id
+          }
+        }
+        for (const r of c.rows) {
+          if (money(r.amount) > 0) resolved.push({ coaId, amount: money(r.amount), tender: r.tender })
+        }
+      }
+      const lines = resolved
       const label = incomeType === "service" ? serviceName : "Office collection"
       // The slip is stored once; every line of the batch points at it.
       const receiptFileId = await uploadReceipt(file, branchId)
@@ -848,7 +891,7 @@ export function NewEntryModal({
 
   return (
     <>
-      <ModalShell open={open} onClose={onClose} className="max-w-3xl">
+      <ModalShell open={open} onClose={onClose} className="max-w-4xl">
         <Header title="NEW ENTRY" onClose={onClose} dark />
         <div className="px-6 py-3 border-b border-[#EEF1F6] flex items-center gap-3 flex-wrap bg-[#F8FAFC]">
           <span className="text-[11px] font-bold text-[#6B7280]">Transaction Type:</span>
@@ -858,7 +901,7 @@ export function NewEntryModal({
           </div>
         </div>
 
-        <div className="px-6 py-5 space-y-4 max-h-[62vh] overflow-y-auto">
+        <div className="px-6 py-5 space-y-4 max-h-[72vh] overflow-y-auto">
           {kind === "expense" ? (
             <>
               <div className="rounded-[8px] border border-amber-200 bg-amber-50 px-4 py-3 flex gap-3">
@@ -944,8 +987,8 @@ export function NewEntryModal({
                     </div>
                     <div className="relative">
                       <select value={bankAccountId} onChange={(e) => setBankAccountId(e.target.value)} disabled={method === "cash"} className={`${inputCls} appearance-none pr-9`}>
-                        <option value="">{method === "cash" ? "Cash — no bank account" : accounts.length === 0 ? "No bank accounts yet" : "Branch default account"}</option>
-                        {accounts.map((a) => <option key={a.id} value={a.id}>{a.bankName} — {a.accountName} · {ngn(a.balance)}</option>)}
+                        <option value="">{method === "cash" ? "Cash — no bank account" : payFromAccounts.length === 0 ? "No bank accounts yet" : "Branch default account"}</option>
+                        {payFromAccounts.map((a) => <option key={a.id} value={a.id}>{a.bankName} — {a.accountName} · {ngn(a.balance)}</option>)}
                       </select>
                       <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9CA3AF] pointer-events-none" />
                     </div>
@@ -1015,18 +1058,24 @@ export function NewEntryModal({
                 </div>
               </div>
 
+              <datalist id="collection-types">
+                {incomeHeads.map((h) => (
+                  <option key={h.id} value={h.name} />
+                ))}
+              </datalist>
+
               <div className="rounded-[10px] border border-[#EEF1F6] bg-[#F8FAFC] divide-y divide-[#EEF1F6]">
                 {collections.map((col, index) => (
                   <div key={col.key} className="p-4">
                     <div className="flex items-center justify-between gap-2">
                       <span className={labelCls}>
-                        Income account (credit account) <span className="text-rose-500">*</span>
+                        What was collected <span className="text-rose-500">*</span>
                         <button
                           type="button"
                           onClick={() => setIncomeAccountsOpen(true)}
                           className="ml-2 text-[10.5px] font-bold uppercase tracking-wide text-rose-600 hover:underline normal-case"
                         >
-                          + Add account
+                          Manage list
                         </button>
                       </span>
                       {collections.length > 1 && (
@@ -1035,12 +1084,23 @@ export function NewEntryModal({
                         </button>
                       )}
                     </div>
-                    <div className="relative mt-1.5">
-                      <select value={col.coaId} onChange={(e) => updateCollection(col.key, { coaId: e.target.value })} className={`${inputCls} appearance-none pr-9 bg-white`}>
-                        <option value="">{loadingLists ? "Loading…" : incomeHeads.length === 0 ? "None yet — use “+ Add account”" : "Select income account…"}</option>
-                        {incomeHeads.map((h) => <option key={h.id} value={h.id}>{h.name}{h.code ? ` (GL ${h.code})` : ""}</option>)}
-                      </select>
-                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9CA3AF] pointer-events-none" />
+                    <div className="mt-1.5">
+                      <input
+                        list="collection-types"
+                        value={col.label}
+                        onChange={(e) => {
+                          const typed = e.target.value
+                          const match = incomeHeads.find((h) => h.name.toLowerCase() === typed.trim().toLowerCase())
+                          updateCollection(col.key, { label: typed, coaId: match?.id ?? "" })
+                        }}
+                        placeholder={loadingLists ? "Loading…" : "e.g. Offering, Tithe, Welfare — pick one or type a new one"}
+                        className={`${inputCls} bg-white`}
+                      />
+                      {col.label.trim() && !col.coaId && (
+                        <p className="mt-1 text-[10.5px] text-[#6B7280]">
+                          &ldquo;{col.label.trim()}&rdquo; is new — it will be added to the branch&apos;s collection types when you post.
+                        </p>
+                      )}
                     </div>
 
                     {col.rows.map((row, rowIndex) => (
@@ -1057,9 +1117,20 @@ export function NewEntryModal({
                             )}
                           </div>
                           <div className="relative mt-1.5">
-                            <select value={row.tender} onChange={(e) => updateRow(col.key, row.key, { tender: e.target.value as "cash" | "cheque" })} className={`${inputCls} appearance-none pr-9 bg-white`}>
-                              <option value="cash">Cash</option>
-                              <option value="cheque">Cheque</option>
+                            <select
+                              value={row.tender}
+                              onChange={(e) => updateRow(col.key, row.key, { tender: e.target.value as Tender })}
+                              className={`${inputCls} appearance-none pr-9 bg-white`}
+                            >
+                              {TENDERS.map((t) => (
+                                <option
+                                  key={t.value}
+                                  value={t.value}
+                                  disabled={t.value !== row.tender && col.rows.some((other) => other.key !== row.key && other.tender === t.value)}
+                                >
+                                  {t.label}
+                                </option>
+                              ))}
                             </select>
                             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9CA3AF] pointer-events-none" />
                           </div>
@@ -1067,13 +1138,18 @@ export function NewEntryModal({
                       </div>
                     ))}
 
-                    <button
-                      type="button"
-                      onClick={() => updateCollection(col.key, { rows: [...col.rows, newRow()] })}
-                      className="mt-3 text-[10.5px] font-bold uppercase tracking-wide text-rose-600 hover:underline"
-                    >
-                      + Add another amount / tender
-                    </button>
+                    {freeTender(col.rows.map((r) => r.tender)) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = freeTender(col.rows.map((r) => r.tender))
+                          if (next) updateCollection(col.key, { rows: [...col.rows, newRow(next)] })
+                        }}
+                        className="mt-3 text-[10.5px] font-bold uppercase tracking-wide text-rose-600 hover:underline"
+                      >
+                        + Add {freeTender(col.rows.map((r) => r.tender)) === "cheque" ? "cheque" : "cash"} for this collection
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
