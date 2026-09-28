@@ -828,7 +828,7 @@ export function NewEntryModal({
     const filled = collections.filter((c) => c.rows.some((r) => money(r.amount) > 0))
     if (filled.length === 0) return setError("Enter at least one received amount.")
     if (filled.some((c) => !c.label.trim())) return setError("Say what was collected for every line.")
-    if (!file) return setError("Attach the teller slip or counting sheet.")
+    if (!file) return setError("Attach the signed counting sheet.")
 
     setSaving(true)
     try {
@@ -1164,9 +1164,12 @@ export function NewEntryModal({
               </div>
 
               <div>
-                <div className="flex items-center justify-between"><span className={labelCls}>Upload teller slip / deposit receipt <span className="text-rose-500">*</span></span><span className="text-[10px] text-[#9CA3AF]">JPG, PNG or PDF, up to 10MB</span></div>
-                <div className="mt-1.5"><DropZone file={file} onFile={setFile} onClear={() => setFile(null)} hint="Drag & drop the physical counterfoil image here, or click to browse" /></div>
-                <p className="mt-2 text-[10.5px] text-[#9CA3AF]">No bank account is chosen here: the money goes to the safe under this batch number, and is matched to the bank deposit later.</p>
+                <div className="flex items-center justify-between"><span className={labelCls}>Upload counting sheet <span className="text-rose-500">*</span></span><span className="text-[10px] text-[#9CA3AF]">JPG, PNG or PDF, up to 10MB</span></div>
+                <div className="mt-1.5"><DropZone file={file} onFile={setFile} onClear={() => setFile(null)} hint="Drag & drop the signed counting sheet here, or click to browse" /></div>
+                <p className="mt-2 text-[10.5px] text-[#9CA3AF]">
+                  The sheet the counters and the accountant signed. No bank account is chosen here: the money goes to the safe
+                  under this batch number, and the bank teller is recorded later when it is paid in.
+                </p>
               </div>
             </>
           )}
