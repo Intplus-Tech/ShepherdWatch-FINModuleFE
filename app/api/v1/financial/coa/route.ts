@@ -14,7 +14,7 @@ function buildBackendCoaUrl(): string {
 type CreateChartPayload = {
   code: string
   name: string
-  accountType: "asset" | "liability" | "equity" | "revenue" | "expense"
+  accountType: "asset" | "liability" | "equity" | "income" | "expense"
   branchId: string
   parentId?: string
   description?: string
@@ -26,9 +26,12 @@ function normalizeCreateChartPayload(body: unknown): CreateChartPayload | null {
   }
 
   const source = body as Record<string, unknown>
+  // The API names the inflow type `income`; older callers say `revenue`.
   const accountTypeRaw = String(source.accountType ?? "").toLowerCase()
-  const accountType = ["asset", "liability", "equity", "revenue", "expense"].includes(accountTypeRaw)
-    ? (accountTypeRaw as CreateChartPayload["accountType"])
+  const normalizedType =
+    accountTypeRaw === "revenue" ? "income" : accountTypeRaw === "expenses" ? "expense" : accountTypeRaw
+  const accountType = ["asset", "liability", "equity", "income", "expense"].includes(normalizedType)
+    ? (normalizedType as CreateChartPayload["accountType"])
     : null
 
   const payload: CreateChartPayload = {
@@ -165,13 +168,13 @@ export async function GET(req: NextRequest) {
     if (rawAccountType) {
       const normalized = rawAccountType.toLowerCase()
       const mappedAccountType =
-        normalized === "income"
-          ? "revenue"
+        normalized === "revenue"
+          ? "income"
           : normalized === "expenses"
             ? "expense"
             : normalized
 
-      if (["asset", "liability", "equity", "revenue", "expense"].includes(mappedAccountType)) {
+      if (["asset", "liability", "equity", "income", "expense"].includes(mappedAccountType)) {
         url.searchParams.set("accountType", mappedAccountType)
       }
     }

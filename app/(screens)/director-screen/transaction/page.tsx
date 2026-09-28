@@ -53,6 +53,7 @@ import { useToast } from "@/components/ui/toast"
 import { useAuth } from "@/components/auth/AuthProvider"
 import { useBranchContext } from "@/components/hooks/useBranchContext"
 import { loadBudgetLineOptions, type BudgetLineOption } from "@/lib/budget-threads"
+import { createAccountHead, loadAccountHeads, type AccountHead } from "@/lib/ledger"
 
 const navItems = [
   { label: "Dashboard", href: "/director-screen/dashboard", icon: LayoutDashboard },
@@ -1232,6 +1233,9 @@ type AccountRow = {
   number: string
   name: string
   description: string
+  /** Collections come in here, or spending goes out from here. */
+  accountType: "income" | "expense" | ""
+  chartOfAccountId: string
   bankName?: string
   branchId?: string
   currency?: string
@@ -1239,11 +1243,17 @@ type AccountRow = {
 }
 
 // Map a live bank-account record (various possible backend field names) to the
-// AccountRow shape the table renders. `description` repurposes bankName so the
-// existing column stays populated.
+// AccountRow shape the table renders. The account's type is carried by the
+// chart-of-account head it is linked to, which the API returns as a bare id,
+// so it is resolved against the branch's heads after loading.
 function mapBankAccountToRow(item: any, index: number): AccountRow {
   const bankName = item?.bankName ?? item?.bank?.name ?? ""
+  const coa = item?.chartOfAccountId
+  const coaId = coa && typeof coa === "object" ? String(coa._id ?? coa.id ?? "") : String(coa ?? "")
+  const coaType = coa && typeof coa === "object" ? String(coa.accountType ?? "") : ""
   return {
+    accountType: coaType === "income" || coaType === "expense" ? coaType : "",
+    chartOfAccountId: coaId,
     id: String(item?._id ?? item?.id ?? item?.bankAccountId ?? `acc-${index}`),
     number: String(item?.accountNumber ?? item?.number ?? "—"),
     name: String(item?.accountName ?? item?.name ?? "Untitled"),
@@ -1265,7 +1275,9 @@ export function ManageAccountsModal({ open, onClose }: { open: boolean; onClose:
   const [name, setName] = useState("")
   const [bankName, setBankName] = useState("")
   const [currency, setCurrency] = useState("NGN")
-  const [description, setDescription] = useState("")
+  const [accountType, setAccountType] = useState<"income" | "expense">("income")
+  // Every head on the branch, so a linked account can be typed.
+  const [coaHeads, setCoaHeads] = useState<AccountHead[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
@@ -1304,11 +1316,18 @@ export function ManageAccountsModal({ open, onClose }: { open: boolean; onClose:
       setName("")
       setBankName("")
       setCurrency("NGN")
-      setDescription("")
+      setAccountType("income")
       setEditingId(null)
       setSaving(false)
       setFormError(null)
       loadAccounts()
+      // Needed to tell an account's type from the head it is linked to.
+      if (branchId) {
+        Promise.all([
+          loadAccountHeads(branchId, "income").catch(() => [] as AccountHead[]),
+          loadAccountHeads(branchId, "expense").catch(() => [] as AccountHead[]),
+        ]).then(([inc, exp]) => setCoaHeads([...inc, ...exp]))
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
@@ -1318,7 +1337,7 @@ export function ManageAccountsModal({ open, onClose }: { open: boolean; onClose:
     setName("")
     setBankName("")
     setCurrency("NGN")
-    setDescription("")
+    setAccountType("income")
     setEditingId(null)
     setFormError(null)
   }
@@ -1352,13 +1371,20 @@ export function ManageAccountsModal({ open, onClose }: { open: boolean; onClose:
     }
   }
 
+  /** An account's type, from the head it is linked to. */
+  const typeOf = (account: AccountRow): "income" | "expense" | "" => {
+    if (account.accountType) return account.accountType
+    const head = coaHeads.find((h) => h.id === account.chartOfAccountId)
+    return head?.type === "income" || head?.type === "expense" ? head.type : ""
+  }
+
   const startEdit = (account: AccountRow) => {
     setEditingId(account.id)
     setNumber(account.number)
     setName(account.name)
     setBankName(account.bankName ?? "")
     setCurrency(account.currency ?? "NGN")
-    setDescription(account.description)
+    setAccountType(typeOf(account) || "income")
   }
 
   const saveAccount = async () => {
@@ -1386,7 +1412,30 @@ export function ManageAccountsModal({ open, onClose }: { open: boolean; onClose:
       name: name.trim(),
       bankName: bankName.trim(),
       currency,
-      description: description.trim(),
+    }
+
+    /**
+     * The API has no type on a bank account, but it does carry a
+     * `chartOfAccountId`. Linking the account to a head of the chosen type is
+     * what makes it an income or an expense account — and it gives the income
+     * entry screen its list of collection types for free.
+     */
+    let chartOfAccountId = ""
+    try {
+      const existing = coaHeads.find(
+        (h) => h.type === accountType && h.name.trim().toLowerCase() === fields.name.toLowerCase()
+      )
+      if (existing) {
+        chartOfAccountId = existing.id
+      } else if (branchId) {
+        const created = await createAccountHead(branchId, fields.name, accountType)
+        chartOfAccountId = created.id
+        setCoaHeads((prev) => [...prev, created])
+      }
+    } catch (error) {
+      setSaving(false)
+      setFormError(error instanceof Error ? error.message : "Unable to set the account type.")
+      return
     }
 
     if (editingId) {
@@ -1401,7 +1450,7 @@ export function ManageAccountsModal({ open, onClose }: { open: boolean; onClose:
             accountNumber: fields.number,
             bankName: fields.bankName || undefined,
             currency: fields.currency || undefined,
-            description: fields.description || undefined,
+            ...(chartOfAccountId ? { chartOfAccountId } : {}),
           }),
         })
         const payload = await response.json().catch(() => null)
@@ -1431,7 +1480,7 @@ export function ManageAccountsModal({ open, onClose }: { open: boolean; onClose:
           bankName: fields.bankName,
           currency: fields.currency,
           branchId,
-          ...(fields.description ? { description: fields.description } : {}),
+          ...(chartOfAccountId ? { chartOfAccountId } : {}),
         }),
       })
       const payload = await response.json().catch(() => null)
@@ -1457,7 +1506,7 @@ export function ManageAccountsModal({ open, onClose }: { open: boolean; onClose:
           <table className="w-full text-left text-[13px]">
             <thead>
               <tr className="bg-[#F8FAFC]">
-                {["NUMBER", "NAME", "BANK NAME", "CURRENCY", "DESCRIPTION", "STATUS", "ACTIONS"].map((h, i) => (
+                {["NUMBER", "NAME", "BANK NAME", "CURRENCY", "TYPE OF ACCOUNT", "STATUS", "ACTIONS"].map((h, i) => (
                   <th key={h} className={`px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF] ${i === 6 ? "text-right" : ""}`}>
                     {h}
                   </th>
@@ -1484,7 +1533,19 @@ export function ManageAccountsModal({ open, onClose }: { open: boolean; onClose:
                   <td className="px-4 py-3 text-[12px] font-bold text-[#111827]">{a.name}</td>
                   <td className="px-4 py-3 text-[12px] font-medium text-[#111827] whitespace-nowrap">{a.bankName || "—"}</td>
                   <td className="px-4 py-3 text-[12px] font-semibold text-[#6B7280] whitespace-nowrap">{a.currency || "NGN"}</td>
-                  <td className="px-4 py-3 text-[12px] font-medium text-[#6B7280]">{a.description || "—"}</td>
+                  <td className="px-4 py-3">
+                    {typeOf(a) ? (
+                      <span
+                        className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                          typeOf(a) === "income" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
+                        }`}
+                      >
+                        {typeOf(a) === "income" ? "Income account" : "Expense account"}
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-[#9CA3AF]" title="Edit the account to set its type">Not set</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <span
                       className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${
@@ -1576,8 +1637,18 @@ export function ManageAccountsModal({ open, onClose }: { open: boolean; onClose:
                 <ChevronDown className="absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF] pointer-events-none" />
               </div>
             </Field>
-            <Field label="Description">
-              <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Short description" className={inputClass} />
+            <Field label="Type of Account">
+              <div className="relative">
+                <select
+                  value={accountType}
+                  onChange={(e) => setAccountType(e.target.value as "income" | "expense")}
+                  className={`${inputClass} appearance-none pr-10`}
+                >
+                  <option value="income">Income account — collections come in here</option>
+                  <option value="expense">Expense account — spending goes out from here</option>
+                </select>
+                <ChevronDown className="absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF] pointer-events-none" />
+              </div>
             </Field>
           </div>
           <div className="flex items-center gap-3">
