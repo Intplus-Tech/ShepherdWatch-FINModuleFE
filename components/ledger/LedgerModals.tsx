@@ -21,6 +21,7 @@ import { ModalShell } from "@/components/ui/modal-shell"
 import { AmountInput, parseAmount } from "@/components/ui/amount-input"
 import { useToast } from "@/components/ui/toast"
 import { useBranchContext } from "@/components/hooks/useBranchContext"
+import { STATEMENT_ACCEPT, statementFileProblem, toStatementCsv } from "@/lib/statement-file"
 import {
   addService,
   loadServices,
@@ -1699,6 +1700,8 @@ export function MatchModal({
 // Statement import — POST /reconciliation/statements/import.
 // ---------------------------------------------------------------------------
 
+const classifyName = (name: string) => (name.toLowerCase().endsWith(".xlsx") ? "xlsx" : "other")
+
 export function StatementImportModal({
   open,
   onClose,
@@ -1717,6 +1720,13 @@ export function StatementImportModal({
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<{ imported: number; duplicates: number; skipped: number; errors: { row: number; reason: string }[] } | null>(null)
 
+  /** Rejected formats are caught as the file is chosen, not on submit. */
+  const chooseFile = (picked: File) => {
+    const problem = statementFileProblem(picked)
+    setError(problem)
+    setFile(problem ? null : picked)
+  }
+
   useEffect(() => {
     if (!open) return
     setFile(null)
@@ -1729,10 +1739,12 @@ export function StatementImportModal({
   const run = async () => {
     setError(null)
     if (!bankAccountId) return setError("Choose the account this statement belongs to.")
-    if (!file) return setError("Choose the statement CSV to import.")
+    if (!file) return setError("Choose the statement file to import.")
     setBusy(true)
     try {
-      const res = await importStatement(file, bankAccountId)
+      // An Excel workbook is flattened to CSV here; the endpoint takes CSV.
+      const { file: ready } = await toStatementCsv(file)
+      const res = await importStatement(ready, bankAccountId)
       setResult(res)
       pushToast(`${res.imported} imported · ${res.duplicates} already there${res.skipped ? ` · ${res.skipped} skipped` : ""}`, res.imported > 0 ? "success" : "info")
       onImported?.()
@@ -1758,8 +1770,22 @@ export function StatementImportModal({
           </div>
         </div>
         <div>
-          <div className="flex items-center justify-between"><span className={labelCls}>Statement file <span className="text-rose-500">*</span></span><span className="text-[10px] text-[#9CA3AF]">CSV, up to 10MB</span></div>
-          <div className="mt-1.5"><DropZone file={file} onFile={setFile} onClear={() => setFile(null)} hint="Upload the bank statement CSV" accept=".csv" /></div>
+          <div className="flex items-center justify-between"><span className={labelCls}>Statement file <span className="text-rose-500">*</span></span><span className="text-[10px] text-[#9CA3AF]">Excel or CSV, up to 10MB</span></div>
+          <div className="mt-1.5">
+            <DropZone
+              file={file}
+              onFile={chooseFile}
+              onClear={() => {
+                setFile(null)
+                setError(null)
+              }}
+              hint="Upload the statement your bank exported (.xlsx or .csv)"
+              accept={STATEMENT_ACCEPT}
+            />
+          </div>
+          {file && classifyName(file.name) === "xlsx" && (
+            <p className="mt-2 text-[10.5px] text-emerald-700">Excel workbook — the first sheet is converted to CSV when you import.</p>
+          )}
           <p className="mt-2 text-[10.5px] text-[#9CA3AF]">Columns are matched loosely: Date / Value Date, Narration / Description, Reference, and either Credit + Debit or Amount + Type (CR/DR).</p>
         </div>
 
@@ -1782,7 +1808,7 @@ export function StatementImportModal({
       </div>
       <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-[#EEF1F6]">
         <button onClick={onClose} className="h-9 rounded-[6px] border border-[#E5E7EB] bg-white px-4 text-[12px] font-bold text-[#4B5563]">{result ? "Done" : "Cancel"}</button>
-        <button onClick={run} disabled={busy} className="h-9 rounded-[6px] bg-rose-600 px-4 text-[12px] font-bold text-white hover:bg-rose-700 disabled:opacity-60">{busy ? "Importing…" : result ? "Import another" : "Import Statement"}</button>
+        <button onClick={run} disabled={busy || !file} className="h-9 rounded-[6px] bg-rose-600 px-4 text-[12px] font-bold text-white hover:bg-rose-700 disabled:opacity-60">{busy ? "Importing…" : result ? "Import another" : "Import Statement"}</button>
       </div>
     </ModalShell>
   )
