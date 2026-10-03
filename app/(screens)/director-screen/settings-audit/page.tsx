@@ -10,7 +10,7 @@ export default function Page() {
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
       <SidebarNav
-        activeHref="/director-screen/settings"
+        activeHref="/director-screen/settings-asset"
         className="fixed inset-y-0 left-0 z-20 w-65 rounded-none bg-[#FAFBFF] border-r border-[#EEF1F6]"
       />
 

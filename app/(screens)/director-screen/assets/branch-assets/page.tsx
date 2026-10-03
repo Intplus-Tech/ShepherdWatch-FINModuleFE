@@ -103,10 +103,6 @@ function ModalContainer({ rawAssets = [], onChanged }: { rawAssets?: RawAsset[];
       }
     : null
 
-  // Placeholder mock data fallback used when no asset is selected
-
-
-
   return (
     <>
       <AssetDetailsModal
@@ -251,11 +247,7 @@ function PageInner() {
             ASSET & DEPRECIATION MANAGER
           </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
-            <Link href="/director-screen/assets" className="rounded-[10px] border border-[#EEF1F6] bg-white p-5 cursor-pointer hover:border-gray-300 shadow-sm transition-colors block">
-              <div className="text-[13px] font-[700] text-[#111827]">Depreciation Policies</div>
-              <div className="text-[12px] font-medium text-[#6B7280] mt-0.5">(Global Config)</div>
-            </Link>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-8">
             <Link href="/director-screen/assets/branch-assets" className="rounded-[10px] border border-[#3B5BDB] bg-[#F0F4FF] p-5 cursor-pointer shadow-sm block">
               <div className="text-[13px] font-[700] text-[#111827]">Branch Assets</div>
               <div className="text-[12px] font-medium text-[#6B7280] mt-0.5">(Live Tracking)</div>

@@ -416,14 +416,25 @@ export default function Page() {
   const displayTotal = totalItems ?? regionCards.length
   const displayPage = totalPages ?? Math.max(1, Math.ceil(displayTotal / pageSize))
 
+  // Only the locations branches are actually in; a fixed country list offered
+  // filters that could never match anything.
   const regionFilterOptions = useMemo(() => {
-    const fallback = ["Nigeria", "United Kingdom", "Japan", "Brazil", "UAE", "Canada"]
     const fromTenants = tenants
       .map((tenant) => tenant.location?.trim())
-      .filter((value): value is string => Boolean(value) && value !== "—")
-    const distinct = Array.from(new Set([...fromTenants, ...fallback]))
-    return ["ALL", ...distinct]
+      .filter((value): value is string => Boolean(value) && value !== "—" && value !== "Location not specified")
+    return ["ALL", ...Array.from(new Set(fromTenants)).sort()]
   }, [tenants])
+
+  /**
+   * The tiers a branch can belong to, in the order they grow through. The
+   * statutory deductions differ per tier, so grouping the cards this way is
+   * how a Director reads the estate.
+   */
+  const BRANCH_TIERS = [
+    { key: "pioneer", label: "Pioneer" },
+    { key: "growing", label: "Growing" },
+    { key: "established", label: "Established" },
+  ] as const
 
   const filteredTenants = useMemo(() => {
     return tenants.filter((tenant) => {
@@ -436,6 +447,20 @@ export default function Page() {
       return statusMatch && regionMatch
     })
   }, [tenants, statusFilter, regionFilter])
+
+  /** The filtered branches, split into the tiers they belong to. */
+  const tenantGroups = useMemo(() => {
+    const groups = BRANCH_TIERS.map((tier) => ({
+      key: tier.key as string,
+      label: tier.label as string,
+      items: filteredTenants.filter((tenant) => tenant.branchType.trim().toLowerCase() === tier.key),
+    }))
+    const tiered = new Set(BRANCH_TIERS.map((tier) => tier.key as string))
+    const untiered = filteredTenants.filter((tenant) => !tiered.has(tenant.branchType.trim().toLowerCase()))
+    if (untiered.length > 0) groups.push({ key: "untiered", label: "Tier not set", items: untiered })
+    return groups.filter((group) => group.items.length > 0)
+  }, [filteredTenants])
+
 
   const handleFetchTenants = async (silent = false) => {
     setTenantsLoading(true)
@@ -1341,7 +1366,7 @@ export default function Page() {
               </div>
             )}
 
-            <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="mt-6 space-y-8">
               {tenants.length === 0 && loading && (
                 <div className="rounded-xl border border-dashed border-[#E5E7EB] bg-white p-6 text-[13px] text-[#6B7280]">
                   Loading regions...
@@ -1358,7 +1383,16 @@ export default function Page() {
                 </div>
               )}
               {tenants.length > 0 &&
-                filteredTenants.map((tenant) => {
+                tenantGroups.map((group) => (
+                  <section key={group.key}>
+                    <div className="mb-3 flex items-center gap-2">
+                      <h3 className="text-[13px] font-bold uppercase tracking-wide text-[#344054]">{group.label}</h3>
+                      <span className="rounded-full bg-[#EEF2FF] px-2 py-0.5 text-[11px] font-bold text-[#3B5BDB]">
+                        {group.items.length}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                {group.items.map((tenant) => {
                   const statusLabel =
                     tenant.status.charAt(0) + tenant.status.slice(1).toLowerCase()
                   return (
@@ -1424,6 +1458,9 @@ export default function Page() {
                     </div>
                   )
                 })}
+                    </div>
+                  </section>
+                ))}
               {tenants.length === 0 &&
                 regionCards.map((region) => {
                   const isNew = lastCreatedRegionId === region.id
@@ -2014,7 +2051,7 @@ export default function Page() {
                 <div className="flex items-center gap-2">
                   <span className="font-semibold text-[#6B7280]">Branch Type:</span>
                   <span className="font-medium capitalize text-[#111827]">
-                    {viewBranch.branchType !== "—" ? viewBranch.branchType : "Growing"}
+                    {viewBranch.branchType !== "—" ? viewBranch.branchType : "Not set"}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -2109,7 +2146,7 @@ export default function Page() {
                           <Input
                             className={fieldClass}
                             readOnly={!viewEditMode}
-                            defaultValue={viewBranch.branchType !== "—" ? viewBranch.branchType : "Growing"}
+                            defaultValue={viewBranch.branchType !== "—" ? viewBranch.branchType : ""}
                           />
                         </div>
                         <div>

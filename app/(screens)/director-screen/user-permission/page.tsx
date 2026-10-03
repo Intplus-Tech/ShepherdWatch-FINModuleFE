@@ -31,10 +31,12 @@ type RoleColumn = {
 }
 
 type MatrixItem = {
-  name: string
+  /** The action key the API uses, e.g. `approve_budgets`. */
+  action: string
+  /** The label the API supplies, e.g. "Approve budgets". */
+  label: string
   desc: string
   section: string
-  roles: Set<string>
 }
 
 type MatrixSection = {
@@ -103,13 +105,23 @@ export default function Page() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [payload, setPayload] = useState<unknown>(null)
   const [matrixTimestamp, setMatrixTimestamp] = useState<string | null>(null)
-  const [matrixState, setMatrixState] = useState<Record<string, Record<string, Set<string>>>>({})
+  const [matrixState, setMatrixState] = useState<Record<string, Set<string>>>({})
   const [roleKeyMap, setRoleKeyMap] = useState<Record<string, string>>({})
   const [matrixSaving, setMatrixSaving] = useState(false)
   const [matrixSaveError, setMatrixSaveError] = useState<string | null>(null)
   const [matrixSaveMessage, setMatrixSaveMessage] = useState<string | null>(null)
   const [matrixResetting, setMatrixResetting] = useState(false)
   const [rolesPayload, setRolesPayload] = useState<unknown>(null)
+  /** Set when the matrix is readable but this account may not save it. */
+  const [matrixReadOnly, setMatrixReadOnly] = useState(false)
+  const [showCreateRole, setShowCreateRole] = useState(false)
+  const [createRoleSaving, setCreateRoleSaving] = useState(false)
+  const [createRoleError, setCreateRoleError] = useState<string | null>(null)
+  const [createRoleForm, setCreateRoleForm] = useState({
+    name: "",
+    description: "",
+    permissions: [] as string[],
+  })
   const [selectedRoleId, setSelectedRoleId] = useState("")
   const [roleDetail, setRoleDetail] = useState<any>(null)
   const [roleLoading, setRoleLoading] = useState(false)
@@ -150,19 +162,36 @@ export default function Page() {
         const permissionsData = await permissionsResponse.json().catch(() => null)
         const rolesData = await rolesResponse.json().catch(() => null)
 
-        if (!permissionsResponse.ok) {
+        // `GET /permissions/matrix` is super_admin only, while `GET /roles`
+        // also allows a director. Losing the matrix must not throw away the
+        // roles, or a director sees an empty screen with no reason given.
+        if (!isMounted) return
+
+        if (permissionsResponse.ok) {
+          setPayload(permissionsData)
+          setMatrixTimestamp(permissionsData?.timestamp ?? null)
+          setMatrixReadOnly(false)
+        } else {
+          setPayload(null)
+          setMatrixReadOnly(true)
+        }
+
+        if (rolesResponse.ok) {
+          setRolesPayload(rolesData)
+        }
+
+        if (!permissionsResponse.ok && !rolesResponse.ok) {
           throw new Error(
-            permissionsData?.message ??
-              "Unable to load permissions. Please try again."
+            permissionsData?.message ?? rolesData?.message ?? "Unable to load permissions. Please try again."
           )
         }
 
-        if (isMounted) {
-          setPayload(permissionsData)
-          setMatrixTimestamp(permissionsData?.timestamp ?? null)
-          if (rolesResponse.ok) {
-            setRolesPayload(rolesData)
-          }
+        if (!permissionsResponse.ok) {
+          setErrorMessage(
+            permissionsResponse.status === 403
+              ? "Roles are shown below, but editing the permission matrix needs a Super Admin account."
+              : permissionsData?.message ?? "The permission matrix could not be loaded."
+          )
         }
       } catch (error) {
         if (isMounted) {
@@ -184,32 +213,32 @@ export default function Page() {
     }
   }, [])
 
-  const matrixPayload = useMemo(() => {
-    const data = (payload as any)?.data ?? payload
-    if (!Array.isArray(data)) {
-      return payload
-    }
-    const normalized = data.map((role: any) => ({
-      role: role?.role ?? role?.roleType ?? role?.name,
-      permissions: Array.isArray(role?.permissions)
-        ? role.permissions.flatMap((perm: any) => {
-            const category = perm?.category ?? "General"
-            const actions = Array.isArray(perm?.actions) ? perm.actions : []
-            return actions.map((action: string) => ({
-              name: String(action),
-              description: `${String(category)} permission`,
-              category,
-            }))
-          })
-        : [],
-    }))
-    return { data: normalized }
-  }, [payload])
-
   const flattenedPermissions = useMemo(
-    () => flattenRolePermissions(matrixPayload),
-    [matrixPayload]
+    () => flattenRolePermissions(rolesPayload),
+    [rolesPayload]
   )
+
+  /**
+   * Grants from `GET /permissions/matrix`, keyed role -> action. It is the
+   * authoritative store, but it carries no labels, so it only overrides the
+   * ticks; the rows themselves come from `/roles`.
+   */
+  const matrixGrants = useMemo(() => {
+    const data = (payload as any)?.data ?? payload
+    if (!Array.isArray(data)) return null
+    const byRole: Record<string, Record<string, boolean>> = {}
+    for (const role of data as any[]) {
+      const roleKey = normalizeRoleKey(role?.role ?? role?.roleType ?? role?.name)
+      if (!roleKey) continue
+      const grants: Record<string, boolean> = {}
+      for (const perm of Array.isArray(role?.permissions) ? role.permissions : []) {
+        const action = perm?.action ?? perm?.id ?? perm?.name
+        if (action) grants[String(action)] = perm?.granted === true
+      }
+      byRole[roleKey] = grants
+    }
+    return byRole
+  }, [payload])
 
   // The backend identifies a permission by its action key (`approve_budgets`)
   // and carries the label separately, so the toggles below are keyed by action
@@ -250,24 +279,16 @@ export default function Page() {
       }
 
       const section = perm.section || "General"
-      const itemKey = `${section}::${perm.name}`
-
-      if (!itemMap.has(itemKey)) {
-        itemMap.set(itemKey, {
-          name: perm.name,
+      if (!itemMap.has(perm.id)) {
+        itemMap.set(perm.id, {
+          action: perm.id,
+          label: perm.name,
           desc: perm.description,
           section,
-          roles: new Set(),
         })
         if (!sectionOrder.includes(section)) {
           sectionOrder.push(section)
         }
-      }
-
-      // The row exists for every permission, but a role only occupies a cell
-      // when it actually holds it — `GET /roles` lists ungranted actions too.
-      if (roleKey && perm.granted) {
-        itemMap.get(itemKey)?.roles.add(roleKey)
       }
     })
 
@@ -301,7 +322,7 @@ export default function Page() {
     }))
 
     return { columns, sections }
-  }, [flattenedPermissions])
+  }, [flattenedPermissions, rolesPayload])
 
   const formatActionLabel = (value: string) =>
     value
@@ -317,7 +338,8 @@ export default function Page() {
         ...section,
         items: section.items.filter(
           (item) =>
-            formatActionLabel(item.name).toLowerCase().includes(term) ||
+            item.label.toLowerCase().includes(term) ||
+            item.action.toLowerCase().includes(term) ||
             item.desc.toLowerCase().includes(term)
         ),
       }))
@@ -332,98 +354,81 @@ export default function Page() {
       : null
 
   useEffect(() => {
-    const data = (payload as any)?.data ?? payload
-    if (!Array.isArray(data)) return
-
-    const nextMatrix: Record<string, Record<string, Set<string>>> = {}
+    const nextMatrix: Record<string, Set<string>> = {}
     const nextRoleMap: Record<string, string> = {}
 
-    data.forEach((role: any) => {
-      const roleValue = role?.role ?? role?.roleType ?? role?.name
-      const roleKey = normalizeRoleKey(roleValue)
-      if (!roleKey) return
-      nextRoleMap[roleKey] = String(roleValue)
-      if (!nextMatrix[roleKey]) {
-        nextMatrix[roleKey] = {}
-      }
-      const permissions = Array.isArray(role?.permissions) ? role.permissions : []
-      permissions.forEach((perm: any) => {
-        const category = String(perm?.category ?? "General")
-        const actions = Array.isArray(perm?.actions) ? perm.actions : []
-        if (!nextMatrix[roleKey][category]) {
-          nextMatrix[roleKey][category] = new Set<string>()
-        }
-        actions.forEach((action: string) =>
-          nextMatrix[roleKey][category].add(String(action))
-        )
-      })
-    })
+    // `/roles` carries every action with its own `granted` flag per role.
+    for (const perm of flattenedPermissions) {
+      const roleKey = normalizeRoleKey(perm.roleType)
+      if (!roleKey) continue
+      if (!nextRoleMap[roleKey]) nextRoleMap[roleKey] = String(perm.roleType ?? roleKey)
+      if (!nextMatrix[roleKey]) nextMatrix[roleKey] = new Set<string>()
+      if (perm.granted) nextMatrix[roleKey].add(perm.id)
+    }
 
+    // The matrix endpoint is authoritative where it answered.
+    if (matrixGrants) {
+      for (const [roleKey, grants] of Object.entries(matrixGrants)) {
+        const set = nextMatrix[roleKey] ?? new Set<string>()
+        for (const [action, granted] of Object.entries(grants)) {
+          if (granted) set.add(action)
+          else set.delete(action)
+        }
+        nextMatrix[roleKey] = set
+        if (!nextRoleMap[roleKey]) nextRoleMap[roleKey] = roleKey.toLowerCase()
+      }
+    }
+
+    if (Object.keys(nextMatrix).length === 0) return
     setRoleKeyMap(nextRoleMap)
     setMatrixState(nextMatrix)
-  }, [payload])
+  }, [flattenedPermissions, matrixGrants])
 
-  const togglePermission = (roleKey: string, category: string, action: string) => {
+  const togglePermission = (roleKey: string, action: string) => {
+    // Super Admin always holds everything; the API refuses to revoke it.
     if (roleKey === "SUPER_ADMIN") return
     setMatrixState((prev) => {
-      const next = { ...prev }
-      const rolePermissions = { ...(next[roleKey] ?? {}) }
-      const actionSet = new Set(rolePermissions[category] ?? [])
-      if (actionSet.has(action)) {
-        actionSet.delete(action)
-      } else {
-        actionSet.add(action)
-      }
-      rolePermissions[category] = actionSet
-      next[roleKey] = rolePermissions
-      return next
+      const actionSet = new Set(prev[roleKey] ?? [])
+      if (actionSet.has(action)) actionSet.delete(action)
+      else actionSet.add(action)
+      return { ...prev, [roleKey]: actionSet }
     })
   }
 
+  /** The grants as last reported, to compare the ticks against. */
+  const savedGrants = useMemo(() => {
+    const saved: Record<string, Set<string>> = {}
+    for (const perm of flattenedPermissions) {
+      const roleKey = normalizeRoleKey(perm.roleType)
+      if (!roleKey) continue
+      if (!saved[roleKey]) saved[roleKey] = new Set<string>()
+      if (perm.granted) saved[roleKey].add(perm.id)
+    }
+    if (matrixGrants) {
+      for (const [roleKey, grants] of Object.entries(matrixGrants)) {
+        const set = saved[roleKey] ?? new Set<string>()
+        for (const [action, granted] of Object.entries(grants)) {
+          if (granted) set.add(action)
+          else set.delete(action)
+        }
+        saved[roleKey] = set
+      }
+    }
+    return saved
+  }, [flattenedPermissions, matrixGrants])
+
   const isMatrixDirty = useMemo(() => {
-    const data = (payload as any)?.data ?? payload
-    if (!Array.isArray(data)) return false
-    const current = new Map<string, Map<string, Set<string>>>()
-    data.forEach((role: any) => {
-      const roleKey = normalizeRoleKey(role?.role ?? role?.roleType ?? role?.name)
-      if (!roleKey) return
-      if (!current.has(roleKey)) current.set(roleKey, new Map())
-      const permissions = Array.isArray(role?.permissions) ? role.permissions : []
-      permissions.forEach((perm: any) => {
-        const category = String(perm?.category ?? "General")
-        const actions = Array.isArray(perm?.actions) ? perm.actions : []
-        if (!current.get(roleKey)?.has(category)) {
-          current.get(roleKey)?.set(category, new Set())
-        }
-        actions.forEach((action: string) =>
-          current.get(roleKey)?.get(category)?.add(String(action))
-        )
-      })
-    })
-
-    const roleKeys = new Set<string>([
-      ...Object.keys(matrixState),
-      ...Array.from(current.keys()),
-    ])
-
+    const roleKeys = new Set([...Object.keys(matrixState), ...Object.keys(savedGrants)])
     for (const roleKey of roleKeys) {
-      const currentCats = current.get(roleKey) ?? new Map()
-      const nextCats = matrixState[roleKey] ?? {}
-      const categories = new Set<string>([
-        ...Array.from(currentCats.keys()),
-        ...Object.keys(nextCats),
-      ])
-      for (const category of categories) {
-        const currentActions = currentCats.get(category) ?? new Set()
-        const nextActions = nextCats[category] ?? new Set()
-        if (currentActions.size !== nextActions.size) return true
-        for (const action of currentActions) {
-          if (!nextActions.has(action)) return true
-        }
+      const next = matrixState[roleKey] ?? new Set<string>()
+      const saved = savedGrants[roleKey] ?? new Set<string>()
+      if (next.size !== saved.size) return true
+      for (const action of saved) {
+        if (!next.has(action)) return true
       }
     }
     return false
-  }, [matrixState, payload])
+  }, [matrixState, savedGrants])
 
   const getCsrfToken = () => {
     if (typeof document === "undefined") return ""
@@ -436,13 +441,18 @@ export default function Page() {
     setMatrixSaveMessage(null)
     setMatrixSaving(true)
     try {
-      const matrix = Object.entries(matrixState).map(([roleKey, categories]) => ({
-        role: roleKeyMap[roleKey] ?? roleKey.toLowerCase(),
-        permissions: Object.entries(categories).map(([category, actions]) => ({
-          category,
-          actions: Array.from(actions),
-        })),
-      }))
+      // Every known action needs an explicit `granted`; omitting one leaves the
+      // stored value behind, so an un-tick would never take effect.
+      const allActions = sections.flatMap((section) => section.items.map((item) => item.action))
+      const matrix = Object.entries(matrixState)
+        .filter(([roleKey]) => roleKey !== "SUPER_ADMIN")
+        .map(([roleKey, granted]) => ({
+          role: roleKeyMap[roleKey] ?? roleKey.toLowerCase(),
+          permissions: allActions.map((action) => ({ action, granted: granted.has(action) })),
+        }))
+      if (matrix.length === 0 || allActions.length === 0) {
+        throw new Error("No permissions are loaded yet, so there is nothing to save.")
+      }
       const res = await fetch(`${API_V1}/permissions/matrix`, {
         method: "PUT",
         headers: {
@@ -463,6 +473,45 @@ export default function Page() {
       setMatrixSaveError(err.message || "Unable to save permission matrix")
     } finally {
       setMatrixSaving(false)
+    }
+  }
+
+  const handleCreateRole = async () => {
+    const name = createRoleForm.name.trim()
+    if (!name) {
+      setCreateRoleError("Give the role a name.")
+      return
+    }
+    setCreateRoleError(null)
+    setCreateRoleSaving(true)
+    try {
+      const res = await fetch(`${API_V1}/roles`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrfToken() },
+        credentials: "include",
+        body: JSON.stringify({
+          name,
+          // The eight built-in roles are keyed like `branch_pastor`, so a new
+          // one follows the same convention.
+          role: name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, ""),
+          description: createRoleForm.description.trim(),
+          permissions: createRoleForm.permissions.map((action) => ({ action, granted: true })),
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data?.message || "Unable to create the role.")
+      }
+      setShowCreateRole(false)
+      setCreateRoleForm({ name: "", description: "", permissions: [] })
+      setMatrixSaveMessage(data?.message || `Role "${name}" created.`)
+      // Pull the roles list again so the new column appears.
+      const refreshed = await fetch(`${API_V1}/roles`, { credentials: "include" })
+      if (refreshed.ok) setRolesPayload(await refreshed.json().catch(() => null))
+    } catch (err: any) {
+      setCreateRoleError(err?.message || "Unable to create the role.")
+    } finally {
+      setCreateRoleSaving(false)
     }
   }
 
@@ -606,15 +655,27 @@ export default function Page() {
                 <Button
                   className="h-8 rounded-md border border-[#E5E7EB] bg-white text-[11px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50"
                   variant="outline"
+                  onClick={() => {
+                    setCreateRoleError(null)
+                    setShowCreateRole((open) => !open)
+                  }}
+                >
+                  {showCreateRole ? "Cancel" : "New Role"}
+                </Button>
+                <Button
+                  className="h-8 rounded-md border border-[#E5E7EB] bg-white text-[11px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50"
+                  variant="outline"
                   onClick={handleResetMatrix}
-                  disabled={matrixResetting}
+                  disabled={matrixResetting || matrixReadOnly}
+                  title={matrixReadOnly ? "Only a Super Admin can change the permission matrix" : ""}
                 >
                   {matrixResetting ? "Resetting..." : "Reset to Defaults"}
                 </Button>
                 <Button
                   className="h-8 rounded-md bg-[#3B5BDB] text-[11px] font-medium text-white shadow hover:bg-blue-700"
                   onClick={handleSaveMatrix}
-                  disabled={matrixSaving || !isMatrixDirty}
+                  disabled={matrixSaving || !isMatrixDirty || matrixReadOnly}
+                  title={matrixReadOnly ? "Only a Super Admin can change the permission matrix" : ""}
                 >
                   {matrixSaving ? "Saving..." : "Save Matrix"}
                 </Button>
@@ -622,6 +683,92 @@ export default function Page() {
             </div>
             {matrixSaveError ? (
               <div className="mt-3 text-[11px] text-rose-600">{matrixSaveError}</div>
+            ) : null}
+
+            {showCreateRole ? (
+              <div className="mt-4 rounded-[10px] border border-[#E5E7EB] bg-[#F9FAFB] p-4">
+                <h3 className="text-[13px] font-bold text-[#111827]">New role</h3>
+                <p className={`${smallText} text-[#6B7280] mt-1`}>
+                  Name it, tick what it may do, and it becomes a column in the matrix below.
+                </p>
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  <label className="block">
+                    <span className={`${smallText} font-semibold text-[#374151]`}>Role name</span>
+                    <input
+                      value={createRoleForm.name}
+                      onChange={(event) =>
+                        setCreateRoleForm((form) => ({ ...form, name: event.target.value }))
+                      }
+                      placeholder="Finance Controller"
+                      className="mt-1 h-9 w-full rounded-[8px] border border-[#E5E7EB] bg-white px-3 text-[12px] text-[#111827]"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className={`${smallText} font-semibold text-[#374151]`}>Description</span>
+                    <input
+                      value={createRoleForm.description}
+                      onChange={(event) =>
+                        setCreateRoleForm((form) => ({ ...form, description: event.target.value }))
+                      }
+                      placeholder="What this role is responsible for"
+                      className="mt-1 h-9 w-full rounded-[8px] border border-[#E5E7EB] bg-white px-3 text-[12px] text-[#111827]"
+                    />
+                  </label>
+                </div>
+                <div className="mt-3">
+                  <span className={`${smallText} font-semibold text-[#374151]`}>Permissions</span>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {sections.flatMap((section) =>
+                      section.items.map((item) => (
+                        <label
+                          key={item.action}
+                          className="flex items-start gap-2 rounded-[8px] border border-[#E5E7EB] bg-white px-3 py-2"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={createRoleForm.permissions.includes(item.action)}
+                            onChange={(event) =>
+                              setCreateRoleForm((form) => ({
+                                ...form,
+                                permissions: event.target.checked
+                                  ? [...form.permissions, item.action]
+                                  : form.permissions.filter((action) => action !== item.action),
+                              }))
+                            }
+                            className="mt-0.5"
+                          />
+                          <span>
+                            <span className="block text-[12px] font-semibold text-[#111827]">
+                              {item.label || formatActionLabel(item.action)}
+                            </span>
+                            <span className="block text-[11px] text-[#9CA3AF]">{section.section}</span>
+                          </span>
+                        </label>
+                      ))
+                    )}
+                  </div>
+                </div>
+                {createRoleError ? (
+                  <div className="mt-3 text-[11px] text-rose-600">{createRoleError}</div>
+                ) : null}
+                <div className="mt-4 flex items-center gap-2">
+                  <Button
+                    className="h-8 rounded-md bg-[#3B5BDB] text-[11px] font-medium text-white shadow hover:bg-blue-700"
+                    onClick={handleCreateRole}
+                    disabled={createRoleSaving || !createRoleForm.name.trim()}
+                  >
+                    {createRoleSaving ? "Creating..." : "Create Role"}
+                  </Button>
+                  <Button
+                    className="h-8 rounded-md border border-[#E5E7EB] bg-white text-[11px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50"
+                    variant="outline"
+                    onClick={() => setShowCreateRole(false)}
+                    disabled={createRoleSaving}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
             ) : null}
             {matrixSaveMessage ? (
               <div className="mt-3 text-[11px] text-emerald-600">{matrixSaveMessage}</div>
@@ -763,6 +910,8 @@ export default function Page() {
                               credentials: "include",
                               headers: {
                                 "Content-Type": "application/json",
+                                // The proxy rejects a state change without it.
+                                "X-CSRF-Token": getCsrfToken(),
                               },
                               body: JSON.stringify({ permissions: payloadPermissions }),
                             }
@@ -1004,10 +1153,10 @@ export default function Page() {
                           </td>
                         </tr>
                         {section.items.map((item) => (
-                          <tr key={item.name} className="border-t border-[#EEF1F6]">
+                          <tr key={item.action} className="border-t border-[#EEF1F6]">
                             <td className="py-3 px-4">
                               <div className={`${bigText} text-[#111827]`}>
-                                {formatActionLabel(item.name)}
+                                {item.label || formatActionLabel(item.action)}
                               </div>
                               <div className={`${smallText} text-[#9CA3AF]`}>
                                 {item.desc}
@@ -1015,7 +1164,7 @@ export default function Page() {
                             </td>
                             {columns.map((column) => {
                               const isGranted =
-                                matrixState[column.key]?.[item.section]?.has(item.name) ?? false
+                                matrixState[column.key]?.has(item.action) ?? false
                               const isLocked = column.key === "SUPER_ADMIN"
                               return (
                                 <td
@@ -1032,7 +1181,7 @@ export default function Page() {
                                     }`}
                                     onClick={() => {
                                       if (isLocked) return
-                                      togglePermission(column.key, item.section, item.name)
+                                      togglePermission(column.key, item.action)
                                     }}
                                   >
                                     {isGranted ? (

@@ -1,6 +1,7 @@
 "use client"
 
 import { API_V1 } from "@/lib/api";
+import { ngn } from "@/lib/ledger";
 
 import { useEffect, useMemo, useState } from "react"
 import SidebarNav from "@/components/navigation/SidebarNav"
@@ -92,7 +93,81 @@ export default function Page() {
   const [classesError, setClassesError] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [classesRefreshIndex, setClassesRefreshIndex] = useState(0)
+  /** Live per-class impact, keyed by asset-class id and by lowercased name. */
+  const [impact, setImpact] = useState<Record<string, { assets: number; branches: Set<string>; cost: number; netBookValue: number }>>({})
+  const [impactLoading, setImpactLoading] = useState(false)
+  const [impactError, setImpactError] = useState<string | null>(null)
   const refreshClasses = () => setClassesRefreshIndex((prev) => prev + 1)
+
+  useEffect(() => {
+    let active = true
+
+    const loadImpact = async () => {
+      setImpactLoading(true)
+      setImpactError(null)
+      try {
+        // Every branch's register, so one policy row can report its reach.
+        // `limit` is capped at 100, and anything higher fails validation and
+        // returns nothing at all, so page through instead.
+        const list: Record<string, any>[] = []
+        for (let page = 1; page <= 20; page += 1) {
+          const res = await fetch(`${API_V1}/assets?limit=100&page=${page}`, { credentials: "include" })
+          const json = await res.json().catch(() => null)
+          if (!active) return
+          if (!res.ok) {
+            setImpactError(json?.message ?? "Asset usage could not be loaded.")
+            return
+          }
+          const batch: Record<string, any>[] = Array.isArray(json?.data)
+            ? json.data
+            : Array.isArray(json?.data?.content)
+              ? json.data.content
+              : Array.isArray(json?.data?.assets)
+                ? json.data.assets
+                : []
+          list.push(...batch)
+          const pages = Number(json?.pagination?.pages ?? 1)
+          if (batch.length === 0 || page >= pages) break
+        }
+
+        const next: Record<string, { assets: number; branches: Set<string>; cost: number; netBookValue: number }> = {}
+        const bump = (key: string, asset: Record<string, any>) => {
+          if (!key) return
+          next[key] ??= { assets: 0, branches: new Set<string>(), cost: 0, netBookValue: 0 }
+          const entry = next[key]
+          entry.assets += 1
+          entry.cost += Number(asset.cost ?? 0) || 0
+          entry.netBookValue += Number(asset.netBookValue ?? asset.cost ?? 0) || 0
+          const branch =
+            asset.branchId?.name ?? asset.branch?.name ?? asset.branchName ??
+            (typeof asset.branchId === "string" ? asset.branchId : "")
+          if (branch) entry.branches.add(String(branch))
+        }
+
+        for (const asset of list) {
+          const cls = asset.assetClassId
+          // Key by id and by name so a row matches whichever the policy carries.
+          bump(String(cls?._id ?? cls?.id ?? (typeof cls === "string" ? cls : "")), asset)
+          const name = String(cls?.name ?? asset.assetClassName ?? "").trim().toLowerCase()
+          if (name) bump(`name:${name}`, asset)
+        }
+        setImpact(next)
+      } catch {
+        if (active) setImpactError("Asset usage could not be loaded.")
+      } finally {
+        if (active) setImpactLoading(false)
+      }
+    }
+
+    loadImpact()
+    return () => {
+      active = false
+    }
+  }, [classesRefreshIndex])
+
+  /** The impact entry for a policy row, matched by id then by name. */
+  const impactFor = (cls: AssetClassConfig) =>
+    impact[cls._id || ""] ?? impact[`name:${(cls.name || "").trim().toLowerCase()}`] ?? null
 
   useEffect(() => {
     if (assetConfig) {
@@ -261,7 +336,7 @@ export default function Page() {
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">
       <SidebarNav
-        activeHref="/director-screen/settings"
+        activeHref="/director-screen/settings-asset"
         className="fixed inset-y-0 left-0 z-20 w-65 rounded-none bg-[#FAFBFF] border-r border-[#EEF1F6]"
       />
 
@@ -373,6 +448,11 @@ export default function Page() {
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
+                    {impactError ? (
+                      <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-[11.5px] text-amber-900">
+                        {impactError} The policies below are correct; only the &ldquo;In Use&rdquo; counts are missing.
+                      </div>
+                    ) : null}
                     <table className="w-full min-w-[640px] text-left text-[13px]">
                       <thead className="bg-[#F8FAFC] text-[10px] font-bold uppercase tracking-[1px] text-[#9CA3AF]">
                         <tr>
@@ -380,6 +460,7 @@ export default function Page() {
                           <th className="px-4 py-3">Method</th>
                           <th className="px-4 py-3">Useful Life</th>
                           <th className="px-4 py-3">Salvage %</th>
+                          <th className="px-4 py-3">In Use</th>
                           <th className="px-4 py-3 text-right">Actions</th>
                         </tr>
                       </thead>
@@ -465,6 +546,38 @@ export default function Page() {
                                 ) : (
                                   "—"
                                 )}
+                              </td>
+                              <td className="px-4 py-3 text-[#6B7280]">
+                                {(() => {
+                                  if (impactLoading && !impactFor(cls)) {
+                                    return <span className="text-[#9CA3AF]">Checking…</span>
+                                  }
+                                  const used = impactFor(cls)
+                                  if (!used || used.assets === 0) {
+                                    return <span className="text-[#9CA3AF]">Not in use</span>
+                                  }
+                                  const branchCount = used.branches.size
+                                  return (
+                                    <span
+                                      title={
+                                        branchCount > 0
+                                          ? `${Array.from(used.branches).sort().join(", ")} · cost ${ngn(used.cost)}`
+                                          : `Cost ${ngn(used.cost)}`
+                                      }
+                                    >
+                                      <span className="font-semibold text-[#111827]">
+                                        {used.assets} asset{used.assets === 1 ? "" : "s"}
+                                      </span>
+                                      {branchCount > 0 ? (
+                                        <span className="block text-[11px]">
+                                          {branchCount} branch{branchCount === 1 ? "" : "es"} · {ngn(used.netBookValue)} NBV
+                                        </span>
+                                      ) : (
+                                        <span className="block text-[11px]">{ngn(used.netBookValue)} NBV</span>
+                                      )}
+                                    </span>
+                                  )
+                                })()}
                               </td>
                               <td className="px-4 py-3">
                                 <div className="flex items-center justify-end gap-3 text-[12px] font-bold">

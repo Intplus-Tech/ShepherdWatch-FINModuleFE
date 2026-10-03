@@ -1,132 +1,26 @@
 "use client"
 
-import React, { useState, useEffect, useMemo, Suspense } from "react"
+import React, { useState, useMemo, Suspense } from "react"
 import Link from "next/link"
 import {
   Download,
   ChevronDown,
   FileSpreadsheet,
-  Plus,
   Trash2,
   Check,
   X as XIcon,
 } from "lucide-react"
-import { useRouter, useSearchParams } from "next/navigation"
 import SidebarNav from "@/components/navigation/SidebarNav"
-import { useModalParam } from "@/components/hooks/useModalParam"
-import RecordAssetSaleModal, { AssetSaleDetails, AssetSaleFormValues } from "@/components/modals/RecordAssetSaleModal"
 import { useToast } from "@/components/ui/toast"
 import { SkeletonTable } from "@/components/ui/skeleton"
 import { rowsToCsv, downloadCsv, todayStamp } from "@/lib/export-csv"
-import { useAuth } from "@/components/auth/AuthProvider"
-import { useAssetOverview } from "@/components/hooks/useAssetOverview"
 import {
   useAssetSalesLogs,
-  createSaleLog,
   approveSaleLog,
   rejectSaleLog,
   deleteSaleLog,
   AssetSaleLog,
 } from "@/components/hooks/useAssetSalesLogs"
-
-function ModalContainer({ onSuccess }: { onSuccess: () => void }) {
-  const { isOpen: isModalOpen, close } = useModalParam('record-sale')
-  const searchParams = useSearchParams()
-  const assetId = searchParams.get('assetId') ?? ""
-  const router = useRouter()
-  const { pushToast } = useToast()
-  const { user } = useAuth()
-
-  // Assets for the "Asset" dropdown in create mode.
-  const { items: assetItems } = useAssetOverview({ enabled: isModalOpen })
-  const assetOptions = useMemo(
-    () =>
-      assetItems
-        .map((a) => ({
-          id: String(a.id ?? a._id ?? ""),
-          name: String(a.name ?? a.id ?? a._id ?? "Unnamed asset"),
-        }))
-        .filter((a) => a.id),
-    [assetItems]
-  )
-
-  const [submitting, setSubmitting] = useState(false)
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
-
-  // This modal flow is always "create a sale request" against the new
-  // asset-sales-logs endpoint. The assetId is sourced from the URL param.
-  const emptyDetails: AssetSaleDetails = {
-    branchName: "",
-    location: "",
-    assetId: assetId || undefined,
-    assetName: assetId ? `Asset ${assetId}` : "",
-    saleDate: "",
-    saleAmount: "",
-    buyerName: "",
-    buyerContact: "",
-    reasonForSale: "",
-    proceedsToAccount: "",
-    history: [],
-  }
-
-  useEffect(() => {
-    if (!isModalOpen) {
-      setErrorMessage(null)
-    }
-  }, [isModalOpen])
-
-  const handleSubmit = async (form: AssetSaleFormValues) => {
-    try {
-      setSubmitting(true)
-      setErrorMessage(null)
-
-      // assetId is required by the backend. It comes from the Asset dropdown
-      // (form.assetId) or, when the page was opened for a specific asset, the
-      // URL param.
-      const resolvedAssetId = form.assetId?.trim() || assetId
-      if (!resolvedAssetId) {
-        throw new Error("Please select an asset for this sale.")
-      }
-
-      const body = {
-        assetId: resolvedAssetId,
-        branchId: user?.branchId || undefined,
-        saleDate: form.saleDate,
-        saleAmount: form.saleAmount,
-        buyerName: form.buyerName,
-        buyerContact: form.buyerContact,
-        reasonForSale: form.reasonForSale,
-        proceedsToAccount: form.proceedsToAccount,
-      }
-
-      await createSaleLog(body)
-      pushToast("Sale recorded", "success")
-      onSuccess()
-      close()
-      router.replace("/director-screen/assets/sales-log")
-    } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : "Unable to save sale.")
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <RecordAssetSaleModal
-      isOpen={isModalOpen}
-      onClose={() => {
-        close()
-        router.replace("/director-screen/assets/sales-log")
-      }}
-      saleDetails={emptyDetails}
-      mode="create"
-      assetOptions={assetOptions}
-      onSubmit={handleSubmit}
-      submitting={submitting}
-      errorMessage={errorMessage}
-    />
-  )
-}
 
 type SaleRow = {
   id: string
@@ -181,7 +75,6 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function PageInner() {
-  const router = useRouter()
   const { pushToast } = useToast()
 
   const [branchFilter, setBranchFilter] = useState("All")
@@ -319,11 +212,7 @@ function PageInner() {
             ASSET & DEPRECIATION MANAGER
           </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
-            <Link href="/director-screen/assets" className="rounded-[10px] border border-[#EEF1F6] bg-white p-5 cursor-pointer hover:border-gray-300 shadow-sm transition-colors block">
-              <div className="text-[13px] font-[700] text-[#111827]">Depreciation Policies</div>
-              <div className="text-[12px] font-medium text-[#6B7280] mt-0.5">(Global Config)</div>
-            </Link>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-8">
             <Link href="/director-screen/assets/branch-assets" className="rounded-[10px] border border-[#EEF1F6] bg-white p-5 cursor-pointer hover:border-gray-300 shadow-sm transition-colors block">
               <div className="text-[13px] font-[700] text-[#111827]">Branch Assets</div>
               <div className="text-[12px] font-medium text-[#6B7280] mt-0.5">(Live Tracking)</div>
@@ -373,13 +262,15 @@ function PageInner() {
                 </select>
                 <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#9CA3AF]" />
               </div>
+              {/* Recording a sale is the Finance Controller's job now; this
+                  screen is the audit trail over every branch. */}
               <button
                 type="button"
-                onClick={() => router.push('/director-screen/assets/sales-log?modal=record-sale')}
-                className="flex items-center gap-2 rounded-md bg-[#3B5BDB] px-3.5 py-2 text-[12px] font-medium text-white shadow hover:bg-blue-700"
+                onClick={handleExportLog}
+                className="flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-3.5 py-2 text-[12px] font-medium text-[#4B5563] shadow-sm hover:bg-gray-50"
               >
-                <Plus className="h-4 w-4" />
-                Record Sale
+                <FileSpreadsheet className="h-4 w-4" />
+                Export Log
               </button>
             </div>
           </div>
@@ -490,9 +381,6 @@ function PageInner() {
         </div>
       </main>
 
-      <Suspense fallback={null}>
-        <ModalContainer onSuccess={refresh} />
-      </Suspense>
     </div>
   )
 }

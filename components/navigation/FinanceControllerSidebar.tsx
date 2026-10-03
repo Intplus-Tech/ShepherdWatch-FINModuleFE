@@ -8,6 +8,7 @@ import {
   ArrowLeftRight,
   ChevronDown,
   FileText,
+  Package,
   LayoutGrid,
   LogOut,
   Inbox,
@@ -25,6 +26,8 @@ const PRIMARY_ITEMS = [
   { label: "Dashboard", href: "/finance-controller/dashboard", icon: LayoutGrid },
   { label: "Request", href: "/finance-controller/requests", icon: Inbox },
   { label: "Reports", href: "/finance-controller/reports", icon: FileText },
+  // Recording an asset sale moved here from the Director's screen.
+  { label: "Asset Sales", href: "/finance-controller/assets/sales-log", icon: Package },
 ]
 
 type Props = {

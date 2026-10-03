@@ -144,6 +144,14 @@ export default function UserDirectory({
   const [selectedBranchId, setSelectedBranchId] = useState("")
   const [isUpdatingBranch, setIsUpdatingBranch] = useState(false)
   const [branchUpdateError, setBranchUpdateError] = useState<string | null>(null)
+  /**
+   * `GET /users` does not project `branchId` (though `GET /auth/me` does), and
+   * it ignores the `branchId` query filter. Until that is fixed, a blank Branch
+   * column means "not returned", not "not assigned" — and a branch-scoped
+   * screen is really showing every branch. Both need saying out loud rather
+   * than looking like a UI fault.
+   */
+  const [branchDataMissing, setBranchDataMissing] = useState(false)
   
   const [branches, setBranches] = useState<any[]>([])
   const [branchesLoading, setBranchesLoading] = useState(false)
@@ -206,6 +214,18 @@ export default function UserDirectory({
         )
     )
   }
+
+  /** Reads branch name or bare id off a raw API user record. */
+  const branchFieldsOf = (user: Record<string, any> | null) => ({
+    branch: user?.branchId?.name || user?.branch?.name || user?.branchName || (typeof user?.branch === "string" ? user.branch : "") || "",
+    rawBranchId:
+      user?.branchId?._id ||
+      user?.branchId?.id ||
+      (typeof user?.branchId === "string" ? user.branchId : "") ||
+      user?.branch?._id ||
+      user?.branch?.id ||
+      "",
+  })
 
   const branchNameFor = (user: { branch?: string; rawBranchId?: string }) => {
     if (user.branch) return user.branch
@@ -499,8 +519,7 @@ export default function UserDirectory({
             roleDot,
             // A populated branch carries its name; a bare id is resolved at render
             // time against the branch list, which may load after the users do.
-            branch: u.branchId?.name || u.branch?.name || u.branchName || "",
-            rawBranchId: u.branchId?._id || u.branchId?.id || (typeof u.branchId === "string" ? u.branchId : "") || u.branch?._id || (typeof u.branch === "string" ? u.branch : ""),
+            ...branchFieldsOf(u),
             // The API has no last-login field yet; read the usual names in case one
             // appears, otherwise the column stays blank rather than claiming N/A.
             lastActive: u.lastLoginAt ?? u.lastLogin ?? u.lastLoginDate ?? u.lastSignInAt ?? u.lastActiveAt ?? u.lastActive ?? u.lastSeenAt ?? u.lastSeen ?? null,
@@ -512,6 +531,9 @@ export default function UserDirectory({
           }
         })
         setUsers(mappedUsers)
+        setBranchDataMissing(
+          mappedUsers.length > 0 && mappedUsers.every((u: { branch: string; rawBranchId: string }) => !u.branch && !u.rawBranchId)
+        )
       }
     } catch (error) {
       console.error("Failed to fetch users:", error)
@@ -633,6 +655,15 @@ export default function UserDirectory({
               </div>
             </div>
 
+            {branchDataMissing && (
+              <div className="mt-3 rounded-[10px] border border-amber-200 bg-amber-50 px-4 py-3 text-[12.5px] text-amber-900">
+                <span className="font-semibold">Branch assignment is not available yet.</span>{" "}
+                The users API returns no branch for any account, so the Branch column is blank
+                {branchId ? " and this list is not limited to your branch" : ""}. Assignments made with
+                &ldquo;Change Branch&rdquo; are saved; they will appear here once the API returns the field.
+              </div>
+            )}
+
             <div className="mt-3 overflow-x-auto rounded-[12px] border border-[#EEF1F6]">
               <table className={`${smallText} w-full text-[#111827]`}>
                 <thead className="bg-[#F9FAFB] text-[#9CA3AF]">
@@ -682,7 +713,11 @@ export default function UserDirectory({
                       <td className="py-3 px-4 text-[#6B7280]">
                         <span className="inline-flex items-center gap-1">
                           <MapPin className="h-3.5 w-3.5 text-[#9CA3AF]" />
-                          {branchNameFor(user) || <span className="text-[#9CA3AF]">Unassigned</span>}
+                          {branchNameFor(user) || (
+                            <span className="text-[#9CA3AF]" title={branchDataMissing ? "The users API does not return branch assignment yet." : undefined}>
+                              {branchDataMissing ? "—" : "Unassigned"}
+                            </span>
+                          )}
                         </span>
                       </td>
                       <td className="py-3 px-4 text-[#6B7280]">{formatLastActive(user.lastActive) || <span className="text-[#9CA3AF]">—</span>}</td>
@@ -862,8 +897,10 @@ export default function UserDirectory({
                   </div>
                   <div>
                     <div className="text-[11px] font-semibold tracking-wider text-[#9CA3AF] uppercase mb-1 flex items-center gap-1"><MapPin className="w-3 h-3"/> Branch Assignment</div>
-                    <div className="text-[14px] font-medium text-[#374151] truncate" title={selectedUser.branch?.name || selectedUser.branchId?.name}>
-                      {selectedUser.branch?.name || selectedUser.branchId?.name || selectedUser.address || "HQ Primary"}
+                    <div className="text-[14px] font-medium text-[#374151] truncate" title={branchNameFor(branchFieldsOf(selectedUser)) || undefined}>
+                      {branchNameFor(branchFieldsOf(selectedUser)) || (
+                        <span className="text-[#9CA3AF]">Not returned by the API</span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1083,7 +1120,8 @@ export default function UserDirectory({
                   <div className="text-[13px] text-[#6B7280] font-mono">{deactivateUser?.email}</div>
                   <span className="mt-2 inline-flex items-center gap-1.5 rounded-full px-2 py-1 bg-[#F3F4F6] text-[#6B7280] text-[10px] font-bold">
                     <span className="h-1.5 w-1.5 rounded-full bg-[#6B7280]" />
-                    {deactivateUser?.role} @ {deactivateUser?.branch}
+                    {deactivateUser?.role}
+                    {deactivateUser?.branch ? ` @ ${deactivateUser.branch}` : ""}
                   </span>
                 </div>
 

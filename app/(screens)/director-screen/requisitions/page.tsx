@@ -30,9 +30,40 @@ const shortDate = (iso?: string) => {
  */
 export default function Page() {
   const { pushToast } = useToast()
-  const [tab, setTab] = useState<"pending_pastor" | "approved" | "pending_director">("pending_pastor")
+  const [tab, setTab] = useState<"controller" | "all">("controller")
+  // "All branches" is unfiltered by default; the dropdown narrows it.
+  const [branchFilter, setBranchFilter] = useState("")
+  const [branches, setBranches] = useState<{ id: string; name: string }[]>([])
   const [fits, setFits] = useState<Record<string, BudgetFit>>({})
-  const { requisitions, loading, error, refresh } = useRequisitions({ status: tab, limit: 100 })
+  /**
+   * The controller's own queue is everything still moving through approval —
+   * the ones that may need an override. "All branches" is the whole estate,
+   * read-only, optionally narrowed to one branch.
+   */
+  const { requisitions, loading, error, refresh } = useRequisitions(
+    tab === "controller"
+      ? { status: "pending_pastor", limit: 100 }
+      : { limit: 100, ...(branchFilter ? { branchId: branchFilter } : {}) }
+  )
+
+  useEffect(() => {
+    let active = true
+    fetch(`${API_V1}/branches?page=1&limit=100`, { credentials: "include" })
+      .then((r) => (r.ok ? r.json().catch(() => null) : null))
+      .then((json) => {
+        if (!active) return
+        const list = Array.isArray(json?.data) ? json.data : Array.isArray(json?.data?.content) ? json.data.content : []
+        setBranches(
+          (list as Record<string, unknown>[])
+            .map((b) => ({ id: String(b._id ?? b.id ?? ""), name: String(b.name ?? "") }))
+            .filter((b) => b.id && b.name)
+        )
+      })
+      .catch(() => undefined)
+    return () => {
+      active = false
+    }
+  }, [])
 
   const [busyId, setBusyId] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -64,7 +95,7 @@ export default function Page() {
 
   // Only over-budget requests need this screen; check each one's budget head.
   useEffect(() => {
-    if (tab === "approved" || rows.length === 0) {
+    if (tab !== "controller" || rows.length === 0) {
       setFits({})
       return
     }
@@ -105,9 +136,8 @@ export default function Page() {
   }
 
   const TABS = [
-    { key: "pending_pastor" as const, label: "With branch pastors" },
-    { key: "approved" as const, label: "Approved" },
-    { key: "pending_director" as const, label: "Escalated to you" },
+    { key: "controller" as const, label: "Finance Controller Request" },
+    { key: "all" as const, label: "All Branches Request" },
   ]
 
   return (
@@ -133,16 +163,38 @@ export default function Page() {
                 </button>
               ))}
             </div>
-            <button
-              onClick={refresh}
-              className="h-9 inline-flex items-center gap-2 rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[12px] font-bold text-[#374151] hover:bg-gray-50"
-            >
-              <RefreshCw className="h-4 w-4" />
-              Refresh
-            </button>
+            <div className="flex items-center gap-2">
+              {tab === "all" && (
+                <select
+                  value={branchFilter}
+                  onChange={(event) => setBranchFilter(event.target.value)}
+                  aria-label="Filter by branch"
+                  className="h-9 rounded-[8px] border border-[#E5E7EB] bg-white px-3 text-[12px] font-semibold text-[#374151]"
+                >
+                  <option value="">All branches ({branches.length})</option>
+                  {branches.map((branch) => (
+                    <option key={branch.id} value={branch.id}>{branch.name}</option>
+                  ))}
+                </select>
+              )}
+              <button
+                onClick={refresh}
+                className="h-9 inline-flex items-center gap-2 rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-[12px] font-bold text-[#374151] hover:bg-gray-50"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Refresh
+              </button>
+            </div>
           </div>
 
-          {blockedCount > 0 ? (
+          {tab === "all" ? (
+            <div className="mb-4 rounded-[10px] border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-3 text-[12.5px] text-[#4B5563]">
+              Every requisition across the estate, read-only.{" "}
+              {branchFilter
+                ? "Showing one branch — switch the filter to see them all."
+                : "Use the filter to narrow it to a single branch."}
+            </div>
+          ) : blockedCount > 0 ? (
             <div className="mb-4 rounded-[10px] border border-amber-200 bg-amber-50 px-4 py-3 text-[12.5px] text-amber-900">
               <span className="font-bold">
                 {blockedCount} {blockedCount === 1 ? "request is" : "requests are"} blocked by the budget check.
@@ -189,14 +241,14 @@ export default function Page() {
                       <td colSpan={7} className="px-5 py-12 text-center">
                         <CheckCircle2 className="h-6 w-6 text-emerald-500 mx-auto" />
                         <div className="text-[14px] font-bold text-[#111827] mt-3">
-                          {tab === "pending_director" ? "Nothing awaiting your approval" : tab === "approved" ? "No approved requisitions yet" : "Nothing with the branch pastors"}
+                          {tab === "controller" ? "Nothing needs your attention" : "No requisitions found"}
                         </div>
                         <div className="text-[12.5px] text-[#6B7280] mt-1">
-                          {tab === "pending_director"
-                            ? "Requests appear here once a branch pastor has approved them."
-                            : tab === "approved"
-                              ? "Approved requests become available to branch accountants to pay."
-                              : "Requests submitted by branch admins wait with their pastor first."}
+                          {tab === "controller"
+                            ? "Requests appear here while they are with a branch pastor. You only act on one that exceeds its budget head."
+                            : branchFilter
+                              ? "This branch has raised no requisitions."
+                              : "No branch has raised a requisition yet."}
                         </div>
                       </td>
                     </tr>
@@ -220,8 +272,16 @@ export default function Page() {
                       <td className="px-3 py-3 whitespace-nowrap text-[#374151]">{shortDate(r.requiredDate)}</td>
                       <td className="px-3 py-3 text-right font-mono font-extrabold">{naira(r.amount)}</td>
                       <td className="px-5 py-3 text-right">
-                        {tab === "approved" ? (
-                          <span className="inline-flex items-center gap-1 rounded-[4px] bg-emerald-50 text-emerald-700 px-2 py-1 text-[10px] font-bold uppercase"><CheckCircle2 className="h-3 w-3" />Approved</span>
+                        {tab === "all" ? (
+                          <span className={`inline-flex items-center gap-1 rounded-[4px] px-2 py-1 text-[10px] font-bold uppercase whitespace-nowrap ${
+                            r.raw.currentStatus === "approved" || r.raw.currentStatus === "paid"
+                              ? "bg-emerald-50 text-emerald-700"
+                              : r.raw.currentStatus === "declined"
+                                ? "bg-rose-50 text-rose-600"
+                                : "bg-amber-50 text-amber-700"
+                          }`}>
+                            {String(r.raw.currentStatus ?? "").replace(/_/g, " ") || "—"}
+                          </span>
                         ) : needsOverride(r.id) ? (
                           <button
                             onClick={() => setSelectedId(r.id)}
@@ -252,7 +312,7 @@ export default function Page() {
         isOpen={selected !== null}
         onClose={() => setSelectedId(null)}
         isAuthorizing={busyId !== null}
-        canOverride
+        canOverride={tab === "controller"}
         requisition={
           selected
             ? {
