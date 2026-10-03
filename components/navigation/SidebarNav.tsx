@@ -58,11 +58,12 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Transactions", href: "/director-screen/transaction", icon: ArrowLeftRight },
       { label: "Budgeting", href: "/director-screen/budgeting", icon: WalletCards },
       { label: "Requisitions", href: "/director-screen/requisitions", icon: ClipboardList },
-      { label: "Compliance", href: "/director-screen/compliance", icon: Scale },
+      // Compliance is out of scope for now.
+      // { label: "Compliance", href: "/director-screen/compliance", icon: Scale },
       { label: "Asset", href: "/director-screen/assets", icon: Folder },
       { label: "Branch Management", href: "/director-screen/branch-management", icon: GitBranch },
       { label: "Users", href: "/director-screen/users", icon: Users },
-      { label: "Settings", href: "/director-screen/settings", icon: Settings },
+      { label: "Settings", href: "/director-screen/settings-asset", icon: Settings },
     ],
   },
   {

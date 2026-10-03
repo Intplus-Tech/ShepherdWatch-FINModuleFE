@@ -293,19 +293,6 @@ export default function RecordAssetSaleModal({
             <div className="hidden sm:block"></div>
           </div>
 
-          {/* Workflow Alert Box */}
-          <div className="mt-2 rounded-[8px] bg-[#F0FDF4] p-3 flex gap-3 border border-[#DCFCE7] bg-opacity-50">
-            <AlertCircle className="h-4 w-4 text-[#374151] shrink-0 mt-0.5" />
-            <div className="flex flex-col gap-0.5 text-[12px]">
-              <span className="font-bold text-[#111827]">Workflow</span>
-              <div className="text-[#4B5563] flex flex-col mt-0.5">
-                <p>Branch Accountant submits sale request.</p>
-                <p>Financial Director receives notification.</p>
-                <p>Financial Director in Asset Sales log -{'>'} pending approvals.</p>
-              </div>
-            </div>
-          </div>
-
           {/* Depreciation History */}
           {saleDetails.history.length > 0 && (
             <div className="mt-3">

@@ -8,12 +8,36 @@ import { getBackendUrl } from "@/lib/backend-auth-url"
 import { readMatrix, toMatrixPermissions, toRoleRecord } from "@/lib/roles-adapter"
 
 /**
- * A single role, read from and written back into the permission matrix. The
- * backend edits the matrix as a whole, so a PUT here replaces just this role's
- * entry and sends the full matrix back.
+ * A single role. The backend serves `/roles/{role}` directly now, so prefer
+ * it; only a deployment that predates it needs the permission-matrix adapter
+ * below, which reads and writes the whole matrix to change one role.
  */
 function matrixUrl(): string | null {
   return getBackendUrl(`${API_V1}/permissions/matrix`)
+}
+
+/** Calls the backend's own role endpoint. Returns null if it is not deployed. */
+async function callRoleEndpoint(req: NextRequest, roleId: string, init?: { body: unknown }) {
+  const url = getBackendUrl(`${API_V1}/roles/${encodeURIComponent(roleId)}`)
+  if (!url) return null
+  const attempt = await executeWithRefreshRetry(req, (token) =>
+    fetch(url, {
+      method: init ? "PUT" : "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+        ...(init ? { "Content-Type": "application/json" } : {}),
+      },
+      ...(init ? { body: JSON.stringify(init.body) } : {}),
+      cache: "no-store",
+    })
+  )
+  if (attempt.res.status === 404 && !init) return null
+  const payload = await attempt.res.json().catch(() => null)
+  // A 404 on PUT means the endpoint is missing, not the role — the backend
+  // answers "Role not found" with its own message when the role is the problem.
+  if (attempt.res.status === 404 && !payload?.message?.toLowerCase().includes("role")) return null
+  return { res: attempt.res, payload, refreshedTokens: attempt.refreshedTokens }
 }
 
 async function loadMatrix(req: NextRequest) {
@@ -45,6 +69,16 @@ export async function GET(
   const { roleId } = await params
 
   try {
+    const direct = await callRoleEndpoint(req, roleId)
+    if (direct) {
+      const response = applyCors(
+        NextResponse.json(direct.payload ?? { success: false }, { status: direct.res.status }),
+        req
+      )
+      applyAuthCookies(response, direct.refreshedTokens)
+      return response
+    }
+
     const { res, payload, refreshedTokens } = await loadMatrix(req)
     if (!res.ok) {
       const response = applyCors(NextResponse.json(payload ?? { success: false }, { status: res.status }), req)
@@ -98,11 +132,24 @@ export async function PUT(
 
   const { roleId } = await params
   const body = await req.json().catch(() => null)
-  const permissions = Array.isArray((body as { permissions?: unknown })?.permissions)
-    ? ((body as { permissions: unknown[] }).permissions.map(String) as string[])
+  const rawPermissions = Array.isArray((body as { permissions?: unknown })?.permissions)
+    ? (body as { permissions: unknown[] }).permissions
     : null
 
-  if (!permissions) {
+  // Either `["approve_budgets"]` or `[{ action, granted }]`.
+  const permissions = rawPermissions
+    ? rawPermissions
+        .map((entry) =>
+          typeof entry === "string"
+            ? entry
+            : (entry as { granted?: unknown })?.granted === false
+              ? null
+              : String((entry as { action?: unknown; id?: unknown })?.action ?? (entry as { id?: unknown })?.id ?? "")
+        )
+        .filter((action): action is string => Boolean(action))
+    : null
+
+  if (!permissions || !rawPermissions) {
     return applyCors(
       NextResponse.json(
         { success: false, message: "Invalid payload. `permissions` is required." },
@@ -121,6 +168,22 @@ export async function PUT(
   }
 
   try {
+    const direct = await callRoleEndpoint(req, roleId, {
+      body: {
+        permissions: rawPermissions.every((entry) => typeof entry === "string")
+          ? (rawPermissions as string[]).map((action) => ({ action, granted: true }))
+          : rawPermissions,
+      },
+    })
+    if (direct) {
+      const response = applyCors(
+        NextResponse.json(direct.payload ?? { success: false }, { status: direct.res.status }),
+        req
+      )
+      applyAuthCookies(response, direct.refreshedTokens)
+      return response
+    }
+
     const current = await loadMatrix(req)
     if (!current.res.ok) {
       const response = applyCors(

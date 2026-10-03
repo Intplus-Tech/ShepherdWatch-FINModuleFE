@@ -38,7 +38,11 @@ export default function Page() {
   const [approvalModalOpen, setApprovalModalOpen] = useState(false)
 
   // Financial Overview header filters
-  const [fiscalYear, setFiscalYear] = useState("2024 (Present)")
+  // The BVA report is pulled for whichever year is selected; it starts on the
+  // current one rather than a year hard-coded at build time.
+  const currentYear = new Date().getFullYear()
+  const [fiscalYear, setFiscalYear] = useState<number>(currentYear)
+  const yearOptions = [currentYear + 1, currentYear, currentYear - 1, currentYear - 2]
   const [currencyFilter, setCurrencyFilter] = useState("NGN (₦)")
 
   const tenantId = useMemo(
@@ -60,9 +64,8 @@ export default function Page() {
       try {
         setBvaLoading(true)
         setBvaError(null)
-        const now = new Date()
-        const periodStart = new Date(now.getFullYear(), 0, 1).toISOString().split("T")[0]
-        const periodEnd = new Date(now.getFullYear(), 11, 31).toISOString().split("T")[0]
+        const periodStart = `${fiscalYear}-01-01`
+        const periodEnd = `${fiscalYear}-12-31`
         const params = new URLSearchParams({
           periodStart,
           periodEnd,
@@ -115,12 +118,12 @@ export default function Page() {
       {
         label: "Total Annual Budget",
         value: formatCurrency(yearly),
-        note: "FY 2024",
+        note: `FY ${fiscalYear}`,
       },
       {
         label: "YTD Actual Spent",
         value: formatCurrency(ytdSpent),
-        note: yearly ? "5% below target" : "Awaiting entries",
+        note: yearly ? `${Math.round((ytdSpent / yearly) * 100)}% of budget spent` : "Awaiting entries",
       },
       {
         label: "Overall Variance",
@@ -128,7 +131,7 @@ export default function Page() {
         note: variancePct >= 0 ? "Healthy Surplus" : "Over Target",
       },
     ]
-  }, [bva])
+  }, [bva, fiscalYear])
 
   const rows = useMemo(() => {
     const categories = bva?.categories ?? []
@@ -268,12 +271,16 @@ export default function Page() {
                       >
                         New Budget Template
                       </button>
-                      <button
+                      {/* Budget Control is commented out: a branch pastor's approval is final, so
+          there is no second Director approval to make. Restore this if the
+          two-stage budget policy ever comes back.
+          <button
                         onClick={() => router.push("/director-screen/budget-control")}
                         className="flex items-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-3.5 py-2 text-[12px] font-bold text-[#4B5563] shadow-sm hover:bg-gray-50 transition-colors"
                       >
                         Budget Control
                       </button>
+      */}
                     </div>
                   </div>
 
@@ -308,13 +315,14 @@ export default function Page() {
                         <div className="relative">
                           <select
                             value={fiscalYear}
-                            onChange={(e) => setFiscalYear(e.target.value)}
+                            onChange={(e) => setFiscalYear(Number(e.target.value))}
                             className="w-full appearance-none rounded-md border border-[#E5E7EB] bg-white px-3.5 py-2.5 pr-9 text-[13px] font-medium text-[#4B5563] shadow-sm outline-none focus:border-[#3B5BDB]"
                           >
-                            <option value="2021">2021</option>
-                            <option value="2022">2022</option>
-                            <option value="2023">2023</option>
-                            <option value="2024 (Present)">2024 (Present)</option>
+                            {yearOptions.map((year) => (
+                              <option key={year} value={year}>
+                                {year}{year === currentYear ? " (Present)" : ""}
+                              </option>
+                            ))}
                           </select>
                           <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
                         </div>
@@ -474,7 +482,9 @@ export default function Page() {
                 {/* Table Footer */}
                 <div className="flex items-center justify-between border-t border-[#EEF1F6] p-5">
                   <span className="text-[13px] font-medium text-[#6B7280]">
-                    Showing 1-5 of 45 categories
+                    {rows.length === 0
+                      ? "No categories for this period"
+                      : `Showing ${rows.length} ${rows.length === 1 ? "category" : "categories"}`}
                   </span>
                   <div className="flex items-center gap-2">
                     <button className="rounded px-4 py-2 text-[12px] font-bold text-[#9CA3AF] border border-[#E5E7EB] hover:bg-gray-50 focus:outline-none transition-colors">Previous</button>

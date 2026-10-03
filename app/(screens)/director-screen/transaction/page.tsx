@@ -59,11 +59,12 @@ const navItems = [
   { label: "Dashboard", href: "/director-screen/dashboard", icon: LayoutDashboard },
   { label: "Transactions", href: "/director-screen/transaction", icon: ArrowLeftRight },
   { label: "Budgeting", href: "/director-screen/budgeting", icon: Coins },
-  { label: "Compliance", href: "/director-screen/compliance", icon: Scale },
+  // Compliance is out of scope for now.
+  // { label: "Compliance", href: "/director-screen/compliance", icon: Scale },
   { label: "Asset", href: "/director-screen/assets", icon: Wallet },
   { label: "Branch Management", href: "/director-screen/branch-management", icon: Building2 },
   { label: "Users", href: "/director-screen/users", icon: Users },
-  { label: "Settings", href: "/director-screen/settings", icon: Settings },
+  { label: "Settings", href: "/director-screen/settings-asset", icon: Settings },
 ]
 
 export default function Page() {
@@ -339,7 +340,7 @@ export function BankTransactions({ showBranchFilter = false }: { showBranchFilte
         <div>
           <h1 className="text-[20px] sm:text-[24px] leading-tight font-bold text-[#111827]">Bank Transactions</h1>
           <p className="text-[12px] sm:text-[13px] text-[#9CA3AF] mt-1.5">
-            Reconcile imported bank feeds with your chart of accounts.
+            Bank activity across every branch, read-only. Entries are posted by each branch's accountant.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3 mt-2 md:mt-0">
@@ -348,18 +349,6 @@ export function BankTransactions({ showBranchFilter = false }: { showBranchFilte
             className="flex w-full sm:w-auto items-center justify-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 py-2.5 text-[12px] font-bold text-[#4B5563] shadow-sm hover:bg-gray-50 transition-colors"
           >
             <Upload className="h-4 w-4" strokeWidth={2.5} /> Upload Statements
-          </button>
-          <button
-            onClick={() => setIncomeOpen(true)}
-            className="flex w-full sm:w-auto items-center justify-center gap-2 rounded-md bg-[#3B5BDB] px-4 py-2.5 text-[12px] font-bold text-white shadow-sm hover:bg-blue-700 transition-colors"
-          >
-            <Plus className="h-4 w-4" strokeWidth={2.5} /> Income Entry
-          </button>
-          <button
-            onClick={() => setExpenseOpen(true)}
-            className="flex w-full sm:w-auto items-center justify-center gap-2 rounded-md bg-[#3B5BDB] px-4 py-2.5 text-[12px] font-bold text-white shadow-sm hover:bg-blue-700 transition-colors"
-          >
-            <Plus className="h-4 w-4" strokeWidth={2.5} /> Expense Entry
           </button>
         </div>
       </div>

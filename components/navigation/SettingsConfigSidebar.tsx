@@ -27,7 +27,9 @@ type NavItem = {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { key: "budget", label: "Budget", href: "/director-screen/settings", icon: Wallet },
+  // Budget configuration was removed: budget streams are defined per branch on
+  // the budget itself, so a second global copy only drifted from it.
+  // { key: "budget", label: "Budget", href: "/director-screen/settings", icon: Wallet },
   { key: "asset", label: "Asset", href: "/director-screen/settings-asset", icon: Boxes },
   {
     key: "statutory",
